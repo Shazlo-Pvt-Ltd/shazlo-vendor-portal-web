@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.shazlo.store/central-ingest/v1/envelope.schema.json",
+  "title": "Event envelope",
+  "description": "Every message sent to POST /internal/v1/events has this shape. The payload depends on type.",
+  "type": "object",
+  "required": [
+    "event_id",
+    "type",
+    "version",
+    "occurred_at",
+    "producer",
+    "aggregate",
+    "payload"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique per event. The receiver de-duplicates on it."
+    },
+    "type": {
+      "enum": [
+        "brand_profile.published",
+        "brand_profile.unpublished",
+        "product.published",
+        "product.unpublished",
+        "vendor.status_changed"
+      ]
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonic per aggregate. The receiver ignores an event whose version is not higher than the one it holds."
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "producer": {
+      "const": "vendor-api"
+    },
+    "aggregate": {
+      "type": "object",
+      "required": [
+        "type",
+        "id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": [
+            "brand_profile",
+            "product",
+            "vendor"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    },
+    "payload": {
+      "type": "object"
+    }
+  }
+}

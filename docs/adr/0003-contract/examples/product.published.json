@@ -1,0 +1,60 @@
+{
+  "event_id": "e3d9b8c2-4f60-41a3-9c5d-7a0f2e9c3d46",
+  "type": "product.published",
+  "version": 2,
+  "occurred_at": "2026-10-23T11:30:00Z",
+  "producer": "vendor-api",
+  "aggregate": {
+    "type": "product",
+    "id": "9b6e2d7a-41f3-4c58-8d0a-6e1f3b7c2a55"
+  },
+  "payload": {
+    "product_id": "9b6e2d7a-41f3-4c58-8d0a-6e1f3b7c2a55",
+    "vendor_id": "3f0c8a52-6b0e-4a8b-9c1d-2a7d5e9b1c10",
+    "sku": "IL-KRT-001",
+    "title": "Block print cotton kurti",
+    "description": "Hand-block printed cotton kurti with a relaxed fit.",
+    "category": "Kurtis",
+    "subcategory": "Straight",
+    "gender": "women",
+    "fabric": "Cotton",
+    "variants": [
+      {
+        "variant_id": "5d1a7c30-8e42-4b9f-a6d3-0c2e8f4b9a71",
+        "sku": "IL-KRT-001-M",
+        "size": "M",
+        "color": "Indigo",
+        "price_paise": 129900,
+        "mrp_paise": 159900
+      },
+      {
+        "variant_id": "7a2b9e14-3c5d-4f60-b8e1-9d4a6c0f2e83",
+        "sku": "IL-KRT-001-L",
+        "size": "L",
+        "color": "Indigo",
+        "price_paise": 129900,
+        "mrp_paise": 159900
+      }
+    ],
+    "images": [
+      {
+        "url": "https://res.cloudinary.com/shazlo/image/upload/v1/vendors/indigo-lane/krt-001-front.jpg",
+        "position": 1,
+        "alt": "Front"
+      },
+      {
+        "url": "https://res.cloudinary.com/shazlo/image/upload/v1/vendors/indigo-lane/krt-001-back.jpg",
+        "position": 2,
+        "alt": "Back"
+      },
+      {
+        "url": "https://res.cloudinary.com/shazlo/image/upload/v1/vendors/indigo-lane/krt-001-detail.jpg",
+        "position": 3
+      }
+    ],
+    "weight_grams": 350,
+    "returnable": true,
+    "return_window_days": 7,
+    "published_at": "2026-10-23T11:30:00Z"
+  }
+}

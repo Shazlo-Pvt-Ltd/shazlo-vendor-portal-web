@@ -1,0 +1,224 @@
+openapi: 3.1.0
+info:
+  title: Shazlo central-app ingest API (draft)
+  version: 0.1.0
+  summary: Endpoints the central app exposes so vendor-api can publish approved content
+  description: |
+    Draft contract for ADR 0003. vendor-api is the **producer**; the central app is the **receiver**.
+
+    Every request is signed. OpenAPI has no native HMAC scheme, so the three `X-Shazlo-*` headers are
+    documented as required parameters and the algorithm is specified in `README.md` (section "Signing").
+    Event bodies are validated against the JSON Schemas in `schemas/`.
+servers:
+  - url: https://central.shazlo.store
+    description: Production (placeholder)
+  - url: http://localhost:8000
+    description: Local development and the stub receiver
+security:
+  - hmacSignature: []
+paths:
+  /internal/v1/events:
+    post:
+      operationId: ingestEvent
+      summary: Deliver one event
+      description: |
+        Idempotent on `event_id`. The receiver stores `event_id`, so a repeat returns `duplicate`.
+        An event whose `version` is not higher than the stored version of the same aggregate returns `stale`.
+      parameters:
+        - $ref: '#/components/parameters/KeyId'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Signature'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: './schemas/brand_profile.published.schema.json'
+                - $ref: './schemas/brand_profile.unpublished.schema.json'
+                - $ref: './schemas/product.published.schema.json'
+                - $ref: './schemas/product.unpublished.schema.json'
+                - $ref: './schemas/vendor.status_changed.schema.json'
+      responses:
+        '200':
+          description: The event was handled. Do not retry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestResult'
+        '400':
+          description: Body is not valid JSON, or required headers are missing. Permanent, do not retry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unknown key id, bad signature, or timestamp outside the allowed window. Permanent for this request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The same `event_id` arrived with a different body. Permanent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Body larger than 256 KB. Permanent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Body is valid JSON but fails the event schema. Permanent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limited. Retry after the delay in `Retry-After`.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Temporarily unavailable. Retry with backoff (any 5xx is retryable).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /internal/v1/versions:
+    get:
+      operationId: listVersions
+      summary: List what the receiver currently holds (reconciliation)
+      description: |
+        vendor-api calls this nightly and re-sends any aggregate where the receiver is behind.
+      parameters:
+        - $ref: '#/components/parameters/KeyId'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Signature'
+        - name: aggregate_type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [brand_profile, product, vendor]
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 200
+      responses:
+        '200':
+          description: One page of versions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionPage'
+        '401':
+          description: Bad signature or timestamp.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  securitySchemes:
+    hmacSignature:
+      type: apiKey
+      in: header
+      name: X-Shazlo-Signature
+      description: |
+        `v1=` followed by the lowercase hex HMAC-SHA256 of `"{timestamp}.{raw body}"` using the secret of the key
+        named in `X-Shazlo-Key-Id`. See README section "Signing".
+  parameters:
+    KeyId:
+      name: X-Shazlo-Key-Id
+      in: header
+      required: true
+      description: Identifies which shared secret was used. Supports rotation.
+      schema:
+        type: string
+        pattern: '^[A-Za-z0-9_-]{1,32}$'
+    Timestamp:
+      name: X-Shazlo-Timestamp
+      in: header
+      required: true
+      description: Unix time in seconds when the request was signed. Must be within 60 seconds of the receiver's clock.
+      schema:
+        type: integer
+    Signature:
+      name: X-Shazlo-Signature
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: '^v1=[0-9a-f]{64}$'
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Same value as `event_id` in the body.
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    IngestResult:
+      type: object
+      required: [event_id, status]
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [accepted, duplicate, stale]
+    VersionPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [aggregate_id, version, state]
+            properties:
+              aggregate_id:
+                type: string
+                format: uuid
+              version:
+                type: integer
+                minimum: 1
+              state:
+                type: string
+                enum: [published, unpublished]
+        next_cursor:
+          type: [string, 'null']
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+        extra:
+          type: object
+          properties:
+            code:
+              type: string
+              description: Machine-readable reason, for example `bad_signature`, `stale_timestamp`, `schema_invalid`.
+            fields:
+              type: object
+              additionalProperties: true

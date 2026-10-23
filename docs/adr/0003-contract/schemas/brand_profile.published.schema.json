@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.shazlo.store/central-ingest/v1/brand_profile.published.schema.json",
+  "title": "brand_profile.published",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "brand_profile.published"
+        },
+        "aggregate": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "brand_profile"
+            }
+          }
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "vendor_id",
+            "slug",
+            "brand_name",
+            "categories",
+            "price_range",
+            "published_at"
+          ],
+          "properties": {
+            "vendor_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "slug": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+              "maxLength": 80
+            },
+            "brand_name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "tagline": {
+              "type": "string",
+              "maxLength": 160
+            },
+            "about": {
+              "type": "string",
+              "maxLength": 4000
+            },
+            "logo_url": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "banner_url": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "website_url": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "instagram_handle": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._]{1,30}$"
+            },
+            "categories": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "price_range": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "min_paise",
+                "max_paise"
+              ],
+              "description": "max_paise must be greater than or equal to min_paise",
+              "properties": {
+                "min_paise": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Money in paise (1 INR = 100 paise), integer"
+                },
+                "max_paise": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Money in paise (1 INR = 100 paise), integer"
+                }
+              }
+            },
+            "published_at": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

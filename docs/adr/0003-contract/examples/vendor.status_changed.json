@@ -1,0 +1,17 @@
+{
+  "event_id": "0a5bdae4-6182-43c5-9e7f-9c2b4a1e5f68",
+  "type": "vendor.status_changed",
+  "version": 2,
+  "occurred_at": "2026-10-24T08:00:00Z",
+  "producer": "vendor-api",
+  "aggregate": {
+    "type": "vendor",
+    "id": "3f0c8a52-6b0e-4a8b-9c1d-2a7d5e9b1c10"
+  },
+  "payload": {
+    "vendor_id": "3f0c8a52-6b0e-4a8b-9c1d-2a7d5e9b1c10",
+    "status": "suspended",
+    "reason": "Policy review",
+    "changed_at": "2026-10-24T08:00:00Z"
+  }
+}

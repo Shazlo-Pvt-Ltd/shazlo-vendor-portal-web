@@ -1,0 +1,31 @@
+{
+  "event_id": "c1b7f6a0-2d4e-4f81-9a3b-5e8d0c7a1b24",
+  "type": "brand_profile.published",
+  "version": 3,
+  "occurred_at": "2026-10-23T10:15:00Z",
+  "producer": "vendor-api",
+  "aggregate": {
+    "type": "brand_profile",
+    "id": "3f0c8a52-6b0e-4a8b-9c1d-2a7d5e9b1c10"
+  },
+  "payload": {
+    "vendor_id": "3f0c8a52-6b0e-4a8b-9c1d-2a7d5e9b1c10",
+    "slug": "indigo-lane",
+    "brand_name": "Indigo Lane",
+    "tagline": "Handloom everyday wear from Ahmedabad",
+    "about": "A small label making hand-block printed kurtis and co-ords.",
+    "logo_url": "https://res.cloudinary.com/shazlo/image/upload/v1/vendors/indigo-lane/logo.png",
+    "banner_url": "https://res.cloudinary.com/shazlo/image/upload/v1/vendors/indigo-lane/banner.jpg",
+    "website_url": "https://indigolane.example",
+    "instagram_handle": "indigo.lane",
+    "categories": [
+      "Kurtis",
+      "Co-ords"
+    ],
+    "price_range": {
+      "min_paise": 79900,
+      "max_paise": 299900
+    },
+    "published_at": "2026-10-23T10:15:00Z"
+  }
+}

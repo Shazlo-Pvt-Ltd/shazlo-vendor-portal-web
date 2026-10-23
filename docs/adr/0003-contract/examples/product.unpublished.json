@@ -1,0 +1,17 @@
+{
+  "event_id": "f4eac9d3-5071-42b4-8d6e-8b1a3f0d4e57",
+  "type": "product.unpublished",
+  "version": 3,
+  "occurred_at": "2026-10-25T09:45:00Z",
+  "producer": "vendor-api",
+  "aggregate": {
+    "type": "product",
+    "id": "9b6e2d7a-41f3-4c58-8d0a-6e1f3b7c2a55"
+  },
+  "payload": {
+    "product_id": "9b6e2d7a-41f3-4c58-8d0a-6e1f3b7c2a55",
+    "vendor_id": "3f0c8a52-6b0e-4a8b-9c1d-2a7d5e9b1c10",
+    "reason": "withdrawn",
+    "unpublished_at": "2026-10-25T09:45:00Z"
+  }
+}

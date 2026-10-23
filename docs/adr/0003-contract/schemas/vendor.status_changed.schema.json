@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.shazlo.store/central-ingest/v1/vendor.status_changed.schema.json",
+  "title": "vendor.status_changed",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "vendor.status_changed"
+        },
+        "aggregate": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "vendor"
+            }
+          }
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "vendor_id",
+            "status",
+            "changed_at"
+          ],
+          "properties": {
+            "vendor_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "status": {
+              "enum": [
+                "approved",
+                "rejected",
+                "suspended"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "changed_at": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

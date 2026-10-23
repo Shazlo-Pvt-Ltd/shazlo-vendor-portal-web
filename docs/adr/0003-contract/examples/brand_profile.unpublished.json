@@ -1,0 +1,16 @@
+{
+  "event_id": "d2c8a7b1-3e5f-4092-8b4c-6f9e1d8b2c35",
+  "type": "brand_profile.unpublished",
+  "version": 4,
+  "occurred_at": "2026-10-24T08:00:00Z",
+  "producer": "vendor-api",
+  "aggregate": {
+    "type": "brand_profile",
+    "id": "3f0c8a52-6b0e-4a8b-9c1d-2a7d5e9b1c10"
+  },
+  "payload": {
+    "vendor_id": "3f0c8a52-6b0e-4a8b-9c1d-2a7d5e9b1c10",
+    "reason": "vendor_suspended",
+    "unpublished_at": "2026-10-24T08:00:00Z"
+  }
+}

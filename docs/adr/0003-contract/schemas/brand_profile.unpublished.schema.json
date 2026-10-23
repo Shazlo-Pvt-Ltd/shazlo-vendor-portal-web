@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.shazlo.store/central-ingest/v1/brand_profile.unpublished.schema.json",
+  "title": "brand_profile.unpublished",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "brand_profile.unpublished"
+        },
+        "aggregate": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "brand_profile"
+            }
+          }
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "vendor_id",
+            "reason",
+            "unpublished_at"
+          ],
+          "properties": {
+            "vendor_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "reason": {
+              "enum": [
+                "withdrawn",
+                "vendor_suspended",
+                "rejected_after_publish"
+              ]
+            },
+            "unpublished_at": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        }
+      }
+    }
+  ]
+}
