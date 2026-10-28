@@ -33,6 +33,14 @@ class Settings(BaseSettings):
     refresh_token_ttl_days: int = 7
     refresh_family_max_days: int = 30
 
+    # Argon2id cost (OWASP baseline: 19 MiB, 2 passes, 1 lane). Raising any of these makes
+    # existing hashes rehash on the next successful login.
+    argon2_memory_cost_kib: int = 19_456
+    argon2_time_cost: int = 2
+    argon2_parallelism: int = 1
+
+    password_min_length: int = 12
+
     @field_validator("cors_allowed_origins", mode="before")
     @classmethod
     def _split_origins(cls, value: object) -> object:
