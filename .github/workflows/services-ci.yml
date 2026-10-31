@@ -1,5 +1,7 @@
 name: services-ci
 
+# Every PR and main push runs every matrix entry, so the required `test (...)` checks always
+# report; a path filter would leave a skipped service's required check pending.
 on:
   pull_request:
   push:
@@ -19,10 +21,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [identity-api, vendor-api]
+        service: [identity-api, vendor-api, py-auth]
     defaults:
       run:
-        working-directory: services/${{ matrix.service }}
+        working-directory: ${{ matrix.service == 'py-auth' && 'packages/py-auth' || format('services/{0}', matrix.service) }}
     services:
       postgres:
         image: postgres:16
@@ -48,7 +50,14 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: services/${{ matrix.service }}/pyproject.toml
+          cache-dependency-path: ${{ matrix.service == 'py-auth' && 'packages/py-auth' || format('services/{0}', matrix.service) }}/pyproject.toml
+      # The shared package is a path dependency: install it first, so the service's own install
+      # finds it. `compat` editable mode keeps it visible to mypy.
+      - if: matrix.service != 'py-auth'
+        run: |
+          if grep -q shazlo-auth pyproject.toml; then
+            pip install -e '../../packages/py-auth[fastapi]' --config-settings editable_mode=compat
+          fi
       - run: pip install -e '.[dev]'
       - run: ruff check .
       - run: ruff format --check .
@@ -64,6 +73,6 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.service }}-tests-${{ github.sha }}
-          path: services/${{ matrix.service }}/reports/
+          path: ${{ matrix.service == 'py-auth' && 'packages/py-auth' || format('services/{0}', matrix.service) }}/reports/
           retention-days: 14
           if-no-files-found: warn
