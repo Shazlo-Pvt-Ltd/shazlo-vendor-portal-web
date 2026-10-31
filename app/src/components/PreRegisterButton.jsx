@@ -20,7 +20,8 @@ import {
   useTheme,
   useMediaQuery,
 } from "@mui/material";
-import { Close as CloseIcon, Email as EmailIcon } from "@mui/icons-material";
+import CloseIcon from "@mui/icons-material/Close";
+import EmailIcon from "@mui/icons-material/Email";
 import { preRegisterAPI } from "../services/api";
 
 const PreRegisterButton = () => {

@@ -50,6 +50,21 @@ The init script runs only when the data volume is created. To recreate the datab
 
 For the legacy apps, see `app/README.md` and `backend/README.md` and copy each `.env.example` to `.env`.
 
+## Tests
+
+Install all three lockfiles with `npm ci`, `npm ci --prefix app`, and
+`npm ci --prefix backend`, then run `npm test` from the root. `npm run test:coverage`
+includes runtime files that have no tests; `npm run lint`, `npm run typecheck`, and
+`npm run build --prefix app` provide the other JavaScript checks.
+
+The integration suite owns a disposable local MongoDB process and downloads its
+binary on the first run. It never connects to the configured application database.
+Python checks run inside each service. See [the test strategy](docs/testing.md)
+for the repository map, assertions, commands, limitations and CI evidence.
+
+All test workflows run on every pull request and pushes to `main`, retaining
+results and coverage as GitHub Actions artifacts.
+
 ## Workflow
 
 Each roadmap phase is a GitHub milestone. Each issue gets a branch named `phase-N/<issue#>-<slug>` and a PR with `Closes #N`.
