@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import {
+  Alert,
   ThemeProvider,
   createTheme,
   CssBaseline,
@@ -45,6 +46,7 @@ export default function RegisterBrand() {
   const [priceRange, setPriceRange] = useState([2500, 5000]);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState("");
 
   const [formData, setFormData] = useState({
     brandName: "",
@@ -68,6 +70,7 @@ export default function RegisterBrand() {
 
   const handleSubmit = async () => {
     setLoading(true);
+    setError("");
 
     const payload = {
       brand_name: formData.brandName,
@@ -83,15 +86,15 @@ export default function RegisterBrand() {
     };
 
     try {
-      await fetch("https://shazlo-waitlist-gtge.onrender.com/api/register-brand", {
+      const response = await fetch("https://shazlo-waitlist-gtge.onrender.com/api/register-brand", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-
+      if (!response.ok) throw new Error("Brand registration failed");
       setSubmitted(true);
-    } catch (err) {
-      console.error(err);
+    } catch {
+      setError("Unable to register your brand. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -189,6 +192,8 @@ export default function RegisterBrand() {
                   </Typography>
                 </Box>
               )}
+
+              {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
 
               <Box display="flex" flexDirection="column" gap={3}>
                 <TextField name="brandName" value={formData.brandName} onChange={handleInputChange} label="Brand name" variant="standard" fullWidth />

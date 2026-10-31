@@ -59,7 +59,14 @@ router.post("/products", express.json(), async (req, res) => {
     }
 
     const savedProducts = await Product.insertMany(
-      products.map((p) => ({ ...p, sellerId }))
+      // Review fields belong to the moderation endpoint, never the uploader.
+      products.map((p) => ({
+        ...p,
+        sellerId,
+        status: "pending",
+        approvedAt: undefined,
+        approvedBy: undefined,
+      }))
     );
     res
       .status(200)
