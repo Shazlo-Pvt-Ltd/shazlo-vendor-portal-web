@@ -4,7 +4,7 @@ on:
   issues:
     types: [opened, edited]
   pull_request:
-    types: [opened, edited]
+    types: [opened, edited, reopened, synchronize]
 
 permissions:
   issues: write
@@ -13,14 +13,10 @@ permissions:
 jobs:
   strip-footer:
     runs-on: ubuntu-latest
-    if: >-
-      github.event.issue.user.login == 'suryaraj09' ||
-      github.event.issue.user.login == 'pratika719' ||
-      github.event.pull_request.user.login == 'suryaraj09' ||
-      github.event.pull_request.user.login == 'pratika719'
+    timeout-minutes: 5
     steps:
       - name: Strip "Generated with Claude Code" footer
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const item = context.payload.issue || context.payload.pull_request;
@@ -30,13 +26,22 @@ jobs:
             // (also the older claude.ai/code link and plain-text variants)
             const footer = /^[ \t]*(?:🤖\s*)?Generated with\s+\[?Claude Code\]?(?:\([^)\n]*\))?[ \t]*$/gim;
 
+            if (!footer.test(body)) {
+              core.info('No Claude footer found; nothing to do.');
+              return;
+            }
+            footer.lastIndex = 0;
+
             const cleaned = body
               .replace(footer, '')
               .replace(/\n{3,}/g, '\n\n')
               .trimEnd();
 
-            if (cleaned === body) {
-              core.info('No Claude footer found; nothing to do.');
+            // Fork PRs receive a read-only token on pull_request events.
+            // Keep the job successful without attempting an unauthorized write.
+            const pr = context.payload.pull_request;
+            if (pr && pr.head.repo?.full_name !== `${context.repo.owner}/${context.repo.repo}`) {
+              core.info('Fork PR: footer cleanup requires a maintainer with write access.');
               return;
             }
 
