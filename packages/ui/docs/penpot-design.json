@@ -1,0 +1,35 @@
+{
+  "source": {
+    "url": "https://design.penpot.app/?screen=workspace&team-id=685eebd9-2ce2-80a4-8008-d702ad7258d4&file-id=685eebd9-2ce2-80a4-8008-d702c75c4edc&page-id=685eebd9-2ce2-80a4-8008-d702c75c4edd",
+    "file": "Shazlo",
+    "page": "00 · Cover & Kit",
+    "board": "Design language",
+    "boardId": "bece356c-c96f-8036-8008-d7f8e96182ee",
+    "inspectedOn": "2026-10-29",
+    "coverLabel": "v0.1 · 25 Oct 2026 · for team review",
+    "revision": null,
+    "lastModifiedAt": null
+  },
+  "palette": {
+    "cream": "#FFEDA3",
+    "amber": "#FAB62A",
+    "brown": "#7A451E",
+    "blue": "#4281AA",
+    "navy": "#103C64",
+    "offWhite": "#FFFCE3",
+    "wine": "#620032",
+    "ink": "#17120E",
+    "canvas": "#FFF8E1"
+  },
+  "annotation": { "raspberry": "#C2255C" },
+  "linkText": "#2E6A93",
+  "fonts": { "heading": "Bodoni Moda", "formalBody": "Ovo", "informalBody": "Schoolbell" },
+  "roles": {
+    "primaryAction": { "background": "#FAB62A", "text": "#620032" },
+    "adminShell": { "background": "#103C64", "text": "#FFFCE3" },
+    "pending": { "background": "#FFEDA3", "text": "#7A451E" },
+    "live": "blue",
+    "sentBack": "orange tint",
+    "suspended": "wine tint"
+  }
+}
