@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Box, Typography, TextField, Button, MenuItem } from "@mui/material";
+import { Alert, Box, Typography, TextField, Button, MenuItem } from "@mui/material";
 import { motion } from "framer-motion";
 import logo from "../assets/3a.png";
 
@@ -10,22 +10,26 @@ const SceneWaitlistForm = () => {
   const [city, setCity] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitted, setsubmitted] = useState(false);
+  const [error, setError] = useState("");
 
   const handleJoin = async () => {
-    if (!name || !email || !gender || !city) return;
+    if (!name || !email || !gender || !city || loading || submitted) return;
 
     setLoading(true);
-
-    await fetch("https://shazlo-waitlist-gtge.onrender.com//api/waitlist/add", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, gender, city }),
-    });
-
-    setTimeout(() => {
-      setLoading(false);
+    setError("");
+    try {
+      const response = await fetch("https://shazlo-waitlist-gtge.onrender.com//api/waitlist/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, gender, city }),
+      });
+      if (!response.ok) throw new Error("Waitlist request failed");
       setsubmitted(true);
-    }, 1500);
+    } catch {
+      setError("Unable to join the waitlist. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -222,8 +226,9 @@ const SceneWaitlistForm = () => {
           />
 
           {/* join button */}
+          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Button
-            onClick={!submitted && handleJoin}
+            onClick={handleJoin}
             disabled={loading || submitted}
             fullWidth
             sx={{
