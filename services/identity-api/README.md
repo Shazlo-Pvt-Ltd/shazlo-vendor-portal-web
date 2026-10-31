@@ -16,6 +16,21 @@ uvicorn identity_api.main:app --reload --port 8001
 
 The app refuses to start if `DATABASE_URL` or `REDIS_URL` is missing. OpenAPI docs are at `/docs` unless `ENV=prod`.
 
+## First admin (seed)
+
+The first `super_admin` is created from the command line; there is no sign-up endpoint. Run it after `alembic upgrade head`:
+
+```sh
+SEED_ADMIN_EMAIL=admin@example.com SEED_ADMIN_PASSWORD='<at least 12 characters>' \
+  python -m identity_api.cli seed
+```
+
+- `SEED_ADMIN_NAME` is optional (default `Super Admin`). Without the two required variables the command asks in the terminal; in a non-interactive shell it stops with an error.
+- It creates the `super_admin` and `vendor_reviewer` roles and one admin who **must change the password at the first login**.
+- It is safe to run again: existing roles and an existing admin are left untouched, so a changed `SEED_ADMIN_PASSWORD` never overwrites a password someone has since set.
+- The password follows the policy (`PASSWORD_MIN_LENGTH`, default 12; at most 128; not the email) and is hashed with Argon2id. The password and its hash are never printed.
+- `ARGON2_MEMORY_COST_KIB`, `ARGON2_TIME_COST` and `ARGON2_PARALLELISM` set the hashing cost (OWASP baseline by default). Raising them rehashes existing passwords on the next successful login.
+
 ## Layout
 
 ```
