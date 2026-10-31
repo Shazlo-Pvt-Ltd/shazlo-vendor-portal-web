@@ -1,43 +1,9 @@
-import express from "express";
 import mongoose from "mongoose";
-import cors from "cors";
 import dotenv from "dotenv";
-import helmet from "helmet";
-import rateLimit from "express-rate-limit";
-import waitlistRoutes from "./routes/waitlist.js"; // ✅ your waitlist route
-import brandRoutes from "./routes/brand.js";
-import uploadRoutes from "./routes/upload.js";
-import adminRoutes from "./routes/admin.js";
+import app from "./app.js";
 dotenv.config();
 
-const app = express();
 const PORT = process.env.PORT || 5000;
-
-// CORS (fixed)
-app.use(cors());
-
-// Body parser
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true }));
-
-// Routes
-app.use("/api/waitlist", waitlistRoutes); // ✅ now correctly mapped
-app.use("/api", brandRoutes);
-app.use("/api/upload", uploadRoutes);
-app.use("/api/admin", adminRoutes);
-// Health check
-app.get("/api/health", (req, res) => {
-  res.status(200).json({
-    status: "OK",
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-  });
-});
-
-// 404 handler
-app.use("*", (req, res) => {
-  res.status(404).json({ message: "Route not found" });
-});
 
 // MongoDB connection
 mongoose

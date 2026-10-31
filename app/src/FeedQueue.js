@@ -13,9 +13,10 @@ export default class FeedQueue {
   }
 
   addBatch(items) {
+    if (items.length === 0) return;
     const node = new BatchNode(items);
     console.log("Adding batch=",items)
-    if (!this.head) {
+    if (!this.currentBatch) {
       this.head = node;
       this.tail = node;
 

@@ -15,6 +15,7 @@ dist/
 dist-ssr/
 build/
 coverage/
+reports/
 
 # Python
 __pycache__/
