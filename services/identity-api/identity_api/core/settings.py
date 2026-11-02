@@ -7,6 +7,8 @@ from pydantic import BaseModel, BeforeValidator, Field, SecretStr, field_validat
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 RATE_LIMITED_ENDPOINTS = frozenset({"login", "refresh", "token", "change_password"})
+# HMAC-SHA256 keys shorter than this are guessable enough to reverse the hashed emails in Redis.
+MIN_HMAC_KEY_LENGTH = 32
 
 
 class RateRule(BaseModel, frozen=True):
@@ -105,7 +107,11 @@ class Settings(BaseSettings):
     # client IP and one per subject: the email (hashed) for login, the refresh family for
     # refresh, the admin for token exchange and change-password.
     rate_limit_login_ip: Rule = RateRule(limit=20, window_seconds=60)
+    # Failed logins for one email from one client IP (the strict one). Keyed on the pair, so
+    # nobody can lock an admin out from another network.
     rate_limit_login_email: Rule = RateRule(limit=5, window_seconds=900)
+    # Every login for one email from any IP (loose): slows guessing spread over many IPs.
+    rate_limit_login_email_global: Rule = RateRule(limit=50, window_seconds=3600)
     rate_limit_refresh_ip: Rule = RateRule(limit=60, window_seconds=60)
     rate_limit_refresh_session: Rule = RateRule(limit=20, window_seconds=60)
     rate_limit_token_ip: Rule = RateRule(limit=120, window_seconds=60)
@@ -116,7 +122,11 @@ class Settings(BaseSettings):
     rate_limit_fail_closed: Annotated[list[str], NoDecode] = ["login", "change_password"]
     # Keys the hashes that name subjects in Redis, so a Redis dump does not reveal emails.
     # Every instance must share it. Required in prod; elsewhere a random key per process.
+    # At least 32 characters when set; empty counts as unset.
     rate_limit_hmac_key: SecretStr | None = None
+    # IPv6 clients are counted per network of this prefix length, because one host usually
+    # holds a whole /64 and could otherwise rotate addresses to dodge the per-IP limits.
+    rate_limit_ipv6_prefix: int = 64
     # Networks of the reverse proxies whose X-Forwarded-For header is believed (CIDR, comma
     # separated). Empty: the header is ignored and the TCP peer is the client.
     trusted_proxies: Annotated[list[str], NoDecode] = []
@@ -152,12 +162,28 @@ class Settings(BaseSettings):
             ipaddress.ip_network(network)  # raises ValueError on a bad CIDR
         return value
 
+    @field_validator("rate_limit_ipv6_prefix")
+    @classmethod
+    def _check_ipv6_prefix(cls, value: int) -> int:
+        if not 1 <= value <= 128:
+            raise ValueError("must be between 1 and 128")
+        return value
+
     @model_validator(mode="after")
     def _rate_limit_key(self) -> Self:
-        if self.rate_limit_hmac_key is None:
+        key = self.rate_limit_hmac_key
+        if key is not None and not key.get_secret_value().strip():
+            key = None  # `RATE_LIMIT_HMAC_KEY=` copied from .env.example means "not set"
+        if key is None:
             if self.env == "prod":
                 raise ValueError("RATE_LIMIT_HMAC_KEY is required in prod")
-            self.rate_limit_hmac_key = SecretStr(secrets.token_hex(32))
+            key = SecretStr(secrets.token_hex(32))
+        elif len(key.get_secret_value()) < MIN_HMAC_KEY_LENGTH:
+            # In every env: a short key set on purpose is a mistake wherever it is made.
+            raise ValueError(
+                f"RATE_LIMIT_HMAC_KEY must be at least {MIN_HMAC_KEY_LENGTH} characters"
+            )
+        self.rate_limit_hmac_key = key
         return self
 
     @field_validator("audience_roles")

@@ -73,6 +73,9 @@ def test_invalid_values_are_rejected(overrides: dict[str, object]) -> None:
 def test_rate_limit_defaults() -> None:
     s = make()
     assert (s.rate_limit_login_email.limit, s.rate_limit_login_email.window_seconds) == (5, 900)
+    global_rule = s.rate_limit_login_email_global
+    assert (global_rule.limit, global_rule.window_seconds) == (50, 3600)
+    assert s.rate_limit_ipv6_prefix == 64
     assert s.rate_limit_fail_closed == ["login", "change_password"]
     assert s.trusted_proxies == []
 
@@ -97,6 +100,12 @@ def test_rate_limits_come_from_the_environment(monkeypatch: pytest.MonkeyPatch) 
         {"rate_limit_fail_closed": ["logn"]},
         {"trusted_proxies": ["not-a-network"]},
         {"env": "prod"},  # no RATE_LIMIT_HMAC_KEY
+        {"env": "prod", "rate_limit_hmac_key": ""},
+        {"env": "prod", "rate_limit_hmac_key": "   "},
+        {"env": "prod", "rate_limit_hmac_key": "x" * 31},
+        {"rate_limit_hmac_key": "short"},  # a short key is refused outside prod too
+        {"rate_limit_ipv6_prefix": 0},
+        {"rate_limit_ipv6_prefix": 129},
     ],
 )
 def test_invalid_rate_limit_settings_are_rejected(overrides: dict[str, object]) -> None:
@@ -111,6 +120,19 @@ def test_hmac_key_is_random_outside_prod_and_never_empty() -> None:
         first.rate_limit_hmac_key.get_secret_value()
         != second.rate_limit_hmac_key.get_secret_value()
     )
+
+
+def test_a_32_character_hmac_key_is_accepted_in_prod() -> None:
+    s = make(env="prod", rate_limit_hmac_key="x" * 32)
+    assert s.rate_limit_hmac_key is not None
+    assert s.rate_limit_hmac_key.get_secret_value() == "x" * 32
+
+
+def test_an_empty_hmac_key_outside_prod_counts_as_unset() -> None:
+    """`RATE_LIMIT_HMAC_KEY=` copied from .env.example gets a random key, not an empty one."""
+    s = make(rate_limit_hmac_key="")
+    assert s.rate_limit_hmac_key is not None
+    assert len(s.rate_limit_hmac_key.get_secret_value()) == 64
 
 
 def test_samesite_none_requires_secure() -> None:

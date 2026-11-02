@@ -65,12 +65,14 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `ACCESS_TOKEN_TTL_SECONDS` | `900` | 1 to 3600 |
 | `EXCHANGED_TOKEN_TTL_SECONDS` | `300` | 30 to 900; tokens from `POST /v1/auth/token`, capped at the asking token's `exp` |
 | `REFRESH_TOKEN_TTL_DAYS` / `REFRESH_FAMILY_MAX_DAYS` | `7` / `30` | |
-| `RATE_LIMIT_LOGIN_IP` / `RATE_LIMIT_LOGIN_EMAIL` | `20/60` / `5/900` | `<limit>/<window seconds>`; see Rate limiting |
+| `RATE_LIMIT_LOGIN_IP` / `RATE_LIMIT_LOGIN_EMAIL` | `20/60` / `5/900` | `<limit>/<window seconds>`; the email limit is per (email, client IP); see Rate limiting |
+| `RATE_LIMIT_LOGIN_EMAIL_GLOBAL` | `50/3600` | logins for one email from any IP |
 | `RATE_LIMIT_REFRESH_IP` / `RATE_LIMIT_REFRESH_SESSION` | `60/60` / `20/60` | |
 | `RATE_LIMIT_TOKEN_IP` / `RATE_LIMIT_TOKEN_ADMIN` | `120/60` / `60/60` | |
 | `RATE_LIMIT_CHANGE_PASSWORD_ADMIN` | `5/900` | |
 | `RATE_LIMIT_FAIL_CLOSED` | `login,change_password` | endpoints that answer 503 when Redis is down; the others skip the limit |
-| `RATE_LIMIT_HMAC_KEY` | random per process (required in `prod`) | keys the hashes of emails and IPs in Redis; every instance must share it |
+| `RATE_LIMIT_HMAC_KEY` | random per process (required in `prod`) | keys the hashes of emails and IPs in Redis; every instance must share it; at least 32 characters (empty counts as unset) |
+| `RATE_LIMIT_IPV6_PREFIX` | `64` | IPv6 clients are counted per network of this many bits |
 | `TRUSTED_PROXIES` | none | CIDRs of the reverse proxies whose `X-Forwarded-For` is believed, comma separated |
 
 ## Database
@@ -130,15 +132,19 @@ Fixed-window counters in Redis (`rl:<endpoint>:<scope>:<hash>`), so the limits h
 
 | Endpoint | Limited by |
 |---|---|
-| `POST /v1/auth/login` | client IP, and the email (trimmed, lower-cased) |
+| `POST /v1/auth/login` | client IP, the (email, client IP) pair, and the email alone (email trimmed, lower-cased) |
 | `POST /v1/auth/refresh` | client IP, and the refresh family (when the cookie is valid) |
 | `POST /v1/auth/token` | client IP, and the admin |
-| `POST /v1/auth/change-password` | the admin |
+| `POST /v1/auth/change-password` | the admin (wrong current passwords only) |
 
-- **Login email counter:** counted before the password is checked, so parallel guesses cannot slip past, and cleared by a successful login. In effect it limits failed attempts for one email, from any IP. Unknown emails are counted the same way, so the response does not reveal whether an email exists.
+- **Login email counters:** both are counted before the password is checked, so parallel guesses cannot slip past. Unknown emails are counted the same way, so the response does not reveal whether an email exists.
+  - The strict one (`RATE_LIMIT_LOGIN_EMAIL`, 5 per 15 minutes) is per (email, client IP) and cleared by a successful login, so in effect it limits failed attempts for one email from one IP. Keyed on the email alone it would let anyone lock any admin out indefinitely with 6 bad logins per 15 minutes, from anywhere.
+  - The loose one (`RATE_LIMIT_LOGIN_EMAIL_GLOBAL`, 50 per hour) is per email from any IP and is not cleared by a successful login. It caps guessing spread over many IPs.
+  - The trade-off: an attacker with many IPs gets 5 guesses per IP per 15 minutes until the global cap stops them, and an attacker who sustains 50 attempts an hour (at least 3 IPs or IPv6 /64s at the strict limit) can still lock an email out. That takes far more than one client, and the global limit can be raised or lowered per deployment.
 - **A rate-limited refresh keeps its cookie:** the limit says nothing about the token.
 - **No plain subjects in Redis:** emails, IPs, admin IDs and families are hashed with HMAC-SHA256 under `RATE_LIMIT_HMAC_KEY`. The key matters because emails are guessable: a plain hash could be reversed from a Redis dump.
-- **Client IP:** the TCP peer, unless it is in `TRUSTED_PROXIES`. Then `X-Forwarded-For` is read from the right and the first address that is not a trusted proxy is the client; what the client wrote further left is ignored. Without `TRUSTED_PROXIES` the header is never read. Behind a load balancer, list its network, or every client shares one IP and one limit.
+- **Change-password counter:** counted before the current password is checked (it limits guesses with a stolen access token) and cleared once the current password verifies, so new passwords the policy rejects do not use it up.
+- **Client IP:** the TCP peer, unless it is in `TRUSTED_PROXIES`. Then `X-Forwarded-For` is read from the right and the first address that is not a trusted proxy is the client; what the client wrote further left is ignored. Without `TRUSTED_PROXIES` the header is never read. Behind a load balancer, list its network, or every client shares one IP and one limit. An IPv4-mapped IPv6 address (`::ffff:203.0.113.7`) counts as the IPv4 address. For the limits an IPv6 client is its `/64` (`RATE_LIMIT_IPV6_PREFIX`): one host usually holds a whole /64 and could otherwise take a new address for every request.
 - **Redis down:** endpoints in `RATE_LIMIT_FAIL_CLOSED` (default `login` and `change_password`: password guessing must stay limited) answer `503 rate_limiter_unavailable`. The others (`refresh`, `token`) skip the limit and log a warning, so signed-in admins keep working. Refresh and login need Redis for sessions anyway; token exchange does not.
 
 ## Behaviour worth knowing

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
 from identity_api.app import create_app
-from identity_api.core.client_ip import client_ip, parse_networks
+from identity_api.core.client_ip import client_ip, parse_networks, rate_limit_subject
 from identity_api.core.errors import ApiError
 from identity_api.core.settings import RateRule, Settings
 from identity_api.db.models import Admin, Role
@@ -245,6 +245,11 @@ PROXIES = parse_networks(["10.0.0.0/8", "192.168.0.1/32"])
         ("10.0.0.1", ["garbage"], "10.0.0.1"),
         ("10.0.0.1", ["6.6.6.6, garbage"], "10.0.0.1"),
         ("192.168.0.1", ["2001:db8::1"], "2001:db8::1"),
+        # IPv4-mapped IPv6 (a dual-stack socket's view of an IPv4 peer) is plain IPv4, so it
+        # matches IPv4 proxy networks and shares the IPv4 address's counters.
+        ("::ffff:203.0.113.5", [], "203.0.113.5"),
+        ("::ffff:10.0.0.1", ["198.51.100.1"], "198.51.100.1"),
+        ("10.0.0.1", ["::ffff:198.51.100.1"], "198.51.100.1"),
         (None, ["1.1.1.1"], "unknown"),
         ("not-an-ip", ["1.1.1.1"], "unknown"),
     ],
@@ -255,6 +260,22 @@ def test_client_ip(peer: str | None, forwarded: list[str], expected: str) -> Non
 
 def test_no_trusted_proxies_means_the_header_is_never_read() -> None:
     assert client_ip(request_from("10.0.0.1", "198.51.100.1"), []) == "10.0.0.1"
+
+
+@pytest.mark.parametrize(
+    ("ip", "prefix", "expected"),
+    [
+        ("203.0.113.5", 64, "203.0.113.5"),
+        ("2001:db8:1:2:aaaa:bbbb:cccc:dddd", 64, "2001:db8:1:2::/64"),
+        ("2001:db8:1:2::1", 64, "2001:db8:1:2::/64"),
+        ("2001:db8:1:2:aaaa::1", 48, "2001:db8:1::/48"),
+        ("2001:db8:1:2::1", 128, "2001:db8:1:2::1/128"),
+        ("::ffff:203.0.113.5", 64, "203.0.113.5"),
+        ("unknown", 64, "unknown"),
+    ],
+)
+def test_rate_limit_subject(ip: str, prefix: int, expected: str) -> None:
+    assert rate_limit_subject(ip, prefix) == expected
 
 
 # --- Endpoints ---------------------------------------------------------------------------
@@ -274,6 +295,7 @@ def api_settings(settings: Settings, override: Callable[..., Settings]) -> Setti
         trusted_proxies=TRUST_LOCAL,
         rate_limit_login_ip="1000/60",
         rate_limit_login_email="3/60",
+        rate_limit_login_email_global="1000/60",
         rate_limit_refresh_ip="1000/60",
         rate_limit_refresh_session="1000/60",
         rate_limit_token_ip="1000/60",
@@ -352,20 +374,93 @@ def refresh_cookie(response: httpx.Response) -> str | None:
     return None
 
 
-async def test_n_failed_logins_for_one_email_are_429_from_any_ip(
+async def test_n_failed_logins_lock_the_email_from_that_ip_only(
     client: httpx.AsyncClient, admin: Admin
 ) -> None:
-    for number in range(3):
-        failed = await sign_in(client, password="wrong password!!", ip=f"198.51.100.{number}")
+    attacker = "198.51.100.66"
+    for _ in range(3):
+        failed = await sign_in(client, password="wrong password!!", ip=attacker)
         assert failed.status_code == 401
-    # Different IP again, and even the right password: the email is locked for the window.
-    blocked = await sign_in(client, ip="203.0.113.77")
+    # Even the right password is refused from that IP for the window.
+    blocked = await sign_in(client, ip=attacker)
     assert blocked.status_code == 429
     assert blocked.json()["error"]["code"] == "rate_limited"
     assert 1 <= retry_after(blocked) <= 60
     assert retry_after(blocked) >= 55  # just started, so nearly the whole window
     assert blocked.headers["cache-control"] == "no-store"
     assert refresh_cookie(blocked) is None
+    # The admin, signing in from another network, is not locked out by the attacker.
+    assert (await sign_in(client, ip="203.0.113.77")).status_code == 200
+
+
+async def test_the_global_email_limit_holds_across_ips(
+    api_settings: Settings,
+    session: AsyncSession,
+    redis: FakeAsyncRedis,
+    admin: Admin,
+    override: Callable[..., Settings],
+) -> None:
+    capped = override(api_settings, rate_limit_login_email_global="4/60")
+    async with serve(capped, session, redis) as http:
+        # One guess from each of four IPs: each (email, IP) counter is far from its limit.
+        for number in range(4):
+            failed = await sign_in(http, password="wrong password!!", ip=f"198.51.100.{number}")
+            assert failed.status_code == 401
+        # A fifth IP, even with the right password: the email is over its global limit.
+        blocked = await sign_in(http, ip="203.0.113.77")
+        assert blocked.status_code == 429
+        assert 1 <= retry_after(blocked) <= 60
+
+
+async def test_a_successful_login_does_not_clear_the_global_email_counter(
+    api_settings: Settings,
+    session: AsyncSession,
+    redis: FakeAsyncRedis,
+    admin: Admin,
+    override: Callable[..., Settings],
+) -> None:
+    capped = override(api_settings, rate_limit_login_email_global="3/60")
+    wrong = "wrong password!!"
+    async with serve(capped, session, redis) as http:
+        assert (await sign_in(http, password=wrong, ip="198.51.100.1")).status_code == 401
+        assert (await sign_in(http, ip="198.51.100.2")).status_code == 200
+        assert (await sign_in(http, password=wrong, ip="198.51.100.3")).status_code == 401
+        assert (await sign_in(http, ip="198.51.100.4")).status_code == 429
+
+
+async def test_ipv6_clients_are_limited_per_64(
+    api_settings: Settings,
+    session: AsyncSession,
+    redis: FakeAsyncRedis,
+    override: Callable[..., Settings],
+) -> None:
+    strict = override(api_settings, rate_limit_login_ip="2/60")
+    async with serve(strict, session, redis) as http:
+        # New addresses in the same /64 (and different emails) share one counter.
+        results = [
+            (await sign_in(http, f"user{n}@shazlo.test", "x", ip=f"2001:db8:1:2::{n + 1}"))
+            for n in range(3)
+        ]
+        assert [r.status_code for r in results] == [401, 401, 429]
+        # Another /64 is another client.
+        other = await sign_in(http, "user9@shazlo.test", "x", ip="2001:db8:1:3::1")
+        assert other.status_code == 401
+
+
+async def test_ipv4_mapped_ipv6_counts_as_the_ipv4_address(
+    api_settings: Settings,
+    session: AsyncSession,
+    redis: FakeAsyncRedis,
+    override: Callable[..., Settings],
+) -> None:
+    strict = override(api_settings, rate_limit_login_ip="2/60")
+    async with serve(strict, session, redis) as http:
+        ips = ["203.0.113.9", "::ffff:203.0.113.9", "::ffff:cb00:7109"]
+        results = [
+            (await sign_in(http, f"user{n}@shazlo.test", "x", ip=ip)).status_code
+            for n, ip in enumerate(ips)
+        ]
+    assert results == [401, 401, 429]
 
 
 async def test_unknown_emails_are_limited_the_same_way(client: httpx.AsyncClient) -> None:
@@ -454,7 +549,7 @@ async def test_redis_holds_no_email_or_ip_after_logins(
 ) -> None:
     await sign_in(client, password="wrong password!!", ip="198.51.100.23")
     keys = [key.decode() async for key in redis.scan_iter("rl:*")]
-    assert len(keys) == 2
+    assert len(keys) == 3  # ip, (email, ip) and email
     assert all(
         "reviewer" not in key and "shazlo" not in key and "198.51" not in key for key in keys
     )
@@ -604,6 +699,32 @@ async def test_change_password_is_limited_per_admin(
         blocked = await http.post("/v1/auth/change-password", headers=headers, json=body)
         assert blocked.status_code == 429
         assert 1 <= retry_after(blocked) <= 60
+
+
+async def test_policy_rejections_do_not_use_up_the_change_password_limit(
+    api_settings: Settings,
+    session: AsyncSession,
+    redis: FakeAsyncRedis,
+    admin: Admin,
+    override: Callable[..., Settings],
+) -> None:
+    """A new admin trying passwords the policy rejects must not be locked out."""
+    strict = override(api_settings, rate_limit_change_password_admin="2/60")
+    async with serve(strict, session, redis) as http:
+        headers = {"Authorization": f"Bearer {(await sign_in(http)).json()['access_token']}"}
+
+        async def change(current: str, new: str) -> int:
+            body = {"current_password": current, "new_password": new}
+            response = await http.post("/v1/auth/change-password", headers=headers, json=body)
+            return response.status_code
+
+        # The current password verifies every time, so the counter is cleared every time.
+        assert [await change(PASSWORD, "short") for _ in range(4)] == [422] * 4
+        # A wrong current password still counts, and a verified one clears what it counted.
+        assert await change("not the password", "another long passphrase") == 400
+        assert await change(PASSWORD, PASSWORD) == 422
+        assert await change("not the password", "another long passphrase") == 400
+        assert await change(PASSWORD, "another long passphrase") == 200
 
 
 async def test_other_endpoints_are_not_limited(client: httpx.AsyncClient, admin: Admin) -> None:
