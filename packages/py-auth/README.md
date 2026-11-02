@@ -44,12 +44,18 @@ Create the `JwksClient` once per process, never per request: it holds the cache.
 |---|---|
 | Cache | 10 minutes |
 | Refetch on an unknown `kid` or an expired cache | at most once per minute, whatever the traffic (successes and failures count) |
+| Expired cache, cached `kid` | answered at once from the cache; one refresh runs in the background |
+| Unknown `kid` | waits for a fetch (or for the background refresh already running) |
 | Concurrent callers | share one fetch |
 | Fetch fails | the last good keys stay in use; the next try waits for the minute. Before the first success every token is rejected |
 | Bad document (no usable key) | treated as a failed fetch, so it never replaces good keys |
 | Keys accepted | RSA, 2048 bits or more, `use` `sig` (or absent), `alg` `RS256` (or absent), with a `kid` |
+| URL | `https` only. Plain `http` only for `localhost`, `127.0.0.1` or `::1`, or with `allow_insecure=True` (a trusted private network, e.g. a compose hostname) |
+| Fetch limits | 3 seconds for the whole fetch (`timeout=`), 256 KiB body, read as a stream and abandoned past the limit |
 
 Consequence of the one-minute bound: a token signed with a brand-new key can be rejected for up to a minute after the last fetch. ADR 0009 avoids that by publishing a key one cache TTL before signing with it.
+
+Consequence of the background refresh: a key removed from the JWKS is still accepted until the refresh that follows the cache expiry finishes (at most the fetch timeout later).
 
 A service that holds its keys itself (identity-api) passes `StaticKeySource` instead, so there is no HTTP call.
 
