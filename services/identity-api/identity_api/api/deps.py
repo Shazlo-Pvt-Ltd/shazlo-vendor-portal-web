@@ -9,7 +9,7 @@ from identity_api.core.errors import ApiError
 from identity_api.db.models import Admin
 from identity_api.db.session import get_session
 from identity_api.services.auth import SELF_AUDIENCE, AuthService
-from identity_api.services.tokens import InvalidTokenError, TokenVerifier
+from identity_api.services.tokens import AccessClaims, InvalidTokenError, TokenVerifier
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -25,19 +25,28 @@ def get_auth_service(request: Request) -> AuthService:
     return cast(AuthService, request.app.state.auth)
 
 
+async def current_access_claims(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+) -> AccessClaims:
+    """The verified claims of the request's identity-api access token.
+
+    FastAPI runs this once per request, so an endpoint can ask for it next to `current_admin`.
+    """
+    if credentials is None:
+        raise UNAUTHORIZED
+    verifier = cast(TokenVerifier, request.app.state.token_verifier)
+    try:
+        return verifier.verify(credentials.credentials, SELF_AUDIENCE)
+    except InvalidTokenError as error:
+        raise UNAUTHORIZED from error
+
+
 def _admin_dependency(*, allow_password_change: bool) -> Callable[..., Awaitable[Admin]]:
     async def dependency(
-        request: Request,
-        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+        claims: Annotated[AccessClaims, Depends(current_access_claims)],
         db: Annotated[AsyncSession, Depends(get_session)],
     ) -> Admin:
-        if credentials is None:
-            raise UNAUTHORIZED
-        verifier = cast(TokenVerifier, request.app.state.token_verifier)
-        try:
-            claims = verifier.verify(credentials.credentials, SELF_AUDIENCE)
-        except InvalidTokenError as error:
-            raise UNAUTHORIZED from error
         admin = await db.get(Admin, claims.subject)
         if admin is None or not admin.is_active:
             raise UNAUTHORIZED
