@@ -19,6 +19,8 @@ PASSWORD = "correct horse battery"
 BOSS = "boss@shazlo.test"
 REVIEWER = "reviewer@shazlo.test"
 NEW_PASSWORD = "an initial password"
+# The shell's origin: refresh and logout require an allowed Origin (CSRF guard).
+ORIGIN = "https://shell.test"
 
 
 @pytest.fixture
@@ -36,6 +38,7 @@ def api_settings(settings: Settings, override: Callable[..., Settings]) -> Setti
         jwt_issuer="https://identity.test",
         argon2_memory_cost_kib=8,
         argon2_time_cost=1,
+        cors_allowed_origins=[ORIGIN],
     )
 
 
@@ -50,7 +53,9 @@ async def client(
 
     app.dependency_overrides[get_session] = test_session
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="https://identity.test"
+        transport=httpx.ASGITransport(app=app),
+        base_url="https://identity.test",
+        headers={"Origin": ORIGIN},
     ) as http:
         yield http
 
