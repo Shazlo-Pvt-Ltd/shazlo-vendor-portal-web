@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     cors_allowed_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
 
     # Refresh-token cookie. `Secure` is on by default; turn it off only for local dev.
+    # SameSite=None requires Secure (browsers drop the cookie otherwise), so that pair is refused.
+    # The cookie-authenticated endpoints also check Origin against `cors_allowed_origins`.
     cookie_secure: bool = True
     cookie_samesite: Literal["strict", "lax", "none"] = "strict"
     cookie_domain: str | None = None
@@ -77,6 +79,12 @@ class Settings(BaseSettings):
         if not value.startswith(("redis://", "rediss://")):
             raise ValueError("must start with redis:// or rediss://")
         return value
+
+    @model_validator(mode="after")
+    def _check_cookie_flags(self) -> "Settings":
+        if self.cookie_samesite == "none" and not self.cookie_secure:
+            raise ValueError("cookie_samesite='none' requires cookie_secure=true")
+        return self
 
 
 @lru_cache

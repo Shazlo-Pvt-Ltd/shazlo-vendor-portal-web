@@ -64,6 +64,15 @@ def test_invalid_values_are_rejected(overrides: dict[str, object]) -> None:
         make(**overrides)
 
 
+def test_samesite_none_requires_secure() -> None:
+    with pytest.raises(ValidationError, match="cookie_secure"):
+        make(cookie_samesite="none", cookie_secure=False)
+    s = make(cookie_samesite="none", cookie_secure=True)
+    assert s.cookie_samesite == "none"
+    # Lax or strict without Secure stays possible for local http development.
+    assert make(cookie_samesite="lax", cookie_secure=False).cookie_secure is False
+
+
 @pytest.mark.parametrize("seconds", [0, 60])
 def test_reuse_grace_window_bounds_are_inclusive(seconds: int) -> None:
     assert make(refresh_reuse_grace_seconds=seconds).refresh_reuse_grace_seconds == seconds
