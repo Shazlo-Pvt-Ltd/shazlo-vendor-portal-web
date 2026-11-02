@@ -62,8 +62,11 @@ async def client(
         return {"email": admin.email}
 
     transport = httpx.ASGITransport(app=app)
-    # https, so the client treats the Secure refresh cookie as sendable.
-    async with httpx.AsyncClient(transport=transport, base_url="https://identity.test") as http:
+    # https, so the client treats the Secure refresh cookie as sendable. The shell's Origin, as a
+    # browser would send it; the cookie-authenticated endpoints refuse requests without it.
+    async with httpx.AsyncClient(
+        transport=transport, base_url="https://identity.test", headers={"Origin": ORIGIN}
+    ) as http:
         http.app = app  # type: ignore[attr-defined]
         yield http
 
@@ -306,17 +309,37 @@ async def test_refresh_rotates_the_token(client: httpx.AsyncClient, make_admin: 
 
 
 async def test_reusing_a_rotated_token_revokes_the_family(
-    client: httpx.AsyncClient, make_admin: MakeAdmin
+    client: httpx.AsyncClient, make_admin: MakeAdmin, redis: FakeAsyncRedis
 ) -> None:
     await make_admin()
     first = refresh_token(await login(client))
     second = refresh_token(await refresh_with(client, first))
+    # Used a minute ago, so outside the reuse grace window.
+    used_at = float(await redis.get(f"rtu:{hash_token(first)}") or 0)
+    await redis.set(f"rtu:{hash_token(first)}", str(used_at - 60), keepttl=True)
 
     reuse = await refresh_with(client, first)
     assert reuse.status_code == 401
     assert reuse.json()["error"]["code"] == "invalid_refresh_token"
     # The next refresh fails too, even with the token that was legitimately issued.
     assert (await refresh_with(client, second)).status_code == 401
+
+
+async def test_reuse_within_the_grace_window_conflicts_and_keeps_the_cookie(
+    client: httpx.AsyncClient, make_admin: MakeAdmin
+) -> None:
+    """A second tab refreshed with the same cookie a moment after the first one."""
+    await make_admin()
+    first = refresh_token(await login(client))
+    second = refresh_token(await refresh_with(client, first))
+
+    conflict = await refresh_with(client, first)
+    assert conflict.status_code == 409
+    assert conflict.json()["error"]["code"] == "refresh_conflict"
+    assert conflict.headers["cache-control"] == "no-store"
+    # The browser keeps the cookie the first tab received, and the session is intact.
+    assert refresh_cookie(conflict) is None
+    assert (await refresh_with(client, second)).status_code == 200
 
 
 async def test_only_the_hash_is_stored_in_redis(
