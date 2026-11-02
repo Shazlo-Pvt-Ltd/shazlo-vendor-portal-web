@@ -4,6 +4,7 @@ from http.cookies import SimpleCookie
 from typing import Any
 
 import httpx
+import jwt
 import pytest
 from fakeredis import FakeAsyncRedis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -108,6 +109,10 @@ async def boss(make_admin: Callable[..., Any], client: httpx.AsyncClient) -> dic
     """A signed-in super_admin: the headers for the calls under test."""
     await make_admin(BOSS, roles=("super_admin",), display_name="Boss")
     return bearer(await login(client, BOSS))
+
+
+def _text(value: bytes | str) -> str:
+    return value.decode() if isinstance(value, bytes) else value
 
 
 def new_admin_body(**changes: Any) -> dict[str, Any]:
@@ -449,13 +454,23 @@ async def test_deactivating_revokes_every_refresh_family(
 ) -> None:
     admin = await make_admin()
     tokens = [refresh_token(await login(client, REVIEWER)) for _ in range(3)]
-    assert await redis.scard(f"ra:{admin.id}") == 3
+    families = await redis.smembers(f"ra:{admin.id}")
+    assert len(families) == 3
+    # The boss signed in too, so their own family must survive.
+    boss_id = jwt.decode(
+        boss["Authorization"].removeprefix("Bearer "), options={"verify_signature": False}
+    )["sub"]
+    boss_families = await redis.smembers(f"ra:{boss_id}")
+    assert len(boss_families) == 1
 
     response = await client.patch(f"/v1/admins/{admin.id}", headers=boss, json={"is_active": False})
     assert response.status_code == 200
 
     assert await redis.exists(f"ra:{admin.id}") == 0
-    assert [key async for key in redis.scan_iter("rf:*")] == []
+    for family in families:
+        assert await redis.exists(f"rf:{_text(family)}") == 0
+    for family in boss_families:
+        assert await redis.exists(f"rf:{_text(family)}") == 1
     for token in tokens:
         refreshed = await refresh_with(client, token)
         assert refreshed.status_code == 401
