@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from pydantic import SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -37,6 +37,15 @@ class Settings(BaseSettings):
     access_token_ttl_seconds: int = 15 * 60
     refresh_token_ttl_days: int = 7
     refresh_family_max_days: int = 30
+    # Two tabs that refresh at the same moment send the same token, and the second one looks
+    # like reuse of a stolen token. A token reused less than this many seconds after its first
+    # use gets 409 `refresh_conflict` instead: nothing is revoked, and the browser already holds
+    # the new cookie the first request set, so a retry works. The trade-off: inside the window a
+    # replay is not treated as theft. A thief who replays a token just after the real client gets
+    # no new token, but goes unnoticed; if the thief refreshes first, the real client's refresh
+    # gets 409 and the family is only revoked when the client tries again after the window.
+    # 0 disables the window (any reuse revokes the family at once).
+    refresh_reuse_grace_seconds: int = Field(default=10, ge=0, le=60)
 
     # Argon2id cost (OWASP baseline: 19 MiB, 2 passes, 1 lane). Raising any of these makes
     # existing hashes rehash on the next successful login.
