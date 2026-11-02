@@ -26,6 +26,8 @@ from identity_api.services.rate_limit import (
 
 PASSWORD = "correct horse battery"
 EMAIL = "reviewer@shazlo.test"
+# The shell's origin: refresh and logout require an allowed Origin (CSRF guard).
+ORIGIN = "https://shell.test"
 
 
 def rule(limit: int, window: int = 60) -> RateRule:
@@ -278,6 +280,7 @@ def api_settings(settings: Settings, override: Callable[..., Settings]) -> Setti
         rate_limit_token_admin="1000/60",
         rate_limit_change_password_admin="1000/60",
         rate_limit_hmac_key="k" * 32,
+        cors_allowed_origins=[ORIGIN],
     )
 
 
@@ -293,7 +296,9 @@ async def serve(
 
     app.dependency_overrides[get_session] = test_session
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="https://identity.test"
+        transport=httpx.ASGITransport(app=app),
+        base_url="https://identity.test",
+        headers={"Origin": ORIGIN},
     ) as http:
         yield http
 
