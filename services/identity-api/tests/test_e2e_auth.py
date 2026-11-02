@@ -27,6 +27,8 @@ from identity_api.db.session import get_session
 from identity_api.services.passwords import PasswordService
 
 ISSUER = "https://identity.test"
+# The shell's origin: refresh and logout require an allowed Origin (CSRF guard).
+ORIGIN = "https://shell.test"
 SEED_EMAIL = "first.admin@shazlo.test"
 SEED_PASSWORD = "a temporary seed password"
 NEW_PASSWORD = "my own long passphrase"
@@ -52,7 +54,14 @@ async def redis() -> AsyncIterator[Redis]:
 
 @pytest.fixture
 def e2e_settings(settings: Settings, override: Callable[..., Settings]) -> Settings:
-    return override(settings, jwt_issuer=ISSUER)
+    return override(
+        settings,
+        jwt_issuer=ISSUER,
+        cors_allowed_origins=[ORIGIN],
+        # Step 8 replays an old refresh token straight after its rotation. With the grace
+        # window for concurrent tabs that is a 409 retry; with it off, the theft response.
+        refresh_reuse_grace_seconds=0,
+    )
 
 
 @asynccontextmanager
@@ -67,7 +76,9 @@ async def serve(
 
     app.dependency_overrides[get_session] = test_session
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="https://identity.test"
+        transport=httpx.ASGITransport(app=app),
+        base_url="https://identity.test",
+        headers={"Origin": ORIGIN},
     ) as http:
         yield http
 
