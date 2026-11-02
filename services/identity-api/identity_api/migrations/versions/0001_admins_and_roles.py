@@ -46,7 +46,7 @@ def upgrade() -> None:
             "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),
         sa.Column("last_login_at", sa.DateTime(timezone=True), nullable=True),
-        sa.CheckConstraint("email = lower(email)", name=op.f("ck_admins_email_lower")),
+        sa.CheckConstraint("email = lower(btrim(email))", name=op.f("ck_admins_email_lower")),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_admins")),
         sa.UniqueConstraint("email", name=op.f("uq_admins_email")),
     )

@@ -35,7 +35,7 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 
 | Setting | Default | Notes |
 |---|---|---|
-| `DATABASE_URL` | none (required) | `postgresql://` or `postgresql+asyncpg://` |
+| `DATABASE_URL` | none (required) | `postgresql://`, `postgresql+asyncpg://` or `postgresql+psycopg://` |
 | `REDIS_URL` | none (required) | `redis://` or `rediss://` |
 | `ENV` | `dev` | `dev`, `test` or `prod`; `prod` turns off `/docs` |
 | `LOG_LEVEL` | `INFO` | |
@@ -51,7 +51,7 @@ Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (ps
 
 | Table | Notes |
 |---|---|
-| `admins` | UUID `id`; `email` unique and stored lower-cased (a check constraint enforces it, so uniqueness is case-insensitive in the DB); `password_hash`, `display_name`, `is_active`, `must_change_password` (default true), `created_at`, `updated_at`, `last_login_at` |
+| `admins` | UUID `id`; `email` unique and stored trimmed and lower-cased (a check constraint enforces it, so uniqueness is case-insensitive in the DB); `password_hash`, `display_name`, `is_active`, `must_change_password` (default true), `created_at`, `updated_at`, `last_login_at` |
 | `roles` | `name` primary key (`super_admin`, `vendor_reviewer`, later `<area>_<role>`), `description` |
 | `admin_roles` | many to many; deleting an admin removes its links, a role still assigned cannot be deleted |
 
@@ -85,7 +85,7 @@ Database tests run against real Postgres from `DATABASE_URL` and are skipped whe
 DATABASE_URL=postgresql://shazlo:<password>@localhost:5432/identity_test pytest
 ```
 
-The suite drops and recreates the schema (`alembic downgrade base` then `upgrade head`) and refuses any database whose name does not contain `test`. Each test runs in a transaction that is rolled back, so tests share no rows.
+The suite drops and recreates the schema (`alembic downgrade base` then `upgrade head`) and refuses any database not named `test` or `*_test`. Each test runs in a transaction that is rolled back, so tests share no rows.
 
 ## Docker
 

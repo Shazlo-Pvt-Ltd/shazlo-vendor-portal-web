@@ -4,6 +4,8 @@ from typing import Annotated, Literal
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from identity_api.db.session import POSTGRES_SCHEMES
+
 
 class Settings(BaseSettings):
     """Runtime configuration, read from the environment (and `.env` in local dev).
@@ -43,8 +45,8 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def _check_database_url(cls, value: str) -> str:
-        if not value.startswith(("postgresql://", "postgresql+asyncpg://")):
-            raise ValueError("must start with postgresql:// or postgresql+asyncpg://")
+        if not value.startswith(POSTGRES_SCHEMES):
+            raise ValueError("must start with " + ", ".join(POSTGRES_SCHEMES))
         return value
 
     @field_validator("redis_url")

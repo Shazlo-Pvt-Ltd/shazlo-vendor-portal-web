@@ -46,6 +46,18 @@ def test_environment_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.parametrize(
+    "url",
+    [
+        "postgresql://u:p@localhost/db",
+        "postgresql+asyncpg://u:p@localhost/db",
+        "postgresql+psycopg://u:p@localhost/db",
+    ],
+)
+def test_database_url_schemes_are_accepted(url: str) -> None:
+    assert make(database_url=url).database_url == url
+
+
+@pytest.mark.parametrize(
     "overrides",
     [{"database_url": "mysql://x"}, {"redis_url": "http://localhost"}, {"env": "staging"}],
 )

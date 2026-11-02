@@ -50,9 +50,14 @@ class Role(Base):
 class Admin(Base):
     __tablename__ = "admins"
     __table_args__ = (
-        # Stored lower-cased, so the unique constraint is case-insensitive at the DB level.
-        CheckConstraint("email = lower(email)", name="email_lower"),
+        # Stored trimmed and lower-cased (as the ORM normalises it), so the unique constraint is
+        # case-insensitive at the DB level.
+        CheckConstraint("email = lower(btrim(email))", name="email_lower"),
     )
+    # Fetch server-generated values (`updated_at` on UPDATE) in the same statement via RETURNING.
+    # Otherwise they are expired after a flush, and reading them lazy-loads, which raises
+    # MissingGreenlet on an AsyncSession.
+    __mapper_args__ = {"eager_defaults": True}
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
