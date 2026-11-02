@@ -11,8 +11,10 @@ from identity_api.services.password_policy import PasswordPolicyError, check_pas
 from identity_api.services.passwords import PasswordService
 from identity_api.services.refresh_tokens import (
     InvalidRefreshTokenError,
+    RefreshConflictError,
     RefreshSession,
     RefreshTokenStore,
+    StaleSessionError,
 )
 from identity_api.services.tokens import IssuedToken, TokenIssuer
 
@@ -21,6 +23,11 @@ SELF_AUDIENCE = "identity-api"
 
 INVALID_CREDENTIALS = ApiError(401, "invalid_credentials", "Invalid email or password")
 INVALID_REFRESH_TOKEN = ApiError(401, "invalid_refresh_token", "Invalid or expired refresh token")
+# Another request (usually a second tab) used the same refresh token a moment ago. The session
+# is intact and the browser already has that request's new cookie, so the client retries.
+REFRESH_CONFLICT = ApiError(
+    409, "refresh_conflict", "The refresh token was just used by another request; retry"
+)
 
 
 @dataclass(frozen=True)
@@ -47,19 +54,33 @@ class AuthService:
 
     async def login(self, db: AsyncSession, email: str, password: str) -> AuthSession:
         admin = await db.scalar(select(Admin).where(Admin.email == email.strip().lower()))
-        check = await self._passwords.verify_login(admin.password_hash if admin else None, password)
+        verified_hash = admin.password_hash if admin else None
+        check = await self._passwords.verify_login(verified_hash, password)
         # An unknown email, a wrong password and a deactivated admin all look the same.
         if admin is None or not check.ok or not admin.is_active:
+            raise INVALID_CREDENTIALS
+        # Read the session generation, then re-read the row (locked until the commit below). A
+        # password change or deactivation commits before it bumps the generation, so either the
+        # re-read sees it, or the generation read here is stale and `start_family` refuses it.
+        generation = await self._refresh_tokens.generation(admin.id)
+        await db.refresh(admin, ["password_hash", "is_active"], with_for_update=True)
+        if admin.password_hash != verified_hash or not admin.is_active:
+            await db.rollback()
             raise INVALID_CREDENTIALS
         if check.new_hash:
             admin.password_hash = check.new_hash
         admin.last_login_at = datetime.now(UTC)
         await db.commit()
-        return await self._start_session(admin)
+        try:
+            return await self._start_session(admin, generation)
+        except StaleSessionError as error:
+            raise INVALID_CREDENTIALS from error
 
     async def refresh(self, db: AsyncSession, token: str) -> AuthSession:
         try:
             rotation = await self._refresh_tokens.rotate(token)
+        except RefreshConflictError as error:
+            raise REFRESH_CONFLICT from error
         except InvalidRefreshTokenError as error:
             raise INVALID_REFRESH_TOKEN from error
         admin = await db.get(Admin, rotation.admin_id)
@@ -94,11 +115,16 @@ class AuthService:
         admin.password_hash = await self._passwords.hash(new_password)
         admin.must_change_password = False
         await db.commit()
-        await self._refresh_tokens.revoke_all(admin.id)
-        return await self._start_session(admin)
+        # The commit comes first: a login that reads the new generation also sees the new hash.
+        generation = await self._refresh_tokens.revoke_all(admin.id)
+        try:
+            return await self._start_session(admin, generation)
+        except StaleSessionError as error:
+            # A concurrent password change or deactivation won; this one's session is void.
+            raise INVALID_CREDENTIALS from error
 
-    async def _start_session(self, admin: Admin) -> AuthSession:
-        refresh = await self._refresh_tokens.start_family(admin.id)
+    async def _start_session(self, admin: Admin, generation: int) -> AuthSession:
+        refresh = await self._refresh_tokens.start_family(admin.id, generation)
         return AuthSession(admin, self._access_token(admin), refresh)
 
     def _access_token(self, admin: Admin) -> IssuedToken:

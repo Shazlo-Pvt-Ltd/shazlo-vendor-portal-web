@@ -11,7 +11,12 @@ from identity_api.core.errors import ApiError, error_response
 from identity_api.core.settings import Settings
 from identity_api.db.models import Admin
 from identity_api.db.session import get_session
-from identity_api.services.auth import INVALID_REFRESH_TOKEN, AuthService, AuthSession
+from identity_api.services.auth import (
+    INVALID_REFRESH_TOKEN,
+    REFRESH_CONFLICT,
+    AuthService,
+    AuthSession,
+)
 from identity_api.services.password_policy import MAX_PASSWORD_LENGTH
 
 COOKIE_NAME = "refresh_token"
@@ -161,10 +166,13 @@ async def refresh(
             raise INVALID_REFRESH_TOKEN
         session = await auth.refresh(db, token)
     except ApiError as error:
-        # A rejected token is of no further use: have the browser drop it.
         failure = error_response(request, error.status_code, error.code, error.message)
         _no_store(failure)
-        _clear_cookie(failure, settings)
+        # A rejected token is of no further use: have the browser drop it. Not on a conflict:
+        # the browser already holds the new cookie the concurrent request set, and clearing it
+        # here would log the user out.
+        if error.code != REFRESH_CONFLICT.code:
+            _clear_cookie(failure, settings)
         return failure
     return _session_response(response, settings, session)
 
