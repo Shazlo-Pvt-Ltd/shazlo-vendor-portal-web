@@ -1,5 +1,6 @@
 import json
 import stat
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -19,6 +20,8 @@ from identity_api.services.keys import (
 )
 
 Override = Callable[..., Settings]
+
+posix_only = pytest.mark.skipif(sys.platform == "win32", reason="Windows has no POSIX file modes")
 
 
 def public_pem(private_pem: str) -> str:
@@ -72,7 +75,11 @@ def test_no_keys_fails_with_a_pointer_to_the_command(
         load_keyring(override(settings, jwt_keys=None))
 
 
-@pytest.mark.parametrize("keys", [{"k": "not a pem"}, {"bad kid!": "x"}], ids=["pem", "kid"])
+@pytest.mark.parametrize(
+    "keys",
+    [{"k": "not a pem"}, {"bad kid!": "x"}, {"key-1\n": "x"}],
+    ids=["pem", "kid", "kid-trailing-newline"],
+)
 def test_invalid_keys_are_rejected(
     settings: Settings, override: Override, keys: dict[str, str]
 ) -> None:
@@ -86,6 +93,11 @@ def test_malformed_json_is_rejected_without_echoing_it(
     with pytest.raises(KeyConfigError, match="not valid JSON") as error:
         load_keyring(override(settings, jwt_keys="{secret-looking"))
     assert "secret-looking" not in str(error.value)
+    # The JSONDecodeError keeps the whole value in `.doc`; it must not be chained to the error,
+    # or a traceback or error reporter would print the secret.
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
+    assert error.value.__suppress_context__ is True
 
 
 def test_short_keys_are_rejected(settings: Settings, override: Override) -> None:
@@ -99,6 +111,7 @@ def test_loads_keys_from_a_directory_and_rejects_duplicates(
     settings: Settings, override: Override, key_pems: dict[str, str], tmp_path: Path
 ) -> None:
     (tmp_path / "test-key-2.pem").write_text(key_pems["test-key-2"])
+    (tmp_path / "test-key-2.pem").chmod(0o600)
     from_dir = override(settings, jwt_keys=None, jwt_keys_dir=str(tmp_path))
     assert load_keyring(from_dir).kids == ("test-key-2",)
 
@@ -114,18 +127,50 @@ def test_missing_directory_is_rejected(
         load_keyring(override(settings, jwt_keys_dir=str(tmp_path / "absent")))
 
 
+@posix_only
+def test_private_key_files_readable_by_others_are_refused(
+    settings: Settings, override: Override, key_pems: dict[str, str], tmp_path: Path
+) -> None:
+    path = tmp_path / "test-key-2.pem"
+    path.write_text(key_pems["test-key-2"])
+    from_dir = override(settings, jwt_keys=None, jwt_keys_dir=str(tmp_path))
+    path.chmod(0o644)
+    with pytest.raises(KeyConfigError, match="mode 0644"):
+        load_keyring(from_dir)
+    if path.stat().st_uid != 0:  # root may grant its group read access, like PostgreSQL allows
+        path.chmod(0o640)
+        with pytest.raises(KeyConfigError, match="chmod 600"):
+            load_keyring(from_dir)
+    path.chmod(0o400)
+    assert load_keyring(from_dir).kids == ("test-key-2",)
+
+
+@posix_only
+def test_public_key_files_may_be_world_readable(
+    settings: Settings, override: Override, key_pems: dict[str, str], tmp_path: Path
+) -> None:
+    path = tmp_path / "old.pem"
+    path.write_text(public_pem(key_pems["test-key-2"]))
+    path.chmod(0o644)
+    with_old = override(settings, jwt_keys_dir=str(tmp_path), jwt_signing_kid="test-key-1")
+    ring = load_keyring(with_old)
+    assert set(ring.kids) == {"test-key-1", "old"}
+
+
 def test_write_new_key_is_private_and_never_overwrites(tmp_path: Path) -> None:
     path = write_new_key(tmp_path, "dev-1")
     assert path.name == "dev-1.pem"
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    if sys.platform != "win32":  # Windows has no POSIX file modes
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert path.read_bytes().startswith(b"-----BEGIN PRIVATE KEY-----")
     with pytest.raises(FileExistsError):
         write_new_key(tmp_path, "dev-1")
 
 
-def test_write_new_key_rejects_path_tricks(tmp_path: Path) -> None:
+@pytest.mark.parametrize("kid", ["../escape", "dev-1\n"])
+def test_write_new_key_rejects_bad_kids(tmp_path: Path, kid: str) -> None:
     with pytest.raises(KeyConfigError):
-        write_new_key(tmp_path, "../escape")
+        write_new_key(tmp_path, kid)
 
 
 def test_generate_key_command_writes_a_loadable_key(

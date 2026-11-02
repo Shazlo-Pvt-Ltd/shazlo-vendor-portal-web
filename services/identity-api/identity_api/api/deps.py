@@ -3,13 +3,14 @@ from typing import Annotated, cast
 
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from shazlo_auth import InvalidTokenError, TokenVerifier
+from shazlo_auth import AccessClaims, InvalidTokenError, TokenVerifier
 from shazlo_auth.fastapi import AuthenticatedAdmin
 from shazlo_auth.fastapi import require_role as shared_require_role
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from identity_api.core.client_ip import Network, client_ip
+from identity_api.core.client_ip import Network, client_ip, rate_limit_subject
 from identity_api.core.errors import ApiError
+from identity_api.core.settings import Settings
 from identity_api.db.models import Admin
 from identity_api.db.session import get_session
 from identity_api.services.auth import AuthService
@@ -37,19 +38,34 @@ def get_client_ip(request: Request) -> str:
     return client_ip(request, cast(list[Network], request.app.state.trusted_proxies))
 
 
+def get_rate_limit_ip(request: Request) -> str:
+    """The client IP as the per-IP rate limits count it (IPv6 grouped per network)."""
+    settings = cast(Settings, request.app.state.settings)
+    return rate_limit_subject(get_client_ip(request), settings.rate_limit_ipv6_prefix)
+
+
+async def current_access_claims(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+) -> AccessClaims:
+    """The verified claims of the request's identity-api access token.
+
+    FastAPI runs this once per request, so an endpoint can ask for it next to `current_admin`.
+    """
+    if credentials is None:
+        raise UNAUTHORIZED
+    verifier = cast(TokenVerifier, request.app.state.token_verifier)
+    try:
+        return await verifier.verify(credentials.credentials)
+    except InvalidTokenError as error:
+        raise UNAUTHORIZED from error
+
+
 def _admin_dependency(*, allow_password_change: bool) -> Callable[..., Awaitable[Admin]]:
     async def dependency(
-        request: Request,
-        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+        claims: Annotated[AccessClaims, Depends(current_access_claims)],
         db: Annotated[AsyncSession, Depends(get_session)],
     ) -> Admin:
-        if credentials is None:
-            raise UNAUTHORIZED
-        verifier = cast(TokenVerifier, request.app.state.token_verifier)
-        try:
-            claims = await verifier.verify(credentials.credentials)
-        except InvalidTokenError as error:
-            raise UNAUTHORIZED from error
         admin = await db.get(Admin, claims.subject)
         if admin is None or not admin.is_active:
             raise UNAUTHORIZED
