@@ -9,7 +9,7 @@ Status: scaffold. The app factory, settings, logging, error handling and health 
 ```sh
 cd services/identity-api
 python -m venv .venv && . .venv/bin/activate
-pip install -e '../../packages/py-auth[fastapi]' --config-settings editable_mode=compat   # shared package first
+pip install -r requirements-shared.txt   # packages/py-auth, from the repository path
 pip install -e '.[dev]'
 cp .env.example .env      # then fill in DATABASE_URL and REDIS_URL
 uvicorn identity_api.main:app --reload --port 8001
