@@ -4,14 +4,20 @@ Verifies identity-api access tokens the same way in every service, so security c
 
 ## Install (path dependency)
 
-A service lists `shazlo-auth[fastapi]` in its dependencies and installs the package from the path first:
+`shazlo-auth` is not published, and the name is not ours on PyPI. So a service must **not** list `shazlo-auth` in its `pyproject.toml` dependencies: pip could then satisfy it from an index with someone else's package (dependency confusion). Instead, the service puts the path in a `requirements-shared.txt` next to its `pyproject.toml`:
+
+```text
+-e ../../packages/py-auth[fastapi] --config-settings editable_mode=compat
+```
+
+and installs that first, from the service directory (CI does the same whenever the file exists):
 
 ```sh
-pip install -e '../../packages/py-auth[fastapi]' --config-settings editable_mode=compat
+pip install -r requirements-shared.txt
 pip install -e '.[dev]'
 ```
 
-`editable_mode=compat` keeps the package visible to mypy. In Docker, build from the repository root so the image can include `packages/py-auth` (see `services/identity-api/Dockerfile`).
+`editable_mode=compat` keeps the package visible to mypy. In Docker, build from the repository root and build `packages/py-auth` from its path along with the service (see `services/identity-api/Dockerfile`).
 
 ## Use
 

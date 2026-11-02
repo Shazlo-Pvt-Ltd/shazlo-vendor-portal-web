@@ -5,7 +5,8 @@ WORKDIR /build
 COPY packages/py-auth ./packages/py-auth
 COPY services/identity-api/pyproject.toml ./services/identity-api/
 COPY services/identity-api/identity_api ./services/identity-api/identity_api
-# Both are given as paths, so identity-api's `shazlo-auth` requirement is met by the local copy.
+# shazlo-auth is built from the repository copy, never fetched from an index: identity-api's
+# pyproject does not list it (see requirements-shared.txt).
 RUN pip wheel --no-cache-dir --wheel-dir /wheels './packages/py-auth[fastapi]' ./services/identity-api
 
 FROM python:3.12-slim
