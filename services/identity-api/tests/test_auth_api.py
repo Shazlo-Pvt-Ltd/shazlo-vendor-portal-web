@@ -62,8 +62,11 @@ async def client(
         return {"email": admin.email}
 
     transport = httpx.ASGITransport(app=app)
-    # https, so the client treats the Secure refresh cookie as sendable.
-    async with httpx.AsyncClient(transport=transport, base_url="https://identity.test") as http:
+    # https, so the client treats the Secure refresh cookie as sendable. The shell's Origin, as a
+    # browser would send it; the cookie-authenticated endpoints refuse requests without it.
+    async with httpx.AsyncClient(
+        transport=transport, base_url="https://identity.test", headers={"Origin": ORIGIN}
+    ) as http:
         http.app = app  # type: ignore[attr-defined]
         yield http
 

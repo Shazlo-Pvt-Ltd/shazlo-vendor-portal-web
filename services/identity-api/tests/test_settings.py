@@ -52,3 +52,12 @@ def test_environment_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_invalid_values_are_rejected(overrides: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
         make(**overrides)
+
+
+def test_samesite_none_requires_secure() -> None:
+    with pytest.raises(ValidationError, match="cookie_secure"):
+        make(cookie_samesite="none", cookie_secure=False)
+    s = make(cookie_samesite="none", cookie_secure=True)
+    assert s.cookie_samesite == "none"
+    # Lax or strict without Secure stays possible for local http development.
+    assert make(cookie_samesite="lax", cookie_secure=False).cookie_secure is False

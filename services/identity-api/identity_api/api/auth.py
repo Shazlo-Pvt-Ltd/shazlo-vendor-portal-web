@@ -1,5 +1,6 @@
 import uuid
 from typing import Annotated, cast
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Cookie, Depends, Request, Response
 from pydantic import BaseModel, Field
@@ -52,8 +53,43 @@ class SessionResponse(BaseModel):
     admin: AdminProfile
 
 
+ORIGIN_NOT_ALLOWED = ApiError(403, "origin_not_allowed", "Request origin is not allowed")
+
+
 def _settings(request: Request) -> Settings:
     return cast(Settings, request.app.state.settings)
+
+
+def _request_origin(request: Request) -> str | None:
+    """The `Origin` header, or the origin part of `Referer` when a browser left Origin out."""
+    origin = request.headers.get("origin")
+    if origin is not None:
+        return origin
+    referer = request.headers.get("referer")
+    if not referer:
+        return None
+    parts = urlsplit(referer)
+    if not parts.scheme or not parts.netloc or "@" in parts.netloc:
+        return None
+    return f"{parts.scheme}://{parts.netloc}"
+
+
+def require_allowed_origin(request: Request) -> None:
+    """CSRF guard for the endpoints the refresh cookie alone authenticates.
+
+    The cookie is sent with cross-site requests when `cookie_samesite` is "none" (and with
+    same-site ones from sibling subdomains under "lax"/"strict"), so these endpoints also require
+    the request to come from an origin allowed by CORS. A request with neither Origin nor
+    Referer is refused: browsers send Origin on every cross-origin and same-origin POST.
+    """
+    origin = _request_origin(request)
+    allowed = {o.rstrip("/").lower() for o in _settings(request).cors_allowed_origins}
+    if origin is None or origin.rstrip("/").lower() not in allowed:
+        raise ORIGIN_NOT_ALLOWED
+
+
+# Checked before the endpoint runs, so a refused request never clears or rotates the cookie.
+CookieOrigin = [Depends(require_allowed_origin)]
 
 
 def _profile(admin: Admin) -> AdminProfile:
@@ -115,7 +151,7 @@ async def login(
     return _session_response(response, _settings(request), session)
 
 
-@router.post("/refresh", response_model=None)
+@router.post("/refresh", response_model=None, dependencies=CookieOrigin)
 async def refresh(
     request: Request, response: Response, db: Db, auth: Auth, token: RefreshCookie = None
 ) -> SessionResponse | Response:
@@ -133,7 +169,7 @@ async def refresh(
     return _session_response(response, settings, session)
 
 
-@router.post("/logout", status_code=204)
+@router.post("/logout", status_code=204, dependencies=CookieOrigin)
 async def logout(request: Request, auth: Auth, token: RefreshCookie = None) -> Response:
     if token:
         await auth.logout(token)
