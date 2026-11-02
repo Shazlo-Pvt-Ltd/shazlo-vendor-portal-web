@@ -31,11 +31,14 @@ class FakeJwks:
         self.fetches = 0
         self.failing = False
         self.delay = 0.0
+        self.gate: asyncio.Event | None = None
 
     async def __call__(self) -> dict[str, Any]:
         self.fetches += 1
         if self.delay:
             await asyncio.sleep(self.delay)
+        if self.gate is not None:
+            await self.gate.wait()
         if self.failing:
             raise ConnectionError("identity-api is down")
         return self.document
@@ -77,9 +80,41 @@ async def test_the_cache_lasts_10_minutes(
     await client.get_key("key-1")
     clock.advance(599)
     await client.get_key("key-1")
+    await client.wait_for_refresh()
     assert endpoint.fetches == 1
     clock.advance(2)  # 601 seconds since the fetch
     await client.get_key("key-1")
+    await client.wait_for_refresh()
+    assert endpoint.fetches == 2
+
+
+async def test_a_cached_kid_does_not_wait_for_the_refresh_after_the_ttl(
+    client: JwksClient, endpoint: FakeJwks, clock: Clock
+) -> None:
+    await client.get_key("key-1")
+    endpoint.gate = asyncio.Event()  # the endpoint hangs until the gate opens
+    clock.advance(601)
+    keys = await asyncio.wait_for(
+        asyncio.gather(*(client.get_key("key-1") for _ in range(50))), timeout=1
+    )
+    assert all(key is not None for key in keys)
+    await asyncio.sleep(0)  # let the background refresh start
+    assert endpoint.fetches == 2  # one background refresh, not fifty
+    endpoint.gate.set()
+    await client.wait_for_refresh()
+    assert await client.get_key("key-1") is not None
+    assert endpoint.fetches == 2
+
+
+async def test_an_unknown_kid_waits_for_the_background_refresh(
+    private_keys: Keys, client: JwksClient, endpoint: FakeJwks, clock: Clock
+) -> None:
+    await client.get_key("key-1")
+    endpoint.document = document(private_keys, "key-1", "key-2")
+    endpoint.delay = 0.05
+    clock.advance(601)
+    assert await client.get_key("key-1") is not None  # starts the background refresh
+    assert await client.get_key("key-2") is not None  # waits for it rather than fetching again
     assert endpoint.fetches == 2
 
 
@@ -170,7 +205,8 @@ async def test_a_retired_key_is_dropped_after_the_cache_expires(
     assert await client.get_key("key-1") is not None
     endpoint.document = document(private_keys, "key-2")  # key-1 removed from the JWKS
     clock.advance(601)
-    assert await client.get_key("key-2") is not None
+    assert await client.get_key("key-2") is not None  # refreshes in the background
+    await client.wait_for_refresh()
     assert await client.get_key("key-1") is None
 
 
@@ -184,7 +220,9 @@ async def test_the_last_good_keys_survive_an_outage_past_the_ttl(
     endpoint.failing = True
     clock.advance(601)
     assert await client.get_key("key-1") is not None  # stale, but kept
+    await client.wait_for_refresh()
     assert endpoint.fetches == 2  # the failed attempt
+    assert await client.get_key("key-1") is not None
     clock.advance(3600)
     assert await client.get_key("key-1") is not None
     assert await client.get_key("nobody") is None
@@ -197,6 +235,7 @@ async def test_the_client_recovers_when_the_endpoint_is_back(
     endpoint.failing = True
     clock.advance(601)
     await client.get_key("key-1")
+    await client.wait_for_refresh()
     endpoint.failing = False
     endpoint.document = document(private_keys, "key-2")
     clock.advance(30)

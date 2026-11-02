@@ -4,7 +4,8 @@ version = "0.1.0"
 description = "Verifies identity-api access tokens (RS256, JWKS) and guards FastAPI routes by role"
 requires-python = ">=3.12"
 dependencies = [
-    "pyjwt[crypto]>=2.10",
+    # 2.10.1+: 2.10.0 checks `iss` as a partial match (CVE-2024-53861).
+    "pyjwt[crypto]>=2.10.1",
     "httpx>=0.28",
 ]
 

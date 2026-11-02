@@ -4,14 +4,20 @@ Verifies identity-api access tokens the same way in every service, so security c
 
 ## Install (path dependency)
 
-A service lists `shazlo-auth[fastapi]` in its dependencies and installs the package from the path first:
+`shazlo-auth` is not published, and the name is not ours on PyPI. So a service must **not** list `shazlo-auth` in its `pyproject.toml` dependencies: pip could then satisfy it from an index with someone else's package (dependency confusion). Instead, the service puts the path in a `requirements-shared.txt` next to its `pyproject.toml`:
+
+```text
+-e ../../packages/py-auth[fastapi] --config-settings editable_mode=compat
+```
+
+and installs that first, from the service directory (CI does the same whenever the file exists):
 
 ```sh
-pip install -e '../../packages/py-auth[fastapi]' --config-settings editable_mode=compat
+pip install -r requirements-shared.txt
 pip install -e '.[dev]'
 ```
 
-`editable_mode=compat` keeps the package visible to mypy. In Docker, build from the repository root so the image can include `packages/py-auth` (see `services/identity-api/Dockerfile`).
+`editable_mode=compat` keeps the package visible to mypy. In Docker, build from the repository root and build `packages/py-auth` from its path along with the service (see `services/identity-api/Dockerfile`).
 
 ## Use
 
@@ -44,12 +50,18 @@ Create the `JwksClient` once per process, never per request: it holds the cache.
 |---|---|
 | Cache | 10 minutes |
 | Refetch on an unknown `kid` or an expired cache | at most once per minute, whatever the traffic (successes and failures count) |
+| Expired cache, cached `kid` | answered at once from the cache; one refresh runs in the background |
+| Unknown `kid` | waits for a fetch (or for the background refresh already running) |
 | Concurrent callers | share one fetch |
 | Fetch fails | the last good keys stay in use; the next try waits for the minute. Before the first success every token is rejected |
 | Bad document (no usable key) | treated as a failed fetch, so it never replaces good keys |
 | Keys accepted | RSA, 2048 bits or more, `use` `sig` (or absent), `alg` `RS256` (or absent), with a `kid` |
+| URL | `https` only. Plain `http` only for `localhost`, `127.0.0.1` or `::1`, or with `allow_insecure=True` (a trusted private network, e.g. a compose hostname) |
+| Fetch limits | 3 seconds for the whole fetch (`timeout=`), 256 KiB body, read as a stream and abandoned past the limit |
 
 Consequence of the one-minute bound: a token signed with a brand-new key can be rejected for up to a minute after the last fetch. ADR 0009 avoids that by publishing a key one cache TTL before signing with it.
+
+Consequence of the background refresh: a key removed from the JWKS is still accepted until the refresh that follows the cache expiry finishes (at most the fetch timeout later).
 
 A service that holds its keys itself (identity-api) passes `StaticKeySource` instead, so there is no HTTP call.
 

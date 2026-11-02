@@ -3,6 +3,7 @@ import hmac
 import json
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 import jwt
@@ -36,6 +37,12 @@ async def test_a_valid_token_verifies(verifier: TokenVerifier, sign: Sign) -> No
     assert claims.roles == ("vendor_reviewer",)
     assert claims.jti == "abc"
     assert claims.must_change_password is False
+
+
+async def test_the_expiry_is_returned(verifier: TokenVerifier, sign: Sign) -> None:
+    exp = int(time.time()) + 600
+    claims = await verifier.verify(sign(exp=exp))
+    assert claims.expires_at == datetime.fromtimestamp(exp, UTC)
 
 
 async def test_the_pending_password_flag_is_read(verifier: TokenVerifier, sign: Sign) -> None:
