@@ -1,3 +1,4 @@
+import contextlib
 import json
 from collections.abc import AsyncIterator, Callable
 from typing import Any
@@ -21,7 +22,6 @@ ISSUER = "https://identity.test"
 
 # A service that only super_admin may use, to show what "nothing else" means.
 AUDIENCE_ROLES = {
-    "identity-api": ["super_admin", "vendor_reviewer"],
     "vendor-api": ["super_admin", "vendor_reviewer"],
     "billing-api": ["super_admin"],
 }
@@ -46,11 +46,11 @@ def api_settings(settings: Settings, override: Callable[..., Settings]) -> Setti
     )
 
 
-@pytest.fixture
-async def client(
-    api_settings: Settings, session: AsyncSession, redis: FakeAsyncRedis
+@contextlib.asynccontextmanager
+async def open_client(
+    settings: Settings, session: AsyncSession, redis: FakeAsyncRedis
 ) -> AsyncIterator[httpx.AsyncClient]:
-    app = create_app(api_settings, readiness_checks={}, redis=redis)
+    app = create_app(settings, readiness_checks={}, redis=redis)
 
     async def test_session() -> AsyncIterator[AsyncSession]:
         yield session
@@ -59,6 +59,14 @@ async def client(
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="https://identity.test"
     ) as http:
+        yield http
+
+
+@pytest.fixture
+async def client(
+    api_settings: Settings, session: AsyncSession, redis: FakeAsyncRedis
+) -> AsyncIterator[httpx.AsyncClient]:
+    async with open_client(api_settings, session, redis) as http:
         yield http
 
 
@@ -95,16 +103,16 @@ def claims_of(token: str) -> dict[str, Any]:
     return jwt.decode(token, options={"verify_signature": False})
 
 
-@pytest.mark.parametrize("audience", ["vendor-api", "identity-api"])
-async def test_reviewer_gets_tokens_for_their_audiences(
-    client: httpx.AsyncClient, session: AsyncSession, api_settings: Settings, audience: str
+async def test_reviewer_gets_a_token_for_their_audience(
+    client: httpx.AsyncClient, session: AsyncSession, api_settings: Settings
 ) -> None:
+    audience = "vendor-api"
     admin = await make_admin(session, api_settings)
     response = await exchange(client, await sign_in(client), audience)
     assert response.status_code == 200
     body = response.json()
     assert body["audience"] == audience
-    assert body["expires_in"] == 900
+    assert body["expires_in"] == 300
     assert set(body) == {"access_token", "token_type", "expires_in", "audience"}
     assert response.headers["cache-control"] == "no-store"
     assert "refresh_token" not in response.headers.get("set-cookie", "")
@@ -114,7 +122,7 @@ async def test_reviewer_gets_tokens_for_their_audiences(
     assert claims["sub"] == str(admin.id)
     assert claims["roles"] == ["vendor_reviewer"]
     assert claims["iss"] == ISSUER
-    assert claims["exp"] - claims["iat"] == 900
+    assert claims["exp"] - claims["iat"] == 300
     assert {"jti"} <= claims.keys()
     assert not {"email", "name", "display_name"} & claims.keys()
     assert jwt.get_unverified_header(body["access_token"])["kid"] == "test-key-1"
@@ -136,6 +144,51 @@ async def test_super_admin_gets_every_audience(
     headers = await sign_in(client)
     for audience in AUDIENCE_ROLES:
         assert (await exchange(client, headers, audience)).status_code == 200
+
+
+@pytest.mark.parametrize("roles", [("vendor_reviewer",), ("super_admin",)])
+async def test_identity_api_is_not_an_exchange_audience(
+    client: httpx.AsyncClient,
+    session: AsyncSession,
+    api_settings: Settings,
+    roles: tuple[str, ...],
+) -> None:
+    """Otherwise a stolen access token could renew itself forever without the refresh cookie."""
+    await make_admin(session, api_settings, roles=roles)
+    response = await exchange(client, await sign_in(client), "identity-api")
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "audience_not_exchangeable"
+
+
+async def test_exchanged_token_carries_only_the_audiences_roles(
+    client: httpx.AsyncClient, session: AsyncSession, api_settings: Settings
+) -> None:
+    await make_admin(session, api_settings, roles=("super_admin", "vendor_reviewer"))
+    headers = await sign_in(client)
+    billing = await exchange(client, headers, "billing-api")
+    assert claims_of(billing.json()["access_token"])["roles"] == ["super_admin"]
+    vendor = await exchange(client, headers, "vendor-api")
+    assert claims_of(vendor.json()["access_token"])["roles"] == ["super_admin", "vendor_reviewer"]
+
+
+async def test_exchanged_token_never_outlives_the_asking_token(
+    api_settings: Settings,
+    override: Callable[..., Settings],
+    session: AsyncSession,
+    redis: FakeAsyncRedis,
+) -> None:
+    await make_admin(session, api_settings)
+    # The identity-api token lives 60 seconds, less than the 300-second exchange lifetime.
+    short = override(api_settings, access_token_ttl_seconds=60)
+    async with open_client(short, session, redis) as http:
+        headers = await sign_in(http)
+        response = await exchange(http, headers, "vendor-api")
+    assert response.status_code == 200
+    parent = claims_of(headers["Authorization"].removeprefix("Bearer "))
+    child = claims_of(response.json()["access_token"])
+    assert child["exp"] == parent["exp"]
+    assert response.json()["expires_in"] == child["exp"] - child["iat"]
+    assert child["exp"] - child["iat"] <= 60
 
 
 async def test_unknown_audience_is_a_bad_request(
@@ -239,15 +292,7 @@ async def test_adding_a_service_is_a_settings_change_only(
     extended = override(
         api_settings, audience_roles={**AUDIENCE_ROLES, "orders-api": ["vendor_reviewer"]}
     )
-    app = create_app(extended, readiness_checks={}, redis=redis)
-
-    async def test_session() -> AsyncIterator[AsyncSession]:
-        yield session
-
-    app.dependency_overrides[get_session] = test_session
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="https://identity.test"
-    ) as http:
+    async with open_client(extended, session, redis) as http:
         response = await exchange(http, await sign_in(http), "orders-api")
     assert response.status_code == 200
     assert claims_of(response.json()["access_token"])["aud"] == "orders-api"
@@ -265,8 +310,12 @@ def test_audience_roles_come_from_the_environment(monkeypatch: pytest.MonkeyPatc
 
 @pytest.mark.parametrize(
     "value",
-    [{"vendor-api": ["super_admin"]}, {"identity-api": []}, {"identity-api": ["a"], "": ["a"]}],
-    ids=["no-identity-api", "no-roles", "empty-name"],
+    [
+        {"identity-api": ["super_admin"], "vendor-api": ["super_admin"]},
+        {"vendor-api": []},
+        {"vendor-api": ["a"], "": ["a"]},
+    ],
+    ids=["includes-identity-api", "no-roles", "empty-name"],
 )
 def test_invalid_audience_maps_are_rejected(value: dict[str, list[str]]) -> None:
     with pytest.raises(ValidationError):

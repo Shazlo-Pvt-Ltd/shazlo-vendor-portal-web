@@ -4,6 +4,7 @@ from http.cookies import SimpleCookie
 from typing import Any
 
 import httpx
+import jwt
 import pytest
 from fakeredis import FakeAsyncRedis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +19,8 @@ PASSWORD = "correct horse battery"
 BOSS = "boss@shazlo.test"
 REVIEWER = "reviewer@shazlo.test"
 NEW_PASSWORD = "an initial password"
+# The shell's origin: refresh and logout require an allowed Origin (CSRF guard).
+ORIGIN = "https://shell.test"
 
 
 @pytest.fixture
@@ -35,6 +38,7 @@ def api_settings(settings: Settings, override: Callable[..., Settings]) -> Setti
         jwt_issuer="https://identity.test",
         argon2_memory_cost_kib=8,
         argon2_time_cost=1,
+        cors_allowed_origins=[ORIGIN],
     )
 
 
@@ -49,7 +53,9 @@ async def client(
 
     app.dependency_overrides[get_session] = test_session
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="https://identity.test"
+        transport=httpx.ASGITransport(app=app),
+        base_url="https://identity.test",
+        headers={"Origin": ORIGIN},
     ) as http:
         yield http
 
@@ -108,6 +114,10 @@ async def boss(make_admin: Callable[..., Any], client: httpx.AsyncClient) -> dic
     """A signed-in super_admin: the headers for the calls under test."""
     await make_admin(BOSS, roles=("super_admin",), display_name="Boss")
     return bearer(await login(client, BOSS))
+
+
+def _text(value: bytes | str) -> str:
+    return value.decode() if isinstance(value, bytes) else value
 
 
 def new_admin_body(**changes: Any) -> dict[str, Any]:
@@ -449,13 +459,23 @@ async def test_deactivating_revokes_every_refresh_family(
 ) -> None:
     admin = await make_admin()
     tokens = [refresh_token(await login(client, REVIEWER)) for _ in range(3)]
-    assert await redis.scard(f"ra:{admin.id}") == 3
+    families = await redis.smembers(f"ra:{admin.id}")
+    assert len(families) == 3
+    # The boss signed in too, so their own family must survive.
+    boss_id = jwt.decode(
+        boss["Authorization"].removeprefix("Bearer "), options={"verify_signature": False}
+    )["sub"]
+    boss_families = await redis.smembers(f"ra:{boss_id}")
+    assert len(boss_families) == 1
 
     response = await client.patch(f"/v1/admins/{admin.id}", headers=boss, json={"is_active": False})
     assert response.status_code == 200
 
     assert await redis.exists(f"ra:{admin.id}") == 0
-    assert [key async for key in redis.scan_iter("rf:*")] == []
+    for family in families:
+        assert await redis.exists(f"rf:{_text(family)}") == 0
+    for family in boss_families:
+        assert await redis.exists(f"rf:{_text(family)}") == 1
     for token in tokens:
         refreshed = await refresh_with(client, token)
         assert refreshed.status_code == 401

@@ -39,6 +39,7 @@ async def test_valid_token_verifies(parts: tuple[TokenIssuer, TokenVerifier]) ->
     assert claims.roles == ("vendor_reviewer",)
     assert claims.jti == token.jti
     assert claims.must_change_password is False
+    assert claims.expires_at == token.expires_at
 
 
 async def test_pending_password_token_has_no_roles(

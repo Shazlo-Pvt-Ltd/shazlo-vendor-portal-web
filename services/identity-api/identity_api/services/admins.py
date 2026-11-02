@@ -18,6 +18,8 @@ LAST_SUPER_ADMIN = ApiError(
     409, "last_super_admin", "The last active super_admin cannot be deactivated or lose the role"
 )
 CANNOT_DEACTIVATE_SELF = ApiError(409, "cannot_deactivate_self", "You cannot deactivate yourself")
+# The unique constraint on admins.email (named by the metadata naming convention).
+EMAIL_UNIQUE_CONSTRAINT = "uq_admins_email"
 
 
 @dataclass(frozen=True)
@@ -26,6 +28,22 @@ class AdminPage:
     total: int
     limit: int
     offset: int
+
+
+def violated_constraint(error: IntegrityError) -> str | None:
+    """The name of the constraint a database error reports, if the driver exposes it.
+
+    SQLAlchemy wraps asyncpg's error, so the name is on `orig` or on its `__cause__`.
+    """
+    for candidate in (error.orig, getattr(error.orig, "__cause__", None)):
+        name = getattr(candidate, "constraint_name", None)
+        if isinstance(name, str):
+            return name
+        # psycopg keeps it on `diag`.
+        name = getattr(getattr(candidate, "diag", None), "constraint_name", None)
+        if isinstance(name, str):
+            return name
+    return None
 
 
 def _escape_like(value: str) -> str:
@@ -115,9 +133,12 @@ class AdminService:
         try:
             await db.commit()
         except IntegrityError as error:
-            # Two requests with the same email can both pass the check above.
             await db.rollback()
-            raise EMAIL_TAKEN from error
+            # Two requests with the same email can both pass the check above. Any other
+            # integrity error is a bug, not a taken email.
+            if violated_constraint(error) == EMAIL_UNIQUE_CONSTRAINT:
+                raise EMAIL_TAKEN from error
+            raise
         return admin
 
     async def update_admin(

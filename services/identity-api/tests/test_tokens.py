@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from identity_api.app import create_app
 from identity_api.core.settings import Settings
 from identity_api.services.keys import KeyRing, load_keyring
-from identity_api.services.tokens import TokenIssuer
+from identity_api.services.tokens import TokenIssuer, TokenWindowClosedError
 
 ISSUER = "https://identity.test"
 ADMIN_ID = uuid.UUID("11111111-2222-3333-4444-555555555555")
@@ -106,6 +106,34 @@ def test_expiry_follows_the_setting(configured: Configure, key_pems: dict[str, s
     issued = make_issuer(settings, ring).issue(subject=ADMIN_ID, roles=[], audience="a")
     claims = jwt.decode(issued.token, options={"verify_signature": False})
     assert claims["exp"] - claims["iat"] == 60
+
+
+def test_ttl_override_and_not_after_cap(configured: Configure, key_pems: dict[str, str]) -> None:
+    settings = configured(key_pems, "test-key-1")
+    issuer = make_issuer(settings, load_keyring(settings))
+    short = issuer.issue(subject=ADMIN_ID, roles=[], audience="a", ttl_seconds=300)
+    assert short.expires_at == NOW + timedelta(minutes=5)
+    assert short.lifetime_seconds == 300
+
+    parent_exp = NOW + timedelta(seconds=90)
+    capped = issuer.issue(
+        subject=ADMIN_ID, roles=[], audience="a", ttl_seconds=300, not_after=parent_exp
+    )
+    claims = jwt.decode(capped.token, options={"verify_signature": False})
+    assert claims["exp"] == int(parent_exp.timestamp())
+    assert capped.lifetime_seconds == 90
+
+
+@pytest.mark.parametrize("seconds", [0, -10])
+def test_not_after_in_the_past_is_refused(
+    configured: Configure, key_pems: dict[str, str], seconds: int
+) -> None:
+    settings = configured(key_pems, "test-key-1")
+    issuer = make_issuer(settings, load_keyring(settings))
+    with pytest.raises(TokenWindowClosedError):
+        issuer.issue(
+            subject=ADMIN_ID, roles=[], audience="a", not_after=NOW + timedelta(seconds=seconds)
+        )
 
 
 def test_expired_token_is_rejected(configured: Configure, key_pems: dict[str, str]) -> None:
