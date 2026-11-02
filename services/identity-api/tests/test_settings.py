@@ -29,6 +29,9 @@ def test_defaults() -> None:
     assert s.cookie_secure is True
     assert s.cookie_samesite == "strict"
     assert s.access_token_ttl_seconds == 900
+    assert s.exchanged_token_ttl_seconds == 300
+    # identity-api tokens come from login and refresh only, never from the token exchange.
+    assert "identity-api" not in s.audience_roles
     assert s.refresh_reuse_grace_seconds == 10
 
 
@@ -52,6 +55,8 @@ def test_environment_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
         {"database_url": "mysql://x"},
         {"redis_url": "http://localhost"},
         {"env": "staging"},
+        {"exchanged_token_ttl_seconds": 29},
+        {"exchanged_token_ttl_seconds": 901},
         {"refresh_reuse_grace_seconds": -1},
         {"refresh_reuse_grace_seconds": 61},
         {"access_token_ttl_seconds": 0},
