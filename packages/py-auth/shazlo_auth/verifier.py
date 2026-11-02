@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 
 import jwt
 
@@ -58,6 +59,7 @@ class TokenVerifier:
                 roles=tuple(roles),
                 jti=claims["jti"],
                 must_change_password=claims.get("must_change_password") is True,
+                expires_at=datetime.fromtimestamp(claims["exp"], UTC),
             )
         except InvalidTokenError:
             raise

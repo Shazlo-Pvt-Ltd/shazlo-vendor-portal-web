@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 from shazlo_auth.fastapi import AuthenticatedAdmin
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +22,14 @@ router = APIRouter(tags=["admins"], dependencies=[Depends(super_admin)])
 Db = Annotated[AsyncSession, Depends(get_session)]
 
 EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+# Trimmed and lower-cased before the length and pattern checks, so " New@Shazlo.Test " is the
+# same address as "new@shazlo.test" (and a duplicate of it is 409, not 422).
+Email = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True, to_lower=True, min_length=3, max_length=320, pattern=EMAIL_PATTERN
+    ),
+]
 
 
 def get_admin_service(request: Request) -> AdminService:
@@ -56,7 +64,7 @@ class RoleOut(BaseModel):
 
 
 class CreateAdminRequest(BaseModel):
-    email: str = Field(min_length=3, max_length=320, pattern=EMAIL_PATTERN)
+    email: Email
     display_name: str = Field(min_length=1, max_length=200)
     password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
     roles: list[str] = Field(min_length=1, max_length=20)

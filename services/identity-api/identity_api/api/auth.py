@@ -1,16 +1,20 @@
 import uuid
 from typing import Annotated, cast
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Cookie, Depends, Request, Response
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisError
+from shazlo_auth import AccessClaims
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from identity_api.api.deps import (
+    UNAUTHORIZED,
+    current_access_claims,
     current_admin,
     current_admin_pending_password,
     get_auth_service,
-    get_client_ip,
+    get_rate_limit_ip,
     get_rate_limits,
 )
 from identity_api.core.errors import ApiError, error_response
@@ -18,7 +22,9 @@ from identity_api.core.settings import Settings
 from identity_api.db.models import Admin
 from identity_api.db.session import get_session
 from identity_api.services.auth import (
+    INVALID_CURRENT_PASSWORD,
     INVALID_REFRESH_TOKEN,
+    REFRESH_CONFLICT,
     AuthService,
     AuthSession,
 )
@@ -35,7 +41,8 @@ Db = Annotated[AsyncSession, Depends(get_session)]
 Auth = Annotated[AuthService, Depends(get_auth_service)]
 RefreshCookie = Annotated[str | None, Cookie(alias=COOKIE_NAME)]
 Limits = Annotated[RateLimitGuard, Depends(get_rate_limits)]
-ClientIp = Annotated[str, Depends(get_client_ip)]
+# The client IP as the rate limits count it: IPv6 per network (see `rate_limit_subject`).
+ClientIp = Annotated[str, Depends(get_rate_limit_ip)]
 
 
 class LoginRequest(BaseModel):
@@ -77,8 +84,43 @@ class TokenResponse(BaseModel):
     audience: str
 
 
+ORIGIN_NOT_ALLOWED = ApiError(403, "origin_not_allowed", "Request origin is not allowed")
+
+
 def _settings(request: Request) -> Settings:
     return cast(Settings, request.app.state.settings)
+
+
+def _request_origin(request: Request) -> str | None:
+    """The `Origin` header, or the origin part of `Referer` when a browser left Origin out."""
+    origin = request.headers.get("origin")
+    if origin is not None:
+        return origin
+    referer = request.headers.get("referer")
+    if not referer:
+        return None
+    parts = urlsplit(referer)
+    if not parts.scheme or not parts.netloc or "@" in parts.netloc:
+        return None
+    return f"{parts.scheme}://{parts.netloc}"
+
+
+def require_allowed_origin(request: Request) -> None:
+    """CSRF guard for the endpoints the refresh cookie alone authenticates.
+
+    The cookie is sent with cross-site requests when `cookie_samesite` is "none" (and with
+    same-site ones from sibling subdomains under "lax"/"strict"), so these endpoints also require
+    the request to come from an origin allowed by CORS. A request with neither Origin nor
+    Referer is refused: browsers send Origin on every cross-origin and same-origin POST.
+    """
+    origin = _request_origin(request)
+    allowed = {o.rstrip("/").lower() for o in _settings(request).cors_allowed_origins}
+    if origin is None or origin.rstrip("/").lower() not in allowed:
+        raise ORIGIN_NOT_ALLOWED
+
+
+# Checked before the endpoint runs, so a refused request never clears or rotates the cookie.
+CookieOrigin = [Depends(require_allowed_origin)]
 
 
 def profile_of(admin: Admin) -> AdminProfile:
@@ -144,21 +186,26 @@ async def login(
 ) -> SessionResponse:
     settings = _settings(request)
     email = body.email.strip().lower()
-    # The email counter is hit before the password is checked, so parallel guesses cannot
-    # slip past the limit, and a successful login clears it: in the end it counts failures.
+    # An IP never contains a space, so the pair cannot collide with another pair.
+    email_ip = f"{ip} {email}"
+    # The counters are hit before the password is checked, so parallel guesses cannot slip
+    # past them. The strict one is per (email, IP): failures from one network cannot lock the
+    # admin out of another. A successful login clears it, so in the end it counts failures.
+    # The loose per-email one is never cleared, so spreading guesses over IPs stays slow.
     await limits.check(
         "login",
         [
             Check("ip", ip, settings.rate_limit_login_ip),
-            Check("email", email, settings.rate_limit_login_email),
+            Check("email_ip", email_ip, settings.rate_limit_login_email),
+            Check("email", email, settings.rate_limit_login_email_global),
         ],
     )
     session = await auth.login(db, body.email, body.password)
-    await limits.reset("login", "email", email)
+    await limits.reset("login", "email_ip", email_ip)
     return _session_response(response, settings, session)
 
 
-@router.post("/refresh", response_model=None)
+@router.post("/refresh", response_model=None, dependencies=CookieOrigin)
 async def refresh(
     request: Request,
     response: Response,
@@ -184,15 +231,18 @@ async def refresh(
             raise INVALID_REFRESH_TOKEN
         session = await auth.refresh(db, token)
     except ApiError as error:
-        # A rejected token is of no further use: have the browser drop it.
         failure = error_response(request, error.status_code, error.code, error.message)
         no_store(failure)
-        _clear_cookie(failure, settings)
+        # A rejected token is of no further use: have the browser drop it. Not on a conflict:
+        # the browser already holds the new cookie the concurrent request set, and clearing it
+        # here would log the user out.
+        if error.code != REFRESH_CONFLICT.code:
+            _clear_cookie(failure, settings)
         return failure
     return _session_response(response, settings, session)
 
 
-@router.post("/logout", status_code=204)
+@router.post("/logout", status_code=204, dependencies=CookieOrigin)
 async def logout(request: Request, auth: Auth, token: RefreshCookie = None) -> Response:
     if token:
         await auth.logout(token)
@@ -213,11 +263,20 @@ async def change_password(
     admin: Annotated[Admin, Depends(current_admin_pending_password)],
 ) -> SessionResponse:
     # Counted before the current password is checked, so it limits guesses with a stolen token.
+    # Cleared once the current password verifies, so in the end it counts wrong current
+    # passwords only: a new admin trying passwords the policy rejects is not locked out.
+    subject = str(admin.id)
     await limits.check(
         "change_password",
-        [Check("admin", str(admin.id), _settings(request).rate_limit_change_password_admin)],
+        [Check("admin", subject, _settings(request).rate_limit_change_password_admin)],
     )
-    session = await auth.change_password(db, admin, body.current_password, body.new_password)
+    try:
+        session = await auth.change_password(db, admin, body.current_password, body.new_password)
+    except ApiError as error:
+        if error.code != INVALID_CURRENT_PASSWORD.code:
+            await limits.reset("change_password", "admin", subject)
+        raise
+    await limits.reset("change_password", "admin", subject)
     return _session_response(response, _settings(request), session)
 
 
@@ -230,9 +289,11 @@ async def exchange_token(
     limits: Limits,
     ip: ClientIp,
     admin: Annotated[Admin, Depends(current_admin)],
+    claims: Annotated[AccessClaims, Depends(current_access_claims)],
 ) -> TokenResponse:
-    """A 15-minute token for one module backend. No refresh token: only the identity session
-    refreshes, so several modules never rotate it at the same time."""
+    """A 5-minute token for one module backend, never outliving the token that asked. No
+    refresh token: only the identity session refreshes, so several modules never rotate it at
+    the same time."""
     settings = _settings(request)
     await limits.check(
         "token",
@@ -241,10 +302,12 @@ async def exchange_token(
             Check("admin", str(admin.id), settings.rate_limit_token_admin),
         ],
     )
-    issued = auth.exchange_token(admin, body.audience)
+    if claims.expires_at is None:  # the shared verifier always sets it from `exp`
+        raise UNAUTHORIZED
+    issued = auth.exchange_token(admin, body.audience, not_after=claims.expires_at)
     no_store(response)
     return TokenResponse(
         access_token=issued.token,
-        expires_in=_settings(request).access_token_ttl_seconds,
+        expires_in=issued.lifetime_seconds,
         audience=body.audience,
     )
