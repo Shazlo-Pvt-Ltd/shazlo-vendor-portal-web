@@ -21,6 +21,9 @@ SELF_AUDIENCE = "identity-api"
 
 INVALID_CREDENTIALS = ApiError(401, "invalid_credentials", "Invalid email or password")
 INVALID_REFRESH_TOKEN = ApiError(401, "invalid_refresh_token", "Invalid or expired refresh token")
+INVALID_CURRENT_PASSWORD = ApiError(
+    400, "invalid_current_password", "The current password is wrong"
+)
 
 
 @dataclass(frozen=True)
@@ -83,7 +86,7 @@ class AuthService:
         """
         check = await self._passwords.verify_login(admin.password_hash, current_password)
         if not check.ok:
-            raise ApiError(400, "invalid_current_password", "The current password is wrong")
+            raise INVALID_CURRENT_PASSWORD
         try:
             check_password(
                 new_password, email=admin.email, min_length=self._settings.password_min_length

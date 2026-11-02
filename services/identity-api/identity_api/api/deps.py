@@ -5,8 +5,9 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from identity_api.core.client_ip import Network, client_ip
+from identity_api.core.client_ip import Network, client_ip, rate_limit_subject
 from identity_api.core.errors import ApiError
+from identity_api.core.settings import Settings
 from identity_api.db.models import Admin
 from identity_api.db.session import get_session
 from identity_api.services.auth import SELF_AUDIENCE, AuthService
@@ -33,6 +34,12 @@ def get_rate_limits(request: Request) -> RateLimitGuard:
 
 def get_client_ip(request: Request) -> str:
     return client_ip(request, cast(list[Network], request.app.state.trusted_proxies))
+
+
+def get_rate_limit_ip(request: Request) -> str:
+    """The client IP as the per-IP rate limits count it (IPv6 grouped per network)."""
+    settings = cast(Settings, request.app.state.settings)
+    return rate_limit_subject(get_client_ip(request), settings.rate_limit_ipv6_prefix)
 
 
 def _admin_dependency(*, allow_password_change: bool) -> Callable[..., Awaitable[Admin]]:
