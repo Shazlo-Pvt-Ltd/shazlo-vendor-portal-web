@@ -29,6 +29,9 @@ def test_defaults() -> None:
     assert s.cookie_secure is True
     assert s.cookie_samesite == "strict"
     assert s.access_token_ttl_seconds == 900
+    assert s.exchanged_token_ttl_seconds == 300
+    # identity-api tokens come from login and refresh only, never from the token exchange.
+    assert "identity-api" not in s.audience_roles
 
 
 def test_cors_origins_are_comma_separated(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -47,7 +50,13 @@ def test_environment_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.parametrize(
     "overrides",
-    [{"database_url": "mysql://x"}, {"redis_url": "http://localhost"}, {"env": "staging"}],
+    [
+        {"database_url": "mysql://x"},
+        {"redis_url": "http://localhost"},
+        {"env": "staging"},
+        {"exchanged_token_ttl_seconds": 29},
+        {"exchanged_token_ttl_seconds": 901},
+    ],
 )
 def test_invalid_values_are_rejected(overrides: dict[str, object]) -> None:
     with pytest.raises(ValidationError):

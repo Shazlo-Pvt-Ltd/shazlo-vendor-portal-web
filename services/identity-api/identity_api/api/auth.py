@@ -5,13 +5,19 @@ from fastapi import APIRouter, Cookie, Depends, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from identity_api.api.deps import current_admin, current_admin_pending_password, get_auth_service
+from identity_api.api.deps import (
+    current_access_claims,
+    current_admin,
+    current_admin_pending_password,
+    get_auth_service,
+)
 from identity_api.core.errors import ApiError, error_response
 from identity_api.core.settings import Settings
 from identity_api.db.models import Admin
 from identity_api.db.session import get_session
 from identity_api.services.auth import INVALID_REFRESH_TOKEN, AuthService, AuthSession
 from identity_api.services.password_policy import MAX_PASSWORD_LENGTH
+from identity_api.services.tokens import AccessClaims
 
 COOKIE_NAME = "refresh_token"
 # The browser sends the cookie to the auth endpoints only.
@@ -170,17 +176,18 @@ async def change_password(
 @router.post("/token")
 async def exchange_token(
     body: TokenRequest,
-    request: Request,
     response: Response,
     auth: Auth,
     admin: Annotated[Admin, Depends(current_admin)],
+    claims: Annotated[AccessClaims, Depends(current_access_claims)],
 ) -> TokenResponse:
-    """A 15-minute token for one module backend. No refresh token: only the identity session
-    refreshes, so several modules never rotate it at the same time."""
-    issued = auth.exchange_token(admin, body.audience)
+    """A 5-minute token for one module backend, never outliving the token that asked. No
+    refresh token: only the identity session refreshes, so several modules never rotate it at
+    the same time."""
+    issued = auth.exchange_token(admin, body.audience, not_after=claims.expires_at)
     no_store(response)
     return TokenResponse(
         access_token=issued.token,
-        expires_in=_settings(request).access_token_ttl_seconds,
+        expires_in=issued.lifetime_seconds,
         audience=body.audience,
     )
