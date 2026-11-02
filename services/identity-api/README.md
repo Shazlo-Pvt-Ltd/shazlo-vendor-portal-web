@@ -59,10 +59,10 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` | comma separated; credentials allowed for these only |
 | `COOKIE_SECURE` / `COOKIE_SAMESITE` / `COOKIE_DOMAIN` | `true` / `strict` / unset | refresh-token cookie |
 | `JWT_ISSUER` | `http://localhost:8001` | `iss` claim |
-| `JWT_KEYS_DIR` / `JWT_KEYS` | none (one is required) | RS256 keys: a directory of `<kid>.pem` files and/or JSON `{"<kid>": "<PEM>"}`; the app refuses to start without a key |
+| `JWT_KEYS_DIR` / `JWT_KEYS` | none (one is required) | RS256 keys: a directory of `<kid>.pem` files and/or JSON `{"<kid>": "<PEM>"}`; the app refuses to start without a key, or (on Linux/macOS) with a private key file other users can read (looser than `0600`, or `0640` if owned by root) |
 | `AUDIENCE_ROLES` | `vendor-api` for `super_admin` and `vendor_reviewer` | JSON `{"<service>": ["<role>", ...]}`; must not list `identity-api`; see Auth endpoints |
 | `JWT_SIGNING_KID` | the only key, if there is just one | which key signs; the others are published in the JWKS only |
-| `ACCESS_TOKEN_TTL_SECONDS` | `900` | |
+| `ACCESS_TOKEN_TTL_SECONDS` | `900` | 1 to 3600 |
 | `EXCHANGED_TOKEN_TTL_SECONDS` | `300` | 30 to 900; tokens from `POST /v1/auth/token`, capped at the asking token's `exp` |
 | `REFRESH_TOKEN_TTL_DAYS` / `REFRESH_FAMILY_MAX_DAYS` | `7` / `30` | |
 
