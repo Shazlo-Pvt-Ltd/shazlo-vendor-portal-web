@@ -34,7 +34,9 @@ class Settings(BaseSettings):
     jwt_keys_dir: str | None = None
     jwt_keys: SecretStr | None = None
     jwt_signing_kid: str | None = None
-    access_token_ttl_seconds: int = 15 * 60
+    # Bounded so a typo cannot issue tokens that never verify (0 or negative) or that outlive
+    # key rotation (the rotation runbook's waits assume at most an hour).
+    access_token_ttl_seconds: int = Field(default=15 * 60, gt=0, le=3600)
     refresh_token_ttl_days: int = 7
     refresh_family_max_days: int = 30
     # Two tabs that refresh at the same moment send the same token, and the second one looks

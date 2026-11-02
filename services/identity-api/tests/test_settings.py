@@ -54,6 +54,9 @@ def test_environment_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
         {"env": "staging"},
         {"refresh_reuse_grace_seconds": -1},
         {"refresh_reuse_grace_seconds": 61},
+        {"access_token_ttl_seconds": 0},
+        {"access_token_ttl_seconds": -60},
+        {"access_token_ttl_seconds": 3601},
     ],
 )
 def test_invalid_values_are_rejected(overrides: dict[str, object]) -> None:
@@ -64,3 +67,8 @@ def test_invalid_values_are_rejected(overrides: dict[str, object]) -> None:
 @pytest.mark.parametrize("seconds", [0, 60])
 def test_reuse_grace_window_bounds_are_inclusive(seconds: int) -> None:
     assert make(refresh_reuse_grace_seconds=seconds).refresh_reuse_grace_seconds == seconds
+
+
+@pytest.mark.parametrize("ttl", [1, 3600])
+def test_access_token_ttl_bounds_are_inclusive(ttl: int) -> None:
+    assert make(access_token_ttl_seconds=ttl).access_token_ttl_seconds == ttl
