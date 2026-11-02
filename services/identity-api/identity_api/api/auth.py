@@ -1,5 +1,6 @@
 import uuid
 from typing import Annotated, cast
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Cookie, Depends, Request, Response
 from pydantic import BaseModel, Field
@@ -7,6 +8,7 @@ from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from identity_api.api.deps import (
+    current_access_claims,
     current_admin,
     current_admin_pending_password,
     get_auth_service,
@@ -20,11 +22,13 @@ from identity_api.db.session import get_session
 from identity_api.services.auth import (
     INVALID_CURRENT_PASSWORD,
     INVALID_REFRESH_TOKEN,
+    REFRESH_CONFLICT,
     AuthService,
     AuthSession,
 )
 from identity_api.services.password_policy import MAX_PASSWORD_LENGTH
 from identity_api.services.rate_limit import Check, RateLimitGuard
+from identity_api.services.tokens import AccessClaims
 
 COOKIE_NAME = "refresh_token"
 # The browser sends the cookie to the auth endpoints only.
@@ -79,8 +83,43 @@ class TokenResponse(BaseModel):
     audience: str
 
 
+ORIGIN_NOT_ALLOWED = ApiError(403, "origin_not_allowed", "Request origin is not allowed")
+
+
 def _settings(request: Request) -> Settings:
     return cast(Settings, request.app.state.settings)
+
+
+def _request_origin(request: Request) -> str | None:
+    """The `Origin` header, or the origin part of `Referer` when a browser left Origin out."""
+    origin = request.headers.get("origin")
+    if origin is not None:
+        return origin
+    referer = request.headers.get("referer")
+    if not referer:
+        return None
+    parts = urlsplit(referer)
+    if not parts.scheme or not parts.netloc or "@" in parts.netloc:
+        return None
+    return f"{parts.scheme}://{parts.netloc}"
+
+
+def require_allowed_origin(request: Request) -> None:
+    """CSRF guard for the endpoints the refresh cookie alone authenticates.
+
+    The cookie is sent with cross-site requests when `cookie_samesite` is "none" (and with
+    same-site ones from sibling subdomains under "lax"/"strict"), so these endpoints also require
+    the request to come from an origin allowed by CORS. A request with neither Origin nor
+    Referer is refused: browsers send Origin on every cross-origin and same-origin POST.
+    """
+    origin = _request_origin(request)
+    allowed = {o.rstrip("/").lower() for o in _settings(request).cors_allowed_origins}
+    if origin is None or origin.rstrip("/").lower() not in allowed:
+        raise ORIGIN_NOT_ALLOWED
+
+
+# Checked before the endpoint runs, so a refused request never clears or rotates the cookie.
+CookieOrigin = [Depends(require_allowed_origin)]
 
 
 def profile_of(admin: Admin) -> AdminProfile:
@@ -165,7 +204,7 @@ async def login(
     return _session_response(response, settings, session)
 
 
-@router.post("/refresh", response_model=None)
+@router.post("/refresh", response_model=None, dependencies=CookieOrigin)
 async def refresh(
     request: Request,
     response: Response,
@@ -191,15 +230,18 @@ async def refresh(
             raise INVALID_REFRESH_TOKEN
         session = await auth.refresh(db, token)
     except ApiError as error:
-        # A rejected token is of no further use: have the browser drop it.
         failure = error_response(request, error.status_code, error.code, error.message)
         no_store(failure)
-        _clear_cookie(failure, settings)
+        # A rejected token is of no further use: have the browser drop it. Not on a conflict:
+        # the browser already holds the new cookie the concurrent request set, and clearing it
+        # here would log the user out.
+        if error.code != REFRESH_CONFLICT.code:
+            _clear_cookie(failure, settings)
         return failure
     return _session_response(response, settings, session)
 
 
-@router.post("/logout", status_code=204)
+@router.post("/logout", status_code=204, dependencies=CookieOrigin)
 async def logout(request: Request, auth: Auth, token: RefreshCookie = None) -> Response:
     if token:
         await auth.logout(token)
@@ -246,9 +288,11 @@ async def exchange_token(
     limits: Limits,
     ip: ClientIp,
     admin: Annotated[Admin, Depends(current_admin)],
+    claims: Annotated[AccessClaims, Depends(current_access_claims)],
 ) -> TokenResponse:
-    """A 15-minute token for one module backend. No refresh token: only the identity session
-    refreshes, so several modules never rotate it at the same time."""
+    """A 5-minute token for one module backend, never outliving the token that asked. No
+    refresh token: only the identity session refreshes, so several modules never rotate it at
+    the same time."""
     settings = _settings(request)
     await limits.check(
         "token",
@@ -257,10 +301,10 @@ async def exchange_token(
             Check("admin", str(admin.id), settings.rate_limit_token_admin),
         ],
     )
-    issued = auth.exchange_token(admin, body.audience)
+    issued = auth.exchange_token(admin, body.audience, not_after=claims.expires_at)
     no_store(response)
     return TokenResponse(
         access_token=issued.token,
-        expires_in=_settings(request).access_token_ttl_seconds,
+        expires_in=issued.lifetime_seconds,
         audience=body.audience,
     )

@@ -3,7 +3,7 @@ import secrets
 from functools import lru_cache
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, BeforeValidator, SecretStr, field_validator, model_validator
+from pydantic import BaseModel, BeforeValidator, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 RATE_LIMITED_ENDPOINTS = frozenset({"login", "refresh", "token", "change_password"})
@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     cors_allowed_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
 
     # Refresh-token cookie. `Secure` is on by default; turn it off only for local dev.
+    # SameSite=None requires Secure (browsers drop the cookie otherwise), so that pair is refused.
+    # The cookie-authenticated endpoints also check Origin against `cors_allowed_origins`.
     cookie_secure: bool = True
     cookie_samesite: Literal["strict", "lax", "none"] = "strict"
     cookie_domain: str | None = None
@@ -68,16 +70,30 @@ class Settings(BaseSettings):
     jwt_keys_dir: str | None = None
     jwt_keys: SecretStr | None = None
     jwt_signing_kid: str | None = None
-    # Which roles may get a token for which service (ADR 0009), as JSON in the environment.
-    # An admin gets a token for a service if at least one of their roles is listed for it.
-    # Adding a service is a settings change only.
+    # Which roles may get a token for which other service (ADR 0009), as JSON in the
+    # environment. An admin gets a token for a service if at least one of their roles is listed
+    # for it, and the token carries only those roles. Adding a service is a settings change only.
+    # identity-api itself is not listed: only login and refresh issue its tokens.
     audience_roles: dict[str, list[str]] = {
-        "identity-api": ["super_admin", "vendor_reviewer"],
         "vendor-api": ["super_admin", "vendor_reviewer"],
     }
-    access_token_ttl_seconds: int = 15 * 60
+    # Bounded so a typo cannot issue tokens that never verify (0 or negative) or that outlive
+    # key rotation (the rotation runbook's waits assume at most an hour).
+    access_token_ttl_seconds: int = Field(default=15 * 60, gt=0, le=3600)
+    # Lifetime of a token from `POST /v1/auth/token` (ADR 0001: about 5 minutes). It never
+    # outlives the identity-api token that asked for it.
+    exchanged_token_ttl_seconds: int = Field(default=5 * 60, ge=30, le=15 * 60)
     refresh_token_ttl_days: int = 7
     refresh_family_max_days: int = 30
+    # Two tabs that refresh at the same moment send the same token, and the second one looks
+    # like reuse of a stolen token. A token reused less than this many seconds after its first
+    # use gets 409 `refresh_conflict` instead: nothing is revoked, and the browser already holds
+    # the new cookie the first request set, so a retry works. The trade-off: inside the window a
+    # replay is not treated as theft. A thief who replays a token just after the real client gets
+    # no new token, but goes unnoticed; if the thief refreshes first, the real client's refresh
+    # gets 409 and the family is only revoked when the client tries again after the window.
+    # 0 disables the window (any reuse revokes the family at once).
+    refresh_reuse_grace_seconds: int = Field(default=10, ge=0, le=60)
 
     # Argon2id cost (OWASP baseline: 19 MiB, 2 passes, 1 lane). Raising any of these makes
     # existing hashes rehash on the next successful login.
@@ -173,8 +189,10 @@ class Settings(BaseSettings):
     @field_validator("audience_roles")
     @classmethod
     def _check_audience_roles(cls, value: dict[str, list[str]]) -> dict[str, list[str]]:
-        if "identity-api" not in value:
-            raise ValueError("must include identity-api, the audience of the shell's own token")
+        if "identity-api" in value:
+            raise ValueError(
+                "must not include identity-api: only login and refresh issue its tokens"
+            )
         if any(not audience or not roles for audience, roles in value.items()):
             raise ValueError("every audience needs a name and at least one role")
         return value
@@ -192,6 +210,12 @@ class Settings(BaseSettings):
         if not value.startswith(("redis://", "rediss://")):
             raise ValueError("must start with redis:// or rediss://")
         return value
+
+    @model_validator(mode="after")
+    def _check_cookie_flags(self) -> "Settings":
+        if self.cookie_samesite == "none" and not self.cookie_secure:
+            raise ValueError("cookie_samesite='none' requires cookie_secure=true")
+        return self
 
 
 @lru_cache
