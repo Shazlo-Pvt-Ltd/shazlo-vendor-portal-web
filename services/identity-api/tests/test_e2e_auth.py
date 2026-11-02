@@ -273,9 +273,8 @@ async def test_key_rotation_with_a_token_in_flight(
         document: dict[str, Any] = response.json()
         return document
 
-    verifier = TokenVerifier(
-        JwksClient(fetch, clock=lambda: now[0]), issuer=ISSUER, audience="identity-api"
-    )
+    jwks_client = JwksClient(fetch, clock=lambda: now[0])
+    verifier = TokenVerifier(jwks_client, issuer=ISSUER, audience="identity-api")
 
     # Before: only the old key exists and the in-flight token verifies.
     async with serve(keyed("test-key-1", "test-key-1"), session, redis) as http:
@@ -320,6 +319,9 @@ async def test_key_rotation_with_a_token_in_flight(
     async with serve(keyed("test-key-2", "test-key-2"), session, redis) as http:
         current["http"] = http
         now[0] += 601
+        # A cached key is still served while the refresh runs in the background (so no
+        # request waits on the network); the retired key is gone once that refresh is done.
         assert (await verifier.verify(new_token)).roles == ("super_admin",)
+        await jwks_client.wait_for_refresh()
         with pytest.raises(InvalidTokenError, match="unknown kid"):
             await verifier.verify(in_flight)
