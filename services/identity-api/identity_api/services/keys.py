@@ -2,6 +2,8 @@ import json
 import os
 import re
 import secrets
+import stat
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -15,7 +17,8 @@ from jwt.algorithms import RSAAlgorithm
 
 from identity_api.core.settings import Settings
 
-KID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+# Always use `fullmatch`: with `match`, `$` also matches before a trailing newline.
+KID_PATTERN = re.compile(r"[A-Za-z0-9._-]{1,64}")
 KEY_BITS = 2048
 ALGORITHM = "RS256"
 
@@ -87,7 +90,7 @@ def write_new_key(directory: Path, kid: str) -> Path:
 
     Never overwrites: an existing file with the same name raises `FileExistsError`.
     """
-    if not KID_PATTERN.match(kid):
+    if not KID_PATTERN.fullmatch(kid):
         raise KeyConfigError("kid may only contain letters, digits, '.', '_' and '-' (max 64)")
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{kid}.pem"
@@ -113,11 +116,31 @@ def _parse_pem(kid: str, pem: bytes) -> rsa.RSAPrivateKey | rsa.RSAPublicKey:
     return key
 
 
+def _check_private_key_file_mode(path: Path) -> None:
+    """Refuses a private key file that other users can read, like PostgreSQL does for its key.
+
+    Allowed: no group or other access (`0600`, `0400`), or, for a file owned by root, group read
+    as well (`0640`, `0440`). The second case covers secrets mounted read-only for a non-root
+    container user through its group, as Kubernetes does with `fsGroup`.
+    Windows has no POSIX modes, so nothing is checked there.
+    """
+    if sys.platform == "win32":
+        return
+    info = path.stat()
+    mode = stat.S_IMODE(info.st_mode)
+    forbidden = 0o037 if info.st_uid == 0 else 0o077
+    if mode & forbidden:
+        raise KeyConfigError(
+            f"private key file {path.name} has mode {mode:04o}: other users can access it. "
+            f"Run `chmod 600 {path.name}` (or 640 for a file owned by root)"
+        )
+
+
 def _collect_pems(settings: Settings) -> dict[str, bytes]:
     pems: dict[str, bytes] = {}
 
     def add(kid: str, pem: bytes, source: str) -> None:
-        if not KID_PATTERN.match(kid):
+        if not KID_PATTERN.fullmatch(kid):
             raise KeyConfigError(f"invalid kid {kid!r} in {source}")
         if kid in pems:
             raise KeyConfigError(f"kid {kid!r} is configured twice")
@@ -128,13 +151,23 @@ def _collect_pems(settings: Settings) -> dict[str, bytes]:
         if not directory.is_dir():
             raise KeyConfigError("JWT_KEYS_DIR is not a directory")
         for path in sorted(directory.glob("*.pem")):
-            add(path.stem, path.read_bytes(), "JWT_KEYS_DIR")
+            pem = path.read_bytes()
+            # Public PEMs (published-only keys) may be world readable.
+            if b"PRIVATE KEY-----" in pem:
+                _check_private_key_file_mode(path)
+            add(path.stem, pem, "JWT_KEYS_DIR")
 
     if settings.jwt_keys:
+        from_env: object = None
+        valid_json = True
         try:
             from_env = json.loads(settings.jwt_keys.get_secret_value())
-        except ValueError as error:
-            raise KeyConfigError("JWT_KEYS is not valid JSON") from error
+        except ValueError:
+            valid_json = False
+        # Raised outside the `except` so the JSONDecodeError, whose `doc` holds the whole secret,
+        # is neither the cause nor the context of this error (and so never reaches a traceback).
+        if not valid_json:
+            raise KeyConfigError("JWT_KEYS is not valid JSON") from None
         if not isinstance(from_env, dict) or not all(
             isinstance(value, str) for value in from_env.values()
         ):
