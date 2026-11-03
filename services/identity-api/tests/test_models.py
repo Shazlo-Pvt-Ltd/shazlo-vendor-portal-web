@@ -52,8 +52,10 @@ async def test_email_uniqueness_is_case_insensitive(session: AsyncSession) -> No
         await session.flush()
 
 
-@pytest.mark.parametrize("email", ["Bob@example.com", "BOB@EXAMPLE.COM"])
-async def test_db_rejects_mixed_case_email_written_directly(
+@pytest.mark.parametrize(
+    "email", ["Bob@example.com", "BOB@EXAMPLE.COM", " bob@example.com", "bob@example.com "]
+)
+async def test_db_rejects_unnormalised_email_written_directly(
     session: AsyncSession, email: str
 ) -> None:
     # Bypasses the ORM normalisation: the database itself must refuse it.
@@ -65,6 +67,19 @@ async def test_db_rejects_mixed_case_email_written_directly(
             ),
             {"email": email},
         )
+
+
+async def test_updated_at_is_readable_after_update(session: AsyncSession) -> None:
+    admin = make_admin()
+    session.add(admin)
+    await session.flush()
+    created_updated_at = admin.updated_at
+
+    admin.display_name = "Alice B"
+    await session.flush()
+    # Read straight off the instance: without eager defaults this lazy-loads (MissingGreenlet).
+    # now() is the transaction start time, so the value does not move inside the test transaction.
+    assert admin.updated_at >= created_updated_at
 
 
 async def test_roles_relationship_and_cascade_on_admin_delete(session: AsyncSession) -> None:

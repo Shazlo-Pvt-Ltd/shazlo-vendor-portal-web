@@ -56,8 +56,8 @@ def alembic_config() -> Config:
         pytest.skip("DATABASE_URL is not set")
     # The suite drops and recreates the schema, so never run it against a non-test database.
     database = make_url(TEST_DATABASE_URL).database or ""
-    if "test" not in database:
-        pytest.fail(f"refusing to migrate {database!r}: DATABASE_URL must name a test database")
+    if not (database == "test" or database.endswith("_test")):
+        pytest.fail(f"refusing to migrate {database!r}: DATABASE_URL must name `test` or `*_test`")
     config = Config(str(SERVICE_DIR / "alembic.ini"))
     config.set_main_option("sqlalchemy.url", TEST_DATABASE_URL.replace("%", "%%"))
     config.attributes["configure_logger"] = False

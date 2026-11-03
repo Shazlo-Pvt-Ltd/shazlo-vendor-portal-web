@@ -9,13 +9,16 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-_SCHEMES = ("postgresql+asyncpg://", "postgresql+psycopg://", "postgresql://")
+# Accepted DATABASE_URL schemes; each consumer swaps in the driver it needs.
+POSTGRES_SCHEMES = ("postgresql+asyncpg://", "postgresql+psycopg://", "postgresql://")
 
 
-def _with_driver(url: str, driver: str) -> str:
-    for scheme in _SCHEMES:
+def _with_driver(url: str, driver: str | None) -> str:
+    """Replaces the URL's scheme with `postgresql+<driver>://`, or plain `postgresql://`."""
+    prefix = f"postgresql+{driver}://" if driver else "postgresql://"
+    for scheme in POSTGRES_SCHEMES:
         if url.startswith(scheme):
-            return f"postgresql+{driver}://" + url.removeprefix(scheme)
+            return prefix + url.removeprefix(scheme)
     raise ValueError("DATABASE_URL must be a postgresql:// URL")
 
 
@@ -27,6 +30,11 @@ def async_url(url: str) -> str:
 def sync_url(url: str) -> str:
     """URL for Alembic, which runs on a sync engine (psycopg 3)."""
     return _with_driver(url, "psycopg")
+
+
+def libpq_url(url: str) -> str:
+    """Plain `postgresql://` DSN, for drivers called directly (`asyncpg.connect`)."""
+    return _with_driver(url, None)
 
 
 def create_engine(database_url: str) -> AsyncEngine:
