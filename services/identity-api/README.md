@@ -14,7 +14,24 @@ cp .env.example .env      # then fill in DATABASE_URL and REDIS_URL
 uvicorn identity_api.main:app --reload --port 8001
 ```
 
-The app refuses to start if `DATABASE_URL` or `REDIS_URL` is missing. OpenAPI docs are at `/docs` unless `ENV=prod`.
+Create a signing key once with `python -m identity_api.cli generate-key` (writes `.keys/<kid>.pem`, git-ignored) and set `JWT_KEYS_DIR=.keys`.
+
+The app refuses to start if `DATABASE_URL`, `REDIS_URL` or the JWT keys are missing. OpenAPI docs are at `/docs` unless `ENV=prod`.
+
+## First admin (seed)
+
+The first `super_admin` is created from the command line; there is no sign-up endpoint. Run it after `alembic upgrade head`:
+
+```sh
+SEED_ADMIN_EMAIL=admin@example.com SEED_ADMIN_PASSWORD='<at least 12 characters>' \
+  python -m identity_api.cli seed
+```
+
+- `SEED_ADMIN_NAME` is optional (default `Super Admin`). Without the two required variables the command asks in the terminal; in a non-interactive shell it stops with an error.
+- It creates the `super_admin` and `vendor_reviewer` roles and one admin who **must change the password at the first login**.
+- It is safe to run again: existing roles and an existing admin are left untouched, so a changed `SEED_ADMIN_PASSWORD` never overwrites a password someone has since set.
+- The password follows the policy (`PASSWORD_MIN_LENGTH`, default 12; at most 128; not the email) and is hashed with Argon2id. The password and its hash are never printed.
+- `ARGON2_MEMORY_COST_KIB`, `ARGON2_TIME_COST` and `ARGON2_PARALLELISM` set the hashing cost (OWASP baseline by default). Raising them rehashes existing passwords on the next successful login.
 
 ## Layout
 
@@ -22,9 +39,10 @@ The app refuses to start if `DATABASE_URL` or `REDIS_URL` is missing. OpenAPI do
 identity_api/
   app.py        create_app() factory (settings and readiness checks can be injected in tests)
   main.py       `app = create_app()` for uvicorn
-  api/          routers (health now; auth and admins later)
+  api/          routers (health, JWKS; auth and admins later)
   core/         settings, JSON logging, request-ID middleware, error handlers
-  db/           models and sessions (async SQLAlchemy 2, added with the schema)
+  db/           models, declarative base (constraint naming convention), async engine and sessions
+  migrations/   Alembic env and versions (runs on a sync psycopg engine)
   services/     business logic, free of HTTP concerns
 ```
 
@@ -41,8 +59,38 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` | comma separated; credentials allowed for these only |
 | `COOKIE_SECURE` / `COOKIE_SAMESITE` / `COOKIE_DOMAIN` | `true` / `strict` / unset | refresh-token cookie |
 | `JWT_ISSUER` | `http://localhost:8001` | `iss` claim |
-| `ACCESS_TOKEN_TTL_SECONDS` | `900` | |
+| `JWT_KEYS_DIR` / `JWT_KEYS` | none (one is required) | RS256 keys: a directory of `<kid>.pem` files and/or JSON `{"<kid>": "<PEM>"}`; the app refuses to start without a key, or (on Linux/macOS) with a private key file other users can read (looser than `0600`, or `0640` if owned by root) |
+| `JWT_SIGNING_KID` | the only key, if there is just one | which key signs; the others are published in the JWKS only |
+| `ACCESS_TOKEN_TTL_SECONDS` | `900` | 1 to 3600 |
 | `REFRESH_TOKEN_TTL_DAYS` / `REFRESH_FAMILY_MAX_DAYS` | `7` / `30` | |
+
+## Database
+
+Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (psycopg 3). `DATABASE_URL` may use `postgresql://`, `postgresql+asyncpg://` or `postgresql+psycopg://`: each side picks its own driver.
+
+| Table | Notes |
+|---|---|
+| `admins` | UUID `id`; `email` unique and stored lower-cased (a check constraint enforces it, so uniqueness is case-insensitive in the DB); `password_hash`, `display_name`, `is_active`, `must_change_password` (default true), `created_at`, `updated_at`, `last_login_at` |
+| `roles` | `name` primary key (`super_admin`, `vendor_reviewer`, later `<area>_<role>`), `description` |
+| `admin_roles` | many to many; deleting an admin removes its links, a role still assigned cannot be deleted |
+
+Migration `0001` seeds the `super_admin` and `vendor_reviewer` roles. Refresh tokens live in Redis (ADR 0009), so there is no token table.
+
+```sh
+alembic upgrade head                 # uses DATABASE_URL (or .env)
+alembic downgrade base
+alembic revision --autogenerate -m "<message>"   # then review the generated file
+alembic check                        # fails if models and migrations differ
+```
+
+In a container: `docker compose exec identity-api alembic upgrade head`.
+
+## Tokens and keys
+
+- `TokenIssuer` (`services/tokens.py`) signs RS256 access tokens: `iss`, `sub`, `aud` (one service), `roles`, `iat`, `exp` (15 minutes), `jti`, with the `kid` in the header. No email or name goes into the token.
+- `GET /.well-known/jwks.json` serves the public keys with `Cache-Control: max-age=600`. It is built from public keys only.
+- Keys are RSA 2048-bit or larger. A key that is only published (not signing) may be configured as a public PEM.
+- Rotation is a configuration change; follow [the runbook](../../docs/runbooks/jwt-key-rotation.md).
 
 ## Behaviour worth knowing
 
@@ -56,6 +104,14 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 ```sh
 ruff check . && ruff format --check . && mypy && pytest
 ```
+
+Database tests run against real Postgres from `DATABASE_URL` and are skipped when it is unset (CI sets it). Locally, point it at the `identity_test` database from the root docker-compose:
+
+```sh
+DATABASE_URL=postgresql://shazlo:<password>@localhost:5432/identity_test pytest
+```
+
+The suite drops and recreates the schema (`alembic downgrade base` then `upgrade head`) and refuses any database whose name does not contain `test`. Each test runs in a transaction that is rolled back, so tests share no rows.
 
 ## Docker
 

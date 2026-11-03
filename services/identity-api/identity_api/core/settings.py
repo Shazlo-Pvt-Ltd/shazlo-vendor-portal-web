@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from pydantic import field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -29,9 +29,24 @@ class Settings(BaseSettings):
     cookie_domain: str | None = None
 
     jwt_issuer: str = "http://localhost:8001"
-    access_token_ttl_seconds: int = 15 * 60
+    # RS256 keys, from a directory of `<kid>.pem` files and/or a JSON object {"<kid>": "<PEM>"}.
+    # `jwt_signing_kid` picks the key that signs; the others are only published in the JWKS.
+    jwt_keys_dir: str | None = None
+    jwt_keys: SecretStr | None = None
+    jwt_signing_kid: str | None = None
+    # Bounded so a typo cannot issue tokens that never verify (0 or negative) or that outlive
+    # key rotation (the rotation runbook's waits assume at most an hour).
+    access_token_ttl_seconds: int = Field(default=15 * 60, gt=0, le=3600)
     refresh_token_ttl_days: int = 7
     refresh_family_max_days: int = 30
+
+    # Argon2id cost (OWASP baseline: 19 MiB, 2 passes, 1 lane). Raising any of these makes
+    # existing hashes rehash on the next successful login.
+    argon2_memory_cost_kib: int = 19_456
+    argon2_time_cost: int = 2
+    argon2_parallelism: int = 1
+
+    password_min_length: int = 12
 
     @field_validator("cors_allowed_origins", mode="before")
     @classmethod

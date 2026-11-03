@@ -47,8 +47,20 @@ def test_environment_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.parametrize(
     "overrides",
-    [{"database_url": "mysql://x"}, {"redis_url": "http://localhost"}, {"env": "staging"}],
+    [
+        {"database_url": "mysql://x"},
+        {"redis_url": "http://localhost"},
+        {"env": "staging"},
+        {"access_token_ttl_seconds": 0},
+        {"access_token_ttl_seconds": -60},
+        {"access_token_ttl_seconds": 3601},
+    ],
 )
 def test_invalid_values_are_rejected(overrides: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
         make(**overrides)
+
+
+@pytest.mark.parametrize("ttl", [1, 3600])
+def test_access_token_ttl_bounds_are_inclusive(ttl: int) -> None:
+    assert make(access_token_ttl_seconds=ttl).access_token_ttl_seconds == ttl
