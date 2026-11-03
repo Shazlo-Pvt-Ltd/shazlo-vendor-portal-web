@@ -4,6 +4,7 @@ from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Cookie, Depends, Request, Response
 from pydantic import BaseModel, Field
+from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from identity_api.api.deps import (
@@ -11,18 +12,22 @@ from identity_api.api.deps import (
     current_admin,
     current_admin_pending_password,
     get_auth_service,
+    get_rate_limit_ip,
+    get_rate_limits,
 )
 from identity_api.core.errors import ApiError, error_response
 from identity_api.core.settings import Settings
 from identity_api.db.models import Admin
 from identity_api.db.session import get_session
 from identity_api.services.auth import (
+    INVALID_CURRENT_PASSWORD,
     INVALID_REFRESH_TOKEN,
     REFRESH_CONFLICT,
     AuthService,
     AuthSession,
 )
 from identity_api.services.password_policy import MAX_PASSWORD_LENGTH
+from identity_api.services.rate_limit import Check, RateLimitGuard
 from identity_api.services.tokens import AccessClaims
 
 COOKIE_NAME = "refresh_token"
@@ -34,6 +39,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 Db = Annotated[AsyncSession, Depends(get_session)]
 Auth = Annotated[AuthService, Depends(get_auth_service)]
 RefreshCookie = Annotated[str | None, Cookie(alias=COOKIE_NAME)]
+Limits = Annotated[RateLimitGuard, Depends(get_rate_limits)]
+# The client IP as the rate limits count it: IPv6 per network (see `rate_limit_subject`).
+ClientIp = Annotated[str, Depends(get_rate_limit_ip)]
 
 
 class LoginRequest(BaseModel):
@@ -167,17 +175,56 @@ def _session_response(
 
 @router.post("/login")
 async def login(
-    body: LoginRequest, request: Request, response: Response, db: Db, auth: Auth
+    body: LoginRequest,
+    request: Request,
+    response: Response,
+    db: Db,
+    auth: Auth,
+    limits: Limits,
+    ip: ClientIp,
 ) -> SessionResponse:
+    settings = _settings(request)
+    email = body.email.strip().lower()
+    # An IP never contains a space, so the pair cannot collide with another pair.
+    email_ip = f"{ip} {email}"
+    # The counters are hit before the password is checked, so parallel guesses cannot slip
+    # past them. The strict one is per (email, IP): failures from one network cannot lock the
+    # admin out of another. A successful login clears it, so in the end it counts failures.
+    # The loose per-email one is never cleared, so spreading guesses over IPs stays slow.
+    await limits.check(
+        "login",
+        [
+            Check("ip", ip, settings.rate_limit_login_ip),
+            Check("email_ip", email_ip, settings.rate_limit_login_email),
+            Check("email", email, settings.rate_limit_login_email_global),
+        ],
+    )
     session = await auth.login(db, body.email, body.password)
-    return _session_response(response, _settings(request), session)
+    await limits.reset("login", "email_ip", email_ip)
+    return _session_response(response, settings, session)
 
 
 @router.post("/refresh", response_model=None, dependencies=CookieOrigin)
 async def refresh(
-    request: Request, response: Response, db: Db, auth: Auth, token: RefreshCookie = None
+    request: Request,
+    response: Response,
+    db: Db,
+    auth: Auth,
+    limits: Limits,
+    ip: ClientIp,
+    token: RefreshCookie = None,
 ) -> SessionResponse | Response:
     settings = _settings(request)
+    checks = [Check("ip", ip, settings.rate_limit_refresh_ip)]
+    if token:
+        try:
+            family = await auth.family_of(token)
+        except RedisError:
+            family = None  # the IP limit still applies; rotating needs Redis anyway
+        if family:
+            checks.append(Check("session", family, settings.rate_limit_refresh_session))
+    # Outside the try below: a rate-limited client keeps its cookie.
+    await limits.check("refresh", checks)
     try:
         if not token:
             raise INVALID_REFRESH_TOKEN
@@ -211,23 +258,49 @@ async def change_password(
     response: Response,
     db: Db,
     auth: Auth,
+    limits: Limits,
     admin: Annotated[Admin, Depends(current_admin_pending_password)],
 ) -> SessionResponse:
-    session = await auth.change_password(db, admin, body.current_password, body.new_password)
+    # Counted before the current password is checked, so it limits guesses with a stolen token.
+    # Cleared once the current password verifies, so in the end it counts wrong current
+    # passwords only: a new admin trying passwords the policy rejects is not locked out.
+    subject = str(admin.id)
+    await limits.check(
+        "change_password",
+        [Check("admin", subject, _settings(request).rate_limit_change_password_admin)],
+    )
+    try:
+        session = await auth.change_password(db, admin, body.current_password, body.new_password)
+    except ApiError as error:
+        if error.code != INVALID_CURRENT_PASSWORD.code:
+            await limits.reset("change_password", "admin", subject)
+        raise
+    await limits.reset("change_password", "admin", subject)
     return _session_response(response, _settings(request), session)
 
 
 @router.post("/token")
 async def exchange_token(
     body: TokenRequest,
+    request: Request,
     response: Response,
     auth: Auth,
+    limits: Limits,
+    ip: ClientIp,
     admin: Annotated[Admin, Depends(current_admin)],
     claims: Annotated[AccessClaims, Depends(current_access_claims)],
 ) -> TokenResponse:
     """A 5-minute token for one module backend, never outliving the token that asked. No
     refresh token: only the identity session refreshes, so several modules never rotate it at
     the same time."""
+    settings = _settings(request)
+    await limits.check(
+        "token",
+        [
+            Check("ip", ip, settings.rate_limit_token_ip),
+            Check("admin", str(admin.id), settings.rate_limit_token_admin),
+        ],
+    )
     issued = auth.exchange_token(admin, body.audience, not_after=claims.expires_at)
     no_store(response)
     return TokenResponse(

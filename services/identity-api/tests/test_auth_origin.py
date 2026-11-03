@@ -28,6 +28,10 @@ class RecordingAuth:
     async def logout(self, token: str) -> None:
         self.calls.append(("logout", token))
 
+    async def family_of(self, token: str) -> str | None:
+        # The refresh rate limit looks up the family; none is known here.
+        return None
+
     async def refresh(self, db: AsyncSession, token: str) -> AuthSession:
         self.calls.append(("refresh", token))
         raise INVALID_REFRESH_TOKEN
