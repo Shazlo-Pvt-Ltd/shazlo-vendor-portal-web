@@ -6,7 +6,12 @@ from fastapi import APIRouter, Cookie, Depends, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from identity_api.api.deps import current_admin_pending_password, get_auth_service
+from identity_api.api.deps import (
+    current_access_claims,
+    current_admin,
+    current_admin_pending_password,
+    get_auth_service,
+)
 from identity_api.core.errors import ApiError, error_response
 from identity_api.core.settings import Settings
 from identity_api.db.models import Admin
@@ -18,6 +23,7 @@ from identity_api.services.auth import (
     AuthSession,
 )
 from identity_api.services.password_policy import MAX_PASSWORD_LENGTH
+from identity_api.services.tokens import AccessClaims
 
 COOKIE_NAME = "refresh_token"
 # The browser sends the cookie to the auth endpoints only.
@@ -56,6 +62,17 @@ class SessionResponse(BaseModel):
     expires_in: int
     must_change_password: bool
     admin: AdminProfile
+
+
+class TokenRequest(BaseModel):
+    audience: str = Field(min_length=1, max_length=64)
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "Bearer"  # noqa: S105 - the scheme name, not a secret
+    expires_in: int
+    audience: str
 
 
 ORIGIN_NOT_ALLOWED = ApiError(403, "origin_not_allowed", "Request origin is not allowed")
@@ -97,7 +114,7 @@ def require_allowed_origin(request: Request) -> None:
 CookieOrigin = [Depends(require_allowed_origin)]
 
 
-def _profile(admin: Admin) -> AdminProfile:
+def profile_of(admin: Admin) -> AdminProfile:
     return AdminProfile(
         id=admin.id,
         email=admin.email,
@@ -107,7 +124,7 @@ def _profile(admin: Admin) -> AdminProfile:
     )
 
 
-def _no_store(response: Response) -> None:
+def no_store(response: Response) -> None:
     response.headers["Cache-Control"] = "no-store"
 
 
@@ -138,13 +155,13 @@ def _clear_cookie(response: Response, settings: Settings) -> None:
 def _session_response(
     response: Response, settings: Settings, session: AuthSession
 ) -> SessionResponse:
-    _no_store(response)
+    no_store(response)
     _set_cookie(response, settings, session)
     return SessionResponse(
         access_token=session.access.token,
         expires_in=settings.access_token_ttl_seconds,
         must_change_password=session.admin.must_change_password,
-        admin=_profile(session.admin),
+        admin=profile_of(session.admin),
     )
 
 
@@ -167,7 +184,7 @@ async def refresh(
         session = await auth.refresh(db, token)
     except ApiError as error:
         failure = error_response(request, error.status_code, error.code, error.message)
-        _no_store(failure)
+        no_store(failure)
         # A rejected token is of no further use: have the browser drop it. Not on a conflict:
         # the browser already holds the new cookie the concurrent request set, and clearing it
         # here would log the user out.
@@ -182,7 +199,7 @@ async def logout(request: Request, auth: Auth, token: RefreshCookie = None) -> R
     if token:
         await auth.logout(token)
     response = Response(status_code=204)
-    _no_store(response)
+    no_store(response)
     _clear_cookie(response, _settings(request))
     return response
 
@@ -198,3 +215,23 @@ async def change_password(
 ) -> SessionResponse:
     session = await auth.change_password(db, admin, body.current_password, body.new_password)
     return _session_response(response, _settings(request), session)
+
+
+@router.post("/token")
+async def exchange_token(
+    body: TokenRequest,
+    response: Response,
+    auth: Auth,
+    admin: Annotated[Admin, Depends(current_admin)],
+    claims: Annotated[AccessClaims, Depends(current_access_claims)],
+) -> TokenResponse:
+    """A 5-minute token for one module backend, never outliving the token that asked. No
+    refresh token: only the identity session refreshes, so several modules never rotate it at
+    the same time."""
+    issued = auth.exchange_token(admin, body.audience, not_after=claims.expires_at)
+    no_store(response)
+    return TokenResponse(
+        access_token=issued.token,
+        expires_in=issued.lifetime_seconds,
+        audience=body.audience,
+    )

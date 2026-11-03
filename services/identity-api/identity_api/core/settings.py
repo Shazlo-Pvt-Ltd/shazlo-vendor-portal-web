@@ -36,9 +36,19 @@ class Settings(BaseSettings):
     jwt_keys_dir: str | None = None
     jwt_keys: SecretStr | None = None
     jwt_signing_kid: str | None = None
+    # Which roles may get a token for which other service (ADR 0009), as JSON in the
+    # environment. An admin gets a token for a service if at least one of their roles is listed
+    # for it, and the token carries only those roles. Adding a service is a settings change only.
+    # identity-api itself is not listed: only login and refresh issue its tokens.
+    audience_roles: dict[str, list[str]] = {
+        "vendor-api": ["super_admin", "vendor_reviewer"],
+    }
     # Bounded so a typo cannot issue tokens that never verify (0 or negative) or that outlive
     # key rotation (the rotation runbook's waits assume at most an hour).
     access_token_ttl_seconds: int = Field(default=15 * 60, gt=0, le=3600)
+    # Lifetime of a token from `POST /v1/auth/token` (ADR 0001: about 5 minutes). It never
+    # outlives the identity-api token that asked for it.
+    exchanged_token_ttl_seconds: int = Field(default=5 * 60, ge=30, le=15 * 60)
     refresh_token_ttl_days: int = 7
     refresh_family_max_days: int = 30
     # Two tabs that refresh at the same moment send the same token, and the second one looks
@@ -64,6 +74,17 @@ class Settings(BaseSettings):
     def _split_origins(cls, value: object) -> object:
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
+
+    @field_validator("audience_roles")
+    @classmethod
+    def _check_audience_roles(cls, value: dict[str, list[str]]) -> dict[str, list[str]]:
+        if "identity-api" in value:
+            raise ValueError(
+                "must not include identity-api: only login and refresh issue its tokens"
+            )
+        if any(not audience or not roles for audience, roles in value.items()):
+            raise ValueError("every audience needs a name and at least one role")
         return value
 
     @field_validator("database_url")

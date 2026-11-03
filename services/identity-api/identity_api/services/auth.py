@@ -16,13 +16,16 @@ from identity_api.services.refresh_tokens import (
     RefreshTokenStore,
     StaleSessionError,
 )
-from identity_api.services.tokens import IssuedToken, TokenIssuer
+from identity_api.services.tokens import IssuedToken, TokenIssuer, TokenWindowClosedError
 
 # The audience of tokens the shell holds for identity-api itself (ADR 0009).
 SELF_AUDIENCE = "identity-api"
 
 INVALID_CREDENTIALS = ApiError(401, "invalid_credentials", "Invalid email or password")
 INVALID_REFRESH_TOKEN = ApiError(401, "invalid_refresh_token", "Invalid or expired refresh token")
+EXPIRED_ACCESS_TOKEN = ApiError(
+    401, "unauthorized", "Missing or invalid access token", headers={"WWW-Authenticate": "Bearer"}
+)
 # Another request (usually a second tab) used the same refresh token a moment ago. The session
 # is intact and the browser already has that request's new cookie, so the client retries.
 REFRESH_CONFLICT = ApiError(
@@ -122,6 +125,40 @@ class AuthService:
         except StaleSessionError as error:
             # A concurrent password change or deactivation won; this one's session is void.
             raise INVALID_CREDENTIALS from error
+
+    def exchange_token(self, admin: Admin, audience: str, not_after: datetime) -> IssuedToken:
+        """A short-lived token for exactly one other service, if one of the admin's roles is
+        allowed there. It carries only those allowed roles.
+
+        identity-api itself is never an exchange audience: only login and refresh issue its
+        tokens, so a stolen access token cannot renew itself without the refresh cookie.
+
+        Roles are read from the database, not from the token that asked, so a change of roles
+        applies at once to new exchanges. `not_after` is the asking token's `exp`; the new token
+        never outlives it.
+        """
+        if audience == SELF_AUDIENCE:
+            raise ApiError(
+                400,
+                "audience_not_exchangeable",
+                "identity-api tokens come from login and refresh only",
+            )
+        allowed = self._settings.audience_roles.get(audience)
+        if allowed is None:
+            raise ApiError(400, "unknown_audience", "Unknown audience")
+        roles = sorted({role.name for role in admin.roles} & set(allowed))
+        if not roles:
+            raise ApiError(403, "audience_not_allowed", "Your roles do not allow this audience")
+        try:
+            return self._issuer.issue(
+                subject=admin.id,
+                roles=roles,
+                audience=audience,
+                ttl_seconds=self._settings.exchanged_token_ttl_seconds,
+                not_after=not_after,
+            )
+        except TokenWindowClosedError as error:
+            raise EXPIRED_ACCESS_TOKEN from error
 
     async def _start_session(self, admin: Admin, generation: int) -> AuthSession:
         refresh = await self._refresh_tokens.start_family(admin.id, generation)
