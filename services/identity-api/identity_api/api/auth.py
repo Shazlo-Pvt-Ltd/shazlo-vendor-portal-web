@@ -5,9 +5,11 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Cookie, Depends, Request, Response
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisError
+from shazlo_auth import AccessClaims
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from identity_api.api.deps import (
+    UNAUTHORIZED,
     current_access_claims,
     current_admin,
     current_admin_pending_password,
@@ -28,7 +30,6 @@ from identity_api.services.auth import (
 )
 from identity_api.services.password_policy import MAX_PASSWORD_LENGTH
 from identity_api.services.rate_limit import Check, RateLimitGuard
-from identity_api.services.tokens import AccessClaims
 
 COOKIE_NAME = "refresh_token"
 # The browser sends the cookie to the auth endpoints only.
@@ -301,6 +302,8 @@ async def exchange_token(
             Check("admin", str(admin.id), settings.rate_limit_token_admin),
         ],
     )
+    if claims.expires_at is None:  # the shared verifier always sets it from `exp`
+        raise UNAUTHORIZED
     issued = auth.exchange_token(admin, body.audience, not_after=claims.expires_at)
     no_store(response)
     return TokenResponse(
