@@ -29,6 +29,7 @@ def test_defaults() -> None:
     assert s.cookie_secure is True
     assert s.cookie_samesite == "strict"
     assert s.access_token_ttl_seconds == 900
+    assert s.refresh_reuse_grace_seconds == 10
 
 
 def test_cors_origins_are_comma_separated(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -51,6 +52,8 @@ def test_environment_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
         {"database_url": "mysql://x"},
         {"redis_url": "http://localhost"},
         {"env": "staging"},
+        {"refresh_reuse_grace_seconds": -1},
+        {"refresh_reuse_grace_seconds": 61},
         {"access_token_ttl_seconds": 0},
         {"access_token_ttl_seconds": -60},
         {"access_token_ttl_seconds": 3601},
@@ -59,6 +62,20 @@ def test_environment_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_invalid_values_are_rejected(overrides: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
         make(**overrides)
+
+
+def test_samesite_none_requires_secure() -> None:
+    with pytest.raises(ValidationError, match="cookie_secure"):
+        make(cookie_samesite="none", cookie_secure=False)
+    s = make(cookie_samesite="none", cookie_secure=True)
+    assert s.cookie_samesite == "none"
+    # Lax or strict without Secure stays possible for local http development.
+    assert make(cookie_samesite="lax", cookie_secure=False).cookie_secure is False
+
+
+@pytest.mark.parametrize("seconds", [0, 60])
+def test_reuse_grace_window_bounds_are_inclusive(seconds: int) -> None:
+    assert make(refresh_reuse_grace_seconds=seconds).refresh_reuse_grace_seconds == seconds
 
 
 @pytest.mark.parametrize("ttl", [1, 3600])
