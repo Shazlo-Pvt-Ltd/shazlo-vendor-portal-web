@@ -87,3 +87,45 @@ jobs:
           path: ${{ matrix.service == 'py-auth' && 'packages/py-auth' || format('services/{0}', matrix.service) }}/reports/
           retention-days: 14
           if-no-files-found: warn
+
+  # Follows README.md (Local development) with the real compose file and image: the unit tests
+  # above never build the Dockerfile, so a broken build context would otherwise pass CI.
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Prepare .env
+        run: |
+          cp .env.example .env
+          sed -i 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=compose-ci/' .env
+      - run: docker compose up -d --wait
+      - run: docker compose --profile identity build identity-api
+      - name: Generate a signing key into .env
+        run: |
+          line=$(docker compose --profile identity run --rm --no-deps -T identity-api python -c "import json; from identity_api.services.keys import generate_private_key, new_kid, private_key_pem; print('IDENTITY_JWT_KEYS=' + json.dumps({new_kid(): private_key_pem(generate_private_key()).decode()}, separators=(',', ':')))")
+          grep -v '^IDENTITY_JWT_KEYS=' .env > .env.new
+          printf '%s\n' "$line" >> .env.new
+          mv .env.new .env
+      - run: docker compose --profile identity run --rm identity-api alembic upgrade head
+      - run: >-
+          docker compose --profile identity run --rm
+          -e SEED_ADMIN_EMAIL=admin@shazlo.test -e SEED_ADMIN_PASSWORD=compose-ci-password-1
+          identity-api python -m identity_api.cli seed
+      - run: docker compose --profile identity up -d --wait
+      - name: Ready and sign-in
+        run: |
+          curl -fsS localhost:8001/ready
+          curl -fsS localhost:8001/.well-known/jwks.json | grep -q '"kid"'
+          curl -fsS localhost:8001/v1/auth/login -H 'content-type: application/json' \
+            -d '{"email": "admin@shazlo.test", "password": "compose-ci-password-1"}' \
+            | grep -q '"access_token"'
+      - name: Logs
+        if: failure()
+        run: docker compose --profile identity logs
+      - name: Clean up
+        if: always()
+        run: docker compose --profile identity down -v

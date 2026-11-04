@@ -33,8 +33,15 @@ services:
       timeout: 3s
       retries: 10
 
+  # Opt-in (`--profile identity`): it needs a signing key in IDENTITY_JWT_KEYS, so a plain
+  # `docker compose up -d` starts only Postgres and Redis. See README.md, Local development.
   identity-api:
-    build: ./services/identity-api
+    profiles: ["identity"]
+    build:
+      # The image also contains packages/py-auth, so the context is the repository root
+      # (services/identity-api/Dockerfile.dockerignore limits what is sent).
+      context: .
+      dockerfile: services/identity-api/Dockerfile
     restart: unless-stopped
     depends_on:
       postgres:
@@ -47,6 +54,11 @@ services:
       REDIS_URL: redis://redis:6379/0
       CORS_ALLOWED_ORIGINS: ${IDENTITY_CORS_ALLOWED_ORIGINS:-http://localhost:5173}
       JWT_ISSUER: http://localhost:${IDENTITY_API_PORT:-8001}
+      # Keys come from the environment, not a bind mount: a mounted PEM fails the private-key
+      # file-mode check (Docker Desktop shows it as world readable) or is unreadable for the
+      # container user (Linux, different uid).
+      JWT_KEYS: ${IDENTITY_JWT_KEYS:-}
+      JWT_SIGNING_KID: ${IDENTITY_JWT_SIGNING_KID:-}
     ports:
       - "${IDENTITY_API_PORT:-8001}:8001"
 
