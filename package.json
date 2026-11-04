@@ -24,7 +24,7 @@
     "ajv-formats": "3.0.1",
     "eslint": "^9.39.0",
     "jsdom": "26.1.0",
-    "mongodb-memory-server-core": "10.4.3",
+    "mongodb-memory-server-core": "11.3.0",
     "typescript": "^5.9.0",
     "typescript-eslint": "^8.46.0",
     "vitest": "4.1.12"
