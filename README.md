@@ -29,6 +29,7 @@ Plan, phases and decisions: [docs/ROADMAP.md](docs/ROADMAP.md). Architecture dec
 | `apps/shazlo-one/` | React + TS: admin shell (login, nav, iframe host) |
 | `apps/vendor-admin/` | React + TS: vendor review module, loaded in a Shazlo-One iframe |
 | `packages/ui/` | Shared MUI theme and tokens |
+| `packages/py-auth/` | Shared Python package: access-token verifier, JWKS client, FastAPI `require_role` |
 | `docs/` | Roadmap and ADRs |
 | `app/`, `backend/` | **Legacy** consumer landing/waitlist, Express + MongoDB. Untouched until Phase 8 |
 
@@ -36,17 +37,37 @@ The new folders are placeholders until their phase starts; see the roadmap.
 
 ## Local development
 
-Postgres 16 runs in docker-compose:
+Postgres 16 and Redis 7 run in docker-compose:
 
 ```bash
 cp .env.example .env        # then set POSTGRES_PASSWORD
 docker compose up -d
-docker compose ps           # postgres should report "healthy"
+docker compose ps           # postgres and redis should report "healthy"
 ```
 
 On first start it creates one database per service plus a test database for each: `identity`, `identity_test`, `vendor`, `vendor_test`. Connection string pattern: `postgresql://<user>:<password>@localhost:5432/<db>`.
 
+Redis holds identity-api's refresh tokens (admin sessions) and rate-limit counters. It runs with AOF persistence (`appendfsync everysec`) and a named volume, so a restart or redeploy does not sign admins out. Locally it is published on `127.0.0.1` only and has no password. In production use a managed Redis, or one with persistence enabled, with a password and no public port.
+
 The init script runs only when the data volume is created. To recreate the databases: `docker compose down -v && docker compose up -d` (this deletes all local data).
+
+identity-api can also run in a container, behind the `identity` profile. To work on its code, run it on the host instead ([its README](services/identity-api/README.md)). The container needs a signing key in `.env`; make one with the image itself and copy the printed `IDENTITY_JWT_KEYS=...` line over the empty one in `.env`:
+
+```bash
+docker compose --profile identity build identity-api
+docker compose --profile identity run --rm --no-deps -T identity-api python -c "import json; from identity_api.services.keys import generate_private_key, new_kid, private_key_pem; print('IDENTITY_JWT_KEYS=' + json.dumps({new_kid(): private_key_pem(generate_private_key()).decode()}, separators=(',', ':')))"
+```
+
+Then create the schema, seed the first admin and start it:
+
+```bash
+docker compose --profile identity run --rm identity-api alembic upgrade head
+docker compose --profile identity run --rm -e SEED_ADMIN_EMAIL=admin@shazlo.test -e SEED_ADMIN_PASSWORD='<at least 12 characters>' identity-api python -m identity_api.cli seed
+docker compose --profile identity up -d --wait
+curl localhost:8001/ready   # {"status":"ok", ...}
+```
+
+The key is a local development key: keep it out of git (`.env` is ignored) and never reuse it elsewhere.
 
 For the legacy apps, see `app/README.md` and `backend/README.md` and copy each `.env.example` to `.env`.
 

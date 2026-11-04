@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 
 from identity_api.core.settings import Settings
+from identity_api.db.session import libpq_url
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ async def _run(name: str, check: ReadinessCheck) -> tuple[str, str]:
 
 def default_readiness_checks(settings: Settings) -> dict[str, ReadinessCheck]:
     async def postgres() -> None:
-        dsn = settings.database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+        dsn = libpq_url(settings.database_url)
         connection = await asyncpg.connect(dsn, timeout=CHECK_TIMEOUT_SECONDS)
         try:
             await connection.execute("SELECT 1")
