@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 from sqlalchemy import func, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vendor_api.db.base import Base
@@ -394,7 +394,11 @@ async def test_an_admin_or_vendor_event_needs_an_actor_id(
     [
         ({"to_status": "banned"}, "ck_vendor_status_events_to_status_values"),
         ({"from_status": "banned"}, "ck_vendor_status_events_from_status_values"),
-        ({"actor_type": "robot"}, "ck_vendor_status_events_actor_type_values"),
+        # An actor id is given, so only the actor type is wrong (not the actor-id rule as well).
+        (
+            {"actor_type": "robot", "actor_id": uuid.uuid4()},
+            "ck_vendor_status_events_actor_type_values",
+        ),
     ],
 )
 async def test_unknown_statuses_and_actor_types_are_refused(
@@ -497,7 +501,7 @@ async def test_token_hash_is_unique(session: AsyncSession) -> None:
 
 @pytest.mark.parametrize(
     "token_hash",
-    ["", "a" * 63, "a" * 65, "A" * 64, "g" * 64, "plain-token-value", "a" * 63 + " "],
+    ["", "a" * 63, "A" * 64, "g" * 64, "plain-token-value", "a" * 63 + " "],
 )
 async def test_only_a_sha256_hex_digest_can_be_stored(
     session: AsyncSession, token_hash: str
@@ -505,6 +509,13 @@ async def test_only_a_sha256_hex_digest_can_be_stored(
     user = await a_user(session)
     session.add(make_token(user, token_hash=token_hash))
     with pytest.raises(IntegrityError, match="ck_auth_tokens_token_hash_sha256_hex"):
+        await session.flush()
+
+
+async def test_a_value_longer_than_a_digest_does_not_fit(session: AsyncSession) -> None:
+    user = await a_user(session)
+    session.add(make_token(user, token_hash="a" * 65))
+    with pytest.raises(DBAPIError, match="too long"):
         await session.flush()
 
 
