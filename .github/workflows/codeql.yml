@@ -31,7 +31,7 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@793b778da9c9275a0f276522b27cb5fc14bba279 # v4
+        uses: github/codeql-action/init@064910ba27454a2e49b06301d31c8bdb6260942f # v4
         with:
           languages: ${{ matrix.language }}
           build-mode: none
