@@ -3,28 +3,15 @@ import secrets
 from functools import lru_cache
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, BeforeValidator, Field, SecretStr, field_validator, model_validator
+from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from shazlo_security.rate_limit import RateRule
 
 from identity_api.db.session import POSTGRES_SCHEMES
 
 RATE_LIMITED_ENDPOINTS = frozenset({"login", "refresh", "token", "change_password"})
 # HMAC-SHA256 keys shorter than this are guessable enough to reverse the hashed emails in Redis.
 MIN_HMAC_KEY_LENGTH = 32
-
-
-class RateRule(BaseModel, frozen=True):
-    """At most `limit` hits per `window_seconds`."""
-
-    limit: int
-    window_seconds: int
-
-    @field_validator("limit", "window_seconds")
-    @classmethod
-    def _positive(cls, value: int) -> int:
-        if value < 1:
-            raise ValueError("must be at least 1")
-        return value
 
 
 def _parse_rule(value: object) -> object:

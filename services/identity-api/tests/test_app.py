@@ -1,9 +1,12 @@
 import asyncio
 import json
+from typing import cast
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
+from shazlo_security.rate_limit import RateLimited, RateLimiterUnavailable
 
 from identity_api.api import health
 from identity_api.app import create_app
@@ -139,3 +142,33 @@ def test_logs_are_json_with_request_id(
     assert access["request_id"] == "log-me"
     assert access["path"] == "/health"
     assert access["status"] == 200
+
+
+def test_rate_limited_is_a_429_with_retry_after(settings: Settings) -> None:
+    client = make_client(settings)
+
+    async def limited() -> None:
+        raise RateLimited(42)
+
+    cast(FastAPI, client.app).add_api_route("/limited", limited)
+
+    response = client.get("/limited")
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "42"
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.json()["error"]["code"] == "rate_limited"
+    assert len(response.headers["X-Request-ID"]) == 32
+
+
+def test_rate_limiter_unavailable_is_a_503(settings: Settings) -> None:
+    client = make_client(settings)
+
+    async def unavailable() -> None:
+        raise RateLimiterUnavailable("login")
+
+    cast(FastAPI, client.app).add_api_route("/unavailable", unavailable)
+
+    response = client.get("/unavailable")
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "rate_limiter_unavailable"
+    assert "login" not in response.text

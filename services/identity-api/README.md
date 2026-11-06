@@ -25,7 +25,7 @@ The first start creates the `identity` and `identity_test` databases.
 ```sh
 cd services/identity-api
 python -m venv .venv && . .venv/bin/activate
-pip install -r requirements-shared.txt   # packages/py-auth, from the repository path
+pip install -r requirements-shared.txt   # packages/py-auth and py-security, from the repository path
 pip install -e '.[dev]'
 cp .env.example .env
 ```
@@ -88,7 +88,7 @@ SEED_ADMIN_EMAIL=admin@example.com SEED_ADMIN_PASSWORD='<at least 12 characters>
 - It creates the `super_admin` and `vendor_reviewer` roles and one admin who **must change the password at the first login**.
 - It is safe to run again: existing roles and an existing admin are left untouched, so a changed `SEED_ADMIN_PASSWORD` never overwrites a password someone has since set.
 - The password follows the policy (`PASSWORD_MIN_LENGTH`, default 12; at most 128; not the email) and is hashed with Argon2id. The password and its hash are never printed.
-- `ARGON2_MEMORY_COST_KIB`, `ARGON2_TIME_COST` and `ARGON2_PARALLELISM` set the hashing cost (OWASP baseline by default). Raising them rehashes existing passwords on the next successful login.
+- `ARGON2_MEMORY_COST_KIB`, `ARGON2_TIME_COST` and `ARGON2_PARALLELISM` set the hashing cost (OWASP baseline by default). Raising them rehashes existing passwords on the next successful login. Hashing itself is `packages/py-security`.
 
 ## Layout
 
@@ -190,7 +190,7 @@ The live reference is the OpenAPI document at `/docs` (dev). Every error is `{"e
 
 ## Rate limiting
 
-Fixed-window counters in Redis (`rl:<endpoint>:<scope>:<hash>`), so the limits hold across instances. The limiter is a small interface (`services/rate_limit.py`), so the store can change. Over a limit the answer is `429 rate_limited` with `Retry-After` (seconds until the window resets, taken from the key's TTL). A fixed window lets a burst of up to twice the limit pass across a window boundary, which is fine for brute-force protection.
+Fixed-window counters in Redis (`identity:rl:<endpoint>:<scope>:<hash>`), so the limits hold across instances. The limiter lives in [`packages/py-security`](../../packages/py-security/README.md), shared with vendor-api; it is a small interface, so the store can change. The prefix keeps the counters apart from other services on the same Redis. Over a limit the answer is `429 rate_limited` with `Retry-After` (seconds until the window resets, taken from the key's TTL). A fixed window lets a burst of up to twice the limit pass across a window boundary, which is fine for brute-force protection.
 
 | Endpoint | Limited by |
 |---|---|
@@ -237,6 +237,6 @@ The suite drops and recreates the schema (`alembic downgrade base` then `upgrade
 docker build -f services/identity-api/Dockerfile -t identity-api .
 ```
 
-Run it from the repository root: the build context must include `packages/py-auth`.
+Run it from the repository root: the build context must include `packages/py-auth` and `packages/py-security`.
 
 Runs as a non-root user on port 8001 and has a healthcheck on `/health`.

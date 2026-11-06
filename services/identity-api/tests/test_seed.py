@@ -1,12 +1,13 @@
 import pytest
+from shazlo_security.passwords import PasswordService
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from identity_api import cli
 from identity_api.cli import SeedError, seed_admin
+from identity_api.core.security import password_config
 from identity_api.core.settings import Settings
 from identity_api.db.models import SUPER_ADMIN, VENDOR_REVIEWER, Admin, Role
-from identity_api.services.passwords import PasswordService
 
 EMAIL = "Root@Example.com"
 PASSWORD = "correct horse battery"
@@ -15,7 +16,7 @@ PASSWORD = "correct horse battery"
 @pytest.fixture
 def passwords(settings: Settings) -> PasswordService:
     cheap = {"argon2_memory_cost_kib": 8, "argon2_time_cost": 1}
-    return PasswordService(settings.model_copy(update=cheap))
+    return PasswordService(password_config(settings.model_copy(update=cheap)))
 
 
 async def seed(session: AsyncSession, passwords: PasswordService, **overrides: str) -> bool:
