@@ -5,6 +5,7 @@ from typing import Annotated, cast
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field, StringConstraints
 from shazlo_auth.fastapi import AuthenticatedAdmin
+from shazlo_security.passwords import MAX_PASSWORD_LENGTH
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from identity_api.api.auth import no_store
@@ -12,7 +13,6 @@ from identity_api.api.deps import require_role
 from identity_api.db.models import SUPER_ADMIN, Admin, Role
 from identity_api.db.session import get_session
 from identity_api.services.admins import AdminService
-from identity_api.services.password_policy import MAX_PASSWORD_LENGTH
 
 # Every endpoint here is for super_admin only (ADR 0009). One dependency object, so FastAPI
 # runs the check once per request even where an endpoint also asks for the acting admin.

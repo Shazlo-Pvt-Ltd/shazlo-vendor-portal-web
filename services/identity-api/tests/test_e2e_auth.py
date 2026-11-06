@@ -17,14 +17,15 @@ import jwt
 import pytest
 from redis.asyncio import Redis
 from shazlo_auth import InvalidTokenError, JwksClient, TokenVerifier
+from shazlo_security.passwords import PasswordService
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from identity_api.app import create_app
 from identity_api.cli import seed_admin
+from identity_api.core.security import password_config
 from identity_api.core.settings import Settings
 from identity_api.db.session import get_session
-from identity_api.services.passwords import PasswordService
 
 ISSUER = "https://identity.test"
 # The shell's origin: refresh and logout require an allowed Origin (CSRF guard).
@@ -119,7 +120,7 @@ async def test_the_whole_auth_flow(
         # 1. The seed script makes the first super_admin, who must change the password.
         created = await seed_admin(
             session,
-            PasswordService(e2e_settings),
+            PasswordService(password_config(e2e_settings)),
             email=SEED_EMAIL.upper(),
             password=SEED_PASSWORD,
             min_password_length=e2e_settings.password_min_length,
@@ -245,7 +246,7 @@ async def test_key_rotation_with_a_token_in_flight(
 
     await seed_admin(
         session,
-        PasswordService(e2e_settings),
+        PasswordService(password_config(e2e_settings)),
         email=SEED_EMAIL,
         password=SEED_PASSWORD,
         min_password_length=e2e_settings.password_min_length,

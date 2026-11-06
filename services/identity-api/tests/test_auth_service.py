@@ -11,14 +11,15 @@ from typing import Any, cast
 
 import pytest
 from fakeredis import FakeAsyncRedis
+from shazlo_security.passwords import PasswordCheck, PasswordService
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from identity_api.core.errors import ApiError
+from identity_api.core.security import password_config
 from identity_api.core.settings import Settings
 from identity_api.db.models import Admin
 from identity_api.services.auth import AuthService, AuthSession
 from identity_api.services.keys import load_keyring
-from identity_api.services.passwords import PasswordCheck, PasswordService
 from identity_api.services.refresh_tokens import (
     InvalidRefreshTokenError,
     RefreshSession,
@@ -94,7 +95,7 @@ async def redis() -> AsyncIterator[FakeAsyncRedis]:
 
 @pytest.fixture
 def passwords(fast_settings: Settings) -> PasswordService:
-    return PasswordService(fast_settings)
+    return PasswordService(password_config(fast_settings))
 
 
 @pytest.fixture

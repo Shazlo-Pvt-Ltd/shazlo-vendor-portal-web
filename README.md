@@ -30,6 +30,7 @@ Plan, phases and decisions: [docs/ROADMAP.md](docs/ROADMAP.md). Architecture dec
 | `apps/vendor-admin/` | React + TS: vendor review module, loaded in a Shazlo-One iframe |
 | `packages/ui/` | Shared MUI theme and tokens |
 | `packages/py-auth/` | Shared Python package: access-token verifier, JWKS client, FastAPI `require_role` |
+| `packages/py-security/` | Shared Python package: password hashing, rate limiter, client IP (ADR 0010) |
 | `docs/` | Roadmap and ADRs |
 | `app/`, `backend/` | **Legacy** consumer landing/waitlist, Express + MongoDB. Untouched until Phase 8 |
 

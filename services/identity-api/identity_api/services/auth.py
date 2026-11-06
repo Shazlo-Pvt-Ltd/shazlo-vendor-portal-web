@@ -1,14 +1,13 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from shazlo_security.passwords import PasswordPolicyError, PasswordService, check_password
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from identity_api.core.errors import ApiError
 from identity_api.core.settings import Settings
 from identity_api.db.models import Admin
-from identity_api.services.password_policy import PasswordPolicyError, check_password
-from identity_api.services.passwords import PasswordService
 from identity_api.services.refresh_tokens import (
     InvalidRefreshTokenError,
     RefreshConflictError,

@@ -3,16 +3,17 @@ from typing import Any, cast
 
 import pytest
 from pydantic import ValidationError
+from shazlo_security.passwords import PasswordService
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from identity_api.api.admins import CreateAdminRequest
 from identity_api.core.errors import ApiError
+from identity_api.core.security import password_config
 from identity_api.core.settings import Settings
 from identity_api.db.models import Admin, Role
 from identity_api.services.admins import AdminService, violated_constraint
-from identity_api.services.passwords import PasswordService
 from identity_api.services.refresh_tokens import RefreshTokenStore
 
 
@@ -58,7 +59,7 @@ class FailingCommitSession:
 @pytest.fixture
 def service(settings: Settings, override: Callable[..., Settings]) -> AdminService:
     fast = override(settings, argon2_memory_cost_kib=8, argon2_time_cost=1)
-    return AdminService(fast, PasswordService(fast), cast(RefreshTokenStore, None))
+    return AdminService(fast, PasswordService(password_config(fast)), cast(RefreshTokenStore, None))
 
 
 async def create(service: AdminService, db: FailingCommitSession) -> Admin:
