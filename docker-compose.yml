@@ -34,9 +34,10 @@ services:
       retries: 10
 
   # Opt-in (`--profile identity`): it needs a signing key in IDENTITY_JWT_KEYS, so a plain
-  # `docker compose up -d` starts only Postgres and Redis. See README.md, Local development.
+  # `docker compose up -d` starts only Postgres, Redis and Mailpit. `--profile full` starts
+  # both APIs. See README.md, Local development.
   identity-api:
-    profiles: ["identity"]
+    profiles: ["identity", "full"]
     build:
       # The image also contains packages/py-auth, so the context is the repository root
       # (services/identity-api/Dockerfile.dockerignore limits what is sent).
@@ -61,6 +62,45 @@ services:
       JWT_SIGNING_KID: ${IDENTITY_JWT_SIGNING_KID:-}
     ports:
       - "${IDENTITY_API_PORT:-8001}:8001"
+
+  # Opt-in (`--profile vendor`, or `--profile full` with identity-api). It needs no signing key
+  # yet; vendor login adds one (then it is set like IDENTITY_JWT_KEYS above).
+  vendor-api:
+    profiles: ["vendor", "full"]
+    build:
+      # Built from the repository root so shared packages can be added to the image later
+      # (services/vendor-api/Dockerfile.dockerignore limits what is sent).
+      context: .
+      dockerfile: services/vendor-api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      ENV: dev
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-shazlo}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/vendor
+      # Database 1: identity-api uses database 0 of the same Redis.
+      REDIS_URL: redis://redis:6379/1
+      CORS_ALLOWED_ORIGINS: ${VENDOR_CORS_ALLOWED_ORIGINS:-http://localhost:5174}
+      JWT_ISSUER: http://localhost:${VENDOR_API_PORT:-8002}
+    ports:
+      - "${VENDOR_API_PORT:-8002}:8002"
+
+  # Catches every email the services send, so signup and invite links can be read locally.
+  # Nothing leaves the machine. Services in compose send to mailpit:1025.
+  mailpit:
+    image: axllent/mailpit:v1.21.8
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 volumes:
   postgres-data:

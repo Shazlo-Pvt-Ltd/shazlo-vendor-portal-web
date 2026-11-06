@@ -51,7 +51,7 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `COOKIE_SECURE` / `COOKIE_SAMESITE` / `COOKIE_DOMAIN` | `true` / `strict` / unset | refresh-token cookie; `none` requires `COOKIE_SECURE=true` |
 | `JWT_ISSUER` | `http://localhost:8002` | `iss` of the tokens vendor-api issues |
 
-identity-api is on port 8001 and vendor-api on 8002, so both can run side by side. Their cookie names and Redis key prefixes differ (ADR 0010).
+identity-api is on port 8001 and vendor-api on 8002, so both can run side by side. In docker-compose (`--profile vendor`) vendor-api uses Redis database 1; see the root README, Local development. Their cookie names and Redis key prefixes differ (ADR 0010).
 
 ## Database
 
