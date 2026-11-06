@@ -1,0 +1,6 @@
+# Shared packages from this repository. Install from services/identity-api, before the service:
+#   pip install -r requirements-shared.txt && pip install -e '.[dev]'
+# They are not in pyproject.toml's dependencies on purpose: a plain `shazlo-auth` requirement
+# could be satisfied from PyPI, where the name is not ours (dependency confusion). Installing
+# from the path means no index is ever asked for it. `compat` keeps it visible to mypy.
+-e ../../packages/py-auth[fastapi] --config-settings editable_mode=compat
