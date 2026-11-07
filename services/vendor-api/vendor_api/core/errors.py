@@ -70,8 +70,11 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        # Pydantic echoes the rejected `input`; for a model-level check that is the whole body,
+        # passwords included. Say where and why, never what was sent.
+        details = [{key: value for key, value in e.items() if key != "input"} for e in exc.errors()]
         return error_response(
-            request, 422, "validation_error", "Request validation failed", details=exc.errors()
+            request, 422, "validation_error", "Request validation failed", details=details
         )
 
     @app.exception_handler(Exception)

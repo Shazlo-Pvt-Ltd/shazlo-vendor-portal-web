@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 from fastapi import BackgroundTasks
 
@@ -8,6 +9,16 @@ from vendor_api.services.email.senders import EmailSender
 from vendor_api.services.email.templates import EmailTemplate
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class OutgoingEmail:
+    """An email a flow decided to send. The flow returns it after its transaction committed;
+    the route queues it, so nothing is sent for work that was rolled back."""
+
+    to: str
+    template: EmailTemplate
+    context: Mapping[str, object] = field(default_factory=dict)
 
 
 class EmailService:
@@ -36,6 +47,10 @@ class EmailService:
         context: Mapping[str, object],
     ) -> None:
         background.add_task(self.deliver, to, template, dict(context))
+
+    def queue(self, background: BackgroundTasks, email: OutgoingEmail | None) -> None:
+        if email is not None:
+            self.send_in_background(background, email.to, email.template, email.context)
 
     async def deliver(
         self, to: str, template: EmailTemplate, context: Mapping[str, object]

@@ -7,7 +7,7 @@ from vendor_api.services.email.senders import (
     SmtpEmailSender,
     build_sender,
 )
-from vendor_api.services.email.service import EmailService
+from vendor_api.services.email.service import EmailService, OutgoingEmail
 from vendor_api.services.email.templates import (
     EmailContextError,
     EmailTemplate,
@@ -21,6 +21,7 @@ __all__ = [
     "EmailSender",
     "EmailService",
     "EmailTemplate",
+    "OutgoingEmail",
     "RenderedEmail",
     "SmtpConfig",
     "SmtpEmailSender",

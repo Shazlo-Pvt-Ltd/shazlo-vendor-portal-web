@@ -4,9 +4,18 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from shazlo_security.keys import KeyRing, KeyRingConfig
+from shazlo_security.passwords import PasswordConfig
 from shazlo_security.tokens import TokenIssuer
 
 from vendor_api.core.settings import Settings
+
+
+def password_config(settings: Settings) -> PasswordConfig:
+    return PasswordConfig(
+        time_cost=settings.argon2_time_cost,
+        memory_cost_kib=settings.argon2_memory_cost_kib,
+        parallelism=settings.argon2_parallelism,
+    )
 
 
 def key_ring_config(settings: Settings) -> KeyRingConfig:
