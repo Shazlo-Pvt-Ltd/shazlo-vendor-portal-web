@@ -4,14 +4,17 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import Redis
+from shazlo_security.keys import load_keyring
 
 from vendor_api import __version__
-from vendor_api.api import health
+from vendor_api.api import health, jwks
 from vendor_api.core.errors import register_exception_handlers
 from vendor_api.core.logging import configure_logging
 from vendor_api.core.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
+from vendor_api.core.security import key_ring_config, token_issuer
 from vendor_api.core.settings import Settings, get_settings
 from vendor_api.db.session import create_engine, create_sessionmaker
+from vendor_api.services.tokens import VendorTokens
 
 
 @asynccontextmanager
@@ -40,6 +43,13 @@ def create_app(
         lifespan=lifespan,
     )
     app.state.settings = settings
+    # Keys are loaded now, so a missing or broken key stops the service at startup.
+    app.state.keyring = load_keyring(key_ring_config(settings))
+    app.state.vendor_tokens = VendorTokens(
+        token_issuer(settings, app.state.keyring),
+        app.state.keyring,
+        issuer_url=settings.jwt_issuer,
+    )
     # The engine and the Redis client connect lazily, so creating the app does not need either.
     app.state.engine = create_engine(settings.database_url)
     app.state.sessionmaker = create_sessionmaker(app.state.engine)
@@ -63,6 +73,7 @@ def create_app(
     register_exception_handlers(app)
 
     app.include_router(health.router)
+    app.include_router(jwks.router)
     v1 = APIRouter(prefix="/v1")
     app.include_router(v1)  # feature routers are added here
     return app

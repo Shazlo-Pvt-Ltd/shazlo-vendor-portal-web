@@ -1,13 +1,14 @@
-# Build from the repository root, so shared packages (packages/py-auth, packages/py-security) can
-# be added to the image without changing how it is built:
+# Build from the repository root: the image includes packages/py-auth and packages/py-security.
 #   docker build -f services/vendor-api/Dockerfile -t vendor-api .
-# Shared packages are built from the repository copy, never fetched from an index (see ADR 0010);
-# the issue that first imports one adds its COPY line and its path to the `pip wheel` command.
+# Shared packages are built from the repository copy, never fetched from an index (see ADR 0010):
+# vendor-api's pyproject does not list them (see requirements-shared.txt).
 FROM python:3.12-slim AS builder
 WORKDIR /build
+COPY packages/py-auth ./packages/py-auth
+COPY packages/py-security ./packages/py-security
 COPY services/vendor-api/pyproject.toml ./services/vendor-api/
 COPY services/vendor-api/vendor_api ./services/vendor-api/vendor_api
-RUN pip wheel --no-cache-dir --wheel-dir /wheels ./services/vendor-api
+RUN pip wheel --no-cache-dir --wheel-dir /wheels ./packages/py-auth ./packages/py-security ./services/vendor-api
 
 FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1

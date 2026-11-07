@@ -123,9 +123,26 @@ jobs:
           curl -fsS localhost:8001/v1/auth/login -H 'content-type: application/json' \
             -d '{"email": "admin@shazlo.test", "password": "compose-ci-password-1"}' \
             | grep -q '"access_token"'
+      # vendor-api signs its own tokens, so it gets its own key (never identity-api's).
+      - run: docker compose --profile vendor build vendor-api
+      - name: Generate vendor-api's signing key into .env
+        run: |
+          line=$(docker compose --profile vendor run --rm --no-deps -T vendor-api python -c "import json; from shazlo_security.keys import generate_private_key, new_kid, private_key_pem; print('VENDOR_JWT_KEYS=' + json.dumps({new_kid(): private_key_pem(generate_private_key()).decode()}, separators=(',', ':')))")
+          grep -v '^VENDOR_JWT_KEYS=' .env > .env.new
+          printf '%s\n' "$line" >> .env.new
+          mv .env.new .env
+      - run: docker compose --profile vendor run --rm vendor-api alembic upgrade head
+      - run: docker compose --profile vendor up -d --wait
+      - name: vendor-api ready, and its key is not identity-api's
+        run: |
+          curl -fsS localhost:8002/ready
+          curl -fsS localhost:8002/.well-known/jwks.json | grep -q '"kid"'
+          vendor_kid=$(curl -fsS localhost:8002/.well-known/jwks.json | python3 -c "import json,sys; print(json.load(sys.stdin)['keys'][0]['kid'])")
+          identity_kid=$(curl -fsS localhost:8001/.well-known/jwks.json | python3 -c "import json,sys; print(json.load(sys.stdin)['keys'][0]['kid'])")
+          test "$vendor_kid" != "$identity_kid"
       - name: Logs
         if: failure()
-        run: docker compose --profile identity logs
+        run: docker compose --profile full logs
       - name: Clean up
         if: always()
-        run: docker compose --profile identity down -v
+        run: docker compose --profile full down -v

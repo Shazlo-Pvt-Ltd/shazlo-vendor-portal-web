@@ -1,3 +1,4 @@
+import json
 import os
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
@@ -5,6 +6,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from shazlo_security.keys import generate_private_key, private_key_pem
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -18,13 +20,23 @@ SERVICE_DIR = Path(__file__).resolve().parents[1]
 TEST_DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 
+@pytest.fixture(scope="session")
+def key_pems() -> dict[str, str]:
+    """Two generated private keys by kid. Generating RSA keys is slow, so once per run."""
+    return {
+        kid: private_key_pem(generate_private_key()).decode()
+        for kid in ("test-key-1", "test-key-2")
+    }
+
+
 @pytest.fixture
-def settings() -> Settings:
+def settings(key_pems: dict[str, str]) -> Settings:
     return Settings(
         _env_file=None,
         env="test",
         database_url="postgresql+asyncpg://user:pw@localhost:5432/vendor_test",
         redis_url="redis://localhost:6379/0",
+        jwt_keys=json.dumps({"test-key-1": key_pems["test-key-1"]}),
     )
 
 

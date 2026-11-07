@@ -1,5 +1,7 @@
 # The build context is the repository root, so allow only what the Dockerfile copies.
 *
+!packages/py-auth
+!packages/py-security
 !services/vendor-api/pyproject.toml
 !services/vendor-api/vendor_api
 !services/vendor-api/alembic.ini
@@ -12,3 +14,5 @@
 **/.venv
 **/.env
 **/.env.*
+packages/py-auth/tests
+packages/py-security/tests

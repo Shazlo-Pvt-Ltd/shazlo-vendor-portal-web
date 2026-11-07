@@ -80,16 +80,23 @@ curl localhost:8001/ready   # {"status":"ok", ...}
 
 The key is a local development key: keep it out of git (`.env` is ignored) and never reuse it elsewhere.
 
-vendor-api runs the same way behind the `vendor` profile. It needs no signing key yet. It uses the `vendor` database and Redis database 1 (identity-api uses 0):
+vendor-api runs the same way behind the `vendor` profile. It signs its own tokens, so it needs its **own** signing key (never identity-api's) in `.env`. Make it with the image, and copy the printed `VENDOR_JWT_KEYS=...` line over the empty one:
 
 ```bash
 docker compose --profile vendor build vendor-api
+docker compose --profile vendor run --rm --no-deps -T vendor-api python -c "import json; from shazlo_security.keys import generate_private_key, new_kid, private_key_pem; print('VENDOR_JWT_KEYS=' + json.dumps({new_kid(): private_key_pem(generate_private_key()).decode()}, separators=(',', ':')))"
+```
+
+It uses the `vendor` database and Redis database 1 (identity-api uses 0):
+
+```bash
 docker compose --profile vendor run --rm vendor-api alembic upgrade head
 docker compose --profile vendor up -d --wait
 curl localhost:8002/ready   # {"status":"ok", ...}
+curl localhost:8002/.well-known/jwks.json   # the public key
 ```
 
-To run both APIs, add the key as above and use `--profile full` (it includes both profiles): `docker compose --profile full up -d --build --wait`. Run each service's `alembic upgrade head` first, with `run --rm` as above.
+To run both APIs, add both keys as above and use `--profile full` (it includes both profiles): `docker compose --profile full up -d --build --wait`. Run each service's `alembic upgrade head` first, with `run --rm` as above.
 
 For the legacy apps, see `app/README.md` and `backend/README.md` and copy each `.env.example` to `.env`.
 
