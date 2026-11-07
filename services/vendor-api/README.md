@@ -55,6 +55,15 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `JWT_KEYS_DIR` / `JWT_KEYS` | none (one is required) | RS256 keys: a directory of `<kid>.pem` files and/or JSON `{"<kid>": "<PEM>"}` |
 | `JWT_SIGNING_KID` | unset | the key that signs; needed with several keys, the others are only published |
 | `ACCESS_TOKEN_TTL_SECONDS` | `900` | 1 to 3600 |
+| `EMAIL_BACKEND` | `console` | `console` (sends nothing, logs the link in dev only) or `smtp` |
+| `EMAIL_FROM` | `Shazlo <no-reply@shazlo.store>` | the sender of every email |
+| `SMTP_HOST` / `SMTP_PORT` | unset / `587` | required with `smtp` |
+| `SMTP_USER` / `SMTP_PASSWORD` | unset | set both or neither; the password is a secret with no default |
+| `SMTP_SECURITY` | `starttls` | `none` (local Mailpit only), `starttls` or `ssl` |
+| `EMAIL_SEND_ATTEMPTS` | `3` | tries before an email is given up |
+| `PORTAL_BASE_URL` | `http://localhost:5174` | the vendor portal: links in emails point here |
+
+`ENV=prod` refuses the `console` backend (it sends nothing), `SMTP_SECURITY=none` and an `http://` portal address.
 
 identity-api is on port 8001 and vendor-api on 8002, so both can run side by side. In docker-compose (`--profile vendor`) vendor-api uses Redis database 1; see the root README, Local development. Their cookie names and Redis key prefixes differ (ADR 0010).
 
@@ -67,6 +76,15 @@ vendor-api signs **its own** tokens with **its own** RS256 key, never identity-a
 - `GET /.well-known/jwks.json` serves the public keys with `Cache-Control: max-age=600`, built from public keys only.
 - `python -m vendor_api.cli generate-key [--dir DIR] [--kid KID]` writes a new private key (mode `0600`, never overwriting) and prints the settings to use it.
 - Keys are RSA 2048-bit or larger. A key that is only published may be configured as a public PEM. Rotation follows [the runbook](../../docs/runbooks/jwt-key-rotation.md), which covers both services.
+
+## Email
+
+Signup verification, staff invites and password reset send email (issue #80). The code depends on a small interface (`EmailSender.send(to, template, context)`) and the provider is a setting: switching from Mailpit to a real provider changes `EMAIL_BACKEND` and `SMTP_*`, not code. Plain SMTP works with SES, Postmark, Resend and most others.
+
+- **Templates** (`services/email/templates.py`, plain text and HTML): `verify_email`, `staff_invite`, `password_reset` and `account_exists`. Each states how long the link lasts. The one-time token goes in the link's **fragment** (`https://<portal>/verify-email#token=...`), which browsers never send to a server, so it stays out of access logs and `Referer` headers. The portal reads it from `location.hash`. Paths: `/verify-email`, `/accept-invite`, `/reset-password`, `/login`.
+- **Sending** is `EmailService.send_in_background(background_tasks, to, template, context)`, used through the `Emails` dependency (`api/deps.py`). It runs after the response, tries `EMAIL_SEND_ATTEMPTS` times with a doubling pause, then logs and drops the email. A broken mail server never fails or slows a request.
+- **Logs** carry the template name and the kind of error, never the token, the recipient or the provider's reply. Only `ENV=dev` with the console backend prints a link (and the recipient), so a developer can click it.
+- **Locally**, `docker compose up -d` runs Mailpit. See every email at <http://localhost:8025>. To see one: `python -m vendor_api.cli send-test-email [--to ADDRESS] [--template verify_email|staff_invite|password_reset|account_exists]` (`ENV=dev` only; the token is made up).
 
 ## Database
 

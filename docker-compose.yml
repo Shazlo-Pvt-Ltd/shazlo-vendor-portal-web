@@ -78,6 +78,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mailpit:
+        condition: service_healthy
     environment:
       ENV: dev
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-shazlo}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/vendor
@@ -87,6 +89,12 @@ services:
       JWT_ISSUER: http://localhost:${VENDOR_API_PORT:-8002}
       JWT_KEYS: ${VENDOR_JWT_KEYS:-}
       JWT_SIGNING_KID: ${VENDOR_JWT_SIGNING_KID:-}
+      # Emails go to Mailpit (read them at http://localhost:8025); nothing leaves the machine.
+      EMAIL_BACKEND: smtp
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_SECURITY: none
+      PORTAL_BASE_URL: ${VENDOR_PORTAL_BASE_URL:-http://localhost:5174}
     ports:
       - "${VENDOR_API_PORT:-8002}:8002"
 
