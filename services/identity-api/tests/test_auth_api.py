@@ -10,6 +10,7 @@ import pytest
 from fakeredis import FakeAsyncRedis
 from fastapi import Depends
 from shazlo_security.passwords import PasswordService
+from shazlo_security.refresh_tokens import hash_token
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from identity_api.api.deps import current_admin
@@ -18,7 +19,6 @@ from identity_api.core.security import password_config
 from identity_api.core.settings import Settings
 from identity_api.db.models import Admin, Role
 from identity_api.db.session import get_session
-from identity_api.services.refresh_tokens import hash_token
 
 ORIGIN = "https://shell.test"
 PASSWORD = "correct horse battery"
@@ -103,8 +103,8 @@ def refresh_cookie(response: httpx.Response) -> Morsel[str] | None:
     for header in response.headers.get_list("set-cookie"):
         cookie: SimpleCookie = SimpleCookie()
         cookie.load(header)
-        if "refresh_token" in cookie:
-            return cookie["refresh_token"]
+        if "identity_refresh" in cookie:
+            return cookie["identity_refresh"]
     return None
 
 
@@ -121,7 +121,7 @@ async def login(client: httpx.AsyncClient, email: str = "reviewer@shazlo.test") 
 
 async def refresh_with(client: httpx.AsyncClient, token: str) -> httpx.Response:
     client.cookies.clear()
-    return await client.post("/v1/auth/refresh", headers={"Cookie": f"refresh_token={token}"})
+    return await client.post("/v1/auth/refresh", headers={"Cookie": f"identity_refresh={token}"})
 
 
 def bearer(response: httpx.Response) -> dict[str, str]:
@@ -316,8 +316,8 @@ async def test_reusing_a_rotated_token_revokes_the_family(
     first = refresh_token(await login(client))
     second = refresh_token(await refresh_with(client, first))
     # Used a minute ago, so outside the reuse grace window.
-    used_at = float(await redis.get(f"rtu:{hash_token(first)}") or 0)
-    await redis.set(f"rtu:{hash_token(first)}", str(used_at - 60), keepttl=True)
+    used_at = float(await redis.get(f"identity:rtu:{hash_token(first)}") or 0)
+    await redis.set(f"identity:rtu:{hash_token(first)}", str(used_at - 60), keepttl=True)
 
     reuse = await refresh_with(client, first)
     assert reuse.status_code == 401
@@ -349,7 +349,7 @@ async def test_only_the_hash_is_stored_in_redis(
     await make_admin()
     token = refresh_token(await login(client))
     keys = [key.decode() if isinstance(key, bytes) else key async for key in redis.scan_iter("*")]
-    assert f"rt:{hash_token(token)}" in keys
+    assert f"identity:rt:{hash_token(token)}" in keys
     assert all(token not in key for key in keys)
 
 
@@ -374,7 +374,7 @@ async def test_expired_family_cannot_refresh(
 ) -> None:
     await make_admin()
     token = refresh_token(await login(client))
-    family_key = await anext(redis.scan_iter("rf:*"))
+    family_key = await anext(redis.scan_iter("identity:rf:*"))
     # Past the 30 day limit, even though the key has not been evicted yet.
     await redis.hset(family_key, "expires_at", "1000")
     assert (await refresh_with(client, token)).status_code == 401
@@ -427,7 +427,7 @@ async def test_logout_revokes_the_family_and_clears_the_cookie(
     await make_admin()
     token = refresh_token(await login(client))
     client.cookies.clear()
-    response = await client.post("/v1/auth/logout", headers={"Cookie": f"refresh_token={token}"})
+    response = await client.post("/v1/auth/logout", headers={"Cookie": f"identity_refresh={token}"})
     assert response.status_code == 204
     cleared = refresh_cookie(response)
     assert cleared is not None
@@ -448,7 +448,7 @@ async def test_logout_ends_only_its_own_family(
     laptop = refresh_token(await login(client))
     phone = refresh_token(await login(client))
     client.cookies.clear()
-    await client.post("/v1/auth/logout", headers={"Cookie": f"refresh_token={laptop}"})
+    await client.post("/v1/auth/logout", headers={"Cookie": f"identity_refresh={laptop}"})
     assert (await refresh_with(client, laptop)).status_code == 401
     assert (await refresh_with(client, phone)).status_code == 200
 

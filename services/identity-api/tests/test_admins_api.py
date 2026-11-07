@@ -100,14 +100,14 @@ def refresh_token(response: httpx.Response) -> str:
     for header in response.headers.get_list("set-cookie"):
         cookie: SimpleCookie = SimpleCookie()
         cookie.load(header)
-        if "refresh_token" in cookie:
-            return cookie["refresh_token"].value
+        if "identity_refresh" in cookie:
+            return cookie["identity_refresh"].value
     raise AssertionError("no refresh cookie")
 
 
 async def refresh_with(client: httpx.AsyncClient, token: str) -> httpx.Response:
     client.cookies.clear()
-    return await client.post("/v1/auth/refresh", headers={"Cookie": f"refresh_token={token}"})
+    return await client.post("/v1/auth/refresh", headers={"Cookie": f"identity_refresh={token}"})
 
 
 @pytest.fixture
@@ -460,23 +460,23 @@ async def test_deactivating_revokes_every_refresh_family(
 ) -> None:
     admin = await make_admin()
     tokens = [refresh_token(await login(client, REVIEWER)) for _ in range(3)]
-    families = await redis.smembers(f"ra:{admin.id}")
+    families = await redis.smembers(f"identity:ra:{admin.id}")
     assert len(families) == 3
     # The boss signed in too, so their own family must survive.
     boss_id = jwt.decode(
         boss["Authorization"].removeprefix("Bearer "), options={"verify_signature": False}
     )["sub"]
-    boss_families = await redis.smembers(f"ra:{boss_id}")
+    boss_families = await redis.smembers(f"identity:ra:{boss_id}")
     assert len(boss_families) == 1
 
     response = await client.patch(f"/v1/admins/{admin.id}", headers=boss, json={"is_active": False})
     assert response.status_code == 200
 
-    assert await redis.exists(f"ra:{admin.id}") == 0
+    assert await redis.exists(f"identity:ra:{admin.id}") == 0
     for family in families:
-        assert await redis.exists(f"rf:{_text(family)}") == 0
+        assert await redis.exists(f"identity:rf:{_text(family)}") == 0
     for family in boss_families:
-        assert await redis.exists(f"rf:{_text(family)}") == 1
+        assert await redis.exists(f"identity:rf:{_text(family)}") == 1
     for token in tokens:
         refreshed = await refresh_with(client, token)
         assert refreshed.status_code == 401
@@ -523,7 +523,7 @@ async def test_reset_password(
     )
     assert response.status_code == 204
     assert response.content == b""
-    assert await redis.exists(f"ra:{admin.id}") == 0
+    assert await redis.exists(f"identity:ra:{admin.id}") == 0
     assert (await refresh_with(client, token)).status_code == 401
 
     client.cookies.clear()

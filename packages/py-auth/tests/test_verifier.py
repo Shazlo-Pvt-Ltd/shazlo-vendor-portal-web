@@ -204,3 +204,80 @@ async def test_badly_typed_claims_are_rejected(
 async def test_garbage_is_rejected(verifier: TokenVerifier, token: str) -> None:
     with pytest.raises(InvalidTokenError):
         await verifier.verify(token)
+
+
+# --- Extra claims ------------------------------------------------------------------------
+
+VENDOR_ID = "9b2f1c3e-0d4a-4c1e-8f6a-2b7d5e9a1c30"
+
+
+def requiring(private_keys: dict[str, rsa.RSAPrivateKey], *names: str) -> TokenVerifier:
+    keys = {kid: key.public_key() for kid, key in private_keys.items()}
+    return TokenVerifier(
+        StaticKeySource(keys), issuer=ISSUER, audience=AUDIENCE, required_extra_claims=names
+    )
+
+
+async def test_extra_claims_are_returned(verifier: TokenVerifier, sign: Sign) -> None:
+    claims = await verifier.verify(sign(vendor_id=VENDOR_ID, tier="gold"))
+    assert claims.extra == {"vendor_id": VENDOR_ID, "tier": "gold"}
+
+
+async def test_a_token_without_extra_claims_has_an_empty_extra(
+    verifier: TokenVerifier, sign: Sign
+) -> None:
+    claims = await verifier.verify(sign(must_change_password=True))
+    # Claims the verifier reads itself are never repeated in `extra`.
+    assert claims.extra == {}
+
+
+async def test_extra_is_read_only(verifier: TokenVerifier, sign: Sign) -> None:
+    claims = await verifier.verify(sign(vendor_id=VENDOR_ID))
+    with pytest.raises(TypeError):
+        claims.extra["vendor_id"] = "other"  # type: ignore[index]
+
+
+async def test_a_required_extra_claim_is_returned(
+    private_keys: dict[str, rsa.RSAPrivateKey], sign: Sign
+) -> None:
+    verifier = requiring(private_keys, "vendor_id")
+    assert (await verifier.verify(sign(vendor_id=VENDOR_ID))).extra["vendor_id"] == VENDOR_ID
+
+
+async def test_a_token_without_a_required_extra_claim_is_refused(
+    private_keys: dict[str, rsa.RSAPrivateKey], sign: Sign
+) -> None:
+    verifier = requiring(private_keys, "vendor_id")
+    with pytest.raises(InvalidTokenError, match="vendor_id is required"):
+        await verifier.verify(sign())
+
+
+async def test_a_null_required_extra_claim_is_refused(
+    private_keys: dict[str, rsa.RSAPrivateKey], sign: Sign
+) -> None:
+    # `make_claims` drops None, so build the token with an explicit null.
+    verifier = requiring(private_keys, "vendor_id")
+    token = jwt.encode(
+        make_claims(vendor_id=VENDOR_ID) | {"vendor_id": None},
+        private_keys["key-1"],
+        algorithm="RS256",
+        headers={"kid": "key-1"},
+    )
+    with pytest.raises(InvalidTokenError, match="vendor_id is required"):
+        await verifier.verify(token)
+
+
+async def test_every_required_extra_claim_must_be_present(
+    private_keys: dict[str, rsa.RSAPrivateKey], sign: Sign
+) -> None:
+    verifier = requiring(private_keys, "vendor_id", "tier")
+    with pytest.raises(InvalidTokenError, match="tier is required"):
+        await verifier.verify(sign(vendor_id=VENDOR_ID))
+    assert (await verifier.verify(sign(vendor_id=VENDOR_ID, tier="gold"))).extra["tier"] == "gold"
+
+
+def test_a_claim_the_verifier_reads_cannot_be_listed_as_extra(
+    private_keys: dict[str, rsa.RSAPrivateKey],
+) -> None:
+    with pytest.raises(ValueError, match="roles"):
+        requiring(private_keys, "roles")

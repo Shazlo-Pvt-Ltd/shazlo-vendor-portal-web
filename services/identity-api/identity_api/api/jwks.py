@@ -2,8 +2,7 @@ from typing import cast
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-
-from identity_api.services.keys import KeyRing
+from shazlo_security.keys import KeyRing
 
 # Services cache the key set for this long (ADR 0009).
 JWKS_MAX_AGE_SECONDS = 600

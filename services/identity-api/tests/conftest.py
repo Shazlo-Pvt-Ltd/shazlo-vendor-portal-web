@@ -6,13 +6,13 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from shazlo_security.keys import generate_private_key, private_key_pem
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from identity_api.core.settings import Settings
 from identity_api.db.session import async_url
-from identity_api.services.keys import generate_private_key, private_key_pem
 
 SERVICE_DIR = Path(__file__).resolve().parents[1]
 

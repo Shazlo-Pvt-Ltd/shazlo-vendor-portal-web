@@ -5,7 +5,7 @@ import secrets
 import stat
 import sys
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -15,8 +15,6 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from jwt.algorithms import RSAAlgorithm
 
-from identity_api.core.settings import Settings
-
 # Always use `fullmatch`: with `match`, `$` also matches before a trailing newline.
 KID_PATTERN = re.compile(r"[A-Za-z0-9._-]{1,64}")
 KEY_BITS = 2048
@@ -25,6 +23,20 @@ ALGORITHM = "RS256"
 
 class KeyConfigError(Exception):
     """The signing keys are missing or invalid. The message is safe to print."""
+
+
+@dataclass(frozen=True)
+class KeyRingConfig:
+    """Where the keys come from; a service builds it from its own configuration.
+
+    `keys_dir` holds `<kid>.pem` files; `keys_json` is a JSON object {"<kid>": "<PEM>"}. Either
+    or both may be set. `signing_kid` picks the key that signs (needed with several keys).
+    """
+
+    keys_dir: str | None = None
+    # A secret: kept out of repr so it cannot reach a log or traceback.
+    keys_json: str | None = field(default=None, repr=False)
+    signing_kid: str | None = None
 
 
 @dataclass(frozen=True)
@@ -137,7 +149,7 @@ def _check_private_key_file_mode(path: Path) -> None:
         )
 
 
-def _collect_pems(settings: Settings) -> dict[str, bytes]:
+def _collect_pems(config: KeyRingConfig) -> dict[str, bytes]:
     pems: dict[str, bytes] = {}
 
     def add(kid: str, pem: bytes, source: str) -> None:
@@ -147,8 +159,8 @@ def _collect_pems(settings: Settings) -> dict[str, bytes]:
             raise KeyConfigError(f"kid {kid!r} is configured twice")
         pems[kid] = pem
 
-    if settings.jwt_keys_dir:
-        directory = Path(settings.jwt_keys_dir)
+    if config.keys_dir:
+        directory = Path(config.keys_dir)
         if not directory.is_dir():
             raise KeyConfigError("JWT_KEYS_DIR is not a directory")
         for path in sorted(directory.glob("*.pem")):
@@ -158,11 +170,11 @@ def _collect_pems(settings: Settings) -> dict[str, bytes]:
                 _check_private_key_file_mode(path)
             add(path.stem, pem, "JWT_KEYS_DIR")
 
-    if settings.jwt_keys:
+    if config.keys_json:
         from_env: object = None
         valid_json = True
         try:
-            from_env = json.loads(settings.jwt_keys.get_secret_value())
+            from_env = json.loads(config.keys_json)
         except ValueError:
             valid_json = False
         # Raised outside the `except` so the JSONDecodeError, whose `doc` holds the whole secret,
@@ -178,21 +190,21 @@ def _collect_pems(settings: Settings) -> dict[str, bytes]:
     return pems
 
 
-def load_keyring(settings: Settings) -> KeyRing:
+def load_keyring(config: KeyRingConfig) -> KeyRing:
     """Builds the key ring from `JWT_KEYS_DIR` (`<kid>.pem` files) and/or `JWT_KEYS` (JSON).
 
     A key may be a private PEM or, for a key that is only published (a retired key kept until
     its tokens expire), a public PEM. The signing key must be private.
     """
-    pems = _collect_pems(settings)
+    pems = _collect_pems(config)
     if not pems:
         raise KeyConfigError(
             "no JWT keys configured: set JWT_KEYS_DIR or JWT_KEYS "
-            "(create one with `python -m identity_api.cli generate-key`)"
+            "(create one with the `generate-key` command of the service)"
         )
     keys = {kid: _parse_pem(kid, pem) for kid, pem in pems.items()}
 
-    signing_kid = settings.jwt_signing_kid or None  # an empty variable counts as unset
+    signing_kid = config.signing_kid or None  # an empty variable counts as unset
     if signing_kid is None:
         if len(keys) != 1:
             raise KeyConfigError("several keys are configured: set JWT_SIGNING_KID")

@@ -60,7 +60,7 @@ async def client(api_settings: Settings, auth: RecordingAuth) -> AsyncIterator[h
 
 
 def with_cookie(headers: dict[str, str]) -> dict[str, str]:
-    return {**headers, "Cookie": f"refresh_token={TOKEN}"}
+    return {**headers, "Cookie": f"identity_refresh={TOKEN}"}
 
 
 @pytest.mark.parametrize("path", ["/v1/auth/refresh", "/v1/auth/logout"])

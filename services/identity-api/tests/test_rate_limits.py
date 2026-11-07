@@ -119,8 +119,8 @@ def refresh_cookie(response: httpx.Response) -> str | None:
     for header in response.headers.get_list("set-cookie"):
         cookie: SimpleCookie = SimpleCookie()
         cookie.load(header)
-        if "refresh_token" in cookie:
-            return cookie["refresh_token"].value
+        if "identity_refresh" in cookie:
+            return cookie["identity_refresh"].value
     return None
 
 
@@ -402,18 +402,20 @@ async def test_refresh_is_limited_per_session_and_keeps_the_cookie(
         for _ in range(2):
             http.cookies.clear()
             response = await http.post(
-                "/v1/auth/refresh", headers={"Cookie": f"refresh_token={token}"}
+                "/v1/auth/refresh", headers={"Cookie": f"identity_refresh={token}"}
             )
             assert response.status_code == 200
             token = refresh_cookie(response)  # rotated: a new token, the same family
             assert token is not None
         http.cookies.clear()
-        blocked = await http.post("/v1/auth/refresh", headers={"Cookie": f"refresh_token={token}"})
+        blocked = await http.post(
+            "/v1/auth/refresh", headers={"Cookie": f"identity_refresh={token}"}
+        )
         assert blocked.status_code == 429
         assert blocked.json()["error"]["code"] == "rate_limited"
         assert 1 <= retry_after(blocked) <= 60
         # The limit says nothing about the token, so the cookie is not cleared.
-        assert "refresh_token" not in blocked.headers.get("set-cookie", "")
+        assert "identity_refresh" not in blocked.headers.get("set-cookie", "")
 
 
 async def test_refresh_is_limited_per_ip_even_without_a_cookie(

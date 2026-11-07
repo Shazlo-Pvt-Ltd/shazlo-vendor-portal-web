@@ -31,7 +31,7 @@ from identity_api.services.auth import (
     AuthSession,
 )
 
-COOKIE_NAME = "refresh_token"
+COOKIE_NAME = "identity_refresh"
 # The browser sends the cookie to the auth endpoints only.
 COOKIE_PATH = "/v1/auth"
 

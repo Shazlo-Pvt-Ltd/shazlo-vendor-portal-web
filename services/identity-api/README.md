@@ -69,7 +69,7 @@ The app refuses to start if `DATABASE_URL`, `REDIS_URL` or the JWT keys are miss
 
 ## Cookies and CORS (local development)
 
-- The **refresh token** is an `HttpOnly` cookie on `/v1/auth` and is never in a response body. The browser keeps it; JavaScript only ever holds the 15-minute access token.
+- The **refresh token** is an `HttpOnly` cookie named `identity_refresh` on `/v1/auth` and is never in a response body (vendor-api uses `vendor_refresh`, so the two never share a cookie). The browser keeps it; JavaScript only ever holds the 15-minute access token.
 - **`COOKIE_SECURE=true`** (the default) works on `http://localhost` in Chrome and Firefox, which treat localhost as secure. Safari and curl do not, so set `COOKIE_SECURE=false` locally for them. Never in production.
 - **`SameSite=Strict`**: the shell (`http://localhost:5173`) and this API (`http://localhost:8001`) are the same site because ports do not count, so the cookie is sent. In production they share a parent domain: set `COOKIE_DOMAIN` (for example `shazlo.store`).
 - **CORS**: the shell's exact origin must be in `CORS_ALLOWED_ORIGINS` (comma separated; no wildcard, because credentials are allowed), and its requests need `credentials: "include"` so the cookie is sent to `/v1/auth/refresh` and `/v1/auth/logout`.
@@ -156,7 +156,7 @@ In a container: `docker compose exec identity-api alembic upgrade head`.
 
 ## Tokens and keys
 
-- `TokenIssuer` (`services/tokens.py`) signs RS256 access tokens: `iss`, `sub`, `aud` (one service), `roles`, `iat`, `exp` (15 minutes), `jti`, with the `kid` in the header. No email or name goes into the token.
+- `TokenIssuer` (from [`packages/py-security`](../../packages/py-security/README.md), built in `core/security.py`) signs RS256 access tokens: `iss`, `sub`, `aud` (one service), `roles`, `iat`, `exp` (15 minutes), `jti`, with the `kid` in the header. No email or name goes into the token.
 - `GET /.well-known/jwks.json` serves the public keys with `Cache-Control: max-age=600`. It is built from public keys only.
 - Keys are RSA 2048-bit or larger. A key that is only published (not signing) may be configured as a public PEM.
 - Rotation is a configuration change; follow [the runbook](../../docs/runbooks/jwt-key-rotation.md).
@@ -182,7 +182,7 @@ The live reference is the OpenAPI document at `/docs` (dev). Every error is `{"e
 | `POST /v1/admins/{id}/reset-password` | `{new_password}` sets a temporary password, sets `must_change_password` and ends all the admin's refresh families. `204`. |
 | `POST /v1/auth/change-password` | Bearer token plus `{current_password, new_password}`. Ends every refresh family of the admin and starts a new session (new cookie and token). |
 
-- **Refresh tokens** are 256-bit random values. They exist only in the `HttpOnly` cookie (`Secure` and `SameSite` from settings, path `/v1/auth`); never in a body or a log. Redis holds only their SHA-256 hash (`rt:<hash>`) plus the family (`rf:<id>`, hard limit 30 days) and the admin's family set (`ra:<admin>`). A token lives 7 days and never outlives its family.
+- **Refresh tokens** are 256-bit random values. They exist only in the `HttpOnly` cookie (`Secure` and `SameSite` from settings, path `/v1/auth`); never in a body or a log. Redis holds only their SHA-256 hash plus the family (hard limit 30 days) and the admin's family set. A token lives 7 days and never outlives its family. The store is `packages/py-security`; every key starts with `identity:` (`identity:rt:<hash>`, `identity:rf:<id>`, `identity:ra:<admin>`, `identity:rg:<admin>`, `identity:rtu:<hash>`, see the package README for the layout).
 - **First login:** an admin with `must_change_password` gets an access token with **no roles** and a `must_change_password` claim. Services grant it nothing, and identity-api's own `current_admin` dependency answers `403 password_change_required`. Only `change-password` accepts it. The new token returned by `change-password` is a normal one.
 - **Audiences:** `AUDIENCE_ROLES` (JSON in the environment) maps each other service's name to the roles allowed to get a token for it. It must not include `identity-api`: only login and refresh issue identity-api tokens, so a stolen access token cannot renew itself without the refresh cookie. Adding a service is a settings change only. Roles are read from the database at exchange time, and a token for another audience is rejected by identity-api's own `current_admin` dependency.
 - `api/deps.py` has the dependencies later endpoints use: `current_admin` (active admin, password already changed), `current_admin_pending_password` and `require_role(...)`. Tokens are verified by `packages/py-auth` (`shazlo-auth`), the same verifier other services use, here fed with this service's own keys. `require_role` is the shared one (`super_admin` always passes) but reads roles from the database, so a role change applies to this API at once.

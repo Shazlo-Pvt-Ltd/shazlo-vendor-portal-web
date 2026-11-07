@@ -2,20 +2,20 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from shazlo_security.passwords import PasswordPolicyError, PasswordService, check_password
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from identity_api.core.errors import ApiError
-from identity_api.core.settings import Settings
-from identity_api.db.models import Admin
-from identity_api.services.refresh_tokens import (
+from shazlo_security.refresh_tokens import (
     InvalidRefreshTokenError,
     RefreshConflictError,
     RefreshSession,
     RefreshTokenStore,
     StaleSessionError,
 )
-from identity_api.services.tokens import IssuedToken, TokenIssuer, TokenWindowClosedError
+from shazlo_security.tokens import IssuedToken, TokenIssuer, TokenWindowClosedError
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from identity_api.core.errors import ApiError
+from identity_api.core.settings import Settings
+from identity_api.db.models import Admin
 
 # The audience of tokens the shell holds for identity-api itself (ADR 0009).
 SELF_AUDIENCE = "identity-api"
@@ -88,7 +88,7 @@ class AuthService:
             raise REFRESH_CONFLICT from error
         except InvalidRefreshTokenError as error:
             raise INVALID_REFRESH_TOKEN from error
-        admin = await db.get(Admin, rotation.admin_id)
+        admin = await db.get(Admin, rotation.subject_id)
         if admin is None or not admin.is_active:
             await self._refresh_tokens.revoke_family(rotation.session.family_id)
             raise INVALID_REFRESH_TOKEN
