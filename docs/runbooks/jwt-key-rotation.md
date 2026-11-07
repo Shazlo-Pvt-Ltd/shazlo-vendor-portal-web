@@ -46,11 +46,11 @@ Do this at once; it ends every admin session. Admins sign in again afterwards.
 4. **Know the gap.** Whoever holds `OLD` can sign tokens with any `exp`, any `sub` and any `roles`, so the token lifetime does **not** limit the exposure. A forged token verifies on every service that still has `OLD` in its cached key set: up to 10 minutes (the cache TTL) after step 2, and longer on a service that fails to refetch. Close the gap right after step 2 by restarting every service that verifies admin tokens (or clearing its JWKS cache), then check that a token signed with `OLD` is rejected.
 5. **Revoke refresh tokens.** Refresh tokens are not signed, but they were issued under the leaked key's regime and an attacker may have obtained one with a forged session. They live in identity-api's Redis; delete every refresh-token key so nobody can refresh without signing in again:
    ```sh
-   for pattern in 'rf:*' 'rt:*' 'rtu:*' 'ra:*'; do
+   for pattern in 'identity:rf:*' 'identity:rt:*' 'identity:rtu:*' 'identity:ra:*' 'identity:rg:*'; do
      redis-cli -u "$REDIS_URL" --scan --pattern "$pattern" | xargs -r -n 500 redis-cli -u "$REDIS_URL" del
    done
    ```
-   (`rf:` refresh-token families, `rt:` tokens, `rtu:` used-token markers, `ra:` each admin's families.) Use `--scan`, never `KEYS`, on a live server.
+   (`rf:` refresh-token families, `rt:` tokens, `rtu:` used-token markers, `ra:` each admin's families, `rg:` each admin's session generation; all start with identity-api's prefix `identity:`, see `packages/py-security/README.md`.) Use `--scan`, never `KEYS`, on a live server. Deleting `rg:` is safe: a missing generation counts as 0, and every family it guarded is gone.
 6. **Audit admin changes made during the leak window.** A forged token can carry a real `super_admin`'s `sub`, so audit entries may name a legitimate admin. Review every admin account created, re-activated or edited, every role granted or removed, and every password reset between the earliest possible leak and the end of step 4. Revert anything nobody can account for, and disable or reset the accounts involved.
 7. **Find out how the key leaked** and fix that first. Review the logs for tokens with unexpected `sub`/`roles` or an `exp` further away than `ACCESS_TOKEN_TTL_SECONDS` between the leak and the rotation, using `jti` to trace them.
 8. **Destroy `OLD`** everywhere and record the incident and the rotation time.
