@@ -249,10 +249,11 @@ async def test_an_expired_invite_is_refused(
     await session.execute(
         update(AuthToken).values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
     )
+    await session.commit()  # a failing request rolls the shared session back
     response = await set_password(api, token)
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "invalid_token"
-    assert (await user_by_email(session, user.email)).status == "invited"
+    assert (await user_by_email(session, "staff@atelier.test")).status == "invited"
 
 
 async def test_a_used_an_expired_and_an_unknown_token_give_the_same_error(
@@ -266,6 +267,7 @@ async def test_a_used_an_expired_and_an_unknown_token_give_the_same_error(
         .where(AuthToken.token_hash == hashlib.sha256(expired.encode()).hexdigest())
         .values(expires_at=datetime.now(UTC) - timedelta(hours=1))
     )
+    await session.commit()
     bodies = []
     for token in (used, expired, "never-issued-token", "%00' OR 1=1 --"):
         response = await set_password(api, token)
@@ -280,8 +282,9 @@ async def test_a_verification_token_cannot_set_a_password(
 ) -> None:
     user, token = await invited_staff(api, sender, session)
     await session.execute(update(AuthToken).values(purpose=TokenPurpose.VERIFY_EMAIL))
+    await session.commit()
     assert (await set_password(api, token)).status_code == 400
-    assert (await user_by_email(session, user.email)).status == "invited"
+    assert (await user_by_email(session, "staff@atelier.test")).status == "invited"
 
 
 async def test_an_invite_for_a_user_who_is_not_invited_is_refused(
@@ -292,7 +295,7 @@ async def test_an_invite_for_a_user_who_is_not_invited_is_refused(
     await set_user(session, user, status="disabled")
     response = await set_password(api, token)
     assert response.status_code == 400
-    assert (await user_by_email(session, user.email)).password_hash is None
+    assert (await user_by_email(session, "staff@atelier.test")).password_hash is None
 
 
 async def test_the_owner_of_a_vendor_invites_into_their_own_vendor_only(
@@ -444,13 +447,14 @@ async def test_disabling_kills_the_users_unused_links(
     api: Api, account: Account, sender: RecordingSender, session: AsyncSession
 ) -> None:
     staff, token = await invited_staff(api, sender, session)
+    staff_id = staff.id  # read now: a failing request rolls the session back and expires objects
     access = await access_token(api)
-    await patch_user(api, access, staff.id, True)
-    await patch_user(api, access, staff.id, False)  # back to invited
+    await patch_user(api, access, staff_id, True)
+    await patch_user(api, access, staff_id, False)  # back to invited
     assert (await set_password(api, token)).status_code == 400  # the old link is dead
     # A new invite works.
     assert (
-        await api.http.post(f"/v1/vendor/users/{staff.id}/resend-invite", headers=bearer(access))
+        await api.http.post(f"/v1/vendor/users/{staff_id}/resend-invite", headers=bearer(access))
     ).status_code == 204
     assert (await set_password(api, sender.tokens()[-1])).status_code == 204
 
@@ -646,8 +650,9 @@ async def test_a_reset_token_cannot_activate_an_invited_user(
 ) -> None:
     user, token = await invited_staff(api, sender, session)
     await session.execute(update(AuthToken).values(purpose=TokenPurpose.RESET_PASSWORD))
+    await session.commit()
     assert (await set_password(api, token)).status_code == 400
-    assert (await user_by_email(session, user.email)).status == "invited"
+    assert (await user_by_email(session, "staff@atelier.test")).status == "invited"
 
 
 async def test_a_staff_members_reset_does_not_touch_the_owners_sessions(

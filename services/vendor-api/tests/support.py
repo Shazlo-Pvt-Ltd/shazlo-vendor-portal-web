@@ -166,10 +166,13 @@ async def make_account(
 
 async def set_vendor_status(session: AsyncSession, vendor: Vendor, status: str) -> None:
     await session.execute(update(Vendor).where(Vendor.id == vendor.id).values(status=status))
+    # Committed: a request that fails rolls the shared session back, which would undo it.
+    await session.commit()
 
 
 async def set_user(session: AsyncSession, user: VendorUser, **values: Any) -> None:
     await session.execute(update(VendorUser).where(VendorUser.id == user.id).values(**values))
+    await session.commit()
 
 
 async def redis_keys(redis: FakeAsyncRedis) -> list[str]:
