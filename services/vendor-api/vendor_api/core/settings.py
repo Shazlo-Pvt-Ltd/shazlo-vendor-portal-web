@@ -5,6 +5,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from shazlo_auth.jwks import check_jwks_url
 from shazlo_security.rate_limit import RateRule
 
 from vendor_api.db.session import POSTGRES_SCHEMES
@@ -82,6 +83,13 @@ class Settings(BaseSettings):
     argon2_time_cost: int = 2
     argon2_parallelism: int = 1
     password_min_length: int = 12
+
+    # Admin tokens come from identity-api (ADR 0009), verified through its JWKS: `/v1/admin/*`
+    # accepts only those, `/v1/vendor/*` only vendor-api's own. The JWKS is fetched lazily on the
+    # first admin token and cached, so vendor-api starts and serves vendors while identity-api is
+    # down. Both settings go together; outside dev the URL must be https, and prod needs them.
+    identity_jwks_url: str | None = None
+    identity_issuer: str | None = None
 
     # Rate limits (ADR 0009), as "<limit>/<window seconds>". Most endpoints have a limit per
     # client IP and one per subject: the email (hashed) for endpoints that send mail or check a
@@ -224,6 +232,27 @@ class Settings(BaseSettings):
         if not 1 <= value <= 128:
             raise ValueError("must be between 1 and 128")
         return value
+
+    @model_validator(mode="after")
+    def _check_identity(self) -> Self:
+        url = (self.identity_jwks_url or "").strip() or None
+        issuer = (self.identity_issuer or "").strip() or None
+        self.identity_jwks_url, self.identity_issuer = url, issuer
+        if (url is None) != (issuer is None):
+            raise ValueError("IDENTITY_JWKS_URL and IDENTITY_ISSUER go together")
+        if url is None:
+            if self.env == "prod":
+                raise ValueError("IDENTITY_JWKS_URL and IDENTITY_ISSUER are required in prod")
+            return self
+        try:
+            # Plain http is for dev (a compose hostname); anywhere else the keys that decide
+            # which admin tokens are valid must not travel unprotected.
+            check_jwks_url(url, allow_insecure=self.env == "dev")
+        except ValueError as error:
+            raise ValueError(f"IDENTITY_JWKS_URL: {error}") from error
+        if self.env != "dev" and not url.startswith("https://"):
+            raise ValueError("IDENTITY_JWKS_URL must be https outside dev")
+        return self
 
     @model_validator(mode="after")
     def _rate_limit_key(self) -> Self:
