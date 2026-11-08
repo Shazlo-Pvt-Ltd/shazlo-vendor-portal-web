@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     argon2_parallelism: int = 1
     password_min_length: int = 12
 
+    # Sessions: a refresh token lives 7 days and never outlives its family (30 days after login).
+    refresh_token_ttl_days: int = 7
+    refresh_family_max_days: int = 30
+    # A refresh token used again within this many seconds is a concurrent request (a second tab),
+    # not theft: it gets 409 and nothing is revoked. 0 makes any reuse revoke the family.
+    refresh_reuse_grace_seconds: int = Field(default=10, ge=0, le=60)
+
     # How long an email-verification link works (24 hours).
     email_verification_ttl_minutes: int = Field(default=24 * 60, ge=5, le=7 * 24 * 60)
 
