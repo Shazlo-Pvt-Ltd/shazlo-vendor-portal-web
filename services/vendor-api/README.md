@@ -55,7 +55,7 @@ identity-api is on port 8001 and vendor-api on 8002, so both can run side by sid
 
 ## Database
 
-Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (psycopg 3). Migration `0001` is an empty baseline; `0002` adds the vendor and vendor-user tables; `0003` adds assets and brand profiles.
+Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (psycopg 3). Migration `0001` is an empty baseline; `0002` adds the vendor and vendor-user tables; `0003` adds assets and brand profiles; `0004` adds products.
 
 | Table | Notes |
 |---|---|
@@ -65,6 +65,11 @@ Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (ps
 | `auth_tokens` | One-time tokens for email verification, invites and password reset. `purpose` (`verify_email`, `invite`, `reset_password`), `token_hash` (unique, must be a 64-character lower-case hex SHA-256), `expires_at`, `used_at`. **The token itself is never stored.** Deleting the user deletes their tokens |
 | `assets` | An uploaded image; the file lives at the provider (Cloudinary), this is its record. `kind` (`brand_logo`, `brand_banner`, `product_image`), `provider` (`cloudinary`), `public_id` (unique), `url` (**https only**), `format`, `bytes`, `width`, `height` (all required once `status` is `ready`), `status` (`pending`, `ready`, `deleted`), `created_by`. `(vendor_id, id)` is unique so other tables can reference an asset together with its vendor |
 | `brand_profiles` | **One row per version** of a vendor's brand page (see below). Content with the published contract's limits (ADR 0003): `brand_name` (120), `tagline` (160), `about` (4000), `logo_asset_id`, `banner_asset_id`, `website_url` (https), `instagram_handle` (`^[A-Za-z0-9._]{1,30}$`), `categories`, price range in paise; plus `version`, `state`, `submitted_at`, `published_at`, `updated_by` |
+| `products` | A product's identity and where it stands. `sku` (unique per vendor **ignoring letter case**, max 64; two vendors may share one; stays reserved when archived), `status` (`draft`, `pending_review`, `approved`, `rejected`, `archived`), `version` (never goes down), `live_revision_id` and `pending_revision_id` |
+| `product_revisions` | One version of the content (see below): `title` (200), `description` (4000), `category`, `subcategory` (100), `gender` (`women`, `men`, `unisex`), `fabric` (80), `weight_grams` (> 0), `returnable`, `return_window_days` (0 to 30, required when returnable), `version` (per product, increasing, immutable), `submitted_at`, `created_by` |
+| `product_variants` | A variant's stable identity: `sku` (unique per vendor ignoring case), `size`, `color` (`''` = none; `(product, size, color)` unique). Its `id` is the contract's `variant_id`. No stock: the central app owns it |
+| `product_revision_variants` | What a revision says about a variant: `price_paise` (> 0), `mrp_paise` (>= price), `is_active` |
+| `product_images` | An ordered image of a revision: `position` 1 to 10 (unique per revision, so at most 10), `alt_text` (200), `asset_id` |
 
 Role, status and purpose values are plain text columns with check constraints, so adding a value is a migration of that constraint. Vendors and users are never deleted (foreign keys are `RESTRICT`): suspend or disable them instead.
 
@@ -79,6 +84,17 @@ Why rows, and not two columns or a JSON blob: the database enforces **at most on
 - **Approval is one transaction of two UPDATEs, in this order**: the old `published` row to `superseded`, then the approved row to `published` (the unique index is checked per statement, so publishing first fails).
 - **Submitted means complete enough**: a draft may be empty, but anything `pending_review`, `published`, `superseded` or `rejected` needs at least one category and a `submitted_at`; `published_at` is set exactly for `published` and `superseded`. `categories` are trimmed, non-empty, at most 80 characters and unique (case-sensitive, like the contract).
 - **Not constrained here**: how many versions may be `pending_review` at once, and that a logo asset has kind `brand_logo`. Both are Phase 3 rules for the service.
+
+### Products: identity here, content in revisions
+
+An approved product keeps its live content while a new revision is edited and reviewed ("editing an approved product creates a pending revision instead of changing the live one"). So the content is in `product_revisions`, and `products` points at two of them: `live_revision_id` (what shoppers see) and `pending_revision_id` (being edited or in review). Both are composite foreign keys that include the product id, so a product cannot point at another product's revision.
+
+- **Lifecycle**: a new product is `draft` with revision 1 as pending; submitting makes it `pending_review`; approving makes it `approved` with that revision live and nothing pending. Editing an approved product adds a revision as pending while the status stays `approved`; `submitted_at` NULL means "being edited", set means "in review". `approved` needs a live revision, and a product that was never approved (`draft`, `pending_review`, `rejected`) has none.
+- **Variants are split in two**: `product_variants` is the identity (SKU, size, colour), stable across revisions so the central app can update the same `variant_id`, and `product_revision_variants` holds what may differ per revision (price, MRP, offered or not). The alternative, copying variants into every revision, would make "SKU unique per vendor" impossible: the live and the pending revision both contain the SKU.
+- **Images belong to a revision** and may reuse an asset across revisions. The asset must be the revision's vendor's: `(vendor_id, asset_id)` is a composite foreign key to `assets (vendor_id, id)`, and `(revision_id, vendor_id)` ties the image's vendor to its revision.
+- **Submitting needs something to review**: a trigger refuses a `submitted_at` on a revision without at least one active variant and one image. Insert a revision as a draft, add those, then submit.
+- **Two version rules**: a revision's `version` increases per product and never changes (the trigger from brand profiles); `products.version` is the aggregate version the central app uses to drop stale events: the service raises it whenever the live product changes, and the database never lets it go down.
+- **Not constrained here**: that an image asset has kind `product_image`, that a product's revisions are only edited while unsubmitted, and the status transitions. Those are Phase 3 rules for the service.
 
 ```sh
 alembic upgrade head

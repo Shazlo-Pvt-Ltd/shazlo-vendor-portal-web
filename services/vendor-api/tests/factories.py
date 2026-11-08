@@ -10,6 +10,11 @@ from vendor_api.db.models import (
     AssetKind,
     AssetStatus,
     BrandProfile,
+    Product,
+    ProductImage,
+    ProductRevision,
+    ProductRevisionVariant,
+    ProductVariant,
     Vendor,
     VendorUser,
     VendorUserRole,
@@ -103,3 +108,118 @@ async def saved_profile(session: AsyncSession, vendor: Vendor, **changes: Any) -
     session.add(profile)
     await session.flush()
     return profile
+
+
+def make_product(vendor: Vendor, sku: str = "KURTA-01", **changes: Any) -> Product:
+    return Product(**{"vendor_id": vendor.id, "sku": sku, **changes})
+
+
+async def saved_product(
+    session: AsyncSession, vendor: Vendor, sku: str = "KURTA-01", **changes: Any
+) -> Product:
+    product = make_product(vendor, sku, **changes)
+    session.add(product)
+    await session.flush()
+    return product
+
+
+def make_revision(
+    product: Product, user: VendorUser, version: int = 1, **changes: Any
+) -> ProductRevision:
+    values: dict[str, Any] = {
+        "product_id": product.id,
+        "vendor_id": product.vendor_id,
+        "version": version,
+        "title": "Block-print kurta",
+        "category": "kurtas",
+        "gender": "women",
+        "created_by": user.id,
+    }
+    return ProductRevision(**{**values, **changes})
+
+
+async def saved_revision(
+    session: AsyncSession, product: Product, user: VendorUser, version: int = 1, **changes: Any
+) -> ProductRevision:
+    revision = make_revision(product, user, version, **changes)
+    session.add(revision)
+    await session.flush()
+    return revision
+
+
+async def saved_variant(
+    session: AsyncSession, product: Product, sku: str = "KURTA-01-M", **changes: Any
+) -> ProductVariant:
+    values: dict[str, Any] = {
+        "product_id": product.id,
+        "vendor_id": product.vendor_id,
+        "sku": sku,
+        "size": "M",
+        "color": "indigo",
+    }
+    variant = ProductVariant(**{**values, **changes})
+    session.add(variant)
+    await session.flush()
+    return variant
+
+
+def make_revision_variant(
+    revision: ProductRevision, variant: ProductVariant, **changes: Any
+) -> ProductRevisionVariant:
+    values: dict[str, Any] = {
+        "revision_id": revision.id,
+        "variant_id": variant.id,
+        "product_id": revision.product_id,
+        "price_paise": 99_900,
+        "mrp_paise": 129_900,
+    }
+    return ProductRevisionVariant(**{**values, **changes})
+
+
+async def saved_revision_variant(
+    session: AsyncSession, revision: ProductRevision, variant: ProductVariant, **changes: Any
+) -> ProductRevisionVariant:
+    row = make_revision_variant(revision, variant, **changes)
+    session.add(row)
+    await session.flush()
+    return row
+
+
+def make_image(
+    revision: ProductRevision, asset: Asset, position: int = 1, **changes: Any
+) -> ProductImage:
+    values: dict[str, Any] = {
+        "revision_id": revision.id,
+        "vendor_id": revision.vendor_id,
+        "asset_id": asset.id,
+        "position": position,
+    }
+    return ProductImage(**{**values, **changes})
+
+
+async def saved_image(
+    session: AsyncSession,
+    revision: ProductRevision,
+    asset: Asset,
+    position: int = 1,
+    **changes: Any,
+) -> ProductImage:
+    image = make_image(revision, asset, position, **changes)
+    session.add(image)
+    await session.flush()
+    return image
+
+
+async def submittable_revision(
+    session: AsyncSession, vendor: Vendor, user: VendorUser, sku: str = "KURTA-01"
+) -> tuple[Product, ProductRevision]:
+    """A product with a draft revision that has one active variant and one image."""
+    product = await saved_product(session, vendor, sku)
+    revision = await saved_revision(session, product, user)
+    variant = await saved_variant(session, product, f"{sku}-M")
+    await saved_revision_variant(session, revision, variant)
+    asset = await saved_asset(
+        session, vendor, user, public_id=f"shazlo/{sku}-1", kind="product_image"
+    )
+    await saved_image(session, revision, asset)
+    return product, revision
