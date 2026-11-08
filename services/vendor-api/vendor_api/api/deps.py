@@ -65,6 +65,9 @@ def get_sessions(request: Request) -> AuthService:
     return cast(AuthService, request.app.state.sessions)
 
 
+Sessions = Annotated[AuthService, Depends(get_sessions)]
+
+
 async def current_access_claims(
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],

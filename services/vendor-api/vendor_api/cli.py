@@ -7,7 +7,10 @@ from pathlib import Path
 from shazlo_security.keys import KeyConfigError, new_kid, write_new_key
 
 from vendor_api.core.settings import get_settings
+from vendor_api.db.models import VendorStatus
+from vendor_api.db.session import create_engine, create_sessionmaker
 from vendor_api.services.email import EmailTemplate, build_sender
+from vendor_api.services.team import TeamError, TeamService
 
 
 class CommandError(Exception):
@@ -25,6 +28,26 @@ def _generate_key(directory: Path, kid: str | None) -> None:
     # Only the file name is printed, never the key.
     print(f"Wrote private key {path}")
     print(f"Set JWT_KEYS_DIR={directory} and JWT_SIGNING_KID={kid} to sign with it.")
+
+
+async def _invite_owner(vendor: str, email: str | None, status: VendorStatus | None) -> str:
+    settings = get_settings()
+    engine = create_engine(settings.database_url)
+    try:
+        async with create_sessionmaker(engine)() as db:
+            outgoing = await TeamService(settings).invite_owner_of(db, vendor, email, status)
+    finally:
+        await engine.dispose()
+    # The invite is saved. If sending fails, running the command again sends a new one (and
+    # the old link stops working).
+    try:
+        await build_sender(settings).send(outgoing.to, outgoing.template, outgoing.context)
+    except Exception as error:
+        raise CommandError(
+            f"the invite for {outgoing.to} was saved but could not be sent "
+            f"({type(error).__name__}); run the command again to send a new one"
+        ) from error
+    return outgoing.to
 
 
 def _send_test_email(to: str, template: EmailTemplate) -> None:
@@ -71,9 +94,27 @@ def main(argv: list[str] | None = None) -> int:
         choices=list(EmailTemplate),
         default=EmailTemplate.VERIFY_EMAIL,
     )
+    invite = commands.add_parser(
+        "invite-owner",
+        help="create or re-invite a vendor's owner and email the invite (the Phase 8 migration)",
+    )
+    invite.add_argument("--vendor", required=True, help="the vendor's slug or id")
+    invite.add_argument("--email", help="the owner's address; default is the vendor's")
+    invite.add_argument(
+        "--status",
+        type=VendorStatus,
+        choices=list(VendorStatus),
+        help="set the vendor's status too (with an audit event); default: keep it",
+    )
     args = parser.parse_args(argv)
     try:
-        if args.command == "send-test-email":
+        if args.command == "invite-owner":
+            try:
+                to = asyncio.run(_invite_owner(args.vendor, args.email, args.status))
+            except TeamError as error:
+                raise CommandError(str(error)) from error
+            print(f"Invited the owner of {args.vendor} at {to}.")
+        elif args.command == "send-test-email":
             _send_test_email(args.to, args.template)
         else:
             _generate_key(args.dir, args.kid)

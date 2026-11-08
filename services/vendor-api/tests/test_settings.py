@@ -259,3 +259,18 @@ def test_outside_prod_each_process_gets_its_own_key_and_it_is_a_secret() -> None
     assert len(first.rate_limit_hmac_key.get_secret_value()) == 64
     assert first.rate_limit_hmac_key.get_secret_value() not in repr(first)
     assert make(rate_limit_hmac_key="").rate_limit_hmac_key is not None  # empty counts as unset
+
+
+def test_link_lifetimes() -> None:
+    s = make()
+    assert s.invite_token_ttl_minutes == 24 * 60  # invites: 24 hours
+    assert s.reset_token_ttl_minutes == 60  # resets: 1 hour
+    assert make(reset_token_ttl_minutes=5).reset_token_ttl_minutes == 5
+    for name, value in (
+        ("invite_token_ttl_minutes", 4),
+        ("invite_token_ttl_minutes", 14 * 24 * 60 + 1),
+        ("reset_token_ttl_minutes", 4),
+        ("reset_token_ttl_minutes", 24 * 60 + 1),
+    ):
+        with pytest.raises(ValidationError):
+            make(**{name: value})

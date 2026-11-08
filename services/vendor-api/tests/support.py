@@ -1,7 +1,7 @@
 """Shared by the API tests that sign in: the client, the app builder and account builders."""
 
-from collections.abc import AsyncGenerator, AsyncIterator
-from dataclasses import dataclass
+from collections.abc import AsyncGenerator, AsyncIterator, Mapping
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from http.cookies import SimpleCookie
 from typing import Annotated, Any
@@ -19,6 +19,7 @@ from vendor_api.app import create_app
 from vendor_api.core.settings import Settings
 from vendor_api.db.models import Vendor, VendorStatus, VendorUser, VendorUserRole
 from vendor_api.db.session import get_session
+from vendor_api.services.email import EmailSender, EmailService, EmailTemplate
 
 PASSWORD = "correct horse battery"  # noqa: S105
 NEW_PASSWORD = "another long passphrase"  # noqa: S105
@@ -173,3 +174,29 @@ async def set_user(session: AsyncSession, user: VendorUser, **values: Any) -> No
 
 async def redis_keys(redis: FakeAsyncRedis) -> list[str]:
     return [key.decode() async for key in redis.scan_iter("*")]
+
+
+@dataclass
+class RecordingSender:
+    """Records what the app tries to send, and forwards it to the console backend (which logs
+    only the template outside dev), so the log assertions see the real log lines."""
+
+    inner: EmailSender
+    sent: list[tuple[str, EmailTemplate, Mapping[str, object]]] = field(default_factory=list)
+
+    async def send(self, to: str, template: EmailTemplate, context: Mapping[str, object]) -> None:
+        self.sent.append((to, template, dict(context)))
+        await self.inner.send(to, template, context)
+
+    def tokens(self) -> list[str]:
+        return [str(context["token"]) for _, _, context in self.sent if "token" in context]
+
+
+def record_emails(api: Api) -> RecordingSender:
+    """Replaces the app's email service with one that records what it is asked to send (and
+    forwards it to the console backend, which logs only the template outside dev)."""
+    from vendor_api.services.email import ConsoleEmailSender
+
+    sender = RecordingSender(ConsoleEmailSender("https://vendors.test", show_links=False))
+    api.app.state.emails = EmailService(sender, retry_delay_seconds=0)
+    return sender

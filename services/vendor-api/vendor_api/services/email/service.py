@@ -18,7 +18,8 @@ class OutgoingEmail:
 
     to: str
     template: EmailTemplate
-    context: Mapping[str, object] = field(default_factory=dict)
+    # Holds the one-time token: kept out of repr, so logging the object cannot leak it.
+    context: Mapping[str, object] = field(default_factory=dict, repr=False)
 
 
 class EmailService:

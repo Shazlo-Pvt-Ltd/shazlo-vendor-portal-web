@@ -29,6 +29,7 @@ from vendor_api.services.auth import (
     AuthService,
     AuthSession,
 )
+from vendor_api.services.credentials import CredentialService
 from vendor_api.services.signup import SignupData, SignupService
 
 # The refresh cookie. Its own name (identity-api's is `identity_refresh`), so the two services
@@ -54,6 +55,7 @@ SIGNUP_ACCEPTED = (
     "Check your email. If this address can be used, you will find a message from us there."
 )
 RESEND_ACCEPTED = "If that address needs verifying, we have sent a new link."
+RESET_ACCEPTED = "If that address has an account, we have sent a link to reset the password."
 
 
 def get_signup_service(request: Request) -> SignupService:
@@ -61,6 +63,13 @@ def get_signup_service(request: Request) -> SignupService:
 
 
 Service = Annotated[SignupService, Depends(get_signup_service)]
+
+
+def get_credential_service(request: Request) -> CredentialService:
+    return cast(CredentialService, request.app.state.credentials)
+
+
+Credentials = Annotated[CredentialService, Depends(get_credential_service)]
 
 
 def no_store(response: Response) -> None:
@@ -395,6 +404,78 @@ async def login(
     session = await sessions.login(db, body.email, body.password)
     await limits.reset("login", "email_ip", email_ip)
     return _session_response(response, settings, session)
+
+
+class ForgotPasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=320, pattern=EMAIL_PATTERN)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _trim(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+
+class SetPasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=1, max_length=200)
+    # Used exactly as typed (never trimmed), like every password.
+    password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
+
+
+@router.post("/forgot-password", status_code=202)
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    request: Request,
+    response: Response,
+    background: BackgroundTasks,
+    db: Db,
+    credentials: Credentials,
+    emails: Emails,
+    limits: Limits,
+    ip: ClientIp,
+) -> Message:
+    """Sends a reset link only if the address belongs to an active user; the answer never says
+    which. Limited per IP and per address (as typed), so it cannot be used to flood an inbox."""
+    no_store(response)
+    settings = _settings(request)
+    await limits.check(
+        "forgot_password",
+        [
+            Check("ip", ip, settings.rate_limit_forgot_password_ip),
+            Check("email", body.email.strip().lower(), settings.rate_limit_forgot_password_email),
+        ],
+    )
+    emails.queue(background, await credentials.forgot_password(db, body.email))
+    return Message(message=RESET_ACCEPTED)
+
+
+@router.post("/set-password", status_code=204)
+async def set_password(
+    body: SetPasswordRequest,
+    request: Request,
+    db: Db,
+    credentials: Credentials,
+    sessions: Sessions,
+    limits: Limits,
+    ip: ClientIp,
+) -> Response:
+    """Accepts an invite or a reset link with a new password.
+
+    It activates an invited user, marks the email verified (the link proved it), spends the
+    token and ends every session of the user. A token that is unknown, used or expired is one
+    generic `400 invalid_token`. It does not sign the user in: they log in with the new password.
+    """
+    await limits.check(
+        "set_password", [Check("ip", ip, _settings(request).rate_limit_set_password_ip)]
+    )
+    user_id = await credentials.set_password(db, body.token, body.password)
+    await sessions.end_sessions_of_user(user_id)
+    response = Response(status_code=204)
+    no_store(response)
+    return response
 
 
 @router.post("/refresh", response_model=None, dependencies=CookieOrigin)
