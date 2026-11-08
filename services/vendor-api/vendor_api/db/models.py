@@ -715,7 +715,7 @@ class Review(Base):
         ),
         # A rejection says why.
         CheckConstraint(
-            "status <> 'rejected' OR length(btrim(coalesce(reason, ''))) > 0",
+            "status <> 'rejected' OR coalesce(reason, '') ~ '\\S'",
             name="rejected_needs_reason",
         ),
         # An admin's decision names the admin and the time.
@@ -808,7 +808,7 @@ class ReviewEvent(Base):
         CheckConstraint(_one_of("actor_type", ActorType), name="actor_type_values"),
         CheckConstraint("actor_type = 'system' OR actor_id IS NOT NULL", name="actor_id_required"),
         CheckConstraint(
-            "action <> 'rejected' OR length(btrim(coalesce(reason, ''))) > 0",
+            "action <> 'rejected' OR coalesce(reason, '') ~ '\\S'",
             name="rejected_needs_reason",
         ),
         Index("ix_review_events_review_id_id", "review_id", "id"),

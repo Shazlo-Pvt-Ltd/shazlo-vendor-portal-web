@@ -86,7 +86,7 @@ def upgrade() -> None:
             name=op.f("ck_reviews_one_subject"),
         ),
         sa.CheckConstraint(
-            "status <> 'rejected' OR length(btrim(coalesce(reason, ''))) > 0",
+            "status <> 'rejected' OR coalesce(reason, '') ~ '\\S'",
             name=op.f("ck_reviews_rejected_needs_reason"),
         ),
         sa.CheckConstraint(
@@ -177,7 +177,7 @@ def upgrade() -> None:
             name=op.f("ck_review_events_actor_id_required"),
         ),
         sa.CheckConstraint(
-            "action <> 'rejected' OR length(btrim(coalesce(reason, ''))) > 0",
+            "action <> 'rejected' OR coalesce(reason, '') ~ '\\S'",
             name=op.f("ck_review_events_rejected_needs_reason"),
         ),
         sa.ForeignKeyConstraint(

@@ -472,8 +472,9 @@ async def test_every_event_stays_after_all_the_attempts(session: AsyncSession) -
         "DELETE FROM review_events",
         "TRUNCATE review_events",
     ):
-        async with session.begin_nested():
-            with pytest.raises(IntegrityError, match="append-only"):
+        # The savepoint is rolled back by the error leaving it, so the next try can run.
+        with pytest.raises(IntegrityError, match="append-only"):
+            async with session.begin_nested():
                 await session.execute(text(statement))
     assert (await session.scalars(select(ReviewEvent.id))).all() == [event.id]
 
