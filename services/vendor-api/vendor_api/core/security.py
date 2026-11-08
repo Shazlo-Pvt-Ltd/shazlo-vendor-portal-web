@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 from shazlo_security.keys import KeyRing, KeyRingConfig
 from shazlo_security.passwords import PasswordConfig
+from shazlo_security.rate_limit import RateLimitConfig
 from shazlo_security.refresh_tokens import RefreshTokenConfig
 from shazlo_security.tokens import TokenIssuer
 
@@ -14,6 +15,8 @@ from vendor_api.core.settings import Settings
 # the refresh cookie is `vendor_refresh` (api/auth.py): identity-api uses `identity:` and
 # `identity_refresh`, so the two never collide on a shared Redis or parent domain (ADR 0010).
 REFRESH_KEY_PREFIX = "vendor:"
+# The rate limiter's keys start with this (`vendor:rl:<endpoint>:<scope>:<hash>`).
+RATE_LIMIT_KEY_PREFIX = "vendor:rl:"
 
 
 def refresh_token_config(settings: Settings) -> RefreshTokenConfig:
@@ -22,6 +25,16 @@ def refresh_token_config(settings: Settings) -> RefreshTokenConfig:
         token_ttl=timedelta(days=settings.refresh_token_ttl_days),
         family_max_ttl=timedelta(days=settings.refresh_family_max_days),
         reuse_grace_seconds=settings.refresh_reuse_grace_seconds,
+    )
+
+
+def rate_limit_config(settings: Settings) -> RateLimitConfig:
+    key = settings.rate_limit_hmac_key
+    if key is None:  # Settings fills it in, so this is a programming error
+        raise ValueError("rate_limit_hmac_key is not set")
+    return RateLimitConfig(
+        hmac_key=key.get_secret_value().encode(),
+        fail_closed=frozenset(settings.rate_limit_fail_closed),
     )
 
 

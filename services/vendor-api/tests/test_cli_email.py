@@ -36,6 +36,7 @@ def test_send_test_email_only_runs_in_dev(
         email_backend="smtp",
         smtp_host="smtp.provider.example",
         portal_base_url="https://vendors.shazlo.store",
+        rate_limit_hmac_key="k" * 32,  # prod needs one
     )
     assert cli.main(["send-test-email"]) == 1
     assert "only runs with ENV=dev" in capsys.readouterr().err
