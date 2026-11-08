@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 import pytest
+from conftest import Tenants
 from fakeredis import FakeAsyncRedis
 from shazlo_security.passwords import PasswordService
 from sqlalchemy import func, select, update
@@ -299,16 +300,13 @@ async def test_an_invite_for_a_user_who_is_not_invited_is_refused(
 
 
 async def test_the_owner_of_a_vendor_invites_into_their_own_vendor_only(
-    api: Api,
-    account: Account,
-    sender: RecordingSender,
-    session: AsyncSession,
-    hasher: PasswordService,
+    tenants: Tenants, session: AsyncSession
 ) -> None:
-    other = await make_account(session, hasher, email="owner@other.test")
-    await invite(api, await access_token(api, other.user.email), "helper@other.test")
-    helper = await user_by_email(session, "helper@other.test")
-    assert helper.vendor_id == other.vendor.id != account.vendor.id
+    for tenant in (tenants.a, tenants.b):
+        email = f"helper@{tenant.vendor.slug}.test"
+        response = await invite(tenants.api, tenant.owner_token, email)
+        assert response.status_code == 202
+        assert (await user_by_email(session, email)).vendor_id == tenant.vendor.id
 
 
 # --- Who may invite ----------------------------------------------------------------------
@@ -487,16 +485,11 @@ async def test_a_vendor_always_keeps_its_owner(
 
 @pytest.mark.parametrize("target", ["other_vendor", "unknown"])
 async def test_another_vendors_user_and_an_unknown_id_are_both_404(
-    api: Api,
-    account: Account,
-    sender: RecordingSender,
-    session: AsyncSession,
-    hasher: PasswordService,
-    target: str,
+    tenants: Tenants, session: AsyncSession, target: str
 ) -> None:
-    other = await make_account(session, hasher, email="owner@other.test")
-    user_id = other.user.id if target == "other_vendor" else uuid.uuid4()
-    access = await access_token(api)
+    other = tenants.b.owner
+    user_id = other.id if target == "other_vendor" else uuid.uuid4()
+    api, access = tenants.api, tenants.a.owner_token
 
     patched = await patch_user(api, access, user_id, True)
     resent = await api.http.post(
@@ -505,7 +498,7 @@ async def test_another_vendors_user_and_an_unknown_id_are_both_404(
 
     assert (patched.status_code, resent.status_code) == (404, 404)
     assert patched.json()["error"]["code"] == resent.json()["error"]["code"] == "user_not_found"
-    assert (await user_by_email(session, "owner@other.test")).status == "active"  # untouched
+    assert (await user_by_email(session, "owner@b.test")).status == "active"  # untouched
 
 
 async def test_a_malformed_user_id_is_a_validation_error(api: Api, account: Account) -> None:

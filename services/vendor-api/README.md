@@ -135,6 +135,20 @@ vendor-api keeps two route groups (ADR 0009) and they never accept each other's 
 - **`/ready` does not report identity-api.** Readiness means "this service can do its own work": Postgres and Redis. Vendors keep signing in while identity-api is down, and only the admin group degrades (stale keys keep working for a while). Reporting it would take vendor-api out of rotation for a dependency most of its traffic does not use.
 - A vendor token on `/v1/admin/*` is `401` (its key is not in identity-api's JWKS), and an identity-api token on `/v1/vendor/*` is `401`; tests cover both, including a token signed with vendor-api's key that claims `super_admin`.
 
+## Vendor data isolation
+
+A vendor cannot read, change or learn about another vendor's data, and another vendor's object looks like it does not exist: **404, never 403**. The rule is easy to forget on one endpoint, so it is built into helpers and enforced by tests.
+
+**Adding a vendor-scoped endpoint**
+1. Put the route under `/v1/vendor` (an `APIRouter` in `vendor_api/api/`, prefix `/vendor/...`) and depend on the caller: `scope: Scope` (`api/deps.py`) gives `scope.vendor_id`, `scope.user_id` and `scope.role` from the verified token **and the database**; or `owner: Owner`/`require_vendor_role(...)` when only some roles may call it. Never read a vendor id from the path, query or body. Request bodies forbid unknown fields, so a `vendor_id` sent by the client is a 422.
+2. Query through `db/scoped.py`: `scoped_select(Model, scope.vendor_id)` for lists and `get_owned_or_404(db, Model, object_id, scope.vendor_id, NOT_FOUND)` for one object. The id and the vendor are one condition, so another vendor's id is the same 404 as an id that does not exist. `scoped_select` raises `TypeError` for a model without `vendor_id`.
+3. A new table of vendor data needs a `vendor_id` with a foreign key leading to `vendors` and an index starting with it. A table only ever reached through a parent that has one goes in `SCOPED_THROUGH_PARENT` in `tests/test_isolation_structure.py`, with the parent.
+4. Test it with the `tenants` fixture (`tests/conftest.py`): vendors A and B, each with an owner, a staff member and an invited user, their tokens and an admin token. Add the endpoint to `ACTIONS` in `tests/test_isolation.py`, or write a test beside it: act as A on B's ids and expect the same 404 as for an unknown id, with B's data unchanged.
+
+**What fails CI if it is forgotten**: `tests/test_isolation_structure.py` fails when a table of vendor data has no `vendor_id`, no foreign key to `vendors`, or no index on it, and when a route under `/v1/vendor` does not depend on `current_vendor_user`. It finds routers by walking `vendor_api/api`, so a new module is checked without anyone adding it to a list, and its last tests feed it bad samples to show it does fail.
+
+**What is covered today**: `/v1/vendor/me`, the staff list, disable and enable, and resend-invite: each vendor's lists hold only its own rows; B's user ids (the owner, a staff member, an invited user) and random ids are the same 404 (identical bodies), in both directions, with B's rows unchanged afterwards; a staff member gets the same 403 for their own, another vendor's and unknown ids; an invite always lands in the caller's vendor; a token whose vendor is not the user's vendor is refused; admin and vendor tokens are not interchangeable.
+
 ## Team, invites and password reset
 
 Three cases end with "someone gets an email and sets a password": an owner inviting a staff member, a user who forgot their password, and (Phase 8) the owner of a vendor migrated from MongoDB. All use the same one-time token: 256-bit, only its SHA-256 stored, single use, and a newer token for the same purpose ends the older ones.

@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Annotated, cast
@@ -122,6 +123,28 @@ async def current_vendor_user(
     if not vendor_may_sign_in(vendor):
         raise VENDOR_NOT_ALLOWED
     return CurrentVendorUser(user, vendor)
+
+
+@dataclass(frozen=True)
+class VendorScope:
+    """Whose data this request may touch, taken from the token and the database.
+
+    Every vendor-facing handler takes `scope: Scope` and passes `scope.vendor_id` to the
+    scoped helpers in `db/scoped.py`; it never reads a vendor id from the path, query or body.
+    """
+
+    vendor_id: uuid.UUID
+    user_id: uuid.UUID
+    role: VendorUserRole
+
+
+async def current_scope(
+    current: Annotated[CurrentVendorUser, Depends(current_vendor_user)],
+) -> VendorScope:
+    return VendorScope(current.vendor.id, current.user.id, current.role)
+
+
+Scope = Annotated[VendorScope, Depends(current_scope)]
 
 
 def require_vendor_role(*roles: VendorUserRole) -> Callable[..., Awaitable[CurrentVendorUser]]:

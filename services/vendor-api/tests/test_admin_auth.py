@@ -1,4 +1,3 @@
-import json
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
@@ -8,10 +7,14 @@ import httpx
 import pytest
 from fakeredis import FakeAsyncRedis
 from fastapi import FastAPI
-from shazlo_auth import JwksClient
-from shazlo_security.keys import KeyRing, KeyRingConfig, generate_private_key, load_keyring
-from shazlo_security.keys import private_key_pem as pem_of
 from shazlo_security.tokens import TokenIssuer
+from support import (
+    ADMIN_ID,
+    IDENTITY_ISSUER,
+    JWKS_URL,
+    Identity,
+    identity_ring,
+)
 
 from vendor_api.api.admin import AdminRequest, Reviewer
 from vendor_api.app import create_app
@@ -19,73 +22,8 @@ from vendor_api.core.security import token_issuer
 from vendor_api.core.settings import Settings
 from vendor_api.db.models import VendorUserRole
 
-IDENTITY_ISSUER = "https://identity.test"
-JWKS_URL = "https://identity.test/.well-known/jwks.json"
-ADMIN_ID = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 VENDOR_ID = uuid.UUID("9b2f1c3e-0d4a-4c1e-8f6a-2b7d5e9a1c30")
 USER_ID = uuid.UUID("11111111-2222-3333-4444-555555555555")
-
-
-def identity_ring(kid: str = "identity-key-1") -> KeyRing:
-    """identity-api's key ring: its own key, nothing to do with vendor-api's."""
-    pem = pem_of(generate_private_key()).decode()
-    return load_keyring(KeyRingConfig(keys_json=json.dumps({kid: pem})))
-
-
-class FakeJwks:
-    """identity-api's JWKS endpoint: counts fetches and can be taken down."""
-
-    def __init__(self, ring: KeyRing) -> None:
-        self.ring = ring
-        self.fetches = 0
-        self.down = False
-
-    async def __call__(self) -> dict[str, Any]:
-        self.fetches += 1
-        if self.down:
-            raise ConnectionError("identity-api is down")
-        return self.ring.jwks()
-
-
-class Clock:
-    def __init__(self) -> None:
-        self.now = 1000.0
-
-    def __call__(self) -> float:
-        return self.now
-
-
-class Identity:
-    """identity-api for the tests: issues admin tokens and serves the JWKS that verifies them."""
-
-    def __init__(self, ring: KeyRing | None = None) -> None:
-        self.ring = ring or identity_ring()
-        self.jwks = FakeJwks(self.ring)
-        self.clock = Clock()
-        self.client = JwksClient(self.jwks, clock=self.clock)
-        self._issuer = TokenIssuer(IDENTITY_ISSUER, self.ring, access_ttl_seconds=900)
-
-    def token(
-        self,
-        roles: list[str],
-        *,
-        audience: str = "vendor-api",
-        subject: uuid.UUID = ADMIN_ID,
-        must_change_password: bool = False,
-        issuer: TokenIssuer | None = None,
-        **extra: Any,
-    ) -> str:
-        return (
-            (issuer or self._issuer)
-            .issue(
-                subject=subject,
-                roles=roles,
-                audience=audience,
-                must_change_password=must_change_password,
-                **extra,
-            )
-            .token
-        )
 
 
 @pytest.fixture
