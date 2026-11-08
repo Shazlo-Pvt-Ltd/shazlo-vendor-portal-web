@@ -93,6 +93,26 @@ class Gender(StrEnum):
     UNISEX = "unisex"
 
 
+class ReviewSubject(StrEnum):
+    BRAND_PROFILE = "brand_profile"
+    PRODUCT = "product"
+
+
+class ReviewStatus(StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    WITHDRAWN = "withdrawn"
+
+
+class ReviewAction(StrEnum):
+    SUBMITTED = "submitted"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    WITHDRAWN = "withdrawn"
+    REOPENED = "reopened"
+
+
 def _one_of(column: str, values: type[StrEnum]) -> str:
     """The SQL for a check constraint that limits `column` to the values of an enum.
 
@@ -361,6 +381,9 @@ class BrandProfile(Base):
             name="published_at_matches_state",
         ),
         UniqueConstraint("vendor_id", "version"),
+        # The target of reviews' composite foreign key, which keeps a review and the profile it
+        # is about in the same vendor.
+        UniqueConstraint("id", "vendor_id"),
         # A profile may only use assets of its own vendor: the vendor is part of the key.
         ForeignKeyConstraint(
             ["vendor_id", "logo_asset_id"],
@@ -662,4 +685,141 @@ class ProductImage(Base):
     asset_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     position: Mapped[int] = mapped_column(Integer)
     alt_text: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = _created_at()
+
+
+class Review(Base):
+    """An admin's review of one version of something a vendor submitted.
+
+    A review points at the **exact version row**: a `brand_profile` (one row per version) or a
+    `product_revision`. So "the version reviewed" is that row's `version`, the reference is a
+    real foreign key (a polymorphic `subject_id` could not be one), and a later edit can never
+    change what was reviewed. Exactly one of the two references is set. Each is a composite
+    key with `vendor_id`, so a review and its subject always belong to the same vendor.
+
+    The reviewer is an identity-api admin: only their UUID is stored (another database, so no
+    foreign key), and it always comes from the verified token, never from the request body.
+    """
+
+    __tablename__ = "reviews"
+    __table_args__ = (
+        CheckConstraint(_one_of("subject", ReviewSubject), name="subject_values"),
+        CheckConstraint(_one_of("status", ReviewStatus), name="status_values"),
+        # Exactly one subject, and it matches `subject`.
+        CheckConstraint(
+            "(subject = 'brand_profile' AND brand_profile_id IS NOT NULL "
+            "AND product_revision_id IS NULL) "
+            "OR (subject = 'product' AND product_revision_id IS NOT NULL "
+            "AND brand_profile_id IS NULL)",
+            name="one_subject",
+        ),
+        # A rejection says why.
+        CheckConstraint(
+            "status <> 'rejected' OR length(btrim(coalesce(reason, ''))) > 0",
+            name="rejected_needs_reason",
+        ),
+        # An admin's decision names the admin and the time.
+        CheckConstraint(
+            "status NOT IN ('approved', 'rejected') "
+            "OR (reviewer_id IS NOT NULL AND decided_at IS NOT NULL)",
+            name="decision_needs_reviewer",
+        ),
+        # A withdrawal is the vendor's: it has a time but no reviewer. A pending review has
+        # neither, so reopening one clears both.
+        CheckConstraint(
+            "status <> 'withdrawn' OR (reviewer_id IS NULL AND decided_at IS NOT NULL)",
+            name="withdrawn_shape",
+        ),
+        CheckConstraint(
+            "status <> 'pending' OR (reviewer_id IS NULL AND decided_at IS NULL)",
+            name="pending_shape",
+        ),
+        CheckConstraint("decided_at IS NULL OR decided_at >= submitted_at", name="decided_after"),
+        ForeignKeyConstraint(
+            ["brand_profile_id", "vendor_id"],
+            ["brand_profiles.id", "brand_profiles.vendor_id"],
+            name="fk_reviews_brand_profile_id_brand_profiles",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["product_revision_id", "vendor_id"],
+            ["product_revisions.id", "product_revisions.vendor_id"],
+            name="fk_reviews_product_revision_id_product_revisions",
+            ondelete="RESTRICT",
+        ),
+        # At most one pending review per version of each kind of subject.
+        Index(
+            "uq_reviews_one_pending_per_brand_profile",
+            "brand_profile_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
+        Index(
+            "uq_reviews_one_pending_per_product_revision",
+            "product_revision_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
+        # Phase 3's queue: oldest pending first; and a vendor's reviews by status.
+        Index(
+            "ix_reviews_pending_submitted_at",
+            "submitted_at",
+            postgresql_where=text("status = 'pending'"),
+        ),
+        Index("ix_reviews_vendor_id_status", "vendor_id", "status"),
+        Index("ix_reviews_status_submitted_at", "status", "submitted_at"),
+    )
+    __mapper_args__ = {"eager_defaults": True}
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    vendor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("vendors.id", ondelete="RESTRICT")
+    )
+    subject: Mapped[str] = mapped_column(String(16))
+    brand_profile_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    product_revision_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    status: Mapped[str] = mapped_column(
+        String(16), server_default=text(f"'{ReviewStatus.PENDING}'")
+    )
+    submitted_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("vendor_users.id", ondelete="RESTRICT")
+    )
+    submitted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    reviewer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+
+class ReviewEvent(Base):
+    """Append-only audit trail of every step of a review. A database trigger refuses UPDATE,
+    DELETE and TRUNCATE, so even a bug in the application cannot rewrite history; a review with
+    events cannot be deleted (RESTRICT). `actor_id` is the vendor user or the admin (no foreign
+    key to an admin: another database); only the system acts as nobody."""
+
+    __tablename__ = "review_events"
+    __table_args__ = (
+        CheckConstraint(_one_of("action", ReviewAction), name="action_values"),
+        CheckConstraint(_one_of("actor_type", ActorType), name="actor_type_values"),
+        CheckConstraint("actor_type = 'system' OR actor_id IS NOT NULL", name="actor_id_required"),
+        CheckConstraint(
+            "action <> 'rejected' OR length(btrim(coalesce(reason, ''))) > 0",
+            name="rejected_needs_reason",
+        ),
+        Index("ix_review_events_review_id_id", "review_id", "id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    review_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("reviews.id", ondelete="RESTRICT")
+    )
+    action: Mapped[str] = mapped_column(String(16))
+    actor_type: Mapped[str] = mapped_column(String(16))
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()

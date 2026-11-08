@@ -15,6 +15,8 @@ from vendor_api.db.models import (
     ProductRevision,
     ProductRevisionVariant,
     ProductVariant,
+    Review,
+    ReviewEvent,
     Vendor,
     VendorUser,
     VendorUserRole,
@@ -223,3 +225,45 @@ async def submittable_revision(
     )
     await saved_image(session, revision, asset)
     return product, revision
+
+
+def make_review(
+    vendor: Vendor,
+    user: VendorUser,
+    *,
+    profile: BrandProfile | None = None,
+    revision: ProductRevision | None = None,
+    **changes: Any,
+) -> Review:
+    """A pending review of a brand profile version or a product revision."""
+    values: dict[str, Any] = {"vendor_id": vendor.id, "submitted_by": user.id}
+    if profile is not None:
+        values.update(subject="brand_profile", brand_profile_id=profile.id)
+    if revision is not None:
+        values.update(subject="product", product_revision_id=revision.id)
+    return Review(**{**values, **changes})
+
+
+async def saved_review(
+    session: AsyncSession,
+    vendor: Vendor,
+    user: VendorUser,
+    *,
+    profile: BrandProfile | None = None,
+    revision: ProductRevision | None = None,
+    **changes: Any,
+) -> Review:
+    review = make_review(vendor, user, profile=profile, revision=revision, **changes)
+    session.add(review)
+    await session.flush()
+    return review
+
+
+def make_event(review: Review, **changes: Any) -> ReviewEvent:
+    values: dict[str, Any] = {
+        "review_id": review.id,
+        "action": "submitted",
+        "actor_type": "vendor",
+        "actor_id": review.submitted_by,
+    }
+    return ReviewEvent(**{**values, **changes})
