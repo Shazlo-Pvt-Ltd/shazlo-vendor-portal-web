@@ -27,7 +27,7 @@ pip install -e '.[dev]'
 cp .env.example .env                       # put the same POSTGRES_PASSWORD into DATABASE_URL
 python -m vendor_api.cli generate-key      # writes ./.keys/<kid>.pem; JWT_KEYS_DIR in .env points there
 alembic upgrade head
-python -m vendor_api.cli seed-dev          # a demo vendor with an owner and a staff user; prints the password
+python -m vendor_api.cli seed-dev          # a demo vendor with an owner and a staff user
 uvicorn vendor_api.main:app --reload --port 8002
 ```
 
@@ -36,14 +36,14 @@ Then, in another terminal:
 ```sh
 curl localhost:8002/health                 # {"status": "ok"}
 curl localhost:8002/ready                  # Postgres and Redis
-# Sign in as the seeded owner (the password `seed-dev` printed):
+# Sign in as the seeded owner (local-only password: demo-password-1234):
 curl -s localhost:8002/v1/auth/login -H 'content-type: application/json' \
-  -d '{"email": "owner@demo-brand.test", "password": "<the printed password>"}'
+  -d '{"email": "owner@demo-brand.test", "password": "demo-password-1234"}'
 ```
 
 **Or sign up as a new vendor:** `POST /v1/auth/signup` (try it at <http://localhost:8002/docs>), then open Mailpit at <http://localhost:8025>, copy the token from the link (`...#token=<token>`) and `POST /v1/auth/verify-email` with `{"token": "<token>"}`; now you can log in.
 
-- **`seed-dev`** creates one approved vendor `demo-brand` with a verified owner (`owner@demo-brand.test`) and a staff user (`staff@demo-brand.test`), both with one password. It runs only with `ENV=dev`, prints the password once (set your own with `--password` or `SEED_VENDOR_PASSWORD`), and is safe to run twice: it never changes anything that exists.
+- **`seed-dev`** creates one approved vendor `demo-brand` with a verified owner (`owner@demo-brand.test`) and a staff user (`staff@demo-brand.test`), both with one password: `demo-password-1234`, a **local-only** default (set your own with `--password` or `SEED_VENDOR_PASSWORD`). The command never prints a password, runs only with `ENV=dev`, and is safe to run twice: it never changes anything that exists.
 - If `generate-key` printed a `JWT_SIGNING_KID`, put it in `.env` (it is only needed with more than one key). The app refuses to start without a signing key.
 - To also run identity-api (admin tokens for `/v1/admin/*`) see the [root README](../../README.md), Local development. vendor-api starts without it.
 

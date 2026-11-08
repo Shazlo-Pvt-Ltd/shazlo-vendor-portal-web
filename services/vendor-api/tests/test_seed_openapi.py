@@ -14,6 +14,7 @@ from vendor_api.core.settings import Settings, get_settings
 from vendor_api.db.models import Vendor, VendorStatusEvent, VendorUser
 from vendor_api.openapi import OPENAPI_PATH, build_openapi
 from vendor_api.services.seed import (
+    DEV_SEED_PASSWORD,
     SEED_OWNER_EMAIL,
     SEED_SLUG,
     SEED_STAFF_EMAIL,
@@ -200,23 +201,33 @@ def test_the_seed_command_refuses_a_short_password(
     assert "at least 12 characters" in capsys.readouterr().err
 
 
-def test_the_seed_command_prints_the_password_once(
+def test_the_seed_command_never_prints_the_password(
     clean_settings: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setenv("ENV", "dev")
+    passwords: list[str] = []
     results = iter([True, False])
 
     async def fake_seed(password: str) -> bool:
+        passwords.append(password)
         return next(results)
 
     monkeypatch.setattr(cli, "_seed_dev", fake_seed)
     assert cli.main(["seed-dev", "--password", SEED_PASSWORD]) == 0
     first = capsys.readouterr().out
     assert SEED_OWNER_EMAIL in first
-    assert SEED_PASSWORD in first
+    assert SEED_STAFF_EMAIL in first
     assert "local use only" in first
+    assert SEED_PASSWORD not in first  # a password is never echoed
 
-    assert cli.main(["seed-dev", "--password", SEED_PASSWORD]) == 0
+    assert cli.main(["seed-dev"]) == 0
     second = capsys.readouterr().out
     assert "already exists" in second
-    assert SEED_PASSWORD not in second  # never shown again
+    assert passwords == [SEED_PASSWORD, DEV_SEED_PASSWORD]  # the documented default is the fallback
+    assert DEV_SEED_PASSWORD not in second
+
+
+def test_the_default_password_is_valid_and_documented() -> None:
+    assert len(DEV_SEED_PASSWORD) >= 12
+    readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+    assert DEV_SEED_PASSWORD in readme

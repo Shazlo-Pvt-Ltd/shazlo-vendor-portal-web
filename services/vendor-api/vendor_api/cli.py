@@ -14,7 +14,12 @@ from vendor_api.db.models import VendorStatus
 from vendor_api.db.session import create_engine, create_sessionmaker
 from vendor_api.openapi import OPENAPI_PATH, build_openapi
 from vendor_api.services.email import EmailTemplate, build_sender
-from vendor_api.services.seed import SEED_OWNER_EMAIL, SEED_STAFF_EMAIL, seed_demo_vendor
+from vendor_api.services.seed import (
+    DEV_SEED_PASSWORD,
+    SEED_OWNER_EMAIL,
+    SEED_STAFF_EMAIL,
+    seed_demo_vendor,
+)
 from vendor_api.services.team import TeamError, TeamService
 
 
@@ -142,7 +147,8 @@ def main(argv: list[str] | None = None) -> int:
     seed.add_argument(
         "--password",
         default=os.environ.get("SEED_VENDOR_PASSWORD"),
-        help="the password of both users; default: SEED_VENDOR_PASSWORD or a random one",
+        help="the password of both users; default: SEED_VENDOR_PASSWORD, else a documented "
+        "local-only default",
     )
     export = commands.add_parser(
         "export-openapi", help="write openapi.json (or, with --check, fail if it is stale)"
@@ -157,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
             settings = get_settings()
             if settings.env != "dev":
                 raise CommandError("seed-dev only runs with ENV=dev")
-            chosen = args.password or secrets.token_urlsafe(16)
+            chosen = args.password or DEV_SEED_PASSWORD
             if len(chosen) < settings.password_min_length:
                 raise CommandError(
                     f"the password must have at least {settings.password_min_length} characters"
@@ -166,7 +172,8 @@ def main(argv: list[str] | None = None) -> int:
                 print("Created the demo vendor (approved) with two users:")
                 print(f"  owner  {SEED_OWNER_EMAIL}")
                 print(f"  staff  {SEED_STAFF_EMAIL}")
-                print(f"  password (local use only): {chosen}")
+                # Never echoed: it is SEED_VENDOR_PASSWORD, --password or the default in the README.
+                print("  both use the seed password (local use only).")
             else:
                 print("The demo vendor already exists; nothing changed.")
         elif args.command == "invite-owner":

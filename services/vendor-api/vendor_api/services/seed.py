@@ -17,6 +17,9 @@ from vendor_api.db.models import (
 SEED_SLUG = "demo-brand"
 SEED_OWNER_EMAIL = "owner@demo-brand.test"
 SEED_STAFF_EMAIL = "staff@demo-brand.test"
+# The demo users' password when none is given. It is for a local database only: the command
+# refuses to run outside ENV=dev. Set SEED_VENDOR_PASSWORD (or --password) to use another one.
+DEV_SEED_PASSWORD = "demo-password-1234"  # noqa: S105
 
 
 async def seed_demo_vendor(db: AsyncSession, passwords: PasswordService, password: str) -> bool:
