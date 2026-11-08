@@ -1,28 +1,71 @@
 # vendor-api
 
-FastAPI service for vendors, brand profiles, products, assets, reviews and publishing to the central app. See the [roadmap](../../docs/ROADMAP.md) (Phases 2 to 4), [ADR 0009](../../docs/adr/0009-auth-model.md) for the auth model and [ADR 0010](../../docs/adr/0010-shared-security-package.md) for what it shares with identity-api.
+FastAPI service for vendors, brand profiles, products, assets, reviews and publishing to the central app. See the [roadmap](../../docs/ROADMAP.md) (Phases 2 to 4), [ADR 0009](../../docs/adr/0009-auth-model.md) for the auth model, [ADR 0010](../../docs/adr/0010-shared-security-package.md) for what it shares with identity-api, and the [key-rotation runbook](../../docs/runbooks/jwt-key-rotation.md).
 
-Status: early. The app factory, settings, logging, error handling, database layer, health endpoints, the vendors schema and vendor-api's own signing keys, token issuer, token verifier and JWKS are in place. The login flows and the admin API come in the other Phase 2 issues.
+## What it does today (Phase 2)
 
-## Run locally
+- **Vendor accounts:** signup with email verification, login, refresh (rotating tokens with reuse detection), logout, change-password, forgot and set password.
+- **A team per vendor:** the owner invites staff, lists, disables and enables them; invites and resets go by email.
+- **Vendor-scoped data isolation**, with helpers and tests that fail when a route or table skips the rule.
+- **Admin API** (`/v1/admin/*`): accepts only identity-api tokens, verified through its JWKS. Phase 3 adds the review queue.
+- **Its own tokens and keys:** vendor-api signs vendor tokens with its own key and serves its own JWKS.
+- **The schema** for vendors, users, tokens and (in the open Phase 2 PRs) brand profiles, products and reviews.
 
-You need Python 3.12+, and Postgres and Redis from the root docker-compose:
+Brand profiles, products, assets, imports and the review flow are Phase 3.
+
+## Quick start: from nothing to a signed-in vendor
+
+You need Python 3.12+ and Docker. From the repository root:
 
 ```sh
-docker compose up -d postgres redis      # from the repository root
+cp .env.example .env                       # set POSTGRES_PASSWORD
+docker compose up -d                       # Postgres, Redis and Mailpit (the email catcher)
 cd services/vendor-api
 python -m venv .venv && . .venv/bin/activate
-pip install -r requirements-shared.txt    # packages/py-auth and py-security, from the repository path
+pip install -r requirements-shared.txt     # packages/py-auth and py-security, from the repository path
 pip install -e '.[dev]'
-cp .env.example .env                     # put your POSTGRES_PASSWORD into DATABASE_URL
-python -m vendor_api.cli generate-key    # writes ./.keys/<kid>.pem; JWT_KEYS_DIR in .env points there
+cp .env.example .env                       # put the same POSTGRES_PASSWORD into DATABASE_URL
+python -m vendor_api.cli generate-key      # writes ./.keys/<kid>.pem; JWT_KEYS_DIR in .env points there
 alembic upgrade head
+python -m vendor_api.cli seed-dev          # a demo vendor with an owner and a staff user; prints the password
 uvicorn vendor_api.main:app --reload --port 8002
 ```
 
-`curl localhost:8002/health` returns `{"status": "ok"}` and `curl localhost:8002/ready` checks Postgres and Redis. OpenAPI docs are at <http://localhost:8002/docs> unless `ENV=prod`.
+Then, in another terminal:
 
-The app refuses to start if `DATABASE_URL` or `REDIS_URL` is missing or malformed, or if there is no signing key (see Tokens and keys). If `generate-key` printed a `JWT_SIGNING_KID`, put it in `.env` (it is only needed with more than one key).
+```sh
+curl localhost:8002/health                 # {"status": "ok"}
+curl localhost:8002/ready                  # Postgres and Redis
+# Sign in as the seeded owner (the password `seed-dev` printed):
+curl -s localhost:8002/v1/auth/login -H 'content-type: application/json' \
+  -d '{"email": "owner@demo-brand.test", "password": "<the printed password>"}'
+```
+
+**Or sign up as a new vendor:** `POST /v1/auth/signup` (try it at <http://localhost:8002/docs>), then open Mailpit at <http://localhost:8025>, copy the token from the link (`...#token=<token>`) and `POST /v1/auth/verify-email` with `{"token": "<token>"}`; now you can log in.
+
+- **`seed-dev`** creates one approved vendor `demo-brand` with a verified owner (`owner@demo-brand.test`) and a staff user (`staff@demo-brand.test`), both with one password. It runs only with `ENV=dev`, prints the password once (set your own with `--password` or `SEED_VENDOR_PASSWORD`), and is safe to run twice: it never changes anything that exists.
+- If `generate-key` printed a `JWT_SIGNING_KID`, put it in `.env` (it is only needed with more than one key). The app refuses to start without a signing key.
+- To also run identity-api (admin tokens for `/v1/admin/*`) see the [root README](../../README.md), Local development. vendor-api starts without it.
+
+## Endpoints
+
+The live reference is the OpenAPI document at <http://localhost:8002/docs> (dev; off when `ENV=prod`). **`openapi.json` in this directory is the committed copy** the Phase 5 typed client is generated from. A test fails when it is stale: regenerate it with `python -m vendor_api.cli export-openapi` and commit it (`--check` only verifies).
+
+| Group | Endpoints | Accepts |
+|---|---|---|
+| Health | `GET /health`, `GET /ready` | anyone |
+| Keys | `GET /.well-known/jwks.json` | anyone |
+| Vendor auth | `POST /v1/auth/signup`, `verify-email`, `resend-verification`, `login`, `refresh`, `logout`, `change-password`, `forgot-password`, `set-password` | anyone, or a vendor token for `change-password` |
+| Vendor | `GET /v1/vendor/me`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only) | vendor-api tokens only |
+| Admin | `GET /v1/admin/me` | identity-api tokens only (`vendor_reviewer` or `super_admin`) |
+
+The sections below describe each group.
+
+## Cookies and CORS (local development)
+
+- The **refresh token** is an `HttpOnly` cookie named **`vendor_refresh`**, path `/v1/auth`, never in a response body. identity-api uses `identity_refresh`. **The names differ on purpose:** both services run under one parent domain in production and share a Redis, so equal names would overwrite each other's cookie (and equal Redis prefixes would mix their sessions: vendor-api's are `vendor:`, identity-api's `identity:`).
+- `COOKIE_SECURE=true` (the default) works on `http://localhost` in Chrome and Firefox. Safari and curl do not treat localhost as secure: set `COOKIE_SECURE=false` locally for them. Never in production. `SameSite=Strict` works because the portal (`http://localhost:5174`) and this API (`http://localhost:8002`) are the same site; in production set `COOKIE_DOMAIN` to the shared parent domain.
+- **CORS:** the portal's exact origin must be in `CORS_ALLOWED_ORIGINS` (comma separated, no wildcard: credentials are allowed), and its requests need `credentials: "include"` so the cookie reaches `/v1/auth/refresh` and `/v1/auth/logout`. Those two endpoints also check `Origin` (or `Referer`) against the same list, as a CSRF guard.
 
 ## Layout
 
@@ -30,11 +73,11 @@ The app refuses to start if `DATABASE_URL` or `REDIS_URL` is missing or malforme
 vendor_api/
   app.py        create_app() factory (settings and readiness checks can be injected in tests)
   main.py       `app = create_app()` for uvicorn
-  api/          routers (health now; auth, vendor and admin routers come with their issues)
+  api/          routers: health, jwks, auth, vendor (me), team (users), admin; dependencies in deps.py
   core/         settings, JSON logging, request-ID middleware, error handlers
   db/           models, declarative base (constraint naming convention), async engine and sessions
   migrations/   Alembic env and versions (runs on a sync psycopg engine)
-  services/     business logic, free of HTTP concerns
+  services/     business logic, free of HTTP concerns (signup, auth, credentials, team, email, seed)
 ```
 
 The logging, request-ID middleware and error handlers are copies of identity-api's (ADR 0010). The security code (keys, tokens and later sessions, rate limits, passwords) comes from `packages/py-security`, and token verification from `packages/py-auth`; both are installed from the repository path through `requirements-shared.txt`.

@@ -146,6 +146,23 @@ jobs:
             python -m vendor_api.cli send-test-email --to catcher@shazlo.test --template password_reset
           curl -fsS localhost:8025/api/v1/messages | grep -q 'catcher@shazlo.test'
           curl -fsS localhost:8025/api/v1/messages | grep -q 'Reset your Shazlo password'
+      - name: Seed the demo vendor, sign in, and compare the OpenAPI document
+        run: |
+          docker compose --profile vendor run --rm -e SEED_VENDOR_PASSWORD=compose-ci-password-1 \
+            vendor-api python -m vendor_api.cli seed-dev
+          docker compose --profile vendor run --rm -e SEED_VENDOR_PASSWORD=compose-ci-password-1 \
+            vendor-api python -m vendor_api.cli seed-dev | grep -q 'already exists'
+          login=$(curl -fsS localhost:8002/v1/auth/login -H 'content-type: application/json' \
+            -d '{"email": "owner@demo-brand.test", "password": "compose-ci-password-1"}')
+          token=$(echo "$login" | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
+          curl -fsS localhost:8002/v1/vendor/me -H "Authorization: Bearer $token" | grep -q '"approved"'
+          curl -fsS localhost:8002/docs | grep -qi 'swagger'
+          curl -fsS localhost:8002/openapi.json | python3 -c "
+          import json, sys
+          served = json.load(sys.stdin)
+          committed = json.load(open('services/vendor-api/openapi.json'))
+          assert served == committed, 'openapi.json is stale: python -m vendor_api.cli export-openapi'
+          "
       - name: Logs
         if: failure()
         run: docker compose --profile full logs
