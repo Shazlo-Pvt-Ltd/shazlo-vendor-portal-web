@@ -179,24 +179,18 @@ async def test_the_live_and_the_pending_revision_must_differ(session: AsyncSessi
         )
 
 
+@pytest.mark.parametrize("link", ["live", "pending"])
 async def test_a_product_cannot_point_at_another_products_revision(
-    session: AsyncSession,
+    session: AsyncSession, link: str
 ) -> None:
     vendor, user = await vendor_and_user(session)
     one, _ = await submittable_revision(session, vendor, user, "ONE")
     _, other_revision = await submittable_revision(session, vendor, user, "TWO")
-    with pytest.raises(IntegrityError, match="fk_products_pending_revision_id_product_revisions"):
-        await session.execute(
-            update(Product)
-            .where(Product.id == one.id)
-            .values(pending_revision_id=other_revision.id)
-        )
-    with pytest.raises(IntegrityError, match="fk_products_live_revision_id_product_revisions"):
-        await session.execute(
-            update(Product)
-            .where(Product.id == one.id)
-            .values(status=ProductStatus.APPROVED, live_revision_id=other_revision.id)
-        )
+    values: dict[str, Any] = {f"{link}_revision_id": other_revision.id}
+    if link == "live":
+        values["status"] = ProductStatus.APPROVED
+    with pytest.raises(IntegrityError, match=f"fk_products_{link}_revision_id_product_revisions"):
+        await session.execute(update(Product).where(Product.id == one.id).values(**values))
 
 
 async def test_a_product_version_goes_up_and_never_down(session: AsyncSession) -> None:
