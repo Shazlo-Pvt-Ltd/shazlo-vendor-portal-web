@@ -125,6 +125,14 @@ async def login(api: Api, password: str = PASSWORD, ip: str = IP_A, email: str =
     return await post(api, "/v1/auth/login", {"email": email, "password": password}, ip)
 
 
+def listen(caplog: pytest.LogCaptureFixture) -> None:
+    """`create_app` replaces the root logger's handlers (its JSON log format), which removes
+    pytest's capture handler when the app is built inside the test; put it back."""
+    root = logging.getLogger()
+    if caplog.handler not in root.handlers:
+        root.addHandler(caplog.handler)
+
+
 def retry_after(response: httpx.Response) -> int:
     return int(response.headers["retry-after"])
 
@@ -485,6 +493,7 @@ async def test_endpoints_that_check_passwords_or_send_email_fail_closed(
     payload: dict[str, Any],
 ) -> None:
     async with serve(base_settings, override, session, dead_redis) as api:
+        listen(caplog)
         with caplog.at_level(logging.WARNING):
             response = await post(api, path, payload)
         assert response.status_code == 503
@@ -520,6 +529,7 @@ async def test_verify_email_fails_open(
 ) -> None:
     """A 256-bit token cannot be guessed at any rate, so availability comes first."""
     async with serve(base_settings, override, session, dead_redis) as api:
+        listen(caplog)
         with caplog.at_level(logging.WARNING):
             response = await post(api, "/v1/auth/verify-email", {"token": "never-issued"})
     assert response.status_code == 400  # the normal answer, not 503
@@ -559,7 +569,8 @@ async def test_the_keys_are_the_vendors_own_and_one_per_endpoint_and_scope(
     account: Account,
 ) -> None:
     async with serve(base_settings, override, session, redis) as api:
-        await login(api)
+        # A failed login: a successful one would clear the (email, IP) counter.
+        await login(api, "wrong password!")
         await post(api, "/v1/auth/signup", SIGNUP)
         keys = [key for key in await redis_keys(redis) if ":rl:" in key]
     assert RATE_LIMIT_KEY_PREFIX == "vendor:rl:"
