@@ -391,7 +391,9 @@ class BrandProfile(Base):
     banner_asset_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     website_url: Mapped[str | None] = mapped_column(String(500))
     instagram_handle: Mapped[str | None] = mapped_column(String(30))
-    categories: Mapped[list[str]] = mapped_column(ARRAY(String(80)), server_default=text("'{}'"))
+    # Text, not varchar(80)[]: a length on an array column silently truncates an element, so the
+    # 80-character limit is enforced by the `categories_clean` check, which refuses instead.
+    categories: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'"))
     price_min_paise: Mapped[int] = mapped_column(BigInteger)
     price_max_paise: Mapped[int] = mapped_column(BigInteger)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

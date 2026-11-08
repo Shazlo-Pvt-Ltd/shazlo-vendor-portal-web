@@ -159,7 +159,7 @@ def upgrade() -> None:
         sa.Column("instagram_handle", sa.String(30), nullable=True),
         sa.Column(
             "categories",
-            postgresql.ARRAY(sa.String(80)),
+            postgresql.ARRAY(sa.Text()),
             server_default=sa.text("'{}'"),
             nullable=False,
         ),

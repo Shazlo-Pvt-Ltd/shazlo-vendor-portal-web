@@ -152,7 +152,8 @@ async def test_a_vendor_with_assets_cannot_be_deleted(session: AsyncSession) -> 
     vendor = await saved_vendor(session)
     user = await saved_user(session, vendor)
     await saved_asset(session, vendor, user)
-    with pytest.raises(IntegrityError, match="fk_assets_vendor_id_vendors"):
+    # The user and the asset both hold the vendor: whichever the database checks first refuses.
+    with pytest.raises(IntegrityError, match="violates foreign key"):
         await session.execute(text("DELETE FROM vendors WHERE id = :id"), {"id": vendor.id})
 
 
@@ -281,7 +282,7 @@ async def test_unclean_category_lists_are_refused(
 ) -> None:
     vendor = await saved_vendor(session)
     session.add(make_profile(vendor, categories=categories))
-    with pytest.raises((IntegrityError, DBAPIError), match="categories_clean|too long"):
+    with pytest.raises(IntegrityError, match="ck_brand_profiles_categories_clean"):
         await session.flush()
 
 
@@ -336,7 +337,7 @@ async def test_a_negative_price_is_refused(session: AsyncSession) -> None:
 
 async def test_an_unknown_state_is_refused(session: AsyncSession) -> None:
     vendor = await saved_vendor(session)
-    session.add(make_profile(vendor, state="approved"))
+    session.add(make_profile(vendor, state="approved", categories=["dresses"], submitted_at=NOW))
     with pytest.raises(IntegrityError, match="ck_brand_profiles_state_values"):
         await session.flush()
 
