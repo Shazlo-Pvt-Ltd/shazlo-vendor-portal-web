@@ -5,10 +5,11 @@ from datetime import UTC, datetime, timedelta
 import jwt
 import pytest
 from shazlo_auth import InvalidTokenError, StaticKeySource, TokenVerifier
+from shazlo_security.keys import load_keyring
+from shazlo_security.tokens import TokenIssuer
 
+from identity_api.core.security import key_ring_config, token_issuer
 from identity_api.core.settings import Settings
-from identity_api.services.keys import load_keyring
-from identity_api.services.tokens import TokenIssuer
 
 ISSUER = "https://identity.test"
 ADMIN = uuid.UUID("11111111-2222-3333-4444-555555555555")
@@ -24,11 +25,11 @@ def parts(settings: Settings, key_pems: dict[str, str]) -> tuple[TokenIssuer, To
             "jwt_signing_kid": "test-key-1",
         }
     )
-    ring = load_keyring(configured)
+    ring = load_keyring(key_ring_config(configured))
     verifier = TokenVerifier(
         StaticKeySource(ring.public_keys), issuer=ISSUER, audience="identity-api"
     )
-    return TokenIssuer(configured, ring), verifier
+    return token_issuer(configured, ring), verifier
 
 
 async def test_valid_token_verifies(parts: tuple[TokenIssuer, TokenVerifier]) -> None:
@@ -73,9 +74,9 @@ async def test_expired_token_is_rejected(
             "jwt_signing_kid": "test-key-1",
         }
     )
-    old = TokenIssuer(
+    old = token_issuer(
         configured,
-        load_keyring(configured),
+        load_keyring(key_ring_config(configured)),
         clock=lambda: datetime.now(UTC) - timedelta(hours=1),
     ).issue(subject=ADMIN, roles=[], audience="identity-api")
     with pytest.raises(InvalidTokenError):

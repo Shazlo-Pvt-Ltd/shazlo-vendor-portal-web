@@ -1,15 +1,19 @@
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 import jwt
 
-from identity_api.core.settings import Settings
-from identity_api.services.keys import ALGORITHM, KeyRing
+from shazlo_security.keys import ALGORITHM, KeyRing
 
 Clock = Callable[[], datetime]
+
+# Claims the issuer (and the verifier) own; an extra claim may not use these names.
+RESERVED_CLAIMS = frozenset(
+    {"iss", "sub", "aud", "exp", "nbf", "iat", "jti", "roles", "must_change_password"}
+)
 
 
 @dataclass(frozen=True)
@@ -22,13 +26,18 @@ class IssuedToken:
 
 
 class TokenIssuer:
-    """Signs admin access tokens (ADR 0009): one audience each, ids and roles only."""
+    """Signs access tokens (ADR 0009): one audience each, ids and roles only."""
 
     def __init__(
-        self, settings: Settings, keyring: KeyRing, clock: Clock = lambda: datetime.now(UTC)
+        self,
+        issuer: str,
+        keyring: KeyRing,
+        *,
+        access_ttl_seconds: int,
+        clock: Clock = lambda: datetime.now(UTC),
     ) -> None:
-        self._issuer = settings.jwt_issuer
-        self._ttl_seconds = settings.access_token_ttl_seconds
+        self._issuer = issuer
+        self._ttl_seconds = access_ttl_seconds
         self._keyring = keyring
         self._clock = clock
 
@@ -41,6 +50,7 @@ class TokenIssuer:
         must_change_password: bool = False,
         ttl_seconds: int | None = None,
         not_after: datetime | None = None,
+        extra_claims: Mapping[str, Any] | None = None,
     ) -> IssuedToken:
         """`audience` is a single service name; there is deliberately no way to pass several.
 
@@ -52,6 +62,10 @@ class TokenIssuer:
         `ttl_seconds` replaces the access-token lifetime; `not_after` caps `exp` (an exchanged
         token never outlives the token that asked for it). A token that would already be
         expired is refused with `TokenWindowClosedError`.
+
+        `extra_claims` adds claims of the service's own (vendor-api adds `vendor_id`). They
+        cannot replace a claim set here: that raises ValueError. Keep them to ids, never
+        personal data.
         """
         if not audience:
             raise ValueError("audience is required")
@@ -73,6 +87,10 @@ class TokenIssuer:
         }
         if must_change_password:
             claims["must_change_password"] = True
+        for name, value in (extra_claims or {}).items():
+            if name in RESERVED_CLAIMS:
+                raise ValueError(f"{name!r} is set by the issuer and cannot be an extra claim")
+            claims[name] = value
         signing = self._keyring.signing
         token = jwt.encode(
             claims, signing.private_key, algorithm=ALGORITHM, headers={"kid": signing.kid}

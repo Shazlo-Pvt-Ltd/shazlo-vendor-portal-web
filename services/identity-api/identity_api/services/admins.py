@@ -2,6 +2,7 @@ import uuid
 from dataclasses import dataclass
 
 from shazlo_security.passwords import PasswordPolicyError, PasswordService, check_password
+from shazlo_security.refresh_tokens import RefreshTokenStore
 from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from identity_api.core.errors import ApiError
 from identity_api.core.settings import Settings
 from identity_api.db.models import SUPER_ADMIN, Admin, Role
-from identity_api.services.refresh_tokens import RefreshTokenStore
 
 ADMIN_NOT_FOUND = ApiError(404, "admin_not_found", "Admin not found")
 EMAIL_TAKEN = ApiError(409, "email_taken", "An admin with this email already exists")

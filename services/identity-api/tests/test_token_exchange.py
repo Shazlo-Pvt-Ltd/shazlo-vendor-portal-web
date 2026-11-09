@@ -116,7 +116,7 @@ async def test_reviewer_gets_a_token_for_their_audience(
     assert body["expires_in"] == 300
     assert set(body) == {"access_token", "token_type", "expires_in", "audience"}
     assert response.headers["cache-control"] == "no-store"
-    assert "refresh_token" not in response.headers.get("set-cookie", "")
+    assert "identity_refresh" not in response.headers.get("set-cookie", "")
 
     claims = claims_of(body["access_token"])
     assert claims["aud"] == audience  # a single string, never a list

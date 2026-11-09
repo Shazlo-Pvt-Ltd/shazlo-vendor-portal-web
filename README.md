@@ -56,7 +56,7 @@ identity-api can also run in a container, behind the `identity` profile. To work
 
 ```bash
 docker compose --profile identity build identity-api
-docker compose --profile identity run --rm --no-deps -T identity-api python -c "import json; from identity_api.services.keys import generate_private_key, new_kid, private_key_pem; print('IDENTITY_JWT_KEYS=' + json.dumps({new_kid(): private_key_pem(generate_private_key()).decode()}, separators=(',', ':')))"
+docker compose --profile identity run --rm --no-deps -T identity-api python -c "import json; from shazlo_security.keys import generate_private_key, new_kid, private_key_pem; print('IDENTITY_JWT_KEYS=' + json.dumps({new_kid(): private_key_pem(generate_private_key()).decode()}, separators=(',', ':')))"
 ```
 
 Then create the schema, seed the first admin and start it:

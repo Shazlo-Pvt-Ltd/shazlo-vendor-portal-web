@@ -106,7 +106,7 @@ jobs:
       - run: docker compose --profile identity build identity-api
       - name: Generate a signing key into .env
         run: |
-          line=$(docker compose --profile identity run --rm --no-deps -T identity-api python -c "import json; from identity_api.services.keys import generate_private_key, new_kid, private_key_pem; print('IDENTITY_JWT_KEYS=' + json.dumps({new_kid(): private_key_pem(generate_private_key()).decode()}, separators=(',', ':')))")
+          line=$(docker compose --profile identity run --rm --no-deps -T identity-api python -c "import json; from shazlo_security.keys import generate_private_key, new_kid, private_key_pem; print('IDENTITY_JWT_KEYS=' + json.dumps({new_kid(): private_key_pem(generate_private_key()).decode()}, separators=(',', ':')))")
           grep -v '^IDENTITY_JWT_KEYS=' .env > .env.new
           printf '%s\n' "$line" >> .env.new
           mv .env.new .env

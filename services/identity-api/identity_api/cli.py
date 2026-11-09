@@ -8,6 +8,7 @@ import os
 import sys
 from pathlib import Path
 
+from shazlo_security.keys import KeyConfigError, new_kid, write_new_key
 from shazlo_security.passwords import PasswordPolicyError, PasswordService, check_password
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -17,7 +18,6 @@ from identity_api.core.security import password_config
 from identity_api.core.settings import Settings, get_settings
 from identity_api.db.models import SUPER_ADMIN, VENDOR_REVIEWER, Admin, Role
 from identity_api.db.session import create_engine, create_sessionmaker
-from identity_api.services.keys import KeyConfigError, new_kid, write_new_key
 
 logger = logging.getLogger("identity_api.cli")
 
