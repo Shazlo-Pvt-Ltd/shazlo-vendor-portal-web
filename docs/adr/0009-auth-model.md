@@ -86,6 +86,9 @@ Rules:
 - Two issuers (identity-api and vendor-api) mean two signing keys and two JWKS to rotate. In return a vendor token can never act as an admin.
 - **ADR 0004 is partly superseded.** For Shazlo-One admins and for vendors, this ADR replaces its text about the vendor-admin service issuing vendor and admin tokens and the refresh family design in the old approach.
 - Follow-ups: implement in Phase 1 (identity-api) and Phase 2 (vendor-api); add a JWT verification helper that all services share; document the key rotation steps in a runbook.
+  - **Done in Phase 1:** identity-api (login, refresh with reuse detection, logout, change-password, token exchange, admin management, rate limits), `packages/py-auth` (the verifier, JWKS client and `require_role`) and the [key-rotation runbook](../runbooks/jwt-key-rotation.md).
+  - **Done in Phase 2:** vendor-api issues and verifies its own tokens with its own key and JWKS, with the vendor cookie (`vendor_refresh`) and Redis prefix (`vendor:`) kept apart from identity-api's; `/v1/admin/*` accepts only identity-api tokens through its JWKS, and the reviewer always comes from the token; the shared code is in `packages/py-security` (ADR 0010); the runbook covers both services; an end-to-end test covers the flow and a key rotation with a token in flight.
+  - **Still open:** the vendor-admin backend of ADR 0007 and Shazlo-One's use of the vendor group (Phases 3 and 5); an access-token revocation list if 15 minutes of lag ever proves too long.
 
 ## Alternatives considered
 

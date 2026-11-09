@@ -9,8 +9,8 @@ from http.cookies import SimpleCookie
 from typing import Annotated, Any
 
 import httpx
-from fakeredis import FakeAsyncRedis
 from fastapi import Depends, FastAPI
+from redis.asyncio import Redis
 from shazlo_auth import JwksClient, KeySource
 from shazlo_security.keys import KeyRing, KeyRingConfig, generate_private_key, load_keyring
 from shazlo_security.keys import private_key_pem as pem_of
@@ -37,7 +37,7 @@ EMAIL = "asha@atelier.test"
 class Api:
     http: httpx.AsyncClient
     app: FastAPI
-    redis: FakeAsyncRedis
+    redis: Redis
 
     async def login(self, email: str = EMAIL, password: str = PASSWORD) -> httpx.Response:
         self.http.cookies.clear()
@@ -100,7 +100,7 @@ def without_request_id(response: httpx.Response) -> Any:
 async def make_api(
     settings: Settings,
     session: AsyncSession,
-    redis: FakeAsyncRedis,
+    redis: Redis,
     identity_keys: KeySource | None = None,
 ) -> AsyncGenerator[Api, None]:
     app = create_app(settings, readiness_checks={}, redis=redis, identity_keys=identity_keys)
@@ -184,7 +184,7 @@ async def set_user(session: AsyncSession, user: VendorUser, **values: Any) -> No
     await session.commit()
 
 
-async def redis_keys(redis: FakeAsyncRedis) -> list[str]:
+async def redis_keys(redis: Redis) -> list[str]:
     return [key.decode() async for key in redis.scan_iter("*")]
 
 
