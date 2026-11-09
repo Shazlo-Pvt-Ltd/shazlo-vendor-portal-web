@@ -162,9 +162,10 @@ components:
           type: array
           items:
             type: object
-            required: [id, kind, title, vendor, decision, at, reviewer]
+            required: [id, kind, subject_id, title, vendor, decision, at, reviewer]
             properties:
               id: { type: string }
+              subject_id: { type: string, description: Product id, or the vendor id for brand pages and applications }
               kind: { $ref: '#/components/schemas/ItemKind' }
               title: { type: string }
               vendor: { $ref: '#/components/schemas/VendorRef' }

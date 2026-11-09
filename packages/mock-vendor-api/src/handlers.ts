@@ -78,7 +78,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
 
   function decide(db: MockVendorApi, kind: S['ItemKind'], id: string, title: string, vendorId: string, decision: 'approved' | 'rejected', reviewer: string) {
     db.seq += 1
-    db.decisions.unshift({ id: `d${db.seq}`, kind, title, vendorId, decision, at: iso(), reviewer })
+    db.decisions.unshift({ id: `d${db.seq}`, subjectId: id, kind, title, vendorId, decision, at: iso(), reviewer })
   }
 
   function rejectBody(body: Partial<S['RejectBody']>) {
@@ -104,7 +104,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
           failed: db.outbox.filter((e) => e.status === 'failed').length,
           delivered_24h: 312 + db.outbox.filter((e) => e.status === 'delivered').length,
         },
-        recent: db.decisions.slice(0, 6).map((d) => ({ id: d.id, kind: d.kind, title: d.title, vendor: ref(vendorOf(d.vendorId)), decision: d.decision, at: d.at, reviewer: d.reviewer })),
+        recent: db.decisions.slice(0, 6).map((d) => ({ id: d.id, subject_id: d.subjectId, kind: d.kind, title: d.title, vendor: ref(vendorOf(d.vendorId)), decision: d.decision, at: d.at, reviewer: d.reviewer })),
       } satisfies S['Summary'])
     })),
 

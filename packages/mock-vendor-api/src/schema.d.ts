@@ -787,6 +787,8 @@ export interface components {
             };
             recent: {
                 id: string;
+                /** @description Product id */
+                subject_id: string;
                 kind: components["schemas"]["ItemKind"];
                 title: string;
                 vendor: components["schemas"]["VendorRef"];

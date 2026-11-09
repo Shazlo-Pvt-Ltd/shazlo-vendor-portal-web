@@ -48,6 +48,7 @@ export interface VendorRecord {
 
 export interface Decision {
   id: string
+  subjectId: string
   kind: S['ItemKind']
   title: string
   vendorId: string
@@ -247,10 +248,10 @@ export function createMockVendorApi({ now = () => new Date() }: { now?: () => Da
   })
 
   const decisions: Decision[] = [
-    { id: 'd1', kind: 'product', title: 'Bandhani Silk Dupatta', vendorId: 'v_kalki', decision: 'approved', at: at(3 * H), reviewer: 'Priya Mehta' },
-    { id: 'd2', kind: 'product', title: 'Ajrakh Block-Print Kurta', vendorId: 'v_kalki', decision: 'rejected', at: at(10 * H), reviewer: 'Priya Mehta' },
-    { id: 'd3', kind: 'brand_page', title: 'Kalki Studio brand page', vendorId: 'v_kalki', decision: 'approved', at: at(26 * H), reviewer: 'Naman Sinha' },
-    { id: 'd4', kind: 'application', title: 'Mor Pankh Clothing', vendorId: 'v_morpankh', decision: 'approved', at: at(3 * D), reviewer: 'Rahul Desai' },
+    { id: 'd1', subjectId: 'p_bandhani', kind: 'product', title: 'Bandhani Silk Dupatta', vendorId: 'v_kalki', decision: 'approved', at: at(3 * H), reviewer: 'Priya Mehta' },
+    { id: 'd2', subjectId: 'p_ajrakh', kind: 'product', title: 'Ajrakh Block-Print Kurta', vendorId: 'v_kalki', decision: 'rejected', at: at(10 * H), reviewer: 'Priya Mehta' },
+    { id: 'd3', subjectId: 'v_kalki', kind: 'brand_page', title: 'Kalki Studio brand page', vendorId: 'v_kalki', decision: 'approved', at: at(26 * H), reviewer: 'Naman Sinha' },
+    { id: 'd4', subjectId: 'v_morpankh', kind: 'application', title: 'Mor Pankh Clothing', vendorId: 'v_morpankh', decision: 'approved', at: at(3 * D), reviewer: 'Rahul Desai' },
   ]
 
   return { now, vendors, products, brands, outbox, decisions, seq: 100 }
