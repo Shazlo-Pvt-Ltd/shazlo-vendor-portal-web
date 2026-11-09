@@ -51,7 +51,6 @@ class Settings(BaseSettings):
     # The cookie-authenticated endpoints also check Origin against `cors_allowed_origins`.
     cookie_secure: bool = True
     cookie_samesite: Literal["strict", "lax", "none"] = "strict"
-    cookie_domain: str | None = None
 
     jwt_issuer: str = "http://localhost:8001"
     # RS256 keys, from a directory of `<kid>.pem` files and/or a JSON object {"<kid>": "<PEM>"}.

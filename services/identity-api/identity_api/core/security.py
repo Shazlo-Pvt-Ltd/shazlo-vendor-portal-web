@@ -16,7 +16,8 @@ from identity_api.core.settings import Settings
 RATE_LIMIT_KEY_PREFIX = "identity:rl:"
 # Refresh-token keys are `identity:rf:`, `identity:ra:`, `identity:rg:`, `identity:rt:` and
 # `identity:rtu:`; the refresh cookie is `identity_refresh` (api/auth.py). vendor-api uses
-# `vendor:` and `vendor_refresh`, so the two never collide on a shared Redis or domain.
+# `vendor:` and `vendor_refresh`, so the two never collide on a shared Redis. The cookie is
+# host-only (no Domain attribute), so the browser never sends it to vendor-api either.
 REFRESH_KEY_PREFIX = "identity:"
 
 

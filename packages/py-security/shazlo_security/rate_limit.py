@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class RateLimited(Exception):
-    """A counter is over its limit. `retry_after` is the seconds until the longest window ends."""
+    """A counter is over its limit. `retry_after` is the seconds until its window ends."""
 
     def __init__(self, retry_after: int) -> None:
         super().__init__(f"rate limited, retry after {retry_after}s")
@@ -50,6 +50,12 @@ class RateLimiter(Protocol):
 
     async def reset(self, key: str) -> None: ...
 
+    async def mark(self, key: str, ttl_seconds: int) -> None:
+        """Remembers `key` for `ttl_seconds` (e.g. an email and IP pair that logged in)."""
+        ...
+
+    async def is_marked(self, key: str) -> bool: ...
+
 
 class RedisRateLimiter:
     """Fixed window: the first hit starts the window and the key expires with it.
@@ -65,6 +71,9 @@ class RedisRateLimiter:
     def __init__(self, redis: Redis, prefix: str) -> None:
         if not prefix:
             raise ValueError("a key prefix is required")
+        if not prefix.endswith(":"):
+            # "vendor" would make keys like "vendorlogin:..."; ask for the separator explicitly.
+            raise ValueError("the key prefix must end with ':'")
         self._redis = redis
         self._prefix = prefix
 
@@ -82,6 +91,12 @@ class RedisRateLimiter:
 
     async def reset(self, key: str) -> None:
         await self._redis.delete(self._prefix + key)
+
+    async def mark(self, key: str, ttl_seconds: int) -> None:
+        await self._redis.set(self._prefix + key, b"1", ex=ttl_seconds)
+
+    async def is_marked(self, key: str) -> bool:
+        return bool(await self._redis.exists(self._prefix + key))
 
 
 @dataclass(frozen=True)
@@ -123,21 +138,37 @@ class RateLimitGuard:
         return f"{endpoint}:{scope}:{digest}"
 
     async def check(self, endpoint: str, checks: list[Check]) -> None:
-        """Counts a hit on every check; raises RateLimited if any is over its limit.
+        """Counts a hit on each check in order; raises RateLimited at the first one over its
+        limit, without counting the checks after it.
 
-        Every counter is hit even when an earlier one is over, so the counters stay honest.
+        Stopping there is what keeps the loose counters from being used to lock someone out: put
+        the narrow checks (per IP, per email and IP) first, and a request they already refuse
+        never reaches the per-email counter. One client can then add only as many hits to a
+        victim's per-email counter as its own narrow limits allow.
         """
         try:
-            results = [
-                await self._limiter.hit(self._key(endpoint, c.scope, c.subject), c.rule)
-                for c in checks
-            ]
+            for c in checks:
+                result = await self._limiter.hit(self._key(endpoint, c.scope, c.subject), c.rule)
+                if not result.allowed:
+                    raise RateLimited(result.retry_after)
         except RedisError as error:
             self._store_down(endpoint, error)
-            return
-        denied = [result for result in results if not result.allowed]
-        if denied:
-            raise RateLimited(max(result.retry_after for result in denied))
+
+    async def remember(self, endpoint: str, scope: str, subject: str, ttl_seconds: int) -> None:
+        """Marks a subject as known (e.g. an email and IP pair that logged in). Never fails the
+        request."""
+        try:
+            await self._limiter.mark(self._key(endpoint, f"known-{scope}", subject), ttl_seconds)
+        except RedisError:
+            logger.warning("rate limit mark failed", extra={"endpoint": endpoint})
+
+    async def remembers(self, endpoint: str, scope: str, subject: str) -> bool:
+        """Whether `remember` was called for the subject within its TTL. False if the store is
+        down, so the caller falls back to the stricter checks."""
+        try:
+            return await self._limiter.is_marked(self._key(endpoint, f"known-{scope}", subject))
+        except RedisError:
+            return False
 
     async def reset(self, endpoint: str, scope: str, subject: str) -> None:
         """Clears one counter (a successful login clears the email's). Never fails the request."""

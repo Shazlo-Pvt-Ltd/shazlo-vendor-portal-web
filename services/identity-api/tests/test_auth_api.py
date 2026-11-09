@@ -194,9 +194,7 @@ async def test_cookie_flags_follow_settings(
     make_admin: MakeAdmin,
 ) -> None:
     await make_admin()
-    settings = override(
-        api_settings, cookie_secure=False, cookie_samesite="lax", cookie_domain="shazlo.test"
-    )
+    settings = override(api_settings, cookie_secure=False, cookie_samesite="lax")
     app = create_app(settings, readiness_checks={}, redis=redis)
 
     async def test_session() -> AsyncIterator[AsyncSession]:
@@ -210,7 +208,7 @@ async def test_cookie_flags_follow_settings(
     assert cookie is not None
     assert not cookie["secure"]
     assert cookie["samesite"].lower() == "lax"
-    assert cookie["domain"] == "shazlo.test"
+    assert not cookie["domain"]  # host-only: no Domain attribute, so no other host gets it
     assert cookie["httponly"] is True
 
 
