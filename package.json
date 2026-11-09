@@ -17,9 +17,9 @@
     "test:ci": "vitest run --coverage --reporter=default --reporter=junit --outputFile.junit=reports/vitest.xml"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.0",
+    "@eslint/js": "^10.0.1",
     "@testing-library/react": "16.3.3",
-    "@vitest/coverage-v8": "5.0.5",
+    "@vitest/coverage-v8": "5.1.0",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "eslint": "^10.14.0",
@@ -27,7 +27,7 @@
     "mongodb-memory-server-core": "11.3.0",
     "typescript": "^5.9.0",
     "typescript-eslint": "^8.72.1",
-    "vitest": "5.0.5"
+    "vitest": "5.1.0"
   },
   "overrides": {
     "minimatch": "^11.0.1"

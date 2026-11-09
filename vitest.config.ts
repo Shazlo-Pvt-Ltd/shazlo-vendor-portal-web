@@ -8,7 +8,7 @@ export default defineConfig({
       'packages/ui/vitest.config.ts',
       'apps/vendor-portal/vitest.config.ts',
       {
-        esbuild: { jsx: 'automatic' },
+        oxc: { jsx: { runtime: 'automatic' } },
         // The legacy application has its own lockfile and React 19.1 runtime.
         // Testing Library must use that same runtime rather than the UI workspace's copy.
         resolve: {

@@ -12,6 +12,11 @@ updates:
       vitest:
         patterns: ["vitest", "@vitest/*"]
         update-types: [major, minor, patch]
+      # @vitejs/plugin-react declares the Vite majors it supports as a peer range, so a major of
+      # either one alone fails npm ci. Keep this above npm-minor-and-patch for the same reason.
+      vite:
+        patterns: ["vite", "@vitejs/plugin-react"]
+        update-types: [major, minor, patch]
       npm-minor-and-patch:
         update-types: [minor, patch]
 
