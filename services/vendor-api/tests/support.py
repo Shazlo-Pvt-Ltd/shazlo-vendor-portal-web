@@ -1,5 +1,7 @@
 """Shared by the API tests that sign in: the client, the app builder and account builders."""
 
+import json
+import uuid
 from collections.abc import AsyncGenerator, AsyncIterator, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -9,7 +11,11 @@ from typing import Annotated, Any
 import httpx
 from fakeredis import FakeAsyncRedis
 from fastapi import Depends, FastAPI
+from shazlo_auth import JwksClient, KeySource
+from shazlo_security.keys import KeyRing, KeyRingConfig, generate_private_key, load_keyring
+from shazlo_security.keys import private_key_pem as pem_of
 from shazlo_security.passwords import PasswordService
+from shazlo_security.tokens import TokenIssuer
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -92,9 +98,12 @@ def without_request_id(response: httpx.Response) -> Any:
 
 
 async def make_api(
-    settings: Settings, session: AsyncSession, redis: FakeAsyncRedis
+    settings: Settings,
+    session: AsyncSession,
+    redis: FakeAsyncRedis,
+    identity_keys: KeySource | None = None,
 ) -> AsyncGenerator[Api, None]:
-    app = create_app(settings, readiness_checks={}, redis=redis)
+    app = create_app(settings, readiness_checks={}, redis=redis, identity_keys=identity_keys)
 
     async def test_session() -> AsyncIterator[AsyncSession]:
         yield session  # rolled back after the test, so tests share no rows
@@ -203,3 +212,73 @@ def record_emails(api: Api) -> RecordingSender:
     sender = RecordingSender(ConsoleEmailSender("https://vendors.test", show_links=False))
     api.app.state.emails = EmailService(sender, retry_delay_seconds=0)
     return sender
+
+
+# --- identity-api, as the tests see it --------------------------------------------------
+
+IDENTITY_ISSUER = "https://identity.test"
+JWKS_URL = "https://identity.test/.well-known/jwks.json"
+ADMIN_ID = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+VENDOR_ID = uuid.UUID("9b2f1c3e-0d4a-4c1e-8f6a-2b7d5e9a1c30")
+
+
+def identity_ring(kid: str = "identity-key-1") -> KeyRing:
+    """identity-api's key ring: its own key, nothing to do with vendor-api's."""
+    pem = pem_of(generate_private_key()).decode()
+    return load_keyring(KeyRingConfig(keys_json=json.dumps({kid: pem})))
+
+
+class FakeJwks:
+    """identity-api's JWKS endpoint: counts fetches and can be taken down."""
+
+    def __init__(self, ring: KeyRing) -> None:
+        self.ring = ring
+        self.fetches = 0
+        self.down = False
+
+    async def __call__(self) -> dict[str, Any]:
+        self.fetches += 1
+        if self.down:
+            raise ConnectionError("identity-api is down")
+        return self.ring.jwks()
+
+
+class Clock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+class Identity:
+    """identity-api for the tests: issues admin tokens and serves the JWKS that verifies them."""
+
+    def __init__(self, ring: KeyRing | None = None) -> None:
+        self.ring = ring or identity_ring()
+        self.jwks = FakeJwks(self.ring)
+        self.clock = Clock()
+        self.client = JwksClient(self.jwks, clock=self.clock)
+        self._issuer = TokenIssuer(IDENTITY_ISSUER, self.ring, access_ttl_seconds=900)
+
+    def token(
+        self,
+        roles: list[str],
+        *,
+        audience: str = "vendor-api",
+        subject: uuid.UUID = ADMIN_ID,
+        must_change_password: bool = False,
+        issuer: TokenIssuer | None = None,
+        **extra: Any,
+    ) -> str:
+        return (
+            (issuer or self._issuer)
+            .issue(
+                subject=subject,
+                roles=roles,
+                audience=audience,
+                must_change_password=must_change_password,
+                **extra,
+            )
+            .token
+        )

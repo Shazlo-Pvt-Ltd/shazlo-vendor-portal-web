@@ -18,6 +18,7 @@ from vendor_api.db.models import (
     VendorUserRole,
     VendorUserStatus,
 )
+from vendor_api.db.scoped import get_owned_or_404, scoped_select
 from vendor_api.services import auth_tokens
 from vendor_api.services.email import EmailTemplate, OutgoingEmail
 
@@ -83,8 +84,7 @@ class TeamService:
     async def list_users(self, db: AsyncSession, vendor_id: uuid.UUID) -> list[VendorUser]:
         """The vendor's users, oldest first. A vendor has few, so there is no paging."""
         rows = await db.scalars(
-            select(VendorUser)
-            .where(VendorUser.vendor_id == vendor_id)
+            scoped_select(VendorUser, vendor_id)
             .order_by(VendorUser.created_at, VendorUser.id)
             .execution_options(populate_existing=True)
         )
@@ -247,14 +247,7 @@ class TeamService:
     async def _user_of_vendor(
         self, db: AsyncSession, vendor_id: uuid.UUID, user_id: uuid.UUID
     ) -> VendorUser:
-        user = await db.scalar(
-            select(VendorUser)
-            .where(VendorUser.id == user_id, VendorUser.vendor_id == vendor_id)
-            .execution_options(populate_existing=True)
-        )
-        if user is None:
-            raise USER_NOT_FOUND
-        return user
+        return await get_owned_or_404(db, VendorUser, user_id, vendor_id, USER_NOT_FOUND)
 
 
 async def email_in_use(db: AsyncSession, email: str) -> bool:
