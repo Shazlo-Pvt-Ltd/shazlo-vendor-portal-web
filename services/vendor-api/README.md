@@ -57,6 +57,8 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `ACCESS_TOKEN_TTL_SECONDS` | `900` | 1 to 3600 |
 | `ARGON2_MEMORY_COST_KIB` / `ARGON2_TIME_COST` / `ARGON2_PARALLELISM` | `19456` / `2` / `1` | password hashing cost (OWASP baseline); raising it rehashes on the next login |
 | `PASSWORD_MIN_LENGTH` | `12` | the longest accepted is 128 |
+| `REFRESH_TOKEN_TTL_DAYS` / `REFRESH_FAMILY_MAX_DAYS` | `7` / `30` | a refresh token lives 7 days and never outlives its family |
+| `REFRESH_REUSE_GRACE_SECONDS` | `10` | a refresh token reused within this many seconds is a concurrent request (`409`), not theft; `0` revokes on any reuse |
 | `EMAIL_VERIFICATION_TTL_MINUTES` | `1440` | how long a verification link works (5 minutes to 7 days) |
 | `EMAIL_BACKEND` | `console` | `console` (sends nothing, logs the link in dev only) or `smtp` |
 | `EMAIL_FROM` | `Shazlo <no-reply@shazlo.store>` | the sender of every email |
@@ -94,6 +96,23 @@ vendor-api signs **its own** tokens with **its own** RS256 key, never identity-a
 - **Slugs** come from the brand name (accents folded, ASCII letters and digits, hyphens), with `-2`, `-3`, ... on collision. A name with no Latin letters becomes `vendor`, `vendor-2`, ...
 - **Not yet limited:** these endpoints have no rate limit until the rate-limiting issue (#84). Until then repeated signups for one address can send that address repeated emails.
 - Validation errors name the field and the rule, never the value that was sent.
+
+## Sessions
+
+Vendor sessions work like admin sessions (ADR 0009): a 15-minute access token (the vendor token from "Tokens and keys") and an opaque refresh token in an `HttpOnly` cookie, rotated on every use, with a token family in Redis that ends on reuse.
+
+| Endpoint | Notes |
+|---|---|
+| `POST /v1/auth/login` | `{email, password}` returns `{access_token, token_type, expires_in, user, vendor}` and sets the refresh cookie. `401 invalid_credentials` for an unknown email, a wrong password, a user who has no password yet and a disabled user alike (each costs one password verification). A correct password with an unverified email is `403 email_not_verified`; a `rejected` or `suspended` vendor is `403 vendor_not_allowed`. A `pending` vendor can sign in: it must be able to edit and submit. Rehashes when the Argon2 cost changed; sets `last_login_at` |
+| `POST /v1/auth/refresh` | Reads the cookie, rotates it, returns the same body as login. A token that was already used ends its whole family (`401`, cookie cleared); one used within the grace window is `409 refresh_conflict` and revokes nothing. A suspended or rejected vendor, a disabled user or an unverified email cannot refresh: the family ends. Needs an allowed `Origin` (or `Referer`), like logout |
+| `POST /v1/auth/logout` | Ends the cookie's family and clears the cookie. Always `204` |
+| `POST /v1/auth/change-password` | Bearer token plus `{current_password, new_password}`. Same policy as signup. Ends **every** session of the user and starts a new one |
+| `GET /v1/vendor/me` | The user, their role and a vendor summary (id, name, slug, status). No hashes or tokens |
+
+- **Cookie and Redis keys do not overlap with identity-api's**, because both services run on one parent domain and share a Redis: the cookie is `vendor_refresh` (identity-api: `identity_refresh`), path `/v1/auth`, `HttpOnly`, `Secure` and `SameSite` from settings; the Redis keys start with `vendor:` (identity-api: `identity:`); only SHA-256 hashes are stored. A test puts both stores on one Redis and checks neither touches the other's sessions.
+- **Dependencies** (`api/deps.py`): `current_vendor_user` verifies the token, then reads the user and the vendor **from the database on every request**: the user must be active with a verified email, the token's `vendor_id` must be the user's vendor, and the vendor must be `pending` or `approved`. So disabling a user or suspending a vendor takes effect at once, not when the 15-minute token expires, and a role change applies immediately. `require_vendor_role(VendorUserRole.OWNER)` lets only the listed roles through (`403 forbidden`).
+- **Ending sessions when a vendor's status changes**: `AuthService.end_sessions_of_vendor(db, vendor_id)` ends every session of every user of that vendor. Phase 3 calls it when an admin suspends or rejects a vendor. Refreshing is refused for those statuses anyway; the hook also stops a vendor that is approved again from getting its old sessions back. `end_sessions_of_user` does the same for one user (call it when a user is disabled).
+- **Not yet limited**: login and refresh have no rate limit until the rate-limiting issue (#84).
 
 ## Email
 

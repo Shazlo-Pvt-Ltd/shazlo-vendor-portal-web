@@ -1,18 +1,37 @@
+import uuid
+from datetime import datetime
 from typing import Annotated, cast
+from urllib.parse import urlsplit
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from shazlo_security.passwords import MAX_PASSWORD_LENGTH
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from vendor_api.api.deps import Emails
-from vendor_api.core.errors import ApiError
+from vendor_api.api.deps import CurrentVendorUser, Emails, current_vendor_user, get_sessions
+from vendor_api.core.errors import ApiError, error_response
+from vendor_api.core.settings import Settings
+from vendor_api.db.models import Vendor, VendorUser
 from vendor_api.db.session import get_session
+from vendor_api.services.auth import (
+    INVALID_REFRESH_TOKEN,
+    REFRESH_CONFLICT,
+    AuthService,
+    AuthSession,
+)
 from vendor_api.services.signup import SignupData, SignupService
+
+# The refresh cookie. Its own name (identity-api's is `identity_refresh`), so the two services
+# can share a parent domain without overwriting each other's cookie. The browser sends it to the
+# auth endpoints only.
+COOKIE_NAME = "vendor_refresh"
+COOKIE_PATH = "/v1/auth"
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 Db = Annotated[AsyncSession, Depends(get_session)]
+Sessions = Annotated[AuthService, Depends(get_sessions)]
+RefreshCookie = Annotated[str | None, Cookie(alias=COOKIE_NAME)]
 
 # ASCII only: the database stores emails lower-cased and checks that, and lower-casing a
 # non-ASCII address can differ between Python and Postgres.
@@ -166,3 +185,189 @@ async def resend_verification(
     no_store(response)
     emails.queue(background, await service.resend_verification(db, body.email))
     return Message(message=RESEND_ACCEPTED)
+
+
+# --- Sessions ----------------------------------------------------------------------------
+
+
+class LoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
+
+
+class ChangePasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
+    new_password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
+
+
+class UserProfile(BaseModel):
+    id: uuid.UUID
+    email: str
+    role: str
+    last_login_at: datetime | None
+
+
+class VendorSummary(BaseModel):
+    id: uuid.UUID
+    name: str
+    slug: str
+    status: str
+
+
+class SessionResponse(BaseModel):
+    """The refresh token is never in the body; it is only ever in the HttpOnly cookie."""
+
+    access_token: str
+    token_type: str = "Bearer"  # noqa: S105 - the scheme name, not a secret
+    expires_in: int
+    user: UserProfile
+    vendor: VendorSummary
+
+
+def user_profile(user: VendorUser) -> UserProfile:
+    """Profile fields only: never a password hash or a token."""
+    return UserProfile(
+        id=user.id, email=user.email, role=user.role, last_login_at=user.last_login_at
+    )
+
+
+def vendor_summary(vendor: Vendor) -> VendorSummary:
+    return VendorSummary(id=vendor.id, name=vendor.name, slug=vendor.slug, status=vendor.status)
+
+
+ORIGIN_NOT_ALLOWED = ApiError(403, "origin_not_allowed", "Request origin is not allowed")
+
+
+def _settings(request: Request) -> Settings:
+    return cast(Settings, request.app.state.settings)
+
+
+def _request_origin(request: Request) -> str | None:
+    """The `Origin` header, or the origin part of `Referer` when a browser left Origin out."""
+    origin = request.headers.get("origin")
+    if origin is not None:
+        return origin
+    referer = request.headers.get("referer")
+    if not referer:
+        return None
+    parts = urlsplit(referer)
+    if not parts.scheme or not parts.netloc or "@" in parts.netloc:
+        return None
+    return f"{parts.scheme}://{parts.netloc}"
+
+
+def require_allowed_origin(request: Request) -> None:
+    """CSRF guard for the endpoints the refresh cookie alone authenticates.
+
+    The cookie is sent with cross-site requests when `cookie_samesite` is "none" (and with
+    same-site ones from sibling subdomains under "lax"/"strict"), so these endpoints also require
+    the request to come from an origin allowed by CORS. A request with neither Origin nor
+    Referer is refused: browsers send Origin on every cross-origin and same-origin POST.
+    """
+    origin = _request_origin(request)
+    allowed = {o.rstrip("/").lower() for o in _settings(request).cors_allowed_origins}
+    if origin is None or origin.rstrip("/").lower() not in allowed:
+        raise ORIGIN_NOT_ALLOWED
+
+
+# Checked before the endpoint runs, so a refused request never clears or rotates the cookie.
+CookieOrigin = [Depends(require_allowed_origin)]
+
+
+def _set_cookie(response: Response, settings: Settings, session: AuthSession) -> None:
+    response.set_cookie(
+        COOKIE_NAME,
+        session.refresh.token,
+        expires=session.refresh.expires_at,
+        path=COOKIE_PATH,
+        domain=settings.cookie_domain,
+        secure=settings.cookie_secure,
+        httponly=True,
+        samesite=settings.cookie_samesite,
+    )
+
+
+def _clear_cookie(response: Response, settings: Settings) -> None:
+    response.delete_cookie(
+        COOKIE_NAME,
+        path=COOKIE_PATH,
+        domain=settings.cookie_domain,
+        secure=settings.cookie_secure,
+        httponly=True,
+        samesite=settings.cookie_samesite,
+    )
+
+
+def _session_response(
+    response: Response, settings: Settings, session: AuthSession
+) -> SessionResponse:
+    no_store(response)
+    _set_cookie(response, settings, session)
+    return SessionResponse(
+        access_token=session.access.token,
+        expires_in=settings.access_token_ttl_seconds,
+        user=user_profile(session.user),
+        vendor=vendor_summary(session.vendor),
+    )
+
+
+@router.post("/login")
+async def login(
+    body: LoginRequest, request: Request, response: Response, db: Db, sessions: Sessions
+) -> SessionResponse:
+    """`401 invalid_credentials` for an unknown email, a wrong password, a user who has no
+    password yet and a disabled user alike. A correct password with an unverified email is
+    `403 email_not_verified`; a rejected or suspended vendor is `403 vendor_not_allowed`."""
+    session = await sessions.login(db, body.email, body.password)
+    return _session_response(response, _settings(request), session)
+
+
+@router.post("/refresh", response_model=None, dependencies=CookieOrigin)
+async def refresh(
+    request: Request, response: Response, db: Db, sessions: Sessions, token: RefreshCookie = None
+) -> SessionResponse | Response:
+    settings = _settings(request)
+    try:
+        if not token:
+            raise INVALID_REFRESH_TOKEN
+        session = await sessions.refresh(db, token)
+    except ApiError as error:
+        failure = error_response(request, error.status_code, error.code, error.message)
+        no_store(failure)
+        # A rejected token is of no further use: have the browser drop it. Not on a conflict:
+        # the browser already holds the new cookie the concurrent request set, and clearing it
+        # here would log the user out.
+        if error.code != REFRESH_CONFLICT.code:
+            _clear_cookie(failure, settings)
+        return failure
+    return _session_response(response, settings, session)
+
+
+@router.post("/logout", status_code=204, dependencies=CookieOrigin)
+async def logout(request: Request, sessions: Sessions, token: RefreshCookie = None) -> Response:
+    if token:
+        await sessions.logout(token)
+    response = Response(status_code=204)
+    no_store(response)
+    _clear_cookie(response, _settings(request))
+    return response
+
+
+@router.post("/change-password")
+async def change_password(
+    body: ChangePasswordRequest,
+    request: Request,
+    response: Response,
+    db: Db,
+    sessions: Sessions,
+    current: Annotated[CurrentVendorUser, Depends(current_vendor_user)],
+) -> SessionResponse:
+    """Sets a new password, ends every session of the user and starts a new one."""
+    session = await sessions.change_password(
+        db, current.user, current.vendor, body.current_password, body.new_password
+    )
+    return _session_response(response, _settings(request), session)

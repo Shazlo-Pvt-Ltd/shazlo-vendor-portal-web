@@ -162,3 +162,13 @@ def test_prod_accepts_smtp_over_tls_with_an_https_portal() -> None:
         portal_base_url="https://vendors.shazlo.store",
     )
     assert s.smtp_security == "starttls"
+
+
+def test_session_defaults_and_bounds() -> None:
+    s = make()
+    assert (s.refresh_token_ttl_days, s.refresh_family_max_days) == (7, 30)
+    assert s.refresh_reuse_grace_seconds == 10
+    assert make(refresh_reuse_grace_seconds=0).refresh_reuse_grace_seconds == 0
+    for seconds in (-1, 61):
+        with pytest.raises(ValidationError):
+            make(refresh_reuse_grace_seconds=seconds)
