@@ -40,8 +40,10 @@ async def get_owned_or_404[T](
     """The vendor's object with this id, read fresh, or `not_found`.
 
     The id and the vendor are one condition, so another vendor's id is the same 404 as an id
-    that does not exist.
+    that does not exist. `not_found` must be a 404: a 403 would tell the caller the id exists.
     """
+    if not_found.status_code != 404:
+        raise ValueError("get_owned_or_404 needs a 404 error, never a 403")
     id_column = getattr(model, "id")  # noqa: B009  (a model's primary key; mypy cannot see it)
     row = await db.scalar(
         scoped_select(model, vendor_id)

@@ -9,6 +9,7 @@ from vendor_api.core.settings import Settings
 PROD_IDENTITY = {
     "identity_jwks_url": "https://identity.shazlo.store/.well-known/jwks.json",
     "identity_issuer": "https://identity.shazlo.store",
+    "jwt_issuer": "https://vendor-api.shazlo.store",
 }
 
 
@@ -36,7 +37,7 @@ def test_defaults() -> None:
     assert s.cors_allowed_origins == ["http://localhost:5174"]
     assert s.cookie_secure is True
     assert s.cookie_samesite == "strict"
-    assert s.cookie_domain is None
+    assert not hasattr(s, "cookie_domain")  # host-only cookies: no Domain setting
     assert s.jwt_issuer == "http://localhost:8002"
 
 
@@ -46,7 +47,7 @@ def test_cors_origins_are_comma_separated(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_environment_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("COOKIE_SECURE", "false")
+    monkeypatch.setenv("COOKIE_SAMESITE", "lax")
     monkeypatch.setenv("ENV", "prod")
     # Production must be able to send email, over TLS, with links to an https portal.
     monkeypatch.setenv("EMAIL_BACKEND", "smtp")
@@ -55,8 +56,9 @@ def test_environment_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RATE_LIMIT_HMAC_KEY", "k" * 32)  # required in prod
     monkeypatch.setenv("IDENTITY_JWKS_URL", PROD_IDENTITY["identity_jwks_url"])
     monkeypatch.setenv("IDENTITY_ISSUER", PROD_IDENTITY["identity_issuer"])
+    monkeypatch.setenv("JWT_ISSUER", PROD_IDENTITY["jwt_issuer"])
     s = make()
-    assert s.cookie_secure is False
+    assert s.cookie_samesite == "lax"
     assert s.env == "prod"
 
 
@@ -328,15 +330,71 @@ def test_outside_dev_the_jwks_url_must_be_https(env: str) -> None:
         "nohost",
     ):
         with pytest.raises(ValidationError, match="IDENTITY_JWKS_URL"):
-            make(env=env, identity_jwks_url=url, identity_issuer="https://identity.test", **extra)
+            make(
+                env=env,
+                identity_jwks_url=url,
+                identity_issuer="https://identity.test",
+                jwt_issuer="https://vendor-api.test",
+                **extra,
+            )
 
 
 def test_prod_needs_the_identity_settings() -> None:
     with pytest.raises(ValidationError, match="IDENTITY_JWKS_URL"):
         make(
             env="prod",
+            jwt_issuer="https://vendor-api.shazlo.store",
             email_backend="smtp",
             smtp_host="smtp.provider.example",
             portal_base_url="https://vendors.shazlo.store",
             rate_limit_hmac_key="k" * 32,
         )
+
+
+PROD_EMAIL: dict[str, object] = {
+    "email_backend": "smtp",
+    "smtp_host": "smtp.provider.example",
+    "portal_base_url": "https://vendors.shazlo.store",
+    "rate_limit_hmac_key": "k" * 32,
+}
+
+
+@pytest.mark.parametrize(
+    "issuer",
+    [
+        "http://localhost:8002",
+        "https://localhost:8002",
+        "https://127.0.0.1",
+        "http://vendor.example",
+    ],
+)
+def test_prod_needs_a_public_https_issuer(issuer: str) -> None:
+    with pytest.raises(ValidationError, match="JWT_ISSUER"):
+        make(env="prod", **PROD_EMAIL, **{**PROD_IDENTITY, "jwt_issuer": issuer})
+
+
+def test_the_issuer_must_differ_from_identity_apis() -> None:
+    with pytest.raises(ValidationError, match="JWT_ISSUER must differ"):
+        make(
+            identity_jwks_url="http://identity-api:8001/.well-known/jwks.json",
+            identity_issuer="http://localhost:8001/",
+            jwt_issuer="http://localhost:8001",
+        )
+
+
+def test_prod_refuses_insecure_cookies() -> None:
+    with pytest.raises(ValidationError, match="COOKIE_SECURE"):
+        make(env="prod", **PROD_EMAIL, **PROD_IDENTITY, cookie_secure=False)
+    assert make(env="prod", **PROD_EMAIL, **PROD_IDENTITY).cookie_secure is True
+
+
+def test_smtp_credentials_are_never_sent_without_tls() -> None:
+    with pytest.raises(ValidationError, match="SMTP_SECURITY"):
+        make(
+            email_backend="smtp",
+            smtp_host="mailpit",
+            smtp_security="none",
+            smtp_user="mailer",
+            smtp_password="s3cret-value",  # noqa: S106
+        )
+    assert make(email_backend="smtp", smtp_host="mailpit", smtp_security="none").smtp_user is None

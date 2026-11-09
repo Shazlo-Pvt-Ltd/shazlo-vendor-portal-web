@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from fastapi import BackgroundTasks
 
 from vendor_api.services.email.senders import EmailSender
-from vendor_api.services.email.templates import EmailTemplate
+from vendor_api.services.email.templates import EmailContextError, EmailTemplate
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,15 @@ class EmailService:
         for attempt in range(1, self._attempts + 1):
             try:
                 await self._sender.send(to, template, context)
+            except EmailContextError as error:
+                # A programming error (a bad context), not a delivery problem: retrying cannot
+                # help, so log it now instead of after the backoff.
+                logger.error(
+                    "email not sent: bad context",
+                    # The message names context keys only, never their values.
+                    extra={"template": name, "error": type(error).__name__, "detail": str(error)},
+                )
+                return False
             except Exception as error:
                 details = {"template": name, "attempt": attempt, "error": type(error).__name__}
                 if attempt == self._attempts:

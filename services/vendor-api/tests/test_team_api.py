@@ -607,6 +607,38 @@ async def test_resetting_the_password_ends_every_session_of_the_user(
     assert (await api.login(EMAIL, NEW_PASSWORD)).status_code == 200
 
 
+async def test_a_reset_that_cannot_end_the_sessions_saves_nothing(
+    api: Api,
+    account: Account,
+    sender: RecordingSender,
+    session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Redis down during a reset: the new password must not be saved with the old sessions
+    (perhaps an attacker's) still alive. Nothing changes and the link still works."""
+    from redis.exceptions import ConnectionError as RedisConnectionError
+
+    stolen = token_of(await api.login())
+    await forgot(api, EMAIL)
+    link = sender.tokens()[-1]
+
+    async def down(user_id: uuid.UUID) -> None:
+        raise RedisConnectionError("redis is down")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(api.app.state.sessions, "end_sessions_of_user", down)
+        with pytest.raises(RedisConnectionError):
+            await set_password(api, link, NEW_PASSWORD)
+
+    assert (await api.login(EMAIL, NEW_PASSWORD)).status_code == 401  # not saved
+    assert (await set_password(api, link, NEW_PASSWORD)).status_code == 204  # link unspent
+    api.http.cookies.clear()
+    refreshed = await api.http.post(
+        "/v1/auth/refresh", headers={"Cookie": f"vendor_refresh={stolen}"}
+    )
+    assert refreshed.status_code == 401
+
+
 async def test_a_newer_reset_ends_the_older_one_and_a_used_one_ends_the_rest(
     api: Api, account: Account, sender: RecordingSender, session: AsyncSession
 ) -> None:
@@ -625,7 +657,7 @@ async def test_a_reset_verifies_the_email_of_an_active_user_who_never_did(
     await make_account(session, hasher, verified=False)
     sender = record_emails(api)
     await forgot(api, EMAIL)
-    assert (await api.login()).status_code == 403  # not verified yet
+    assert (await api.login()).status_code == 401  # not verified yet (same as a wrong password)
     assert (await set_password(api, sender.tokens()[-1], NEW_PASSWORD)).status_code == 204
     assert (await api.login(EMAIL, NEW_PASSWORD)).status_code == 200
 

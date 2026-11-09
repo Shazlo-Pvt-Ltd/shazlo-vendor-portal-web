@@ -196,6 +196,16 @@ async def test_an_address_that_belongs_to_another_user_is_refused(
     assert await owner_of(session, vendor) is None  # nothing was created
 
 
+async def test_another_vendors_contact_address_is_refused(
+    session: AsyncSession, team: TeamService
+) -> None:
+    await migrated_vendor(session, slug="other-brand", email="contact@other.test")
+    vendor = await migrated_vendor(session)
+    with pytest.raises(TeamError, match="another vendor's contact address"):
+        await team.invite_owner(session, vendor, email="contact@other.test")
+    assert await owner_of(session, vendor) is None
+
+
 async def test_the_vendor_is_found_by_slug_or_id(session: AsyncSession, team: TeamService) -> None:
     by_slug = await migrated_vendor(session, slug="by-slug", email="a@mongo.test")
     by_id = await migrated_vendor(session, slug="by-id", email="b@mongo.test")

@@ -187,6 +187,7 @@ def test_the_seed_command_only_runs_in_dev(
             "RATE_LIMIT_HMAC_KEY": "k" * 32,
             "IDENTITY_JWKS_URL": "https://identity.shazlo.store/.well-known/jwks.json",
             "IDENTITY_ISSUER": "https://identity.shazlo.store",
+            "JWT_ISSUER": "https://vendor-api.shazlo.store",
         }.items():
             monkeypatch.setenv(name, value)
     assert cli.main(["seed-dev"]) == 1

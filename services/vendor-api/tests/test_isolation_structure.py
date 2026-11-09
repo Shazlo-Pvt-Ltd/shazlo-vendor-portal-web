@@ -167,13 +167,14 @@ def test_every_route_under_vendor_depends_on_the_current_vendor_user() -> None:
 
 
 def test_the_exemptions_name_real_reasons() -> None:
-    assert all(
-        parent and reason
-        for parent, reason in zip(
-            SCOPED_THROUGH_PARENT.values(), NO_VENDOR_INDEX_NEEDED.values(), strict=False
-        )
-    )
-    assert TENANT_ROOT in Base.metadata.tables
+    assert all(SCOPED_THROUGH_PARENT.values())
+    assert all(NO_VENDOR_INDEX_NEEDED.values())
+    tables = Base.metadata.tables
+    assert TENANT_ROOT in tables
+    # Once an exempt table exists, the parent that scopes it must exist too.
+    for table, parent in SCOPED_THROUGH_PARENT.items():
+        if table in tables:
+            assert parent in tables, f"{table} is scoped through {parent}, which does not exist"
 
 
 # --- The checkers do catch a mistake -----------------------------------------------------
@@ -316,3 +317,14 @@ def test_a_model_without_vendor_id_cannot_be_scoped() -> None:
 
     with pytest.raises(TypeError, match="no vendor_id"):
         scoped_select(AuthToken, uuid.uuid4())
+
+
+async def test_get_owned_or_404_refuses_an_error_that_is_not_a_404() -> None:
+    import uuid
+
+    from vendor_api.core.errors import ApiError
+    from vendor_api.db.scoped import get_owned_or_404
+
+    forbidden = ApiError(403, "forbidden", "no")
+    with pytest.raises(ValueError, match="404"):
+        await get_owned_or_404(None, VendorUser, uuid.uuid4(), uuid.uuid4(), forbidden)  # type: ignore[arg-type]

@@ -2,6 +2,7 @@ import ipaddress
 import secrets
 from functools import lru_cache
 from typing import Annotated, Literal, Self
+from urllib.parse import urlsplit
 
 from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -26,6 +27,8 @@ RATE_LIMITED_ENDPOINTS = frozenset(
 )
 # HMAC-SHA256 keys shorter than this are guessable enough to reverse the hashed emails in Redis.
 MIN_HMAC_KEY_LENGTH = 32
+# Hosts a production JWT_ISSUER must not name.
+LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})  # noqa: S104
 
 
 def _parse_rule(value: object) -> object:
@@ -64,7 +67,6 @@ class Settings(BaseSettings):
     # for local dev. SameSite=None requires Secure (browsers drop the cookie otherwise).
     cookie_secure: bool = True
     cookie_samesite: Literal["strict", "lax", "none"] = "strict"
-    cookie_domain: str | None = None
 
     # The `iss` of the tokens vendor-api issues itself (ADR 0009): this service's base URL.
     jwt_issuer: str = "http://localhost:8002"
@@ -297,6 +299,9 @@ class Settings(BaseSettings):
             self.smtp_password and self.smtp_password.get_secret_value()
         ):
             raise ValueError("SMTP_USER and SMTP_PASSWORD go together")
+        if self.smtp_user and self.smtp_security == "none":
+            # smtplib would send the credentials in clear text, in any environment.
+            raise ValueError("SMTP_USER and SMTP_PASSWORD need SMTP_SECURITY=starttls or ssl")
         if self.env == "prod":
             if self.email_backend != "smtp":
                 raise ValueError("EMAIL_BACKEND=console sends nothing: use smtp in prod")
@@ -310,6 +315,23 @@ class Settings(BaseSettings):
     def _check_cookie(self) -> "Settings":
         if self.cookie_samesite == "none" and not self.cookie_secure:
             raise ValueError("COOKIE_SAMESITE=none requires COOKIE_SECURE=true")
+        if self.env == "prod" and not self.cookie_secure:
+            raise ValueError("COOKIE_SECURE=false is not allowed in prod")
+        return self
+
+    @model_validator(mode="after")
+    def _check_issuer(self) -> "Settings":
+        issuer = self.jwt_issuer.strip().rstrip("/")
+        if self.env == "prod":
+            host = urlsplit(issuer).hostname or ""
+            if not issuer.startswith("https://") or host in LOCAL_HOSTS:
+                # The default (http://localhost:8002) left in place would put a localhost `iss`
+                # into every production token.
+                raise ValueError("JWT_ISSUER must be this service's public https URL in prod")
+        if self.identity_issuer and issuer == self.identity_issuer.strip().rstrip("/"):
+            # Vendor and admin tokens share `aud=vendor-api`; the issuer is one of the two things
+            # (with the signing keys) that keeps them apart.
+            raise ValueError("JWT_ISSUER must differ from IDENTITY_ISSUER")
         return self
 
 

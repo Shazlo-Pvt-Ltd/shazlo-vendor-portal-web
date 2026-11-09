@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 from shazlo_security.passwords import PasswordPolicyError, PasswordService, check_password
 from sqlalchemy import or_, select, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vendor_api.core.errors import ApiError
@@ -66,7 +66,7 @@ class SignupService:
         self._clock = clock
         self._token_ttl = timedelta(minutes=settings.email_verification_ttl_minutes)
 
-    async def signup(self, db: AsyncSession, data: SignupData) -> OutgoingEmail:
+    async def signup(self, db: AsyncSession, data: SignupData) -> OutgoingEmail | None:
         """Creates the vendor (`pending`), its status event and its owner (`active`, email not
         verified yet) in one transaction, and returns the verification email.
 
@@ -99,6 +99,15 @@ class SignupService:
                     # Two signups with the same email raced and the other one won.
                     return OutgoingEmail(email, EmailTemplate.ACCOUNT_EXISTS)
                 raise
+            except DBAPIError as error:
+                # Backstop: input the request schema let through but the database refused. A 500
+                # here would happen only for unregistered emails and give them away, so answer
+                # like any other signup (202) and send nothing.
+                await db.rollback()
+                logger.error(
+                    "signup refused by the database", extra={"error": type(error.orig).__name__}
+                )
+                return None
             except Exception:
                 await db.rollback()
                 raise

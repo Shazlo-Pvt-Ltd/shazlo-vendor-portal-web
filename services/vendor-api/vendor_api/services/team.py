@@ -164,6 +164,13 @@ class TeamService:
             taken = await db.scalar(select(VendorUser.id).where(VendorUser.email == email))
             if taken is not None:
                 raise TeamError(f"{email} already belongs to another user")
+            # Another vendor's contact address too (as `email_in_use` checks for invites); this
+            # vendor's own contact address is the usual choice and is fine.
+            other_vendor = await db.scalar(
+                select(Vendor.id).where(Vendor.email == email, Vendor.id != vendor.id)
+            )
+            if other_vendor is not None:
+                raise TeamError(f"{email} is another vendor's contact address")
         now = self._clock()
         try:
             if status is not None and vendor.status != status:

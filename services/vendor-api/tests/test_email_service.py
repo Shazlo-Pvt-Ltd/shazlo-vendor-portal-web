@@ -103,6 +103,18 @@ async def test_a_template_bug_is_logged_not_raised(caplog: pytest.LogCaptureFixt
     assert any(r.__dict__.get("error") == "EmailContextError" for r in caplog.records)
 
 
+async def test_a_template_bug_is_not_retried(caplog: pytest.LogCaptureFixture) -> None:
+    from vendor_api.services.email import ConsoleEmailSender
+
+    sender = ConsoleEmailSender("https://v.test", show_links=False)
+    with caplog.at_level(logging.INFO):
+        ok = await EmailService(sender, attempts=5, retry_delay_seconds=60).deliver(
+            "a@b.test", EmailTemplate.VERIFY_EMAIL, {"token": TOKEN}
+        )
+    assert not ok  # returned at once: a 60 s backoff would have hung the test
+    assert not any("will retry" in r.getMessage() for r in caplog.records)
+
+
 def test_attempts_must_be_positive() -> None:
     with pytest.raises(ValueError, match="at least 1"):
         EmailService(FlakySender(0), attempts=0)

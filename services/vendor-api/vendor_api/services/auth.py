@@ -26,9 +26,6 @@ from vendor_api.db.models import (
 from vendor_api.services.tokens import VendorTokens
 
 INVALID_CREDENTIALS = ApiError(401, "invalid_credentials", "Invalid email or password")
-EMAIL_NOT_VERIFIED = ApiError(
-    403, "email_not_verified", "Verify your email address before signing in"
-)
 VENDOR_NOT_ALLOWED = ApiError(
     403, "vendor_not_allowed", "This vendor account cannot sign in. Contact support"
 )
@@ -92,13 +89,19 @@ class AuthService:
         )
         stored_hash = user.password_hash if user else None
         check = await self._passwords.verify_login(stored_hash, password)
-        # An unknown email, a wrong password, a user who has no password yet and a disabled user
-        # all look the same, and all cost one password verification.
-        if user is None or not check.ok or user.status != VendorUserStatus.ACTIVE:
+        # An unknown email, a wrong password, a user who has no password yet, a disabled user and
+        # an unverified email all look the same, and all cost one password verification.
+        # Unverified is not a separate 403: anyone can sign up with someone else's address and a
+        # password of their choosing, and a 403 (new account) against a 401 (the address already
+        # had one, so signup created nothing) would tell them which addresses are registered.
+        if (
+            user is None
+            or not check.ok
+            or user.status != VendorUserStatus.ACTIVE
+            or user.email_verified_at is None
+        ):
             raise INVALID_CREDENTIALS
-        # Only someone who knows the password learns anything below.
-        if user.email_verified_at is None:
-            raise EMAIL_NOT_VERIFIED
+        # Only someone who knows the password of a verified account learns anything below.
         vendor = await db.scalar(
             select(Vendor)
             .where(Vendor.id == user.vendor_id)
@@ -192,8 +195,15 @@ class AuthService:
                 422, "weak_password", "The new password must differ from the current one"
             )
         user.password_hash = await self._passwords.hash(new_password)
-        await db.commit()
-        # The commit comes first: a login that reads the new generation also sees the new hash.
+        try:
+            # Before the commit too: if Redis is down this fails and the change is rolled back,
+            # instead of saving the new password with every old session still alive.
+            await self._refresh_tokens.revoke_all(user.id)
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+        # And after it: a login that reads the new generation also sees the new hash.
         generation = await self._refresh_tokens.revoke_all(user.id)
         try:
             return await self._start_session(user, vendor, generation)

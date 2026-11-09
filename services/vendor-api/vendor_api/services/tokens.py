@@ -8,8 +8,10 @@ from shazlo_security.tokens import IssuedToken, TokenIssuer
 
 from vendor_api.db.models import VendorUserRole
 
-# The one audience of vendor-api's own tokens. identity-api's tokens are for other audiences, so
-# neither service accepts the other's tokens (ADR 0009).
+# The one audience of vendor-api's own tokens. Admin tokens exchanged at identity-api for
+# vendor-api carry the same audience: what keeps the two apart is the issuer (Settings refuses
+# JWT_ISSUER == IDENTITY_ISSUER) and the signing keys (vendor tokens are checked only against
+# vendor-api's own keys, admin tokens only against identity-api's JWKS) (ADR 0009).
 VENDOR_AUDIENCE = "vendor-api"
 VENDOR_ID_CLAIM = "vendor_id"
 

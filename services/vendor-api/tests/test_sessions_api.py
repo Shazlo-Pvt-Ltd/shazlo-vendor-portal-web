@@ -190,14 +190,18 @@ async def test_unknown_email_wrong_password_disabled_and_no_password_cannot_be_t
     assert all(cookie_of(response) is None for response in responses)
 
 
-async def test_a_correct_password_with_an_unverified_email_is_403(
+async def test_a_correct_password_with_an_unverified_email_looks_like_a_wrong_one(
     api: Api, session: AsyncSession, hasher: PasswordService
 ) -> None:
+    """Signup with someone else's address, then login with the chosen password: a separate
+    answer for "unverified" would reveal whether signup created an account (a free address) or
+    not (a registered one)."""
     await make_account(session, hasher, verified=False)
-    response = await api.login()
-    assert response.status_code == 403
-    assert response.json()["error"]["code"] == "email_not_verified"
-    assert cookie_of(response) is None
+    unverified = await api.login()
+    wrong = await api.login(password="not the password!")
+    assert unverified.status_code == wrong.status_code == 401
+    assert without_request_id(unverified) == without_request_id(wrong)
+    assert cookie_of(unverified) is None
 
 
 async def test_a_wrong_password_never_reveals_that_the_email_is_unverified(

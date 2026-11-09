@@ -1,3 +1,4 @@
+import unicodedata
 import uuid
 from datetime import datetime
 from typing import Annotated, cast
@@ -32,22 +33,32 @@ from vendor_api.services.auth import (
 from vendor_api.services.credentials import CredentialService
 from vendor_api.services.signup import SignupData, SignupService
 
-# The refresh cookie. Its own name (identity-api's is `identity_refresh`), so the two services
-# can share a parent domain without overwriting each other's cookie. The browser sends it to the
-# auth endpoints only.
+# The refresh cookie. Host-only (no Domain attribute), so the browser sends it back only to this
+# service, and only to the auth endpoints. Its own name (identity-api's is `identity_refresh`)
+# as well, in case both are ever served from one host.
 COOKIE_NAME = "vendor_refresh"
 COOKIE_PATH = "/v1/auth"
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# How long a successful login exempts its (email, IP) pair from the per-email login counter.
+KNOWN_LOGIN_PAIR_TTL_SECONDS = 30 * 24 * 3600
 
 Db = Annotated[AsyncSession, Depends(get_session)]
 Sessions = Annotated[AuthService, Depends(get_sessions)]
 RefreshCookie = Annotated[str | None, Cookie(alias=COOKIE_NAME)]
 
 # ASCII only: the database stores emails lower-cased and checks that, and lower-casing a
-# non-ASCII address can differ between Python and Postgres.
-EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
-PHONE_PATTERN = r"^\+?[0-9][0-9 ()-]{5,30}[0-9]$"
+# non-ASCII address can differ between Python and Postgres. A plain addr-spec (dot-atom local
+# part, dotted host name): no display names, quotes, commas, angle brackets or spaces, so the
+# address stored is always exactly the single address the email goes to.
+EMAIL_PATTERN = (
+    r"^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*"
+    r"@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$"
+)
+# At most 32 characters, the column's length: an input the database would refuse must be refused
+# here, or signup would fail (500) only for unregistered emails and give them away.
+PHONE_PATTERN = r"^\+?[0-9][0-9 ()-]{5,29}[0-9]$"
 # 10^12 paise is 10^10 rupees: far above any real price, low enough to keep arithmetic safe.
 MAX_PAISE = 10**12
 
@@ -56,6 +67,13 @@ SIGNUP_ACCEPTED = (
 )
 RESEND_ACCEPTED = "If that address needs verifying, we have sent a new link."
 RESET_ACCEPTED = "If that address has an account, we have sent a link to reset the password."
+
+
+def printable_text(value: str) -> str:
+    """Refuses control characters (NUL included) and lone surrogates in free text."""
+    if any(unicodedata.category(char) in {"Cc", "Cs"} for char in value):
+        raise ValueError("remove control characters from this field")
+    return value
 
 
 def get_signup_service(request: Request) -> SignupService:
@@ -118,6 +136,13 @@ class SignupRequest(BaseModel):
         if not value.isascii():
             raise ValueError("use an email address with plain letters and digits")
         return value
+
+    @field_validator("brand_name", "contact_name", "product_type", "website_or_instagram")
+    @classmethod
+    def _printable(cls, value: str | None) -> str | None:
+        # Postgres refuses NUL and lone surrogates; refusing them here keeps a registered and an
+        # unregistered email answering the same.
+        return value if value is None else printable_text(value)
 
     @field_validator("website_or_instagram")
     @classmethod
@@ -341,7 +366,6 @@ def _set_cookie(response: Response, settings: Settings, session: AuthSession) ->
         session.refresh.token,
         expires=session.refresh.expires_at,
         path=COOKIE_PATH,
-        domain=settings.cookie_domain,
         secure=settings.cookie_secure,
         httponly=True,
         samesite=settings.cookie_samesite,
@@ -352,7 +376,6 @@ def _clear_cookie(response: Response, settings: Settings) -> None:
     response.delete_cookie(
         COOKIE_NAME,
         path=COOKIE_PATH,
-        domain=settings.cookie_domain,
         secure=settings.cookie_secure,
         httponly=True,
         samesite=settings.cookie_samesite,
@@ -383,8 +406,9 @@ async def login(
     ip: ClientIp,
 ) -> SessionResponse:
     """`401 invalid_credentials` for an unknown email, a wrong password, a user who has no
-    password yet and a disabled user alike. A correct password with an unverified email is
-    `403 email_not_verified`; a rejected or suspended vendor is `403 vendor_not_allowed`."""
+    password yet, a disabled user and an unverified email alike (a separate answer for unverified
+    would reveal, after a signup, whether an address was already registered). A rejected or
+    suspended vendor is `403 vendor_not_allowed`."""
     settings = _settings(request)
     email = body.email.strip().lower()
     # An IP never contains a space, so the pair cannot collide with another pair.
@@ -393,16 +417,20 @@ async def login(
     # them. The strict one is per (email, IP): failures from one network cannot lock a vendor
     # out of another. A successful login clears it, so in the end it counts failures. The loose
     # per-email one is never cleared, so spreading guesses over IPs stays slow.
-    await limits.check(
-        "login",
-        [
-            Check("ip", ip, settings.rate_limit_login_ip),
-            Check("email_ip", email_ip, settings.rate_limit_login_email),
-            Check("email", email, settings.rate_limit_login_email_global),
-        ],
-    )
+    # A pair that logged in before skips the loose per-email counter, so a vendor or admin on
+    # their usual network is never locked out by someone guessing from elsewhere. The checks stop
+    # at the first refusal, so a single attacking IP adds at most its per-pair limit to it.
+    known = await limits.remembers("login", "email_ip", email_ip)
+    checks = [
+        Check("ip", ip, settings.rate_limit_login_ip),
+        Check("email_ip", email_ip, settings.rate_limit_login_email),
+    ]
+    if not known:
+        checks.append(Check("email", email, settings.rate_limit_login_email_global))
+    await limits.check("login", checks)
     session = await sessions.login(db, body.email, body.password)
     await limits.reset("login", "email_ip", email_ip)
+    await limits.remember("login", "email_ip", email_ip, KNOWN_LOGIN_PAIR_TTL_SECONDS)
     return _session_response(response, settings, session)
 
 
@@ -471,7 +499,9 @@ async def set_password(
     await limits.check(
         "set_password", [Check("ip", ip, _settings(request).rate_limit_set_password_ip)]
     )
-    user_id = await credentials.set_password(db, body.token, body.password)
+    user_id = await credentials.set_password(
+        db, body.token, body.password, before_commit=sessions.end_sessions_of_user
+    )
     await sessions.end_sessions_of_user(user_id)
     response = Response(status_code=204)
     no_store(response)

@@ -52,7 +52,7 @@
           "email": {
             "maxLength": 320,
             "minLength": 3,
-            "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+            "pattern": "^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$",
             "title": "Email",
             "type": "string"
           }
@@ -82,7 +82,7 @@
           "email": {
             "maxLength": 320,
             "minLength": 3,
-            "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+            "pattern": "^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$",
             "title": "Email",
             "type": "string"
           }
@@ -157,7 +157,7 @@
           "email": {
             "maxLength": 320,
             "minLength": 3,
-            "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+            "pattern": "^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$",
             "title": "Email",
             "type": "string"
           }
@@ -241,7 +241,7 @@
           "email": {
             "maxLength": 320,
             "minLength": 3,
-            "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+            "pattern": "^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$",
             "title": "Email",
             "type": "string"
           },
@@ -252,7 +252,7 @@
             "type": "string"
           },
           "phone": {
-            "pattern": "^\\+?[0-9][0-9 ()-]{5,30}[0-9]$",
+            "pattern": "^\\+?[0-9][0-9 ()-]{5,29}[0-9]$",
             "title": "Phone",
             "type": "string"
           },
@@ -688,7 +688,7 @@
     },
     "/v1/auth/login": {
       "post": {
-        "description": "`401 invalid_credentials` for an unknown email, a wrong password, a user who has no\npassword yet and a disabled user alike. A correct password with an unverified email is\n`403 email_not_verified`; a rejected or suspended vendor is `403 vendor_not_allowed`.",
+        "description": "`401 invalid_credentials` for an unknown email, a wrong password, a user who has no\npassword yet, a disabled user and an unverified email alike (a separate answer for unverified\nwould reveal, after a signup, whether an address was already registered). A rejected or\nsuspended vendor is `403 vendor_not_allowed`.",
         "operationId": "login_v1_auth_login_post",
         "requestBody": {
           "content": {

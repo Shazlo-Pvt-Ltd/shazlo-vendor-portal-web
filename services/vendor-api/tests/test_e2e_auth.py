@@ -18,6 +18,7 @@ from shazlo_auth import JwksClient
 from shazlo_security.keys import generate_private_key
 from shazlo_security.keys import private_key_pem as pem_of
 from shazlo_security.passwords import PasswordService
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession
 from support import (
     EMAIL,
@@ -58,6 +59,11 @@ async def real_redis() -> AsyncIterator[Redis]:
     url = os.environ.get("REDIS_URL")
     if not url:
         pytest.skip("REDIS_URL is not set")
+    database = make_url(url).database
+    if not database or database == "0":
+        # flushdb() below empties the whole database: never the default one, which a developer's
+        # identity-api (or anything else) may be using.
+        pytest.fail("REDIS_URL must name a database other than 0 (e.g. redis://localhost:6379/1)")
     client = Redis.from_url(url)
     try:
         await client.ping()
@@ -126,7 +132,7 @@ async def test_the_whole_vendor_and_admin_flow(
         assert signup.status_code == 202
         ((to, template, context),) = sender.sent
         assert (to, template) == (EMAIL, EmailTemplate.VERIFY_EMAIL)
-        assert (await api.login(EMAIL, PASSWORD)).status_code == 403  # not verified yet
+        assert (await api.login(EMAIL, PASSWORD)).status_code == 401  # not verified yet
         verify = await http.post("/v1/auth/verify-email", json={"token": context["token"]})
         assert verify.status_code == 204
         assert (

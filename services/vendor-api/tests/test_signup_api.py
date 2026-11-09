@@ -11,6 +11,7 @@ import pytest
 from fakeredis import FakeAsyncRedis
 from fastapi import FastAPI
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from support import RecordingSender
 
@@ -203,6 +204,65 @@ async def test_a_registered_email_gets_the_same_response_in_any_letter_case(
     assert await count(session, VendorUser) == 1
     assert await count(session, AuthToken) == 1
     assert await count(session, VendorStatusEvent) == 1
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"phone": "+9" + "1" * 30 + "0"},
+        {"contact_name": "Asha\u0000Rao"},
+        {"brand_name": "Atelier\ud800"},
+    ],
+    ids=["phone-too-long", "nul", "lone-surrogate"],
+)
+async def test_input_the_database_would_refuse_is_refused_alike_for_any_email(
+    api: Api, session: AsyncSession, changes: dict[str, Any]
+) -> None:
+    """Such input used to reach the INSERT only for unregistered emails and fail there (500),
+    while a registered email got 202: a way to test any address."""
+
+    async def raw_signup(**fields: Any) -> httpx.Response:
+        # json.dumps escapes a lone surrogate as \ud800, as an attacker's client would send it.
+        body = json.dumps({**SIGNUP, **fields})
+        headers = {"Content-Type": "application/json"}
+        return await api.http.post("/v1/auth/signup", content=body, headers=headers)
+
+    await api.signup()
+    registered = await raw_signup(**changes)
+    unregistered = await raw_signup(**changes, email="someone.new@brand.test")
+    assert registered.status_code == unregistered.status_code == 422
+    assert registered.json()["error"]["code"] == unregistered.json()["error"]["code"]
+    assert await count(session, Vendor) == 1
+
+
+async def test_every_field_at_its_maximum_length_is_saved(api: Api, session: AsyncSession) -> None:
+    response = await api.signup(
+        brand_name="b" * 200,
+        contact_name="c" * 200,
+        email="m" * 64 + "@" + "d" * 63 + "." + "e" * 63 + ".test",
+        phone="+" + "1" * 31,
+        product_type="p" * 100,
+        website_or_instagram="w" * 300,
+    )
+    assert response.status_code == 202
+    assert await count(session, Vendor) == 1
+
+
+async def test_a_database_refusal_answers_like_any_signup_and_sends_nothing(
+    api: Api, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The backstop: input the schema misses still cannot become a 500 that only unregistered
+    emails get."""
+    service: SignupService = api.app.state.signup
+
+    async def refuse(*args: Any, **kwargs: Any) -> Any:
+        raise DBAPIError("INSERT", {}, ValueError("refused"))
+
+    monkeypatch.setattr(service, "_create", refuse)
+    refused = await api.signup(email="someone.new@brand.test")
+    assert refused.status_code == 202
+    assert api.sender.sent == []
+    assert refused.json() == (await api.signup()).json()
 
 
 async def test_the_original_account_is_untouched_by_a_second_signup(

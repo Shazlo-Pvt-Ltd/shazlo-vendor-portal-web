@@ -162,6 +162,48 @@ async def test_failed_logins_for_one_email_are_stopped_even_from_different_ips(
         assert blocked.json()["error"]["code"] == "rate_limited"
 
 
+async def test_one_ip_cannot_use_up_a_vendors_per_email_limit(
+    base_settings: Settings,
+    override: Any,
+    session: AsyncSession,
+    redis: FakeAsyncRedis,
+    account: Account,
+) -> None:
+    """Lockout: 50 guesses from one IP are refused by the per-pair counter and never reach the
+    per-email one, so the vendor can still log in from anywhere."""
+    async with serve(
+        base_settings,
+        override,
+        session,
+        redis,
+        rate_limit_login_email="3/900",
+        rate_limit_login_email_global="5/3600",
+    ) as api:
+        statuses = [(await login(api, "wrong password!", IP_A)).status_code for _ in range(50)]
+        assert statuses[:3] == [401, 401, 401]
+        assert set(statuses[3:]) == {429}
+        assert (await login(api, PASSWORD, IP_C)).status_code == 200
+
+
+async def test_a_network_the_vendor_logged_in_from_skips_the_per_email_limit(
+    base_settings: Settings,
+    override: Any,
+    session: AsyncSession,
+    redis: FakeAsyncRedis,
+    account: Account,
+) -> None:
+    async with serve(
+        base_settings, override, session, redis, rate_limit_login_email_global="4/3600"
+    ) as api:
+        # Counts 1 of 4 on the per-email counter, and makes IP_C a known network.
+        assert (await login(api, PASSWORD, IP_C)).status_code == 200
+        for ip in (IP_A, IP_B, "192.0.2.77"):
+            assert (await login(api, "wrong password!", ip)).status_code == 401
+        # The per-email counter is spent: a new network is stopped, the known one is not.
+        assert (await login(api, PASSWORD, "192.0.2.88")).status_code == 429
+        assert (await login(api, PASSWORD, IP_C)).status_code == 200
+
+
 async def test_the_per_ip_login_limit_does_not_block_another_ip(
     base_settings: Settings,
     override: Any,

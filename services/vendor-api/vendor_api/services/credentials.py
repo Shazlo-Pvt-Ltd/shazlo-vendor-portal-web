@@ -1,6 +1,6 @@
 import logging
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 
 from shazlo_security.passwords import PasswordPolicyError, PasswordService, check_password
@@ -65,10 +65,20 @@ class CredentialService:
             {"token": token, "expires_in_minutes": self._settings.reset_token_ttl_minutes},
         )
 
-    async def set_password(self, db: AsyncSession, token: str, password: str) -> uuid.UUID:
+    async def set_password(
+        self,
+        db: AsyncSession,
+        token: str,
+        password: str,
+        *,
+        before_commit: Callable[[uuid.UUID], Awaitable[None]],
+    ) -> uuid.UUID:
         """Accepts an invite or a reset token with the new password and returns the user's id.
 
-        The caller must then end the user's sessions (`AuthService.end_sessions_of_user`).
+        `before_commit(user_id)` must end the user's sessions (`AuthService.end_sessions_of_user`).
+        It runs inside the transaction: if it fails (Redis down), the new password is rolled back
+        rather than saved with the old sessions, perhaps an attacker's, still alive. The caller
+        ends them once more after the commit, for a login that read the old hash meanwhile.
 
         An unknown, used or expired token, and a token of a user who may not use it (a disabled
         user, a reset for a user who is still invited), are one generic error. The password is
@@ -115,6 +125,7 @@ class CredentialService:
                     email_verified_at=user.email_verified_at or now,
                 )
             )
+            await before_commit(user.id)
             await db.commit()
         except Exception:
             await db.rollback()

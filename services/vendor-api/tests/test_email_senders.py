@@ -53,6 +53,21 @@ async def test_smtp_delivers_a_multipart_email_to_the_fake_server() -> None:
     assert message.get_body(preferencelist=("plain",)) is not None
 
 
+async def test_the_envelope_goes_only_to_the_given_address() -> None:
+    """The recipient is the address passed in, not whatever the To header parses into."""
+    async with fake_smtp() as server:
+        sender = smtp_sender(server.port)
+        await sender.send("owner@brand.test", EmailTemplate.ACCOUNT_EXISTS, {})
+    assert [recipients for _, recipients in server.envelopes] == [["<owner@brand.test>"]]
+
+
+async def test_smtp_runs_in_its_own_thread_pool() -> None:
+    from vendor_api.services.email.senders import SMTP_WORKERS
+
+    sender = smtp_sender(1)
+    assert sender._pool._max_workers == SMTP_WORKERS
+
+
 async def test_smtp_logs_in_when_a_user_is_configured() -> None:
     async with fake_smtp() as server:
         sender = smtp_sender(server.port, user="mailer", password="p4ss-word")  # noqa: S106
@@ -153,8 +168,6 @@ async def test_switching_to_smtp_is_a_settings_change(
             smtp_host="127.0.0.1",
             smtp_port=server.port,
             smtp_security="none",
-            smtp_user="mailer",
-            smtp_password="p4ss-word",  # noqa: S106
             email_from="Shazlo <hello@shazlo.test>",
             portal_base_url="https://vendors.example/",
         )
@@ -164,4 +177,4 @@ async def test_switching_to_smtp_is_a_settings_change(
     (message,) = server.messages
     assert message["From"] == "Shazlo <hello@shazlo.test>"
     assert "https://vendors.example/reset-password#token=" in body(message, "plain")
-    assert server.credentials == [("mailer", "p4ss-word")]
+    assert server.credentials == []  # no TLS on the fake server, so no credentials (Settings)

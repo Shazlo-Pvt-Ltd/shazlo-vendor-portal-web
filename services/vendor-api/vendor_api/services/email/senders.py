@@ -3,6 +3,7 @@ import logging
 import smtplib
 import ssl
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
@@ -14,6 +15,9 @@ from vendor_api.services.email.templates import EmailTemplate, render
 logger = logging.getLogger(__name__)
 
 SMTP_TIMEOUT_SECONDS = 10
+# SMTP runs in its own small thread pool, not the loop's default one: argon2 hashing (login,
+# signup) uses that, and a slow provider must never queue logins behind email sends.
+SMTP_WORKERS = 4
 
 
 class EmailSender(Protocol):
@@ -69,6 +73,7 @@ class SmtpEmailSender:
         self._config = config
         self._from = from_address
         self._base_url = base_url
+        self._pool = ThreadPoolExecutor(max_workers=SMTP_WORKERS, thread_name_prefix="smtp")
 
     async def send(self, to: str, template: EmailTemplate, context: Mapping[str, object]) -> None:
         rendered = render(template, context, base_url=self._base_url)
@@ -82,9 +87,9 @@ class SmtpEmailSender:
         message["Auto-Submitted"] = "auto-generated"
         message.set_content(rendered.text)
         message.add_alternative(rendered.html, subtype="html")
-        await asyncio.to_thread(self._deliver, message)
+        await asyncio.get_running_loop().run_in_executor(self._pool, self._deliver, message, to)
 
-    def _deliver(self, message: EmailMessage) -> None:
+    def _deliver(self, message: EmailMessage, to: str) -> None:
         config = self._config
         client: smtplib.SMTP
         if config.security == "ssl":
@@ -101,7 +106,9 @@ class SmtpEmailSender:
                 client.starttls(context=ssl.create_default_context())
             if config.user and config.password:
                 client.login(config.user, config.password)
-            client.send_message(message)
+            # The envelope recipient is exactly the validated address, never whatever the To
+            # header parses into (a display name or a list).
+            client.send_message(message, to_addrs=[to])
 
 
 def build_sender(settings: Settings) -> EmailSender:
