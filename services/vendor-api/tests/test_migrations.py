@@ -11,12 +11,19 @@ TABLES = {
     "auth_tokens",
     "assets",
     "brand_profiles",
+    "products",
+    "product_revisions",
+    "product_variants",
+    "product_revision_variants",
+    "product_images",
 }
 # Helper functions the schema creates: a downgrade must remove them too.
 FUNCTIONS = (
     "vendor_status_events_append_only",
     "is_clean_text_list",
     "enforce_version_increases",
+    "enforce_version_never_decreases",
+    "require_variant_and_image_on_submit",
 )
 
 
@@ -58,6 +65,26 @@ def test_downgrade_removes_the_database_functions(alembic_config: Config, migrat
         assert _function_count(engine) == len(FUNCTIONS)
     finally:
         engine.dispose()
+
+
+def test_the_product_migration_alone_can_be_undone_and_redone(
+    alembic_config: Config, migrated_db: str
+) -> None:
+    product_tables = {
+        "products",
+        "product_revisions",
+        "product_variants",
+        "product_revision_variants",
+        "product_images",
+    }
+    try:
+        command.downgrade(alembic_config, "0003")
+        tables = _tables(migrated_db)
+        assert {"assets", "brand_profiles"} <= tables
+        assert not product_tables & tables
+    finally:
+        command.upgrade(alembic_config, "head")
+    assert product_tables <= _tables(migrated_db)
 
 
 def test_the_brand_profile_migration_alone_can_be_undone_and_redone(

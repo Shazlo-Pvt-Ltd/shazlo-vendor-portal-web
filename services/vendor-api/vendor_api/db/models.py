@@ -4,7 +4,9 @@ from enum import StrEnum
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
+    Computed,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -75,6 +77,20 @@ class BrandProfileState(StrEnum):
     PUBLISHED = "published"
     SUPERSEDED = "superseded"
     REJECTED = "rejected"
+
+
+class ProductStatus(StrEnum):
+    DRAFT = "draft"
+    PENDING_REVIEW = "pending_review"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    ARCHIVED = "archived"
+
+
+class Gender(StrEnum):
+    WOMEN = "women"
+    MEN = "men"
+    UNISEX = "unisex"
 
 
 def _one_of(column: str, values: type[StrEnum]) -> str:
@@ -403,3 +419,247 @@ class BrandProfile(Base):
     )
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
+
+
+class Product(Base):
+    """A product's identity and where it stands. Its content lives in `ProductRevision` rows.
+
+    **Layout: identity here, content in revisions.** An approved product keeps its live content
+    while a new revision is edited and reviewed (Phase 3: "editing an approved product creates a
+    pending revision instead of changing the live one"). `live_revision_id` is what shoppers see;
+    `pending_revision_id` is the revision being edited or reviewed. Both must be revisions of
+    this product (composite foreign keys), so a product can never show another's content.
+
+    `version` is the aggregate version the central app uses to ignore stale events; the service
+    raises it whenever the live product changes, and the database never lets it go down.
+    The SKU is unique per vendor ignoring letter case (`sku_key` is the lower-cased copy the
+    unique constraint uses) and stays reserved when the product is archived.
+    """
+
+    __tablename__ = "products"
+    __table_args__ = (
+        CheckConstraint(_one_of("status", ProductStatus), name="status_values"),
+        CheckConstraint("version >= 1", name="version_positive"),
+        CheckConstraint("length(sku) > 0 AND sku = btrim(sku)", name="sku_clean"),
+        # An approved product has something to show.
+        CheckConstraint(
+            "status <> 'approved' OR live_revision_id IS NOT NULL", name="approved_has_live"
+        ),
+        # A product that was never approved has no live content.
+        CheckConstraint(
+            "status NOT IN ('draft', 'pending_review', 'rejected') OR live_revision_id IS NULL",
+            name="unapproved_has_no_live",
+        ),
+        CheckConstraint(
+            "live_revision_id IS NULL OR pending_revision_id IS NULL "
+            "OR live_revision_id <> pending_revision_id",
+            name="live_and_pending_differ",
+        ),
+        UniqueConstraint("vendor_id", "sku_key"),
+        UniqueConstraint("id", "vendor_id"),
+        # Circular with product_revisions: both columns start empty and are filled afterwards.
+        ForeignKeyConstraint(
+            ["live_revision_id", "id"],
+            ["product_revisions.id", "product_revisions.product_id"],
+            name="fk_products_live_revision_id_product_revisions",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+        ForeignKeyConstraint(
+            ["pending_revision_id", "id"],
+            ["product_revisions.id", "product_revisions.product_id"],
+            name="fk_products_pending_revision_id_product_revisions",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+        Index("ix_products_vendor_id_status", "vendor_id", "status"),
+    )
+    __mapper_args__ = {"eager_defaults": True}
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    vendor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("vendors.id", ondelete="RESTRICT")
+    )
+    sku: Mapped[str] = mapped_column(String(64))
+    sku_key: Mapped[str] = mapped_column(
+        Text, Computed("lower(sku)", persisted=True), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(16), server_default=text(f"'{ProductStatus.DRAFT}'"))
+    version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    live_revision_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    pending_revision_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+
+class ProductRevision(Base):
+    """One version of a product's content (limits from the published contract, ADR 0003).
+
+    `version` increases per product and never changes (a trigger, like brand profiles); it is
+    the version a review refers to. `submitted_at` is NULL while the revision is being edited.
+    A revision cannot be submitted without at least one active variant and one image.
+    `vendor_id` repeats the product's (a composite foreign key keeps them equal) so the variants
+    and images below can be tied to the same vendor.
+    """
+
+    __tablename__ = "product_revisions"
+    __table_args__ = (
+        CheckConstraint("version >= 1", name="version_positive"),
+        CheckConstraint("length(btrim(title)) > 0", name="title_not_blank"),
+        CheckConstraint("length(btrim(category)) > 0", name="category_not_blank"),
+        CheckConstraint(_one_of("gender", Gender), name="gender_values"),
+        CheckConstraint("weight_grams IS NULL OR weight_grams > 0", name="weight_positive"),
+        CheckConstraint(
+            "return_window_days IS NULL OR return_window_days BETWEEN 0 AND 30",
+            name="return_window_range",
+        ),
+        CheckConstraint(
+            "NOT returnable OR return_window_days IS NOT NULL", name="return_window_required"
+        ),
+        UniqueConstraint("product_id", "version"),
+        UniqueConstraint("id", "product_id"),
+        UniqueConstraint("id", "vendor_id"),
+        ForeignKeyConstraint(
+            ["product_id", "vendor_id"],
+            ["products.id", "products.vendor_id"],
+            name="fk_product_revisions_product_id_products",
+            ondelete="RESTRICT",
+        ),
+    )
+    __mapper_args__ = {"eager_defaults": True}
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    version: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(String(4000))
+    category: Mapped[str] = mapped_column(String(100))
+    subcategory: Mapped[str | None] = mapped_column(String(100))
+    gender: Mapped[str] = mapped_column(String(8))
+    fabric: Mapped[str | None] = mapped_column(String(80))
+    weight_grams: Mapped[int | None] = mapped_column(Integer)
+    returnable: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    return_window_days: Mapped[int | None] = mapped_column(Integer)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("vendor_users.id", ondelete="RESTRICT")
+    )
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+
+class ProductVariant(Base):
+    """A sellable variant of a product: its identity (SKU, size, colour).
+
+    The identity is stable across revisions, so `id` can be the contract's `variant_id` and the
+    central app can update the same variant. What may change between revisions (price, MRP,
+    whether it is offered) is in `ProductRevisionVariant`. There is no stock: the central app
+    owns it. The SKU is unique per vendor ignoring letter case; two vendors may use the same.
+    An empty `size` or `color` means "none" (and keeps `(product, size, color)` unique).
+    """
+
+    __tablename__ = "product_variants"
+    __table_args__ = (
+        CheckConstraint("length(sku) > 0 AND sku = btrim(sku)", name="sku_clean"),
+        UniqueConstraint("vendor_id", "sku_key"),
+        UniqueConstraint("product_id", "size", "color"),
+        UniqueConstraint("id", "product_id"),
+        ForeignKeyConstraint(
+            ["product_id", "vendor_id"],
+            ["products.id", "products.vendor_id"],
+            name="fk_product_variants_product_id_products",
+            ondelete="RESTRICT",
+        ),
+    )
+    __mapper_args__ = {"eager_defaults": True}
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    sku: Mapped[str] = mapped_column(String(64))
+    sku_key: Mapped[str] = mapped_column(
+        Text, Computed("lower(sku)", persisted=True), nullable=False
+    )
+    size: Mapped[str] = mapped_column(String(32), server_default=text("''"))
+    color: Mapped[str] = mapped_column(String(32), server_default=text("''"))
+    created_at: Mapped[datetime] = _created_at()
+
+
+class ProductRevisionVariant(Base):
+    """What a revision says about a variant: its price and MRP (integer paise) and whether it
+    is offered. Both foreign keys carry the product, so a revision can only list variants of its
+    own product."""
+
+    __tablename__ = "product_revision_variants"
+    __table_args__ = (
+        CheckConstraint("price_paise > 0", name="price_positive"),
+        CheckConstraint("mrp_paise >= price_paise", name="mrp_at_least_price"),
+        ForeignKeyConstraint(
+            ["revision_id", "product_id"],
+            ["product_revisions.id", "product_revisions.product_id"],
+            name="fk_product_revision_variants_revision_id_product_revisions",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["variant_id", "product_id"],
+            ["product_variants.id", "product_variants.product_id"],
+            name="fk_product_revision_variants_variant_id_product_variants",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_product_revision_variants_variant_id", "variant_id"),
+    )
+    __mapper_args__ = {"eager_defaults": True}
+
+    revision_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    variant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    price_paise: Mapped[int] = mapped_column(BigInteger)
+    mrp_paise: Mapped[int] = mapped_column(BigInteger)
+    is_active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+
+class ProductImage(Base):
+    """An ordered image of a revision. At most 10 (`position` 1 to 10, unique per revision).
+
+    The asset must belong to the same vendor as the revision: `(vendor_id, asset_id)` is a
+    composite foreign key to `assets (vendor_id, id)`, and `(revision_id, vendor_id)` ties the
+    row to the revision's vendor.
+    """
+
+    __tablename__ = "product_images"
+    __table_args__ = (
+        CheckConstraint("position BETWEEN 1 AND 10", name="position_range"),
+        UniqueConstraint("revision_id", "position"),
+        ForeignKeyConstraint(
+            ["revision_id", "vendor_id"],
+            ["product_revisions.id", "product_revisions.vendor_id"],
+            name="fk_product_images_revision_id_product_revisions",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["vendor_id", "asset_id"],
+            ["assets.vendor_id", "assets.id"],
+            name="fk_product_images_asset_id_assets",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_product_images_asset_id", "asset_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    revision_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    asset_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    position: Mapped[int] = mapped_column(Integer)
+    alt_text: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = _created_at()
