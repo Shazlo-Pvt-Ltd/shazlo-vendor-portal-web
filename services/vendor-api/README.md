@@ -57,6 +57,11 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `ACCESS_TOKEN_TTL_SECONDS` | `900` | 1 to 3600 |
 | `ARGON2_MEMORY_COST_KIB` / `ARGON2_TIME_COST` / `ARGON2_PARALLELISM` | `19456` / `2` / `1` | password hashing cost (OWASP baseline); raising it rehashes on the next login |
 | `PASSWORD_MIN_LENGTH` | `12` | the longest accepted is 128 |
+| `RATE_LIMIT_*` | see Rate limits | `"<limit>/<window seconds>"` per endpoint, e.g. `RATE_LIMIT_SIGNUP_IP=10/3600` |
+| `RATE_LIMIT_FAIL_CLOSED` | see Rate limits | endpoints that answer `503` when Redis is down |
+| `RATE_LIMIT_HMAC_KEY` | random per process | **required in prod**, at least 32 characters, shared by every instance, and not identity-api's |
+| `RATE_LIMIT_IPV6_PREFIX` | `64` | IPv6 clients are counted per network of this length |
+| `TRUSTED_PROXIES` | empty | CIDRs of the reverse proxies whose `X-Forwarded-For` is believed (comma separated); empty means the TCP peer is the client |
 | `REFRESH_TOKEN_TTL_DAYS` / `REFRESH_FAMILY_MAX_DAYS` | `7` / `30` | a refresh token lives 7 days and never outlives its family |
 | `REFRESH_REUSE_GRACE_SECONDS` | `10` | a refresh token reused within this many seconds is a concurrent request (`409`), not theft; `0` revokes on any reuse |
 | `EMAIL_VERIFICATION_TTL_MINUTES` | `1440` | how long a verification link works (5 minutes to 7 days) |
@@ -112,7 +117,26 @@ Vendor sessions work like admin sessions (ADR 0009): a 15-minute access token (t
 - **Cookie and Redis keys do not overlap with identity-api's**, because both services run on one parent domain and share a Redis: the cookie is `vendor_refresh` (identity-api: `identity_refresh`), path `/v1/auth`, `HttpOnly`, `Secure` and `SameSite` from settings; the Redis keys start with `vendor:` (identity-api: `identity:`); only SHA-256 hashes are stored. A test puts both stores on one Redis and checks neither touches the other's sessions.
 - **Dependencies** (`api/deps.py`): `current_vendor_user` verifies the token, then reads the user and the vendor **from the database on every request**: the user must be active with a verified email, the token's `vendor_id` must be the user's vendor, and the vendor must be `pending` or `approved`. So disabling a user or suspending a vendor takes effect at once, not when the 15-minute token expires, and a role change applies immediately. `require_vendor_role(VendorUserRole.OWNER)` lets only the listed roles through (`403 forbidden`).
 - **Ending sessions when a vendor's status changes**: `AuthService.end_sessions_of_vendor(db, vendor_id)` ends every session of every user of that vendor. Phase 3 calls it when an admin suspends or rejects a vendor. Refreshing is refused for those statuses anyway; the hook also stops a vendor that is approved again from getting its old sessions back. `end_sessions_of_user` does the same for one user (call it when a user is disabled).
-- **Not yet limited**: login and refresh have no rate limit until the rate-limiting issue (#84).
+
+## Rate limits
+
+Vendor auth is open to the internet, so every auth endpoint is limited, with the shared limiter from `packages/py-security` (ADR 0010): Redis fixed-window counters whose subjects (emails, IPs, families) are **HMAC-hashed**, so a Redis dump reveals no email or IP. Over a limit the answer is `429 rate_limited` with `Retry-After` (the seconds until the window resets, from the key's TTL) and `Cache-Control: no-store`; a rate-limited refresh keeps its cookie and its token.
+
+Keys are `vendor:rl:<endpoint>:<scope>:<hash>`: the prefix and the `RATE_LIMIT_HMAC_KEY` are vendor-api's own, so counters never mix with identity-api's. The client IP is the TCP peer, or, when the peer is in `TRUSTED_PROXIES`, the first address from the right of `X-Forwarded-For` that is not a trusted proxy (so a client cannot choose its own IP by sending the header).
+
+| Endpoint | Counted per | Default |
+|---|---|---|
+| `login` | IP; email + IP (failures: cleared by a success); email from any IP | 20 per minute; 5 per 15 minutes; 50 per hour |
+| `signup` | IP; email | 10 per hour; 3 per hour |
+| `resend_verification` | IP; email | 10 per hour; 3 per hour |
+| `verify_email` | IP | 20 per minute |
+| `refresh` | IP; session (refresh family) | 60 per minute; 20 per minute |
+| `change_password` | user (wrong current passwords; cleared once it verifies) | 5 per 15 minutes |
+| `forgot_password`, `set_password`, `staff_invite` | IP / email / vendor | defined now (`RATE_LIMIT_FORGOT_PASSWORD_*`, `RATE_LIMIT_SET_PASSWORD_IP`, `RATE_LIMIT_STAFF_INVITE_VENDOR`) for the endpoints of issue #83 |
+
+- **Signup and resend are limited on the address as typed**, whether or not it is registered, so the limit looks the same either way and reveals nothing. Per address matters because those endpoints send email (verification, or "you already have an account"): without it they would mail-bomb an inbox.
+- **When Redis is down** the endpoints in `RATE_LIMIT_FAIL_CLOSED` answer `503 rate_limiter_unavailable`: the ones that check a password (`login`, `change_password`) so guessing stays limited, and the ones that send email (`signup`, `resend_verification`, `forgot_password`, `staff_invite`) so an outage cannot be used to flood an inbox. The others skip the limit and log a warning (fail open): `refresh` (signed-in vendors keep working; refreshing needs Redis anyway), `verify_email` and `set_password` (they need a 256-bit token, which cannot be guessed at any rate).
+- **Behind a proxy**, set `TRUSTED_PROXIES`. Without it every client looks like the proxy and shares one set of per-IP counters.
 
 ## Email
 

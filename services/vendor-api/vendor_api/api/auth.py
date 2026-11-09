@@ -5,15 +5,25 @@ from urllib.parse import urlsplit
 
 from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from redis.exceptions import RedisError
 from shazlo_security.passwords import MAX_PASSWORD_LENGTH
+from shazlo_security.rate_limit import Check
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from vendor_api.api.deps import CurrentVendorUser, Emails, current_vendor_user, get_sessions
+from vendor_api.api.deps import (
+    ClientIp,
+    CurrentVendorUser,
+    Emails,
+    Limits,
+    current_vendor_user,
+    get_sessions,
+)
 from vendor_api.core.errors import ApiError, error_response
 from vendor_api.core.settings import Settings
 from vendor_api.db.models import Vendor, VendorUser
 from vendor_api.db.session import get_session
 from vendor_api.services.auth import (
+    INVALID_CURRENT_PASSWORD,
     INVALID_REFRESH_TOKEN,
     REFRESH_CONFLICT,
     AuthService,
@@ -132,17 +142,30 @@ class ResendRequest(BaseModel):
 @router.post("/signup", status_code=202)
 async def signup(
     body: SignupRequest,
+    request: Request,
     response: Response,
     background: BackgroundTasks,
     db: Db,
     service: Service,
     emails: Emails,
+    limits: Limits,
+    ip: ClientIp,
 ) -> Message:
     """Creates a pending vendor and its owner, and emails a verification link.
 
     A registered email gets the same answer, and an "you already have an account" email.
     """
     no_store(response)
+    settings = _settings(request)
+    # Counted before anything else, and keyed on the address as typed, not on whether it is
+    # registered: a limit that only applied to existing accounts would reveal them.
+    await limits.check(
+        "signup",
+        [
+            Check("ip", ip, settings.rate_limit_signup_ip),
+            Check("email", body.email.strip().lower(), settings.rate_limit_signup_email),
+        ],
+    )
     if not body.terms_accepted:
         raise ApiError(422, "terms_not_accepted", "You must accept the terms to sign up")
     outgoing = await service.signup(
@@ -164,8 +187,18 @@ async def signup(
 
 
 @router.post("/verify-email", status_code=204)
-async def verify_email(body: VerifyEmailRequest, db: Db, service: Service) -> Response:
+async def verify_email(
+    body: VerifyEmailRequest,
+    request: Request,
+    db: Db,
+    service: Service,
+    limits: Limits,
+    ip: ClientIp,
+) -> Response:
     """Spends a verification token. An unknown, used or expired one is one generic 400."""
+    await limits.check(
+        "verify_email", [Check("ip", ip, _settings(request).rate_limit_verify_email_ip)]
+    )
     await service.verify_email(db, body.token)
     response = Response(status_code=204)
     no_store(response)
@@ -175,14 +208,29 @@ async def verify_email(body: VerifyEmailRequest, db: Db, service: Service) -> Re
 @router.post("/resend-verification", status_code=202)
 async def resend_verification(
     body: ResendRequest,
+    request: Request,
     response: Response,
     background: BackgroundTasks,
     db: Db,
     service: Service,
     emails: Emails,
+    limits: Limits,
+    ip: ClientIp,
 ) -> Message:
     """Sends a new link only if the user exists and is unverified; the answer never says which."""
     no_store(response)
+    settings = _settings(request)
+    # Per IP and per address, so the endpoint cannot be used to flood an inbox. Keyed on the
+    # address as typed, so the limit looks the same for registered and unregistered ones.
+    await limits.check(
+        "resend_verification",
+        [
+            Check("ip", ip, settings.rate_limit_resend_verification_ip),
+            Check(
+                "email", body.email.strip().lower(), settings.rate_limit_resend_verification_email
+            ),
+        ],
+    )
     emails.queue(background, await service.resend_verification(db, body.email))
     return Message(message=RESEND_ACCEPTED)
 
@@ -317,20 +365,59 @@ def _session_response(
 
 @router.post("/login")
 async def login(
-    body: LoginRequest, request: Request, response: Response, db: Db, sessions: Sessions
+    body: LoginRequest,
+    request: Request,
+    response: Response,
+    db: Db,
+    sessions: Sessions,
+    limits: Limits,
+    ip: ClientIp,
 ) -> SessionResponse:
     """`401 invalid_credentials` for an unknown email, a wrong password, a user who has no
     password yet and a disabled user alike. A correct password with an unverified email is
     `403 email_not_verified`; a rejected or suspended vendor is `403 vendor_not_allowed`."""
+    settings = _settings(request)
+    email = body.email.strip().lower()
+    # An IP never contains a space, so the pair cannot collide with another pair.
+    email_ip = f"{ip} {email}"
+    # The counters are hit before the password is checked, so parallel guesses cannot slip past
+    # them. The strict one is per (email, IP): failures from one network cannot lock a vendor
+    # out of another. A successful login clears it, so in the end it counts failures. The loose
+    # per-email one is never cleared, so spreading guesses over IPs stays slow.
+    await limits.check(
+        "login",
+        [
+            Check("ip", ip, settings.rate_limit_login_ip),
+            Check("email_ip", email_ip, settings.rate_limit_login_email),
+            Check("email", email, settings.rate_limit_login_email_global),
+        ],
+    )
     session = await sessions.login(db, body.email, body.password)
-    return _session_response(response, _settings(request), session)
+    await limits.reset("login", "email_ip", email_ip)
+    return _session_response(response, settings, session)
 
 
 @router.post("/refresh", response_model=None, dependencies=CookieOrigin)
 async def refresh(
-    request: Request, response: Response, db: Db, sessions: Sessions, token: RefreshCookie = None
+    request: Request,
+    response: Response,
+    db: Db,
+    sessions: Sessions,
+    limits: Limits,
+    ip: ClientIp,
+    token: RefreshCookie = None,
 ) -> SessionResponse | Response:
     settings = _settings(request)
+    checks = [Check("ip", ip, settings.rate_limit_refresh_ip)]
+    if token:
+        try:
+            family = await sessions.family_of(token)
+        except RedisError:
+            family = None  # the IP limit still applies; rotating needs Redis anyway
+        if family:
+            checks.append(Check("session", family, settings.rate_limit_refresh_session))
+    # Outside the try below: a rate-limited client keeps its cookie.
+    await limits.check("refresh", checks)
     try:
         if not token:
             raise INVALID_REFRESH_TOKEN
@@ -364,10 +451,25 @@ async def change_password(
     response: Response,
     db: Db,
     sessions: Sessions,
+    limits: Limits,
     current: Annotated[CurrentVendorUser, Depends(current_vendor_user)],
 ) -> SessionResponse:
     """Sets a new password, ends every session of the user and starts a new one."""
-    session = await sessions.change_password(
-        db, current.user, current.vendor, body.current_password, body.new_password
+    # Counted before the current password is checked (it limits guesses with a stolen access
+    # token) and cleared once the current password verifies, so in the end it counts wrong
+    # current passwords only: a user trying passwords the policy rejects is not locked out.
+    subject = str(current.user.id)
+    await limits.check(
+        "change_password",
+        [Check("user", subject, _settings(request).rate_limit_change_password_user)],
     )
+    try:
+        session = await sessions.change_password(
+            db, current.user, current.vendor, body.current_password, body.new_password
+        )
+    except ApiError as error:
+        if error.code != INVALID_CURRENT_PASSWORD.code:
+            await limits.reset("change_password", "user", subject)
+        raise
+    await limits.reset("change_password", "user", subject)
     return _session_response(response, _settings(request), session)

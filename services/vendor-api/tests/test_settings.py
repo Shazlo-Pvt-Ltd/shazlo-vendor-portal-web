@@ -46,6 +46,7 @@ def test_environment_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("EMAIL_BACKEND", "smtp")
     monkeypatch.setenv("SMTP_HOST", "smtp.provider.example")
     monkeypatch.setenv("PORTAL_BASE_URL", "https://vendors.shazlo.store")
+    monkeypatch.setenv("RATE_LIMIT_HMAC_KEY", "k" * 32)  # required in prod
     s = make()
     assert s.cookie_secure is False
     assert s.env == "prod"
@@ -147,8 +148,12 @@ def test_invalid_email_settings_are_rejected(overrides: dict[str, object]) -> No
     ids=["console", "no-tls", "http-portal"],
 )
 def test_prod_refuses_unsafe_email_settings(overrides: dict[str, object]) -> None:
-    values = {"portal_base_url": "https://vendors.shazlo.store", **overrides}
-    with pytest.raises(ValidationError):
+    values = {
+        "portal_base_url": "https://vendors.shazlo.store",
+        "rate_limit_hmac_key": "k" * 32,  # so the email settings are what is refused
+        **overrides,
+    }
+    with pytest.raises(ValidationError, match="EMAIL_BACKEND|SMTP_SECURITY|PORTAL_BASE_URL"):
         make(env="prod", **values)
 
 
@@ -160,6 +165,7 @@ def test_prod_accepts_smtp_over_tls_with_an_https_portal() -> None:
         smtp_user="mailer",
         smtp_password="s3cret-value",  # noqa: S106
         portal_base_url="https://vendors.shazlo.store",
+        rate_limit_hmac_key="k" * 32,
     )
     assert s.smtp_security == "starttls"
 
@@ -172,3 +178,84 @@ def test_session_defaults_and_bounds() -> None:
     for seconds in (-1, 61):
         with pytest.raises(ValidationError):
             make(refresh_reuse_grace_seconds=seconds)
+
+
+# --- Rate limits -------------------------------------------------------------------------
+
+
+def test_rate_limit_defaults() -> None:
+    s = make()
+    assert (s.rate_limit_login_email.limit, s.rate_limit_login_email.window_seconds) == (5, 900)
+    assert (s.rate_limit_signup_ip.limit, s.rate_limit_signup_ip.window_seconds) == (10, 3600)
+    assert (s.rate_limit_signup_email.limit, s.rate_limit_signup_email.window_seconds) == (3, 3600)
+    assert s.rate_limit_ipv6_prefix == 64
+    assert s.trusted_proxies == []
+    # Endpoints that check a password or send email fail closed; the rest fail open.
+    assert set(s.rate_limit_fail_closed) == {
+        "login",
+        "signup",
+        "resend_verification",
+        "forgot_password",
+        "change_password",
+        "staff_invite",
+    }
+    assert "refresh" not in s.rate_limit_fail_closed
+    assert "verify_email" not in s.rate_limit_fail_closed
+
+
+def test_rate_limits_come_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RATE_LIMIT_SIGNUP_IP", "3/10")
+    monkeypatch.setenv("RATE_LIMIT_FAIL_CLOSED", "login, refresh")
+    monkeypatch.setenv("TRUSTED_PROXIES", "10.0.0.0/8, 192.168.1.5/32")
+    s = make()
+    assert (s.rate_limit_signup_ip.limit, s.rate_limit_signup_ip.window_seconds) == (3, 10)
+    assert s.rate_limit_fail_closed == ["login", "refresh"]
+    assert s.trusted_proxies == ["10.0.0.0/8", "192.168.1.5/32"]
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"rate_limit_signup_ip": "5"},
+        {"rate_limit_signup_ip": "0/60"},
+        {"rate_limit_signup_ip": "5/0"},
+        {"rate_limit_signup_ip": "many/60"},
+        {"rate_limit_fail_closed": ["logn"]},
+        {"trusted_proxies": ["not-a-network"]},
+        {"rate_limit_hmac_key": "short"},  # a short key is refused outside prod too
+        {"rate_limit_ipv6_prefix": 0},
+        {"rate_limit_ipv6_prefix": 129},
+    ],
+    ids=str,
+)
+def test_invalid_rate_limit_settings_are_rejected(overrides: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        make(**overrides)
+
+
+def test_the_hmac_key_is_required_in_prod_and_never_empty() -> None:
+    prod = {
+        "env": "prod",
+        "email_backend": "smtp",
+        "smtp_host": "smtp.provider.example",
+        "portal_base_url": "https://vendors.shazlo.store",
+    }
+    for bad in (None, "", "   ", "x" * 31):
+        with pytest.raises(ValidationError, match="RATE_LIMIT_HMAC_KEY"):
+            make(**prod, rate_limit_hmac_key=bad)
+    accepted = make(**prod, rate_limit_hmac_key="x" * 32).rate_limit_hmac_key
+    assert accepted is not None
+    assert accepted.get_secret_value() == "x" * 32
+
+
+def test_outside_prod_each_process_gets_its_own_key_and_it_is_a_secret() -> None:
+    first, second = make(), make()
+    assert first.rate_limit_hmac_key is not None
+    assert second.rate_limit_hmac_key is not None
+    assert (
+        first.rate_limit_hmac_key.get_secret_value()
+        != second.rate_limit_hmac_key.get_secret_value()
+    )
+    assert len(first.rate_limit_hmac_key.get_secret_value()) == 64
+    assert first.rate_limit_hmac_key.get_secret_value() not in repr(first)
+    assert make(rate_limit_hmac_key="").rate_limit_hmac_key is not None  # empty counts as unset

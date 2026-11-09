@@ -1,10 +1,44 @@
+import ipaddress
+import secrets
 from functools import lru_cache
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from shazlo_security.rate_limit import RateRule
 
 from vendor_api.db.session import POSTGRES_SCHEMES
+
+# The endpoints that have limits (the names `RATE_LIMIT_FAIL_CLOSED` may list).
+RATE_LIMITED_ENDPOINTS = frozenset(
+    {
+        "login",
+        "signup",
+        "resend_verification",
+        "verify_email",
+        "forgot_password",
+        "set_password",
+        "refresh",
+        "change_password",
+        "staff_invite",
+    }
+)
+# HMAC-SHA256 keys shorter than this are guessable enough to reverse the hashed emails in Redis.
+MIN_HMAC_KEY_LENGTH = 32
+
+
+def _parse_rule(value: object) -> object:
+    """Accepts `"<limit>/<window seconds>"` (e.g. `5/900`) so environment values stay short."""
+    if isinstance(value, str):
+        limit, separator, window = value.partition("/")
+        if not separator:
+            raise ValueError('use "<limit>/<window seconds>", e.g. "5/900"')
+        return {"limit": limit.strip(), "window_seconds": window.strip()}
+    return value
+
+
+# NoDecode: the environment value is "5/900", not JSON.
+Rule = Annotated[RateRule, BeforeValidator(_parse_rule), NoDecode]
 
 
 class Settings(BaseSettings):
@@ -48,6 +82,56 @@ class Settings(BaseSettings):
     argon2_time_cost: int = 2
     argon2_parallelism: int = 1
     password_min_length: int = 12
+
+    # Rate limits (ADR 0009), as "<limit>/<window seconds>". Most endpoints have a limit per
+    # client IP and one per subject: the email (hashed) for endpoints that send mail or check a
+    # password, the refresh family for refresh, the user for change-password and the vendor for
+    # staff invites. A subject is never stored in plain text.
+    rate_limit_login_ip: Rule = RateRule(limit=20, window_seconds=60)
+    # Failed logins for one email from one client IP (the strict one). Keyed on the pair, so
+    # nobody can lock a vendor out from another network.
+    rate_limit_login_email: Rule = RateRule(limit=5, window_seconds=900)
+    # Every login for one email from any IP (loose): slows guessing spread over many IPs.
+    rate_limit_login_email_global: Rule = RateRule(limit=50, window_seconds=3600)
+    # Signup creates an account and sends an email (verification, or "you already have one"), so
+    # it is limited per IP and per address: nobody can mail-bomb an inbox through it.
+    rate_limit_signup_ip: Rule = RateRule(limit=10, window_seconds=3600)
+    rate_limit_signup_email: Rule = RateRule(limit=3, window_seconds=3600)
+    rate_limit_resend_verification_ip: Rule = RateRule(limit=10, window_seconds=3600)
+    rate_limit_resend_verification_email: Rule = RateRule(limit=3, window_seconds=3600)
+    rate_limit_verify_email_ip: Rule = RateRule(limit=20, window_seconds=60)
+    # Used by the password-reset and invite endpoints (issue #83).
+    rate_limit_forgot_password_ip: Rule = RateRule(limit=10, window_seconds=3600)
+    rate_limit_forgot_password_email: Rule = RateRule(limit=3, window_seconds=3600)
+    rate_limit_set_password_ip: Rule = RateRule(limit=20, window_seconds=900)
+    rate_limit_staff_invite_vendor: Rule = RateRule(limit=20, window_seconds=3600)
+    rate_limit_refresh_ip: Rule = RateRule(limit=60, window_seconds=60)
+    rate_limit_refresh_session: Rule = RateRule(limit=20, window_seconds=60)
+    rate_limit_change_password_user: Rule = RateRule(limit=5, window_seconds=900)
+    # What happens when Redis is down. Endpoints listed here answer 503 (fail closed): the ones
+    # that check a password (login, change_password) so guessing stays limited, and the ones that
+    # send email (signup, resend_verification, forgot_password, staff_invite) so an outage cannot
+    # be used to flood an inbox. The others skip the limit and log a warning (fail open):
+    # refresh (signed-in vendors keep working), verify_email and set_password (they need a 256-bit
+    # token, which cannot be guessed at any rate).
+    rate_limit_fail_closed: Annotated[list[str], NoDecode] = [
+        "login",
+        "signup",
+        "resend_verification",
+        "forgot_password",
+        "change_password",
+        "staff_invite",
+    ]
+    # Keys the hashes that name subjects in Redis, so a Redis dump does not reveal emails.
+    # Every instance must share it, and it is not identity-api's. Required in prod; elsewhere a
+    # random key per process. At least 32 characters when set; empty counts as unset.
+    rate_limit_hmac_key: SecretStr | None = None
+    # IPv6 clients are counted per network of this prefix length, because one host usually
+    # holds a whole /64 and could otherwise rotate addresses to dodge the per-IP limits.
+    rate_limit_ipv6_prefix: int = 64
+    # Networks of the reverse proxies whose X-Forwarded-For header is believed (CIDR, comma
+    # separated). Empty: the header is ignored and the TCP peer is the client.
+    trusted_proxies: Annotated[list[str], NoDecode] = []
 
     # Sessions: a refresh token lives 7 days and never outlives its family (30 days after login).
     refresh_token_ttl_days: int = 7
@@ -104,6 +188,54 @@ class Settings(BaseSettings):
         if not value.startswith(("redis://", "rediss://")):
             raise ValueError("must start with redis:// or rediss://")
         return value
+
+    @field_validator("rate_limit_fail_closed", "trusted_proxies", mode="before")
+    @classmethod
+    def _split_list(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return value
+
+    @field_validator("rate_limit_fail_closed")
+    @classmethod
+    def _check_fail_closed(cls, value: list[str]) -> list[str]:
+        unknown = set(value) - RATE_LIMITED_ENDPOINTS
+        if unknown:
+            raise ValueError(
+                f"unknown endpoint(s) {sorted(unknown)}; use {sorted(RATE_LIMITED_ENDPOINTS)}"
+            )
+        return value
+
+    @field_validator("trusted_proxies")
+    @classmethod
+    def _check_trusted_proxies(cls, value: list[str]) -> list[str]:
+        for network in value:
+            ipaddress.ip_network(network)  # raises ValueError on a bad CIDR
+        return value
+
+    @field_validator("rate_limit_ipv6_prefix")
+    @classmethod
+    def _check_ipv6_prefix(cls, value: int) -> int:
+        if not 1 <= value <= 128:
+            raise ValueError("must be between 1 and 128")
+        return value
+
+    @model_validator(mode="after")
+    def _rate_limit_key(self) -> Self:
+        key = self.rate_limit_hmac_key
+        if key is not None and not key.get_secret_value().strip():
+            key = None  # `RATE_LIMIT_HMAC_KEY=` copied from .env.example means "not set"
+        if key is None:
+            if self.env == "prod":
+                raise ValueError("RATE_LIMIT_HMAC_KEY is required in prod")
+            key = SecretStr(secrets.token_hex(32))
+        elif len(key.get_secret_value()) < MIN_HMAC_KEY_LENGTH:
+            # In every env: a short key set on purpose is a mistake wherever it is made.
+            raise ValueError(
+                f"RATE_LIMIT_HMAC_KEY must be at least {MIN_HMAC_KEY_LENGTH} characters"
+            )
+        self.rate_limit_hmac_key = key
+        return self
 
     @field_validator("portal_base_url")
     @classmethod

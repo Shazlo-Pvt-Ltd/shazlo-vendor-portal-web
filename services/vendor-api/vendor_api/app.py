@@ -4,8 +4,10 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import Redis
+from shazlo_security.client_ip import parse_networks
 from shazlo_security.keys import load_keyring
 from shazlo_security.passwords import PasswordService
+from shazlo_security.rate_limit import RateLimitGuard, RedisRateLimiter
 from shazlo_security.refresh_tokens import RefreshTokenStore
 
 from vendor_api import __version__
@@ -14,8 +16,10 @@ from vendor_api.core.errors import register_exception_handlers
 from vendor_api.core.logging import configure_logging
 from vendor_api.core.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
 from vendor_api.core.security import (
+    RATE_LIMIT_KEY_PREFIX,
     key_ring_config,
     password_config,
+    rate_limit_config,
     refresh_token_config,
     token_issuer,
 )
@@ -66,6 +70,10 @@ def create_app(
     app.state.redis = redis or Redis.from_url(settings.redis_url)
     app.state.emails = EmailService(build_sender(settings), attempts=settings.email_send_attempts)
     app.state.passwords = PasswordService(password_config(settings))
+    app.state.rate_limits = RateLimitGuard(
+        RedisRateLimiter(app.state.redis, RATE_LIMIT_KEY_PREFIX), rate_limit_config(settings)
+    )
+    app.state.trusted_proxies = parse_networks(settings.trusted_proxies)
     app.state.signup = SignupService(settings, app.state.passwords)
     app.state.refresh_tokens = RefreshTokenStore(app.state.redis, refresh_token_config(settings))
     app.state.sessions = AuthService(

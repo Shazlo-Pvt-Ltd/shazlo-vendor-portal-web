@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 import pytest
+from fakeredis import FakeAsyncRedis
 from fastapi import FastAPI
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -87,7 +88,9 @@ def api_settings(settings: Settings, override: Any) -> Settings:
 
 @pytest.fixture
 async def api(api_settings: Settings, session: AsyncSession) -> AsyncIterator[Api]:
-    app = create_app(api_settings, readiness_checks={})
+    # A private Redis per test: the rate limits count in it, and tests must not share counters.
+    redis = FakeAsyncRedis()
+    app = create_app(api_settings, readiness_checks={}, redis=redis)
     sender = RecordingSender(ConsoleEmailSender("https://vendors.test", show_links=False))
     app.state.emails = EmailService(sender, retry_delay_seconds=0)
 
@@ -99,6 +102,7 @@ async def api(api_settings: Settings, session: AsyncSession) -> AsyncIterator[Ap
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with httpx.AsyncClient(transport=transport, base_url="https://vendors.test") as http:
         yield Api(http, app, sender)
+    await redis.aclose()
 
 
 async def rows[T](session: AsyncSession, model: type[T]) -> list[T]:
@@ -488,7 +492,7 @@ async def test_the_lifetime_is_a_setting(
     api_settings: Settings, session: AsyncSession, override: Any
 ) -> None:
     short = override(api_settings, email_verification_ttl_minutes=10)
-    app = create_app(short, readiness_checks={})
+    app = create_app(short, readiness_checks={}, redis=FakeAsyncRedis())
     sender = RecordingSender(ConsoleEmailSender("https://v.test", show_links=False))
     app.state.emails = EmailService(sender, retry_delay_seconds=0)
 

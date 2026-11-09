@@ -5,10 +5,13 @@ from typing import Annotated, cast
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from shazlo_auth import InvalidTokenError
+from shazlo_security.client_ip import Network, client_ip, rate_limit_subject
+from shazlo_security.rate_limit import RateLimitGuard
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vendor_api.core.errors import ApiError
+from vendor_api.core.settings import Settings
 from vendor_api.db.models import Vendor, VendorUser, VendorUserRole
 from vendor_api.db.session import get_session
 from vendor_api.services.auth import AuthService, user_may_sign_in, vendor_may_sign_in
@@ -32,6 +35,30 @@ def get_emails(request: Request) -> EmailService:
 
 # An endpoint sends email with `emails.send_in_background(background_tasks, to, template, context)`.
 Emails = Annotated[EmailService, Depends(get_emails)]
+
+
+def get_rate_limits(request: Request) -> RateLimitGuard:
+    return cast(RateLimitGuard, request.app.state.rate_limits)
+
+
+def get_client_ip(request: Request) -> str:
+    peer = request.client.host if request.client else None
+    return client_ip(
+        peer,
+        request.headers.getlist("x-forwarded-for"),
+        cast(list[Network], request.app.state.trusted_proxies),
+    )
+
+
+def get_rate_limit_ip(request: Request) -> str:
+    """The client IP as the per-IP rate limits count it (IPv6 grouped per network)."""
+    settings = cast(Settings, request.app.state.settings)
+    return rate_limit_subject(get_client_ip(request), settings.rate_limit_ipv6_prefix)
+
+
+Limits = Annotated[RateLimitGuard, Depends(get_rate_limits)]
+# The client IP as the rate limits count it: IPv6 per network (see `rate_limit_subject`).
+ClientIp = Annotated[str, Depends(get_rate_limit_ip)]
 
 
 def get_sessions(request: Request) -> AuthService:
