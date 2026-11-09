@@ -7,8 +7,10 @@ Security code that identity-api and vendor-api share instead of copying (ADR 001
 Like `shazlo-auth`, it is not published and the name is not ours on PyPI, so a service must **not** list it in its `pyproject.toml`. Put the path in `requirements-shared.txt` and install that first:
 
 ```text
--e ../../packages/py-security --config-settings editable_mode=compat
+--config-settings editable_mode=compat -e ../../packages/py-security
 ```
+
+Keep the option **before** `-e` (as in `py-auth`): Dependabot reads the text after `-e` as the path.
 
 ```sh
 pip install -r requirements-shared.txt

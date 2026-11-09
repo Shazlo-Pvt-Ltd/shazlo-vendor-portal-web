@@ -7,8 +7,10 @@ Verifies identity-api access tokens the same way in every service, so security c
 `shazlo-auth` is not published, and the name is not ours on PyPI. So a service must **not** list `shazlo-auth` in its `pyproject.toml` dependencies: pip could then satisfy it from an index with someone else's package (dependency confusion). Instead, the service puts the path in a `requirements-shared.txt` next to its `pyproject.toml`:
 
 ```text
--e ../../packages/py-auth[fastapi] --config-settings editable_mode=compat
+--config-settings editable_mode=compat -e ../../packages/py-auth[fastapi]
 ```
+
+Keep the option **before** `-e`. Dependabot reads the text after `-e` as the path, so an option after it breaks every Python dependency update; pip accepts either order.
 
 and installs that first, from the service directory (CI does the same whenever the file exists):
 
