@@ -392,8 +392,13 @@ export function createHandlers(getDb: GetDb) {
 
     // Stands in for Cloudinary: keeps the photo as a data URL so previews show the real image.
     http.post('*/mock-uploads/:key', async ({ request, params }) => {
-      const form = await request.formData()
-      const file = form.get('file')
+      let form: FormData | null = null
+      try {
+        form = await request.formData()
+      } catch {
+        // Node's fetch cannot parse a jsdom File in tests; the stand-in swatch is used instead.
+      }
+      const file = form?.get('file')
       let url = swatch(String(params.key))
       if (file instanceof Blob && typeof FileReader !== 'undefined') {
         url = await new Promise<string>((resolve) => {

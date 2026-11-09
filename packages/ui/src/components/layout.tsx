@@ -8,7 +8,7 @@ export function PageHeader({ title, subtitle, status, actions, eyebrow }: { titl
     <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ alignItems: { md: 'flex-end' }, justifyContent: 'space-between', mb: { xs: 3, md: 4 } }}>
       <Box sx={{ minWidth: 0 }}>
         {eyebrow}
-        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
+        <Stack direction="row" spacing={1.5} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
           <Typography variant="pageTitle" component="h1" sx={{ textWrap: 'balance', overflowWrap: 'anywhere' }}>
             {title}
           </Typography>
@@ -21,7 +21,7 @@ export function PageHeader({ title, subtitle, status, actions, eyebrow }: { titl
         )}
       </Box>
       {actions && (
-        <Stack direction="row" spacing={1.5} sx={{ flexShrink: 0, flexWrap: 'wrap', rowGap: 1, alignItems: 'center' }}>
+        <Stack direction="row" spacing={1.5} useFlexGap sx={{ flexShrink: 0, flexWrap: 'wrap', alignItems: 'center' }}>
           {actions}
         </Stack>
       )}
