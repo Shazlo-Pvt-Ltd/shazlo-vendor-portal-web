@@ -1,0 +1,160 @@
+openapi: 3.1.0
+info:
+  title: identity-api (routes the Shazlo One shell calls)
+  version: 0.1.0
+  description: |
+    Mirrors services/identity-api (Phase 1, ADR 0009): login, refresh (HttpOnly identity_refresh cookie),
+    logout, change-password, token exchange, /v1/me and admin management. Regenerate src/api/identity.d.ts
+    from identity-api's own openapi.json once it is published, and delete this copy.
+paths:
+  /v1/auth/login:
+    post:
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [email, password], properties: { email: { type: string }, password: { type: string } } } } } }
+      responses:
+        '200': { description: Signed in; sets the identity_refresh cookie, content: { application/json: { schema: { $ref: '#/components/schemas/SessionResponse' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /v1/auth/refresh:
+    post:
+      responses:
+        '200': { description: New access token; rotates the cookie, content: { application/json: { schema: { $ref: '#/components/schemas/SessionResponse' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/auth/logout:
+    post:
+      responses:
+        '204': { description: Token family revoked }
+  /v1/auth/change-password:
+    post:
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [current_password, new_password], properties: { current_password: { type: string }, new_password: { type: string } } } } } }
+      responses:
+        '200': { description: Changed, content: { application/json: { schema: { $ref: '#/components/schemas/SessionResponse' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/auth/token:
+    post:
+      description: Token exchange for a module's backend (ADR 0009); 5-minute token.
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [audience], properties: { audience: { type: string } } } } } }
+      responses:
+        '200': { description: Module token, content: { application/json: { schema: { $ref: '#/components/schemas/TokenResponse' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/me:
+    get:
+      responses:
+        '200': { description: The signed-in admin, content: { application/json: { schema: { $ref: '#/components/schemas/AdminProfile' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/roles:
+    get:
+      responses:
+        '200': { description: Roles, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Role' } } } } }
+  /v1/admins:
+    get:
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: role, in: query, schema: { type: string } }
+        - { name: is_active, in: query, schema: { type: boolean } }
+        - { name: limit, in: query, schema: { type: integer } }
+        - { name: offset, in: query, schema: { type: integer } }
+      responses:
+        '200': { description: Admins, content: { application/json: { schema: { $ref: '#/components/schemas/AdminList' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateAdmin' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Admin' } } } }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/admins/{admin_id}:
+    parameters: [{ name: admin_id, in: path, required: true, schema: { type: string } }]
+    get:
+      responses:
+        '200': { description: Admin, content: { application/json: { schema: { $ref: '#/components/schemas/Admin' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UpdateAdmin' } } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Admin' } } } }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/admins/{admin_id}/reset-password:
+    parameters: [{ name: admin_id, in: path, required: true, schema: { type: string } }]
+    post:
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [new_password], properties: { new_password: { type: string } } } } } }
+      responses:
+        '204': { description: Temporary password set; sessions revoked }
+components:
+  responses:
+    Error:
+      description: Error envelope
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  schemas:
+    Error:
+      type: object
+      required: [message, extra]
+      properties:
+        message: { type: string }
+        extra: { type: object, required: [code], properties: { code: { type: string }, fields: { type: object, additionalProperties: { type: string } } } }
+    AdminProfile:
+      type: object
+      required: [id, email, display_name, roles, must_change_password]
+      properties:
+        id: { type: string }
+        email: { type: string }
+        display_name: { type: string }
+        roles: { type: array, items: { type: string } }
+        must_change_password: { type: boolean }
+    SessionResponse:
+      type: object
+      required: [access_token, token_type, expires_in, must_change_password, admin]
+      properties:
+        access_token: { type: string }
+        token_type: { type: string }
+        expires_in: { type: integer }
+        must_change_password: { type: boolean }
+        admin: { $ref: '#/components/schemas/AdminProfile' }
+    TokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in, audience]
+      properties:
+        access_token: { type: string }
+        token_type: { type: string }
+        expires_in: { type: integer }
+        audience: { type: string }
+    Role:
+      type: object
+      required: [name, description]
+      properties: { name: { type: string }, description: { type: string } }
+    Admin:
+      type: object
+      required: [id, email, display_name, roles, is_active, must_change_password, created_at, last_login_at]
+      properties:
+        id: { type: string }
+        email: { type: string }
+        display_name: { type: string }
+        roles: { type: array, items: { type: string } }
+        is_active: { type: boolean }
+        must_change_password: { type: boolean }
+        created_at: { type: string, format: date-time }
+        last_login_at: { type: [string, 'null'], format: date-time }
+    AdminList:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Admin' } }
+        total: { type: integer }
+        limit: { type: integer }
+        offset: { type: integer }
+    CreateAdmin:
+      type: object
+      required: [email, display_name, password, roles]
+      properties:
+        email: { type: string }
+        display_name: { type: string }
+        password: { type: string }
+        roles: { type: array, items: { type: string } }
+    UpdateAdmin:
+      type: object
+      properties:
+        display_name: { type: string }
+        roles: { type: array, items: { type: string } }
+        is_active: { type: boolean }

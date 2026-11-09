@@ -1,0 +1,22 @@
+{
+  "name": "@shazlo/mock-vendor-api",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Stand-in for vendor-api's /api/v1/admin routes until they ship: MSW handlers for tests and a local HTTP server for the browser",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "serve": "tsx src/serve.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "api:types": "openapi-typescript ../../apps/vendor-admin/openapi/vendor-admin.yaml -o src/schema.d.ts"
+  },
+  "dependencies": {
+    "msw": "^2.15.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.0",
+    "@types/node": "^24.0.0"
+  }
+}

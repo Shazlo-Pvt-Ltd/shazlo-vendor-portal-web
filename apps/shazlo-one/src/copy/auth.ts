@@ -1,0 +1,43 @@
+export const authCopy = {
+  signIn: {
+    title: 'Sign in to Shazlo One',
+    subtitle: 'For the Shazlo team. Use the email your super admin set up for you.',
+    email: 'Work email',
+    password: 'Password',
+    show: 'Show password',
+    hide: 'Hide password',
+    submit: 'Sign in',
+    submitting: 'Signing in…',
+    forgot: 'Forgot your password? Ask a super admin to reset it from Admins & roles.',
+    expired: 'Your session ended, so we signed you out. Sign in again to carry on.',
+    pitch: 'One place to run Shazlo.',
+    points: [
+      { title: 'Vendors', body: 'Review applications, brand pages and products before they reach the app.' },
+      { title: 'Every decision on record', body: 'The reviewer always comes from your sign-in, and sellers see your reason word for word.' },
+      { title: 'Roles, not shared logins', body: 'Each person has their own account and only the modules their role allows.' },
+    ],
+    internal: 'Internal tool · access is logged',
+    errors: {
+      emailRequired: 'Enter your work email.',
+      emailFormat: 'Enter an email like name@shazlo.store.',
+      passwordRequired: 'Enter your password.',
+      generic: 'Something went wrong. Try again.',
+    },
+  },
+  changePassword: {
+    title: 'Choose your own password',
+    subtitle: (name: string) => `Welcome, ${name}. You signed in with a temporary password; replace it before you carry on.`,
+    current: 'Temporary password',
+    next: 'New password',
+    confirm: 'Confirm new password',
+    rules: ['At least 12 characters', 'Different from the temporary password'],
+    submit: 'Save password and continue',
+    submitting: 'Saving…',
+    errors: {
+      currentRequired: 'Enter the temporary password you signed in with.',
+      nextShort: 'Use at least 12 characters.',
+      same: 'Use a different password from the temporary one.',
+      mismatch: 'The two passwords do not match.',
+    },
+  },
+} as const
