@@ -466,13 +466,14 @@ components:
           properties: { all: { type: integer }, waiting: { type: integer }, rejected: { type: integer }, approved: { type: integer } }
     ImportJob:
       type: object
-      required: [id, status, file_name, total_rows, ok_rows, error_rows, image_errors, errors]
+      required: [id, status, file_name, total_rows, ok_rows, ok_products, error_rows, image_errors, errors]
       properties:
         id: { type: string }
         status: { type: string, enum: [checking, ready, committed, failed] }
         file_name: { type: string }
         total_rows: { type: integer }
         ok_rows: { type: integer }
+        ok_products: { type: integer, description: Products the ready rows become (rows sharing a Product ID are one product with several sizes) }
         error_rows: { type: integer }
         image_errors: { type: integer }
         errors:

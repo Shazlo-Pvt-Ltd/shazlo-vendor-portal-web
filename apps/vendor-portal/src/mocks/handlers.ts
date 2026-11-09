@@ -210,12 +210,14 @@ function checkCsv(text: string, fileName: string, id: string): ImportRecord {
       const match = closestCategory(category)
       errors.push({ row, product, column: 'Category', message: `"${category}" is not a category.${match ? ` Closest match: ${match}.` : ''}` })
     }
+    const blocking = errors.length
     const image = col(cells, 'image_1')
     if (image && !/^https:\/\//.test(image)) {
       imageErrors += 1
       errors.push({ row, product, column: 'Image 1', message: 'Link could not be opened. Use a public https link, or add the photo in the editor.' })
     }
-    if (errors.length === before) {
+    // A bad image link is reported, but the product is still created (V-08).
+    if (blocking === before) {
       rows.push({
         product_id: col(cells, 'product_id'),
         name,
@@ -231,14 +233,14 @@ function checkCsv(text: string, fileName: string, id: string): ImportRecord {
     }
   })
   const total = lines.length - 1
-  const errorRows = new Set(errors.map((e) => e.row)).size
-  return { id, status: 'ready', file_name: fileName, total_rows: total, ok_rows: total - errorRows, error_rows: errorRows, image_errors: imageErrors, errors, rows }
+  const products = new Set(rows.map((r) => r.product_id || r.name)).size
+  return { id, status: 'ready', file_name: fileName, total_rows: total, ok_rows: rows.length, ok_products: products, error_rows: total - rows.length, image_errors: imageErrors, errors, rows }
 }
 
 // A spreadsheet the mock cannot read gets the wireframe's example result (V-08).
 function exampleJob(fileName: string, id: string): ImportRecord {
   const rows: ImportRow[] = Array.from({ length: 47 }, (_, i) => ({
-    product_id: `KS-IMP-${String(Math.floor(i / 2) + 1).padStart(3, '0')}`,
+    product_id: `KS-IMP-${String(i + 1).padStart(3, '0')}`,
     name: ['Indigo Dabu Kurta', 'Bagru Print Palazzo', 'Kala Cotton Jacket', 'Mashru Silk Stole'][i % 4]!,
     category: ['Kurtas', 'Palazzos', 'Jackets', 'Stoles'][i % 4]!,
     description: '',
@@ -255,6 +257,7 @@ function exampleJob(fileName: string, id: string): ImportRecord {
     file_name: fileName,
     total_rows: 52,
     ok_rows: 47,
+    ok_products: 47,
     error_rows: 5,
     image_errors: 3,
     rows,
@@ -429,10 +432,11 @@ export function createHandlers(getDb: GetDb) {
       if (stock === 'low') list = list.filter((p) => total(p) > 0 && total(p) <= 5)
       if (stock === 'in_stock') list = list.filter((p) => total(p) > 5)
       const sort = q.get('sort') ?? 'updated_desc'
-      const price = (p: ProductRecord) => p.price_paise ?? Number.MAX_SAFE_INTEGER
+      // Products without a price sort last in both price orders.
+      const price = (p: ProductRecord, missing: number) => p.price_paise ?? missing
       list = [...list].sort((a, b) =>
-        sort === 'price_asc' ? price(a) - price(b)
-          : sort === 'price_desc' ? price(b) - price(a)
+        sort === 'price_asc' ? price(a, Number.MAX_SAFE_INTEGER) - price(b, Number.MAX_SAFE_INTEGER)
+          : sort === 'price_desc' ? price(b, -1) - price(a, -1)
             : sort === 'stock_asc' ? total(a) - total(b)
               : Date.parse(b.updated_at) - Date.parse(a.updated_at))
       const page = list.slice(start, start + limit)
@@ -489,12 +493,17 @@ export function createHandlers(getDb: GetDb) {
           p.history.unshift({ at: iso(), event: 'archived' })
           return { id, ok: true }
         }
-        if (p.status === 'pending_review') return { id, ok: false, code: 'invalid_transition', message: `${p.title} is already in review.` }
+        if (p.status === 'pending_review' || p.edit_in_review) return { id, ok: false, code: 'invalid_transition', message: `${p.title} is already in review.` }
         const problems = submitProblems(p)
         if (Object.keys(problems).length) return { id, ok: false, code: 'validation_error', message: `${p.title}: ${Object.values(problems)[0]}` }
-        p.status = 'pending_review'
-        p.submitted_at = iso()
-        p.review = { state: 'waiting', at: iso() }
+        if (p.status === 'approved') {
+          p.edit_in_review = true
+          p.edit_submitted_at = iso()
+        } else {
+          p.status = 'pending_review'
+          p.submitted_at = iso()
+          p.review = { state: 'waiting', at: iso() }
+        }
         p.history.unshift({ at: iso(), event: 'submitted' })
         return { id, ok: true }
       })

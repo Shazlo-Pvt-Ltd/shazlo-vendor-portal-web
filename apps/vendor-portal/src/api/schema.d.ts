@@ -644,6 +644,8 @@ export interface components {
             file_name: string;
             total_rows: number;
             ok_rows: number;
+            /** @description Products the ready rows become (rows sharing a Product ID are one product with several sizes) */
+            ok_products: number;
             error_rows: number;
             image_errors: number;
             errors: {
