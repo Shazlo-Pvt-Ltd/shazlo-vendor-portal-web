@@ -10,9 +10,10 @@ export type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 export function useAutosave<T>({ values, save, enabled = true, delay = 1000, savedAt: initialSavedAt = null }: { values: T; save: (values: T) => Promise<unknown>; enabled?: boolean; delay?: number; savedAt?: string | null }) {
   const [state, setState] = useState<SaveState>('idle')
   const [savedAt, setSavedAt] = useState<string | null>(initialSavedAt)
-  const last = useRef(JSON.stringify(values))
+  const [initialJson] = useState(() => JSON.stringify(values))
+  const last = useRef(initialJson)
   // Mirrors `last` for rendering (refs must not be read during render).
-  const [savedJson, setSavedJson] = useState(last.current)
+  const [savedJson, setSavedJson] = useState(initialJson)
   const latest = useRef(values)
   const saveRef = useRef(save)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
