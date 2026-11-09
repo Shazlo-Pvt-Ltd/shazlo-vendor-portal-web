@@ -14,6 +14,7 @@ import { useSession } from '../../auth/session'
 import { onboardingCopy } from '../../copy/onboarding'
 import { fieldProps } from '../../lib/forms'
 import { AuthLayout, AuthTitle } from './AuthLayout'
+import { srOnly } from '../../lib/a11y'
 
 const copy = onboardingCopy.setPassword
 
@@ -21,7 +22,6 @@ type Invite = { email: string; brand_name: string; owner_name: string }
 type RuleKey = keyof typeof copy.rules
 const RULES = Object.keys(copy.rules) as RuleKey[]
 
-const srOnly = { position: 'absolute', width: 1, height: 1, p: 0, m: -1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0 } as const
 
 const squash = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
 

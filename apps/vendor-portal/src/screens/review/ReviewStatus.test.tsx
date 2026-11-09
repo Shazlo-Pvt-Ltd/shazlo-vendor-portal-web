@@ -58,7 +58,7 @@ describe('V-09 Review status: header and queue', () => {
     })
     await renderApp({ route: '/review?tab=waiting' })
     // The sidebar count comes from the same summary as the queue time.
-    expect(await screen.findByRole('link', { name: 'Review status, 0 waiting' })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: /^Review status\s*, 0 waiting$/ })).toBeInTheDocument()
     expect(screen.getByText('Most items are reviewed within 24 hours.')).toBeInTheDocument()
     expect(screen.queryByText(/oldest waiting item/)).toBeNull()
     const waiting = await screen.findByRole('region', { name: 'Waiting for review' })

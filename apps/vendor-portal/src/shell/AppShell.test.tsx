@@ -16,8 +16,8 @@ describe('desktop shell', () => {
     const nav = await screen.findByRole('navigation', { name: 'Seller sections' })
     const overview = within(nav).getByRole('link', { name: /Overview/ })
     expect(overview).toHaveAttribute('aria-current', 'page')
-    await waitFor(() => expect(within(nav).getByRole('link', { name: 'Products, 27' })).toBeInTheDocument())
-    expect(within(nav).getByRole('link', { name: 'Review status, 5 waiting' })).toBeInTheDocument()
+    await waitFor(() => expect(within(nav).getByRole('link', { name: /^Products\s*, 27$/ })).toBeInTheDocument())
+    expect(within(nav).getByRole('link', { name: /^Review status\s*, 5 waiting$/ })).toBeInTheDocument()
     for (const name of ['Brand page', 'Bulk import', 'Store settings', 'Team', 'Help & support']) {
       expect(within(nav).getByRole('link', { name })).toBeInTheDocument()
     }

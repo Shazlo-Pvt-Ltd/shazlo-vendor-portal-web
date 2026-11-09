@@ -170,6 +170,14 @@ function baseOptions({ voyage }: ShazloThemeOptions): ThemeOptions {
           }),
         },
       },
+      // MUI fades unselected "inherit" tabs to 60% opacity, which drops them below 4.5:1 on cream.
+      MuiTab: {
+        styleOverrides: {
+          root: { opacity: 1, color: neutral.inkSecondary, textTransform: 'none', '&.Mui-selected': { color: neutral.ink } },
+        },
+      },
+      // Long dialogs scroll; keyboard users need to reach that scroll area too.
+      MuiDialogContent: { defaultProps: { tabIndex: 0 } },
       // 16 px inputs on phones, so iOS does not zoom the page when a field gets focus.
       MuiInputBase: { styleOverrides: { input: { '@media (max-width: 899.95px)': { fontSize: '1rem' } } } },
       MuiInputLabel: { styleOverrides: { root: { '&.Mui-focused:not(.Mui-error):not(.Mui-disabled)': { color: brand.brown } } } },

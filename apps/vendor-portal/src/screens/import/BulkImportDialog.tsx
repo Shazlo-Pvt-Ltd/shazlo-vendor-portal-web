@@ -11,6 +11,7 @@ import { actionsSx } from './layout'
 import { ReviewStep } from './ReviewStep'
 import { TemplateStep } from './TemplateStep'
 import { UploadStep } from './UploadStep'
+import { srOnly } from '../../lib/a11y'
 
 type Stage = 'template' | 'upload' | 'review' | 'done'
 
@@ -152,7 +153,7 @@ export function BulkImportDialog({ onClose }: { onClose: () => void }) {
             {copy.stepOf(active + 1, copy.steps.length, stepLabel)}
           </Typography>
         )}
-        <Box role="status" sx={{ position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}>
+        <Box role="status" sx={srOnly}>
           {wide ? copy.stepOf(active + 1, copy.steps.length, stepLabel) : ''}
         </Box>
       </Box>

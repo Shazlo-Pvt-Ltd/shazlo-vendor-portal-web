@@ -12,12 +12,12 @@ import { productsCopy } from '../../../copy/products'
 import { formatCount, formatINR, formatRelative } from '../../../lib/format'
 import { productPills } from '../../../lib/status'
 import { PAGE_SIZE } from './useListParams'
+import { srOnly } from '../../../lib/a11y'
 
 const copy = productsCopy.table
 type Product = Schemas['ProductSummary']
 
 // Strings, not numbers: sx reads width: 1 as 100%.
-const visuallyHidden = { position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' } as const
 const tabular = { fontVariantNumeric: 'tabular-nums' } as const
 const stop = (event: MouseEvent) => event.stopPropagation()
 
@@ -163,7 +163,7 @@ export function ProductTable({ items, fetching, selection, onSelectionChange, on
       },
       {
         id: 'actions',
-        header: () => <Box sx={visuallyHidden}>{copy.actionsHeader}</Box>,
+        header: () => <Box sx={srOnly}>{copy.actionsHeader}</Box>,
         cell: ({ row }) => (
           <IconButton
             aria-label={copy.actions(row.original.title)}

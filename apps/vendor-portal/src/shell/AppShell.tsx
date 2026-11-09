@@ -5,6 +5,7 @@ import { ExternalLink, FileSpreadsheet, HelpCircle, History, LayoutGrid, LogOut,
 import { Suspense, useState, type ReactNode } from 'react'
 import { Link as RouterLink, Outlet, useLocation, useMatches, useNavigate } from 'react-router'
 import { useMe, useSummary } from '../api/queries'
+import { srOnly } from '../lib/a11y'
 import { usePageCrumb, type RouteHandle } from '../app/crumbs'
 import { paths } from '../app/paths'
 import { useSession } from '../auth/session'
@@ -43,13 +44,12 @@ function initials(name: string) {
 
 function SideNavItem({ item, active }: { item: NavItem; active: boolean }) {
   const Icon = item.icon
-  const name = item.count != null ? `${item.label}, ${item.countLabel ? item.countLabel(item.count) : item.count}` : item.label
   return (
+    <li>
     <ListItemButton
       component={RouterLink}
       to={item.to}
       aria-current={active ? 'page' : undefined}
-      aria-label={name}
       sx={{
         borderRadius: `${radius.control}px`,
         minHeight: 40,
@@ -65,11 +65,18 @@ function SideNavItem({ item, active }: { item: NavItem; active: boolean }) {
       </ListItemIcon>
       <ListItemText primary={item.label} slotProps={{ primary: { variant: 'body1', sx: { fontFamily: active ? fontFamily.display : undefined } } }} />
       {item.count != null && (
-        <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }} aria-hidden="true">
-          {item.count}
-        </Typography>
+        <>
+          {/* Read as "Review status, 5 waiting"; the visible number is the short form. */}
+          <Box component="span" sx={srOnly}>
+            {`, ${item.countLabel ? item.countLabel(item.count) : item.count}`}
+          </Box>
+          <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }} aria-hidden="true">
+            {item.count}
+          </Typography>
+        </>
       )}
     </ListItemButton>
+    </li>
   )
 }
 

@@ -27,10 +27,10 @@ import {
   type StepIndex,
 } from './applyModel'
 import { BrandStep, CatalogueStep, ContactStep } from './applySteps'
+import { srOnly } from '../../lib/a11y'
 
 const copy = onboardingCopy.apply
 
-const srOnly = { position: 'absolute', width: 1, height: 1, p: 0, m: -1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0 } as const
 
 // Numbered dots: amber for the current step (the same fill as the main action), brown with a tick once done.
 function StepDot({ active, completed, icon }: StepIconProps) {

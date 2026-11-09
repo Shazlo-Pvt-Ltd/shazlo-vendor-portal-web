@@ -1,7 +1,10 @@
 // Stand-in product photos until real uploads exist: small SVG block-print swatches in natural-dye
 // colours, generated from a seed so every product keeps the same look.
 const GROUNDS = ['#2E3F6E', '#8C2F25', '#A4502B', '#EFE6D2', '#C99A2E', '#2B2522', '#5C6B4E', '#D9C3A0']
-const INKS = ['#EFE6D2', '#F3D9A4', '#2B2522', '#8C2F25', '#2E3F6E', '#EFE6D2', '#F3D9A4', '#2B2522']
+// Light grounds get a dark print and dark grounds a light one, so no swatch comes out blank.
+const LIGHT_GROUNDS = new Set(['#EFE6D2', '#D9C3A0', '#C99A2E'])
+const DARK_INKS = ['#8C2F25', '#2E3F6E', '#2B2522']
+const LIGHT_INKS = ['#EFE6D2', '#F3D9A4']
 
 function hash(text: string): number {
   let h = 2166136261
@@ -19,7 +22,8 @@ const MOTIFS = [
 export function swatch(seed: string, variant: 'front' | 'back' | 'closeup' | 'extra' = 'front'): string {
   const h = hash(seed)
   const ground = GROUNDS[h % GROUNDS.length]!
-  const ink = INKS[(h >>> 3) % INKS.length] === ground ? '#EFE6D2' : INKS[(h >>> 3) % INKS.length]!
+  const inks = LIGHT_GROUNDS.has(ground) ? DARK_INKS : LIGHT_INKS
+  const ink = inks[(h >>> 3) % inks.length]!
   const motif = MOTIFS[(h >>> 6) % MOTIFS.length]!(ink)
   const scale = variant === 'closeup' ? 2.4 : variant === 'back' ? 0.8 : 1
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 200"><defs><pattern id="p" width="${20 * scale}" height="${20 * scale}" patternUnits="userSpaceOnUse"><g transform="scale(${scale})">${motif}</g></pattern></defs><rect width="160" height="200" fill="${ground}"/><rect width="160" height="200" fill="url(#p)"/>${variant === 'back' ? `<rect y="150" width="160" height="50" fill="${ground}" opacity=".55"/>` : ''}</svg>`

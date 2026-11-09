@@ -5,6 +5,7 @@ import { memo, useId, useRef, useState, type ChangeEvent, type ReactNode } from 
 import type { Schemas } from '../../../api/client'
 import { useAddProductImage, useRemoveProductImage } from '../../../api/queries'
 import { productEditorCopy } from '../../../copy/productEditor'
+import { srOnly } from '../../../lib/a11y'
 
 const copy = productEditorCopy.photos
 
@@ -19,7 +20,6 @@ const ACCEPT = 'image/jpeg,image/png,image/webp'
 export const photoSlotId = (prefix: string, angle: RequiredAngle) => `${prefix}-photo-${angle}`
 export const missingAngles = (images: Image[]) => REQUIRED_ANGLES.filter((a) => !images.some((i) => i.angle === a))
 
-const srOnly = { position: 'absolute', width: 1, height: 1, m: -1, p: 0, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0 } as const
 
 type Names = { upload: string; remove: string; replace: string; alt: string; file: string }
 
