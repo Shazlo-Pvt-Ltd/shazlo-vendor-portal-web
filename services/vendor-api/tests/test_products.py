@@ -156,11 +156,13 @@ async def test_a_product_never_approved_has_no_live_revision(
 ) -> None:
     vendor, user = await vendor_and_user(session)
     product, revision = await submittable_revision(session, vendor, user)
+    # Something pending, so `pending_review` passes ck_products_pending_review_has_pending.
+    pending = await saved_revision(session, product, user, 2)
     with pytest.raises(IntegrityError, match="ck_products_unapproved_has_no_live"):
         await session.execute(
             update(Product)
             .where(Product.id == product.id)
-            .values(status=status, live_revision_id=revision.id)
+            .values(status=status, live_revision_id=revision.id, pending_revision_id=pending.id)
         )
 
 
@@ -214,8 +216,9 @@ async def test_a_product_version_starts_at_one(session: AsyncSession) -> None:
 async def test_other_product_updates_do_not_touch_the_version_rule(
     session: AsyncSession,
 ) -> None:
-    vendor, _ = await vendor_and_user(session)
-    product = await saved_product(session, vendor)
+    vendor, user = await vendor_and_user(session)
+    product, revision = await submittable_revision(session, vendor, user)
+    product.pending_revision_id = revision.id  # a product in review has a revision in review
     product.status = ProductStatus.PENDING_REVIEW
     await session.flush()
     assert (await reload(session, Product, id=product.id)).version == 1
@@ -695,19 +698,20 @@ async def test_a_revision_cannot_be_inserted_already_submitted(session: AsyncSes
         await session.flush()
 
 
-async def test_editing_a_submitted_revision_is_not_blocked_by_the_submit_rule(
-    session: AsyncSession,
-) -> None:
+async def test_editing_a_submitted_revision_is_refused(session: AsyncSession) -> None:
+    # Was "not blocked by the submit rule": migration 0006 now freezes a submitted revision,
+    # so the edit fails on that rule instead (more cases in test_integrity_hardening.py).
     vendor, user = await vendor_and_user(session)
     _, revision = await submittable_revision(session, vendor, user)
     await session.execute(
         update(ProductRevision).where(ProductRevision.id == revision.id).values(submitted_at=NOW)
     )
-    await session.execute(
-        update(ProductRevision)
-        .where(ProductRevision.id == revision.id)
-        .values(submitted_at=datetime(2026, 11, 9, tzinfo=UTC), title="Renamed")
-    )
+    with pytest.raises(IntegrityError, match="a submitted product revision cannot be changed"):
+        await session.execute(
+            update(ProductRevision)
+            .where(ProductRevision.id == revision.id)
+            .values(submitted_at=datetime(2026, 11, 9, tzinfo=UTC), title="Renamed")
+        )
 
 
 # --- A live revision and a pending one together ------------------------------------------

@@ -27,6 +27,10 @@ FUNCTIONS = (
     "enforce_version_never_decreases",
     "require_variant_and_image_on_submit",
     "forbid_update_delete_truncate",
+    "protect_brand_profile_history",
+    "protect_submitted_product_revision",
+    "protect_submitted_revision_content",
+    "protect_review_record",
 )
 
 
@@ -74,6 +78,49 @@ def _constraint_exists(engine: Engine, name: str) -> bool:
     query = text("SELECT count(*) FROM pg_constraint WHERE conname = :name")
     with engine.connect() as connection:
         return bool(connection.scalar(query, {"name": name}))
+
+
+# What 0006 adds to earlier tables: triggers, a check constraint and two indexes.
+HARDENING_TRIGGERS = {
+    "vendor_status_events_no_truncate",
+    "brand_profiles_protect_history",
+    "product_revisions_protect_submitted",
+    "product_revision_variants_protect_submitted",
+    "product_images_protect_submitted",
+    "reviews_protect_record",
+    "reviews_no_truncate",
+}
+HARDENING_INDEXES = {"ix_reviews_brand_profile_id", "ix_reviews_product_revision_id"}
+
+
+def _hardening_objects(engine: Engine) -> set[str]:
+    query = text(
+        "SELECT tgname FROM pg_trigger WHERE tgname = ANY(:triggers) "
+        "UNION ALL SELECT indexname FROM pg_indexes WHERE indexname = ANY(:indexes) "
+        "UNION ALL SELECT conname FROM pg_constraint "
+        "WHERE conname = 'ck_products_pending_review_has_pending'"
+    )
+    params = {"triggers": list(HARDENING_TRIGGERS), "indexes": list(HARDENING_INDEXES)}
+    with engine.connect() as connection:
+        return {str(name) for name in connection.scalars(query, params)}
+
+
+def test_the_hardening_migration_alone_can_be_undone_and_redone(
+    alembic_config: Config, migrated_db: str
+) -> None:
+    expected = HARDENING_TRIGGERS | HARDENING_INDEXES | {"ck_products_pending_review_has_pending"}
+    engine = create_engine(sync_url(migrated_db))
+    try:
+        assert _hardening_objects(engine) == expected
+        try:
+            command.downgrade(alembic_config, "0005")
+            assert _hardening_objects(engine) == set()
+            assert _tables(migrated_db) >= TABLES  # only 0006's objects go
+        finally:
+            command.upgrade(alembic_config, "head")
+        assert _hardening_objects(engine) == expected
+    finally:
+        engine.dispose()
 
 
 def test_the_review_migration_alone_can_be_undone_and_redone(

@@ -478,6 +478,11 @@ class Product(Base):
             "OR live_revision_id <> pending_revision_id",
             name="live_and_pending_differ",
         ),
+        # A product in review has a revision in review (migration 0006).
+        CheckConstraint(
+            "status <> 'pending_review' OR pending_revision_id IS NOT NULL",
+            name="pending_review_has_pending",
+        ),
         UniqueConstraint("vendor_id", "sku_key"),
         UniqueConstraint("id", "vendor_id"),
         # Circular with product_revisions: both columns start empty and are filled afterwards.
@@ -768,6 +773,9 @@ class Review(Base):
         ),
         Index("ix_reviews_vendor_id_status", "vendor_id", "status"),
         Index("ix_reviews_status_submitted_at", "status", "submitted_at"),
+        # Full indexes for the two subject foreign keys (the unique ones above are partial).
+        Index("ix_reviews_brand_profile_id", "brand_profile_id"),
+        Index("ix_reviews_product_revision_id", "product_revision_id"),
     )
     __mapper_args__ = {"eager_defaults": True}
 

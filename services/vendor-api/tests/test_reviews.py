@@ -333,12 +333,15 @@ async def test_two_vendors_each_have_their_own_pending_review(session: AsyncSess
     await pending_profile_review(session, second, second_user)
 
 
-async def test_reopening_cannot_create_a_second_pending_review(session: AsyncSession) -> None:
+async def test_a_decided_review_cannot_be_reopened(session: AsyncSession) -> None:
+    # Was "reopening cannot create a second pending review" (the partial unique index).
+    # Migration 0006 freezes a decided review, so reopening the row is refused outright; the
+    # version is reviewed again with a new row instead.
     vendor, user = await setup_vendor(session)
     profile, first = await pending_profile_review(session, vendor, user)
     await decide(session, first, status="withdrawn", decided_at=LATER)
     await saved_review(session, vendor, user, profile=profile)
-    with pytest.raises(IntegrityError, match="uq_reviews_one_pending_per_brand_profile"):
+    with pytest.raises(IntegrityError, match="a decided review cannot be changed"):
         await decide(session, first, status="pending", decided_at=None, reviewer_id=None)
 
 
@@ -481,7 +484,8 @@ async def test_every_event_stays_after_all_the_attempts(session: AsyncSession) -
 
 async def test_a_review_with_events_cannot_be_deleted(session: AsyncSession) -> None:
     review, _ = await event_for_a_review(session)
-    with pytest.raises(IntegrityError, match="fk_review_events_review_id_reviews"):
+    # Migration 0006 refuses every review DELETE before the foreign key is even checked.
+    with pytest.raises(IntegrityError, match="reviews cannot be deleted"):
         await session.execute(text("DELETE FROM reviews WHERE id = :id"), {"id": review.id})
 
 
