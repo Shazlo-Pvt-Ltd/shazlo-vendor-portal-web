@@ -2,7 +2,7 @@
 
 FastAPI service for vendors, brand profiles, products, assets, reviews and publishing to the central app. See the [roadmap](../../docs/ROADMAP.md) (Phases 2 to 4), [ADR 0009](../../docs/adr/0009-auth-model.md) for the auth model and [ADR 0010](../../docs/adr/0010-shared-security-package.md) for what it shares with identity-api.
 
-Status: scaffold. The app factory, settings, logging, error handling, database layer and health endpoints are in place. The schema, vendor auth and the admin API come in the other Phase 2 issues.
+Status: early. The app factory, settings, logging, error handling, database layer, health endpoints, the vendors schema and vendor-api's own signing keys, token issuer, token verifier and JWKS are in place. The login flows and the admin API come in the other Phase 2 issues.
 
 ## Run locally
 
@@ -12,15 +12,17 @@ You need Python 3.12+, and Postgres and Redis from the root docker-compose:
 docker compose up -d postgres redis      # from the repository root
 cd services/vendor-api
 python -m venv .venv && . .venv/bin/activate
+pip install -r requirements-shared.txt    # packages/py-auth and py-security, from the repository path
 pip install -e '.[dev]'
 cp .env.example .env                     # put your POSTGRES_PASSWORD into DATABASE_URL
+python -m vendor_api.cli generate-key    # writes ./.keys/<kid>.pem; JWT_KEYS_DIR in .env points there
 alembic upgrade head
 uvicorn vendor_api.main:app --reload --port 8002
 ```
 
 `curl localhost:8002/health` returns `{"status": "ok"}` and `curl localhost:8002/ready` checks Postgres and Redis. OpenAPI docs are at <http://localhost:8002/docs> unless `ENV=prod`.
 
-The app refuses to start if `DATABASE_URL` or `REDIS_URL` is missing or malformed.
+The app refuses to start if `DATABASE_URL` or `REDIS_URL` is missing or malformed, or if there is no signing key (see Tokens and keys). If `generate-key` printed a `JWT_SIGNING_KID`, put it in `.env` (it is only needed with more than one key).
 
 ## Layout
 
@@ -35,7 +37,7 @@ vendor_api/
   services/     business logic, free of HTTP concerns
 ```
 
-The logging, request-ID middleware and error handlers are copies of identity-api's (ADR 0010). The security code (sessions, rate limits, passwords, keys) will come from `packages/py-security`, and token verification from `packages/py-auth`; each is added, with a `requirements-shared.txt`, by the first issue that imports it.
+The logging, request-ID middleware and error handlers are copies of identity-api's (ADR 0010). The security code (keys, tokens and later sessions, rate limits, passwords) comes from `packages/py-security`, and token verification from `packages/py-auth`; both are installed from the repository path through `requirements-shared.txt`.
 
 ## Settings
 
@@ -50,8 +52,21 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:5174` | comma separated; credentials allowed for these only; no wildcard |
 | `COOKIE_SECURE` / `COOKIE_SAMESITE` / `COOKIE_DOMAIN` | `true` / `strict` / unset | refresh-token cookie; `none` requires `COOKIE_SECURE=true` |
 | `JWT_ISSUER` | `http://localhost:8002` | `iss` of the tokens vendor-api issues |
+| `JWT_KEYS_DIR` / `JWT_KEYS` | none (one is required) | RS256 keys: a directory of `<kid>.pem` files and/or JSON `{"<kid>": "<PEM>"}` |
+| `JWT_SIGNING_KID` | unset | the key that signs; needed with several keys, the others are only published |
+| `ACCESS_TOKEN_TTL_SECONDS` | `900` | 1 to 3600 |
 
 identity-api is on port 8001 and vendor-api on 8002, so both can run side by side. In docker-compose (`--profile vendor`) vendor-api uses Redis database 1; see the root README, Local development. Their cookie names and Redis key prefixes differ (ADR 0010).
+
+## Tokens and keys
+
+vendor-api signs **its own** tokens with **its own** RS256 key, never identity-api's, so a vendor token can never pass as an admin token and the reverse (ADR 0009). The key ring, issuer and JWKS come from [`packages/py-security`](../../packages/py-security/README.md); the verifier from [`packages/py-auth`](../../packages/py-auth/README.md). vendor-api only configures them (`core/security.py`, `services/tokens.py`).
+
+- A token has `iss` (this service's `JWT_ISSUER`), `sub` (the vendor user), `aud` `vendor-api`, `vendor_id`, `roles` (exactly one of `owner` or `staff`), `iat`, `exp` (15 minutes), `jti`, and the `kid` in the header. No email or name goes into it.
+- `VendorTokens.verify` accepts only RS256, checks `iss`, `aud` and `exp` (30 seconds of leeway) and requires `sub`, `vendor_id` (a UUID), `roles`, `jti` and `kid`. It returns `VendorClaims(user_id, vendor_id, role, jti, expires_at)`.
+- `GET /.well-known/jwks.json` serves the public keys with `Cache-Control: max-age=600`, built from public keys only.
+- `python -m vendor_api.cli generate-key [--dir DIR] [--kid KID]` writes a new private key (mode `0600`, never overwriting) and prints the settings to use it.
+- Keys are RSA 2048-bit or larger. A key that is only published may be configured as a public PEM. Rotation follows [the runbook](../../docs/runbooks/jwt-key-rotation.md), which covers both services.
 
 ## Database
 

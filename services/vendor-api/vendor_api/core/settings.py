@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from vendor_api.db.session import POSTGRES_SCHEMES
@@ -33,6 +33,14 @@ class Settings(BaseSettings):
 
     # The `iss` of the tokens vendor-api issues itself (ADR 0009): this service's base URL.
     jwt_issuer: str = "http://localhost:8002"
+    # RS256 keys, from a directory of `<kid>.pem` files and/or a JSON object {"<kid>": "<PEM>"}.
+    # `jwt_signing_kid` picks the key that signs; the others are only published in the JWKS.
+    # vendor-api has its own keys, never identity-api's (ADR 0009). The service refuses to start
+    # without one: create it with `python -m vendor_api.cli generate-key`.
+    jwt_keys_dir: str | None = None
+    jwt_keys: SecretStr | None = None
+    jwt_signing_kid: str | None = None
+    access_token_ttl_seconds: int = Field(default=15 * 60, gt=0, le=3600)
 
     @field_validator("cors_allowed_origins", mode="before")
     @classmethod

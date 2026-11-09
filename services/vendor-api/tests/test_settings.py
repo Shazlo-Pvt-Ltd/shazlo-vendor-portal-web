@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 import pytest
 from pydantic import ValidationError
 
@@ -69,3 +71,17 @@ def test_invalid_values_are_rejected(overrides: dict[str, object]) -> None:
 
 def test_samesite_none_is_fine_with_secure() -> None:
     assert make(cookie_samesite="none", cookie_secure=True).cookie_samesite == "none"
+
+
+def test_jwt_settings_defaults(settings: Settings) -> None:
+    assert settings.jwt_keys_dir is None
+    assert settings.jwt_signing_kid is None
+    assert settings.access_token_ttl_seconds == 900
+
+
+@pytest.mark.parametrize("seconds", [0, -1, 3601])
+def test_access_token_lifetime_is_bounded(
+    settings: Settings, override: Callable[..., Settings], seconds: int
+) -> None:
+    with pytest.raises(ValidationError):
+        override(settings, access_token_ttl_seconds=seconds)

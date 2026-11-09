@@ -63,8 +63,8 @@ services:
     ports:
       - "${IDENTITY_API_PORT:-8001}:8001"
 
-  # Opt-in (`--profile vendor`, or `--profile full` with identity-api). It needs no signing key
-  # yet; vendor login adds one (then it is set like IDENTITY_JWT_KEYS above).
+  # Opt-in (`--profile vendor`, or `--profile full` with identity-api). Like identity-api it
+  # needs its own signing key in VENDOR_JWT_KEYS (never identity-api's). See README.md.
   vendor-api:
     profiles: ["vendor", "full"]
     build:
@@ -85,6 +85,8 @@ services:
       REDIS_URL: redis://redis:6379/1
       CORS_ALLOWED_ORIGINS: ${VENDOR_CORS_ALLOWED_ORIGINS:-http://localhost:5174}
       JWT_ISSUER: http://localhost:${VENDOR_API_PORT:-8002}
+      JWT_KEYS: ${VENDOR_JWT_KEYS:-}
+      JWT_SIGNING_KID: ${VENDOR_JWT_SIGNING_KID:-}
     ports:
       - "${VENDOR_API_PORT:-8002}:8002"
 

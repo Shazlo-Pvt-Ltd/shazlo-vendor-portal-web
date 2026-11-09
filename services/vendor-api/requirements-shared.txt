@@ -1,0 +1,8 @@
+# Shared packages from this repository. Install from services/vendor-api, before the service:
+#   pip install -r requirements-shared.txt && pip install -e '.[dev]'
+# They are not in pyproject.toml's dependencies on purpose: a plain `shazlo-auth` or
+# `shazlo-security` requirement could be satisfied from PyPI, where the names are not ours
+# (dependency confusion). Installing from the path means no index is ever asked for them.
+# `compat` keeps them visible to mypy.
+-e ../../packages/py-auth --config-settings editable_mode=compat
+-e ../../packages/py-security --config-settings editable_mode=compat
