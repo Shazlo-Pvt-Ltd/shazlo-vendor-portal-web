@@ -9,14 +9,15 @@ import jwt
 import pytest
 from fakeredis import FakeAsyncRedis
 from fastapi import Depends
+from shazlo_security.passwords import PasswordService
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from identity_api.api.deps import current_admin
 from identity_api.app import create_app
+from identity_api.core.security import password_config
 from identity_api.core.settings import Settings
 from identity_api.db.models import Admin, Role
 from identity_api.db.session import get_session
-from identity_api.services.passwords import PasswordService
 from identity_api.services.refresh_tokens import hash_token
 
 ORIGIN = "https://shell.test"
@@ -73,7 +74,7 @@ async def client(
 
 @pytest.fixture
 def make_admin(api_settings: Settings, session: AsyncSession) -> MakeAdmin:
-    passwords = PasswordService(api_settings)
+    passwords = PasswordService(password_config(api_settings))
 
     async def make(
         email: str = "reviewer@shazlo.test",

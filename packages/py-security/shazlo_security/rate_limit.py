@@ -7,10 +7,31 @@ from typing import Protocol
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
-from identity_api.core.errors import ApiError
-from identity_api.core.settings import RateRule, Settings
-
 logger = logging.getLogger(__name__)
+
+
+class RateLimited(Exception):
+    """A counter is over its limit. `retry_after` is the seconds until the longest window ends."""
+
+    def __init__(self, retry_after: int) -> None:
+        super().__init__(f"rate limited, retry after {retry_after}s")
+        self.retry_after = retry_after
+
+
+class RateLimiterUnavailable(Exception):
+    """The store is down and the endpoint is configured to refuse rather than skip the limit."""
+
+
+@dataclass(frozen=True)
+class RateRule:
+    """At most `limit` hits per `window_seconds`."""
+
+    limit: int
+    window_seconds: int
+
+    def __post_init__(self) -> None:
+        if self.limit < 1 or self.window_seconds < 1:
+            raise ValueError("limit and window_seconds must be at least 1")
 
 
 @dataclass(frozen=True)
@@ -36,9 +57,14 @@ class RedisRateLimiter:
     A client can use up the limit at the end of one window and again at the start of the next,
     so a burst of up to twice the limit can pass across a boundary. That is fine for brute-force
     protection, and the TTL gives an exact `Retry-After`.
+
+    `prefix` is required: services that share a Redis give theirs different prefixes (for
+    example `identity:rl:`), so their counters can never meet.
     """
 
-    def __init__(self, redis: Redis, prefix: str = "rl:") -> None:
+    def __init__(self, redis: Redis, prefix: str) -> None:
+        if not prefix:
+            raise ValueError("a key prefix is required")
         self._redis = redis
         self._prefix = prefix
 
@@ -67,16 +93,28 @@ class Check:
     rule: RateRule
 
 
-class RateLimitGuard:
-    """Applies the checks of an endpoint, answers 429 and decides what a Redis outage means."""
+@dataclass(frozen=True)
+class RateLimitConfig:
+    # Keys the hashes that name subjects in Redis, so a Redis dump does not reveal emails.
+    # Every instance of a service must share it.
+    hmac_key: bytes
+    # Endpoints that refuse (RateLimiterUnavailable) when Redis is down; the others skip the
+    # limit and log a warning.
+    fail_closed: frozenset[str] = frozenset()
 
-    def __init__(self, limiter: RateLimiter, settings: Settings) -> None:
+    def __post_init__(self) -> None:
+        if not self.hmac_key:
+            raise ValueError("hmac_key must not be empty")
+
+
+class RateLimitGuard:
+    """Applies the checks of an endpoint, raises when one is over and decides what a store
+    outage means."""
+
+    def __init__(self, limiter: RateLimiter, config: RateLimitConfig) -> None:
         self._limiter = limiter
-        self._fail_closed = set(settings.rate_limit_fail_closed)
-        key = settings.rate_limit_hmac_key
-        if key is None:  # Settings fills it in, so this is a programming error
-            raise ValueError("rate_limit_hmac_key is not set")
-        self._hmac_key = key.get_secret_value().encode()
+        self._fail_closed = config.fail_closed
+        self._hmac_key = config.hmac_key
 
     def _key(self, endpoint: str, scope: str, subject: str) -> str:
         # Subjects are hashed, so Redis never holds an email (or IP) in plain text. A keyed hash
@@ -85,7 +123,7 @@ class RateLimitGuard:
         return f"{endpoint}:{scope}:{digest}"
 
     async def check(self, endpoint: str, checks: list[Check]) -> None:
-        """Counts a hit on every check; raises 429 if any is over its limit.
+        """Counts a hit on every check; raises RateLimited if any is over its limit.
 
         Every counter is hit even when an earlier one is over, so the counters stay honest.
         """
@@ -99,13 +137,7 @@ class RateLimitGuard:
             return
         denied = [result for result in results if not result.allowed]
         if denied:
-            retry_after = max(result.retry_after for result in denied)
-            raise ApiError(
-                429,
-                "rate_limited",
-                "Too many requests. Try again later.",
-                headers={"Retry-After": str(retry_after), "Cache-Control": "no-store"},
-            )
+            raise RateLimited(max(result.retry_after for result in denied))
 
     async def reset(self, endpoint: str, scope: str, subject: str) -> None:
         """Clears one counter (a successful login clears the email's). Never fails the request."""
@@ -119,9 +151,7 @@ class RateLimitGuard:
             logger.error(
                 "rate limiter unavailable, refusing", exc_info=error, extra={"endpoint": endpoint}
             )
-            raise ApiError(
-                503, "rate_limiter_unavailable", "Service temporarily unavailable"
-            ) from error
+            raise RateLimiterUnavailable(endpoint) from error
         logger.warning(
             "rate limiter unavailable, allowing", exc_info=error, extra={"endpoint": endpoint}
         )

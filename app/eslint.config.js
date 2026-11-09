@@ -10,7 +10,6 @@ export default defineConfig([
     files: ['**/*.{js,jsx}'],
     extends: [
       js.configs.recommended,
-      reactHooks.configs['recommended-latest'],
       reactRefresh.configs.vite,
     ],
     languageOptions: {
@@ -22,7 +21,11 @@ export default defineConfig([
         sourceType: 'module',
       },
     },
+    plugins: { 'react-hooks': reactHooks },
     rules: {
+      // Same two rules as the 5.x recommended config; v7's recommended preset adds React Compiler rules that are out of scope for a dependency bump.
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
     },
   },
