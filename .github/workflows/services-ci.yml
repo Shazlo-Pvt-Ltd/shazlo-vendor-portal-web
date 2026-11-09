@@ -140,6 +140,12 @@ jobs:
           vendor_kid=$(curl -fsS localhost:8002/.well-known/jwks.json | python3 -c "import json,sys; print(json.load(sys.stdin)['keys'][0]['kid'])")
           identity_kid=$(curl -fsS localhost:8001/.well-known/jwks.json | python3 -c "import json,sys; print(json.load(sys.stdin)['keys'][0]['kid'])")
           test "$vendor_kid" != "$identity_kid"
+      - name: An email sent by vendor-api shows up in Mailpit
+        run: |
+          docker compose --profile vendor run --rm vendor-api \
+            python -m vendor_api.cli send-test-email --to catcher@shazlo.test --template password_reset
+          curl -fsS localhost:8025/api/v1/messages | grep -q 'catcher@shazlo.test'
+          curl -fsS localhost:8025/api/v1/messages | grep -q 'Reset your Shazlo password'
       - name: Logs
         if: failure()
         run: docker compose --profile full logs

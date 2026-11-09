@@ -54,7 +54,7 @@ docker compose ps           # postgres, redis and mailpit should report "healthy
 | vendor-api (profile `vendor`) | 8002 | `curl localhost:8002/ready` |
 | Mailpit SMTP / web UI | 1025 / 8025 (127.0.0.1 only) | open <http://localhost:8025> |
 
-Mailpit shows every email the services send (signup, invite and reset links) and delivers none of them. From another container the SMTP server is `mailpit:1025`; from the host it is `localhost:1025`. Ports are set in `.env`.
+Mailpit shows every email the services send (signup, invite and reset links) and delivers none of them. vendor-api in compose sends to it; from the host, `python -m vendor_api.cli send-test-email` (in `services/vendor-api`) puts an example there. From another container the SMTP server is `mailpit:1025`; from the host it is `localhost:1025`. Ports are set in `.env`.
 
 On first start it creates one database per service plus a test database for each: `identity`, `identity_test`, `vendor`, `vendor_test`. Connection string pattern: `postgresql://<user>:<password>@localhost:5432/<db>`.
 
