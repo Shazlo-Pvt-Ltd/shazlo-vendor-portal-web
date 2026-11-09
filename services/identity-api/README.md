@@ -70,7 +70,7 @@ The app refuses to start if `DATABASE_URL`, `REDIS_URL` or the JWT keys are miss
 ## Cookies and CORS (local development)
 
 - The **refresh token** is an `HttpOnly` cookie named `identity_refresh` on `/v1/auth` and is never in a response body (vendor-api uses `vendor_refresh`, so the two never share a cookie). The browser keeps it; JavaScript only ever holds the 15-minute access token.
-- **`COOKIE_SECURE=true`** (the default) works on `http://localhost` in Chrome and Firefox, which treat localhost as secure. Safari and curl do not, so set `COOKIE_SECURE=false` locally for them. Never in production.
+- **`COOKIE_SECURE=true`** (the default) works on `http://localhost` in Chrome and Firefox, which treat localhost as secure. Safari and curl do not, so set `COOKIE_SECURE=false` locally for them. Never in production: `ENV=prod` refuses `COOKIE_SECURE=false`.
 - **`SameSite=Strict`**: the shell (`http://localhost:5173`) and this API (`http://localhost:8001`) are the same site because ports do not count, so the cookie is sent. In production they share a parent domain, which also makes them the same site.
 - **Host-only:** the cookie has no `Domain` attribute, so the browser sends it back only to this API's own host, never to vendor-api or another service under the same parent domain. There is no setting for it.
 - **CORS**: the shell's exact origin must be in `CORS_ALLOWED_ORIGINS` (comma separated; no wildcard, because credentials are allowed), and its requests need `credentials: "include"` so the cookie is sent to `/v1/auth/refresh` and `/v1/auth/logout`.
@@ -117,7 +117,7 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `LOG_LEVEL` | `INFO` | |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` | comma separated; credentials allowed for these only |
 | `COOKIE_SECURE` / `COOKIE_SAMESITE` | `true` / `strict` | refresh-token cookie (always host-only: no `Domain` attribute) |
-| `JWT_ISSUER` | `http://localhost:8001` | `iss` claim |
+| `JWT_ISSUER` | `http://localhost:8001` | `iss` claim. `ENV=prod` requires this service's public `https` URL (not the default, not localhost), and vendor-api's `IDENTITY_ISSUER` must be the same value |
 | `JWT_KEYS_DIR` / `JWT_KEYS` | none (one is required) | RS256 keys: a directory of `<kid>.pem` files and/or JSON `{"<kid>": "<PEM>"}`; the app refuses to start without a key, or (on Linux/macOS) with a private key file other users can read (looser than `0600`, or `0640` if owned by root) |
 | `AUDIENCE_ROLES` | `vendor-api` for `super_admin` and `vendor_reviewer` | JSON `{"<service>": ["<role>", ...]}`; must not list `identity-api`; see Auth endpoints |
 | `JWT_SIGNING_KID` | the only key, if there is just one | which key signs; the others are published in the JWKS only |

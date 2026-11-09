@@ -2,6 +2,7 @@ import ipaddress
 import secrets
 from functools import lru_cache
 from typing import Annotated, Literal, Self
+from urllib.parse import urlsplit
 
 from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -12,6 +13,8 @@ from identity_api.db.session import POSTGRES_SCHEMES
 RATE_LIMITED_ENDPOINTS = frozenset({"login", "refresh", "token", "change_password"})
 # HMAC-SHA256 keys shorter than this are guessable enough to reverse the hashed emails in Redis.
 MIN_HMAC_KEY_LENGTH = 32
+# Hosts a production JWT_ISSUER must not name.
+LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})  # noqa: S104
 
 
 def _parse_rule(value: object) -> object:
@@ -203,6 +206,19 @@ class Settings(BaseSettings):
     def _check_cookie_flags(self) -> "Settings":
         if self.cookie_samesite == "none" and not self.cookie_secure:
             raise ValueError("cookie_samesite='none' requires cookie_secure=true")
+        if self.env == "prod" and not self.cookie_secure:
+            raise ValueError("COOKIE_SECURE=false is not allowed in prod")
+        return self
+
+    @model_validator(mode="after")
+    def _check_issuer(self) -> "Settings":
+        if self.env == "prod":
+            issuer = self.jwt_issuer.strip()
+            host = urlsplit(issuer).hostname or ""
+            if not issuer.startswith("https://") or host in LOCAL_HOSTS:
+                # The default (http://localhost:8001) left in place would put a localhost `iss`
+                # into every production token, and vendor-api could not be pointed at it.
+                raise ValueError("JWT_ISSUER must be this service's public https URL in prod")
         return self
 
 
