@@ -84,7 +84,7 @@ This renamed identity-api's existing keys and cookie. That was safe because noth
 Same rules as `py-auth` (see its README and each service's `requirements-shared.txt`):
 
 - Each service lists `packages/py-auth` and `packages/py-security` as `-e ../../packages/<name>` lines in `requirements-shared.txt` and installs that file before itself. Neither package is ever in a `pyproject.toml`. The names `shazlo-auth` and `shazlo-security` are not ours on PyPI, so a plain requirement could install someone else's package (dependency confusion); a path install never asks an index.
-- `--config-settings editable_mode=compat`, so mypy can see it.
+- `--config-settings editable_mode=compat`, so mypy can see it. It goes before `-e` on the line, not after the path: Dependabot takes everything after `-e` as the path, so a trailing option made its pip job fail for every service (`test/contracts/requirements-shared.test.js` guards the order).
 - The service images are built from the repository root and copy `packages/py-auth` and `packages/py-security`.
 - `services-ci.yml` has **no path filters, on purpose**: every pull request and every push to main runs every matrix entry, because a filtered-out job would leave its required `test (...)` check pending. The matrix is `identity-api`, `vendor-api`, `py-auth`, `py-security`. Expressions use `startsWith(matrix.service, 'py-')` to run a package in `packages/<name>` and a service in `services/<name>`; only the services install `requirements-shared.txt`. So a change to the package always runs both services' tests too.
 - The package's tests run against fakeredis with Lua, including the rotation scripts.

@@ -4,5 +4,10 @@
 # `shazlo-security` requirement could be satisfied from PyPI, where the names are not ours
 # (dependency confusion). Installing from the path means no index is ever asked for them.
 # `compat` keeps them visible to mypy.
--e ../../packages/py-auth --config-settings editable_mode=compat
--e ../../packages/py-security --config-settings editable_mode=compat
+#
+# Put `--config-settings` before `-e`, never after the path. Dependabot reads everything after `-e`
+# up to a `[`, `#`, quote or `;` as the path, so a flag after the path becomes part of it and
+# every pip update fails with "path based dependencies could not be retrieved". pip accepts
+# options in any order. test/contracts/requirements-shared.test.js checks this.
+--config-settings editable_mode=compat -e ../../packages/py-auth
+--config-settings editable_mode=compat -e ../../packages/py-security
