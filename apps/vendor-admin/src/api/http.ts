@@ -37,8 +37,10 @@ export interface Api<Paths extends object> {
 }
 
 // `getToken` supplies the bearer; on a 401, `renew` gets a fresh one once, shared by parallel calls.
-export function createApi<Paths extends object>({ baseUrl, getToken, renew }: { baseUrl: string; getToken: () => string | null; renew?: () => Promise<boolean> }): Api<Paths> {
-  const client = createClient<Paths>({ baseUrl, credentials: 'include' })
+// Only identity-api needs cookies (its HttpOnly refresh cookie); other APIs use bearer tokens, and
+// sending credentials cross-origin would also require Access-Control-Allow-Credentials there.
+export function createApi<Paths extends object>({ baseUrl, getToken, renew, withCookies = false }: { baseUrl: string; getToken: () => string | null; renew?: () => Promise<boolean>; withCookies?: boolean }): Api<Paths> {
+  const client = createClient<Paths>({ baseUrl, credentials: withCookies ? 'include' : 'same-origin' })
   client.use({
     onRequest({ request }) {
       const token = getToken()

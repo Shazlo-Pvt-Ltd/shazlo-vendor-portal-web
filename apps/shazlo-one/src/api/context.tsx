@@ -84,7 +84,7 @@ export interface AppContext {
 
 export function createAppContext({ identityUrl, vendorApiUrl }: { identityUrl: string; vendorApiUrl: string }): AppContext {
   const session = new SessionStore()
-  const identity = createApi<IdentityPaths>({ baseUrl: identityUrl, getToken: session.accessToken, renew: () => session.refresh() })
+  const identity = createApi<IdentityPaths>({ baseUrl: identityUrl, getToken: session.accessToken, renew: () => session.refresh(), withCookies: true })
   session.identity = identity
   let vendorToken: string | null = null
   const vendorApi = createApi<VendorPaths>({
