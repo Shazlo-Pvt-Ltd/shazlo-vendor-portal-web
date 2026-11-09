@@ -55,7 +55,7 @@ identity-api is on port 8001 and vendor-api on 8002, so both can run side by sid
 
 ## Database
 
-Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (psycopg 3). Migration `0001` is an empty baseline; `0002` adds the vendor and vendor-user tables.
+Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (psycopg 3). Migration `0001` is an empty baseline; `0002` adds the vendor and vendor-user tables; `0003` adds assets and brand profiles.
 
 | Table | Notes |
 |---|---|
@@ -63,8 +63,22 @@ Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (ps
 | `vendor_status_events` | **Append-only** audit of every status change: vendor, `from_status` (NULL when the vendor is created), `to_status`, `actor_type` (`admin`, `system`, `vendor`), `actor_id` (required unless the actor is the system), `reason`. A trigger refuses UPDATE and DELETE, and a vendor with events cannot be deleted |
 | `vendor_users` | A person who signs in for a vendor. `email` unique across all vendors (trimmed, lower-cased); `password_hash` is NULL until an invite is accepted (only `invited` or `disabled` users may lack one); `role` (`owner`, `staff`; **at most one owner per vendor**, by a partial unique index); `status` (`invited`, `active`, `disabled`); `email_verified_at`, `terms_accepted_at`, `last_login_at` |
 | `auth_tokens` | One-time tokens for email verification, invites and password reset. `purpose` (`verify_email`, `invite`, `reset_password`), `token_hash` (unique, must be a 64-character lower-case hex SHA-256), `expires_at`, `used_at`. **The token itself is never stored.** Deleting the user deletes their tokens |
+| `assets` | An uploaded image; the file lives at the provider (Cloudinary), this is its record. `kind` (`brand_logo`, `brand_banner`, `product_image`), `provider` (`cloudinary`), `public_id` (unique), `url` (**https only**), `format`, `bytes`, `width`, `height` (all required once `status` is `ready`), `status` (`pending`, `ready`, `deleted`), `created_by`. `(vendor_id, id)` is unique so other tables can reference an asset together with its vendor |
+| `brand_profiles` | **One row per version** of a vendor's brand page (see below). Content with the published contract's limits (ADR 0003): `brand_name` (120), `tagline` (160), `about` (4000), `logo_asset_id`, `banner_asset_id`, `website_url` (https), `instagram_handle` (`^[A-Za-z0-9._]{1,30}$`), `categories`, price range in paise; plus `version`, `state`, `submitted_at`, `published_at`, `updated_by` |
 
 Role, status and purpose values are plain text columns with check constraints, so adding a value is a migration of that constraint. Vendors and users are never deleted (foreign keys are `RESTRICT`): suspend or disable them instead.
+
+### Brand profiles: draft and published versions
+
+A vendor edits a brand page freely, but shoppers only ever see the version an admin approved. Each version is its own row with a `state`: a vendor edits the `draft`; submitting makes it `pending_review`; approving makes it the `published` one and the previous `published` row `superseded`; rejecting makes it `rejected`. Editing never touches what is live, and old versions stay as history.
+
+Why rows, and not two columns or a JSON blob: the database enforces **at most one draft and one published profile per vendor** with partial unique indexes; every version has its own `version` number, which the central app uses to ignore stale events; and a profile points at its assets with real foreign keys.
+
+- **`version` only increases per vendor and never changes**: a trigger refuses an insert that is not higher than every earlier version of that vendor, and any update of `version`. It takes a per-vendor advisory lock, so two concurrent inserts cannot both pass the check.
+- **A profile can only use its own vendor's assets**: `logo_asset_id` and `banner_asset_id` are composite foreign keys `(vendor_id, asset_id)` to `assets (vendor_id, id)`, so the database refuses another vendor's file. An asset in use cannot be deleted; mark it `deleted` instead.
+- **Approval is one transaction of two UPDATEs, in this order**: the old `published` row to `superseded`, then the approved row to `published` (the unique index is checked per statement, so publishing first fails).
+- **Submitted means complete enough**: a draft may be empty, but anything `pending_review`, `published`, `superseded` or `rejected` needs at least one category and a `submitted_at`; `published_at` is set exactly for `published` and `superseded`. `categories` are trimmed, non-empty, at most 80 characters and unique (case-sensitive, like the contract).
+- **Not constrained here**: how many versions may be `pending_review` at once, and that a logo asset has kind `brand_logo`. Both are Phase 3 rules for the service.
 
 ```sh
 alembic upgrade head

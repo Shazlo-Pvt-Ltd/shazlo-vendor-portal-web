@@ -3,7 +3,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy import func, select, text
+from factories import count, make_user, make_vendor, saved_user, saved_vendor
+from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,49 +22,6 @@ from vendor_api.db.models import (
 )
 
 HASH = "a" * 64  # looks like a SHA-256 hex digest; the schema only checks the shape
-
-
-def make_vendor(slug: str = "acme", email: str = "owner@acme.test", **changes: Any) -> Vendor:
-    values: dict[str, Any] = {
-        "name": "Acme",
-        "slug": slug,
-        "email": email,
-        "phone": "+911234567890",
-        "contact_name": "Asha",
-        "product_type": "apparel",
-        "price_min_paise": 49_900,
-        "price_max_paise": 499_900,
-    }
-    return Vendor(**{**values, **changes})
-
-
-def make_user(vendor: Vendor, email: str = "asha@acme.test", **changes: Any) -> VendorUser:
-    values: dict[str, Any] = {
-        "vendor_id": vendor.id,
-        "email": email,
-        "password_hash": "not-a-real-hash",  # noqa: S106  (placeholder; hashing comes later)
-        "role": VendorUserRole.STAFF,
-        "status": VendorUserStatus.ACTIVE,
-    }
-    return VendorUser(**{**values, **changes})
-
-
-async def saved_vendor(session: AsyncSession, **changes: Any) -> Vendor:
-    vendor = make_vendor(**changes)
-    session.add(vendor)
-    await session.flush()
-    return vendor
-
-
-async def saved_user(session: AsyncSession, vendor: Vendor, **changes: Any) -> VendorUser:
-    user = make_user(vendor, **changes)
-    session.add(user)
-    await session.flush()
-    return user
-
-
-async def count(session: AsyncSession, model: Any) -> int:
-    return await session.scalar(select(func.count()).select_from(model)) or 0
 
 
 # --- vendors -----------------------------------------------------------------------------
