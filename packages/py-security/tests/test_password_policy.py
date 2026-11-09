@@ -1,6 +1,6 @@
 import pytest
 
-from identity_api.services.password_policy import (
+from shazlo_security.passwords import (
     MAX_PASSWORD_LENGTH,
     PasswordPolicyError,
     check_password,

@@ -8,13 +8,14 @@ import jwt
 import pytest
 from fakeredis import FakeAsyncRedis
 from pydantic import ValidationError
+from shazlo_security.passwords import PasswordService
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from identity_api.app import create_app
+from identity_api.core.security import password_config
 from identity_api.core.settings import Settings
 from identity_api.db.models import Admin, Role
 from identity_api.db.session import get_session
-from identity_api.services.passwords import PasswordService
 
 PASSWORD = "correct horse battery"
 EMAIL = "reviewer@shazlo.test"
@@ -79,7 +80,7 @@ async def make_admin(
 ) -> Admin:
     admin = Admin(
         email=EMAIL,
-        password_hash=await PasswordService(settings).hash(PASSWORD),
+        password_hash=await PasswordService(password_config(settings)).hash(PASSWORD),
         display_name="Test Admin",
         must_change_password=must_change_password,
         roles=[await session.get_one(Role, name) for name in roles],

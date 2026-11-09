@@ -1,13 +1,14 @@
-# Build from the repository root: the image includes packages/py-auth.
+# Build from the repository root: the image includes packages/py-auth and packages/py-security.
 #   docker build -f services/identity-api/Dockerfile -t identity-api .
 FROM python:3.12-slim AS builder
 WORKDIR /build
 COPY packages/py-auth ./packages/py-auth
+COPY packages/py-security ./packages/py-security
 COPY services/identity-api/pyproject.toml ./services/identity-api/
 COPY services/identity-api/identity_api ./services/identity-api/identity_api
-# shazlo-auth is built from the repository copy, never fetched from an index: identity-api's
-# pyproject does not list it (see requirements-shared.txt).
-RUN pip wheel --no-cache-dir --wheel-dir /wheels './packages/py-auth[fastapi]' ./services/identity-api
+# shazlo-auth and shazlo-security are built from the repository copy, never fetched from an
+# index: identity-api's pyproject does not list them (see requirements-shared.txt).
+RUN pip wheel --no-cache-dir --wheel-dir /wheels './packages/py-auth[fastapi]' ./packages/py-security ./services/identity-api
 
 FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1

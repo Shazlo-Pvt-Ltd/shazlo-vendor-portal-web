@@ -6,6 +6,8 @@ from fastapi import APIRouter, Cookie, Depends, Request, Response
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisError
 from shazlo_auth import AccessClaims
+from shazlo_security.passwords import MAX_PASSWORD_LENGTH
+from shazlo_security.rate_limit import Check, RateLimitGuard
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from identity_api.api.deps import (
@@ -28,8 +30,6 @@ from identity_api.services.auth import (
     AuthService,
     AuthSession,
 )
-from identity_api.services.password_policy import MAX_PASSWORD_LENGTH
-from identity_api.services.rate_limit import Check, RateLimitGuard
 
 COOKIE_NAME = "refresh_token"
 # The browser sends the cookie to the auth endpoints only.

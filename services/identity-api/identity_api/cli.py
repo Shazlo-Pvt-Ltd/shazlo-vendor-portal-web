@@ -8,16 +8,16 @@ import os
 import sys
 from pathlib import Path
 
+from shazlo_security.passwords import PasswordPolicyError, PasswordService, check_password
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from identity_api.core.security import password_config
 from identity_api.core.settings import Settings, get_settings
 from identity_api.db.models import SUPER_ADMIN, VENDOR_REVIEWER, Admin, Role
 from identity_api.db.session import create_engine, create_sessionmaker
 from identity_api.services.keys import KeyConfigError, new_kid, write_new_key
-from identity_api.services.password_policy import PasswordPolicyError, check_password
-from identity_api.services.passwords import PasswordService
 
 logger = logging.getLogger("identity_api.cli")
 
@@ -97,7 +97,7 @@ async def _run_seed(settings: Settings) -> None:
         async with create_sessionmaker(engine)() as session:
             created = await seed_admin(
                 session,
-                PasswordService(settings),
+                PasswordService(password_config(settings)),
                 email=email,
                 password=password,
                 min_password_length=settings.password_min_length,
