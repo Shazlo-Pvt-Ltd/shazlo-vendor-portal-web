@@ -5,6 +5,12 @@ from pydantic import ValidationError
 
 from vendor_api.core.settings import Settings
 
+# What prod needs besides email: where admin tokens come from (identity-api), over https.
+PROD_IDENTITY = {
+    "identity_jwks_url": "https://identity.shazlo.store/.well-known/jwks.json",
+    "identity_issuer": "https://identity.shazlo.store",
+}
+
 
 def make(**overrides: object) -> Settings:
     values: dict[str, object] = {
@@ -47,6 +53,8 @@ def test_environment_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SMTP_HOST", "smtp.provider.example")
     monkeypatch.setenv("PORTAL_BASE_URL", "https://vendors.shazlo.store")
     monkeypatch.setenv("RATE_LIMIT_HMAC_KEY", "k" * 32)  # required in prod
+    monkeypatch.setenv("IDENTITY_JWKS_URL", PROD_IDENTITY["identity_jwks_url"])
+    monkeypatch.setenv("IDENTITY_ISSUER", PROD_IDENTITY["identity_issuer"])
     s = make()
     assert s.cookie_secure is False
     assert s.env == "prod"
@@ -151,6 +159,7 @@ def test_prod_refuses_unsafe_email_settings(overrides: dict[str, object]) -> Non
     values = {
         "portal_base_url": "https://vendors.shazlo.store",
         "rate_limit_hmac_key": "k" * 32,  # so the email settings are what is refused
+        **PROD_IDENTITY,
         **overrides,
     }
     with pytest.raises(ValidationError, match="EMAIL_BACKEND|SMTP_SECURITY|PORTAL_BASE_URL"):
@@ -166,6 +175,7 @@ def test_prod_accepts_smtp_over_tls_with_an_https_portal() -> None:
         smtp_password="s3cret-value",  # noqa: S106
         portal_base_url="https://vendors.shazlo.store",
         rate_limit_hmac_key="k" * 32,
+        **PROD_IDENTITY,
     )
     assert s.smtp_security == "starttls"
 
@@ -239,6 +249,7 @@ def test_the_hmac_key_is_required_in_prod_and_never_empty() -> None:
         "email_backend": "smtp",
         "smtp_host": "smtp.provider.example",
         "portal_base_url": "https://vendors.shazlo.store",
+        **PROD_IDENTITY,
     }
     for bad in (None, "", "   ", "x" * 31):
         with pytest.raises(ValidationError, match="RATE_LIMIT_HMAC_KEY"):
@@ -274,3 +285,58 @@ def test_link_lifetimes() -> None:
     ):
         with pytest.raises(ValidationError):
             make(**{name: value})
+
+
+# --- identity-api (admin tokens) ---------------------------------------------------------
+
+
+def test_admin_auth_is_off_unless_configured() -> None:
+    s = make()
+    assert (s.identity_jwks_url, s.identity_issuer) == (None, None)
+    # Empty counts as unset (a line copied from .env.example).
+    blank = make(identity_jwks_url="  ", identity_issuer="")
+    assert (blank.identity_jwks_url, blank.identity_issuer) == (None, None)
+
+
+def test_the_two_identity_settings_go_together() -> None:
+    with pytest.raises(ValidationError, match="go together"):
+        make(identity_jwks_url="https://identity.test/.well-known/jwks.json")
+    with pytest.raises(ValidationError, match="go together"):
+        make(identity_issuer="https://identity.test")
+
+
+def test_dev_may_use_plain_http_for_a_compose_hostname() -> None:
+    s = make(
+        identity_jwks_url="http://identity-api:8001/.well-known/jwks.json",
+        identity_issuer="http://localhost:8001",
+    )
+    assert s.identity_jwks_url is not None
+
+
+@pytest.mark.parametrize("env", ["test", "prod"])
+def test_outside_dev_the_jwks_url_must_be_https(env: str) -> None:
+    extra: dict[str, object] = {
+        "email_backend": "smtp",
+        "smtp_host": "smtp.provider.example",
+        "portal_base_url": "https://vendors.shazlo.store",
+        "rate_limit_hmac_key": "k" * 32,
+    }
+    for url in (
+        "http://identity.test/jwks",
+        "http://127.0.0.1:8001/jwks",
+        "ftp://x/jwks",
+        "nohost",
+    ):
+        with pytest.raises(ValidationError, match="IDENTITY_JWKS_URL"):
+            make(env=env, identity_jwks_url=url, identity_issuer="https://identity.test", **extra)
+
+
+def test_prod_needs_the_identity_settings() -> None:
+    with pytest.raises(ValidationError, match="IDENTITY_JWKS_URL"):
+        make(
+            env="prod",
+            email_backend="smtp",
+            smtp_host="smtp.provider.example",
+            portal_base_url="https://vendors.shazlo.store",
+            rate_limit_hmac_key="k" * 32,
+        )

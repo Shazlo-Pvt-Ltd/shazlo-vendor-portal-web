@@ -57,6 +57,7 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `ACCESS_TOKEN_TTL_SECONDS` | `900` | 1 to 3600 |
 | `ARGON2_MEMORY_COST_KIB` / `ARGON2_TIME_COST` / `ARGON2_PARALLELISM` | `19456` / `2` / `1` | password hashing cost (OWASP baseline); raising it rehashes on the next login |
 | `PASSWORD_MIN_LENGTH` | `12` | the longest accepted is 128 |
+| `IDENTITY_JWKS_URL` / `IDENTITY_ISSUER` | unset | where admin tokens come from (identity-api). Both or neither; **required in prod**; https outside dev. Without them there is no `/v1/admin` group |
 | `RATE_LIMIT_*` | see Rate limits | `"<limit>/<window seconds>"` per endpoint, e.g. `RATE_LIMIT_SIGNUP_IP=10/3600` |
 | `RATE_LIMIT_FAIL_CLOSED` | see Rate limits | endpoints that answer `503` when Redis is down |
 | `RATE_LIMIT_HMAC_KEY` | random per process | **required in prod**, at least 32 characters, shared by every instance, and not identity-api's |
@@ -118,6 +119,21 @@ Vendor sessions work like admin sessions (ADR 0009): a 15-minute access token (t
 - **Cookie and Redis keys do not overlap with identity-api's**, because both services run on one parent domain and share a Redis: the cookie is `vendor_refresh` (identity-api: `identity_refresh`), path `/v1/auth`, `HttpOnly`, `Secure` and `SameSite` from settings; the Redis keys start with `vendor:` (identity-api: `identity:`); only SHA-256 hashes are stored. A test puts both stores on one Redis and checks neither touches the other's sessions.
 - **Dependencies** (`api/deps.py`): `current_vendor_user` verifies the token, then reads the user and the vendor **from the database on every request**: the user must be active with a verified email, the token's `vendor_id` must be the user's vendor, and the vendor must be `pending` or `approved`. So disabling a user or suspending a vendor takes effect at once, not when the 15-minute token expires, and a role change applies immediately. `require_vendor_role(VendorUserRole.OWNER)` lets only the listed roles through (`403 forbidden`).
 - **Ending sessions when a vendor's status changes**: `AuthService.end_sessions_of_vendor(db, vendor_id)` ends every session of every user of that vendor. Phase 3 calls it when an admin suspends or rejects a vendor. Refreshing is refused for those statuses anyway; the hook also stops a vendor that is approved again from getting its old sessions back. `end_sessions_of_user` does the same for one user (call it when a user is disabled).
+
+## Admin API (identity-api tokens)
+
+vendor-api keeps two route groups (ADR 0009) and they never accept each other's tokens:
+
+| Group | Accepts | How |
+|---|---|---|
+| `/v1/vendor/*`, `/v1/auth/*` | **only** vendor-api's own tokens | its own key ring (see Tokens and keys) |
+| `/v1/admin/*` | **only** identity-api tokens | `packages/py-auth`: `TokenVerifier(issuer=IDENTITY_ISSUER, audience="vendor-api")` fed by identity-api's JWKS |
+
+- **`GET /v1/admin/me`** returns the admin's id and roles **from the token**. It is the first admin endpoint and a check for Phase 3. The group requires the `vendor_reviewer` role (`super_admin` always passes); anything else is `403`, no token or a bad one `401`.
+- **The reviewer is the token's, never the client's.** A handler takes `admin: Reviewer` (`api/admin.py`) and uses `admin.id`, the token's `sub`. Admin request bodies derive from `AdminRequest`, which forbids unknown fields, so a `reviewer_id` in a body is a `422`; one in the query or a header is never read. A test proves it.
+- **identity-api being down does not stop vendor-api.** The `JwksClient` is created once at startup and fetches nothing until the first admin token. Keys are cached for 10 minutes, refetched at most once a minute, and the last good keys stay in use during an outage; an unknown `kid` cannot turn an outage into a request per token. Before the first successful fetch an admin request is `401`, not `500`.
+- **`/ready` does not report identity-api.** Readiness means "this service can do its own work": Postgres and Redis. Vendors keep signing in while identity-api is down, and only the admin group degrades (stale keys keep working for a while). Reporting it would take vendor-api out of rotation for a dependency most of its traffic does not use.
+- A vendor token on `/v1/admin/*` is `401` (its key is not in identity-api's JWKS), and an identity-api token on `/v1/vendor/*` is `401`; tests cover both, including a token signed with vendor-api's key that claims `super_admin`.
 
 ## Team, invites and password reset
 

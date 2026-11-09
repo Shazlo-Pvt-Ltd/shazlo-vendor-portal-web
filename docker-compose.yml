@@ -89,6 +89,10 @@ services:
       JWT_ISSUER: http://localhost:${VENDOR_API_PORT:-8002}
       JWT_KEYS: ${VENDOR_JWT_KEYS:-}
       JWT_SIGNING_KID: ${VENDOR_JWT_SIGNING_KID:-}
+      # Admin tokens come from identity-api. The JWKS is fetched on the first admin token, so
+      # vendor-api starts without identity-api (plain http is allowed in dev only).
+      IDENTITY_JWKS_URL: http://identity-api:8001/.well-known/jwks.json
+      IDENTITY_ISSUER: http://localhost:${IDENTITY_API_PORT:-8001}
       # Emails go to Mailpit (read them at http://localhost:8025); nothing leaves the machine.
       EMAIL_BACKEND: smtp
       SMTP_HOST: mailpit
