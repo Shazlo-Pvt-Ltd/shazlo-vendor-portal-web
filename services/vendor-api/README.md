@@ -55,7 +55,7 @@ identity-api is on port 8001 and vendor-api on 8002, so both can run side by sid
 
 ## Database
 
-Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (psycopg 3). Migration `0001` is an empty baseline; `0002` adds the vendor and vendor-user tables; `0003` adds assets and brand profiles; `0004` adds products.
+Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (psycopg 3). Migration `0001` is an empty baseline; `0002` adds the vendor and vendor-user tables; `0003` adds assets and brand profiles; `0004` adds products; `0005` adds reviews.
 
 | Table | Notes |
 |---|---|
@@ -70,6 +70,8 @@ Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (ps
 | `product_variants` | A variant's stable identity: `sku` (unique per vendor ignoring case), `size`, `color` (`''` = none; `(product, size, color)` unique). Its `id` is the contract's `variant_id`. No stock: the central app owns it |
 | `product_revision_variants` | What a revision says about a variant: `price_paise` (> 0), `mrp_paise` (>= price), `is_active` |
 | `product_images` | An ordered image of a revision: `position` 1 to 10 (unique per revision, so at most 10), `alt_text` (200), `asset_id` |
+| `reviews` | An admin's review of one version of something a vendor submitted. `subject` (`brand_profile` or `product`) with exactly one of `brand_profile_id` / `product_revision_id`; `status` (`pending`, `approved`, `rejected`, `withdrawn`); `submitted_by`, `submitted_at`; `reviewer_id` (an identity-api admin id, no foreign key: another database), `decided_at`, `reason` |
+| `review_events` | **Append-only** audit trail of a review: `action` (`submitted`, `approved`, `rejected`, `withdrawn`, `reopened`), `actor_type` (`admin`, `system`, `vendor`), `actor_id` (required unless the actor is the system), `reason`. A trigger refuses UPDATE, DELETE and TRUNCATE, and a review with events cannot be deleted |
 
 Role, status and purpose values are plain text columns with check constraints, so adding a value is a migration of that constraint. Vendors and users are never deleted (foreign keys are `RESTRICT`): suspend or disable them instead.
 
@@ -95,6 +97,17 @@ An approved product keeps its live content while a new revision is edited and re
 - **Submitting needs something to review**: a trigger refuses a `submitted_at` on a revision without at least one active variant and one image. Insert a revision as a draft, add those, then submit.
 - **Two version rules**: a revision's `version` increases per product and never changes (the trigger from brand profiles); `products.version` is the aggregate version the central app uses to drop stale events: the service raises it whenever the live product changes, and the database never lets it go down.
 - **Not constrained here**: that an image asset has kind `product_image`, that a product's revisions are only edited while unsubmitted, and the status transitions. Those are Phase 3 rules for the service.
+
+### Reviews
+
+Everything a vendor submits (a brand profile version, a product revision) stays pending until an admin reviews it.
+
+- **A review points at the exact version row**, not at "the profile" or "the product": a real foreign key to a `brand_profiles` row (one row per version) or a `product_revisions` row. So "the version reviewed" is that row's `version`, a later edit cannot change what was reviewed, and the reference is checked by the database. (A polymorphic `subject_id` plus a version number could not be a foreign key.) Each reference is composite with `vendor_id`, so a review and its subject always belong to the same vendor, and a version that has been reviewed cannot be deleted.
+- **At most one pending review per version**, by two partial unique indexes. A decided version can be reviewed again; reopening a review while another is pending is refused.
+- **Rules in the database**: a `rejected` review needs a non-empty `reason`; an `approved` or `rejected` one needs `reviewer_id` and `decided_at`; a `withdrawn` one has a time but no reviewer (it is the vendor's); a `pending` one has neither; `decided_at` is not before `submitted_at`.
+- **The reviewer** is an identity-api admin: only the UUID is stored, and it always comes from the verified token, never from the request body.
+- **Queue indexes** for Phase 3: pending reviews by `submitted_at` (a partial index), reviews by vendor and status, and by status and `submitted_at`.
+- **`review_events` cannot be changed**, even by a bug in the application: a trigger raises for every UPDATE and DELETE, and another for TRUNCATE. The application should only ever INSERT; the trigger is the backstop. (`vendor_status_events` has the same trigger without the TRUNCATE guard, which a later migration can add.)
 
 ```sh
 alembic upgrade head

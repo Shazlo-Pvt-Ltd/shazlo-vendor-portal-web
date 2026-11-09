@@ -16,6 +16,8 @@ TABLES = {
     "product_variants",
     "product_revision_variants",
     "product_images",
+    "reviews",
+    "review_events",
 }
 # Helper functions the schema creates: a downgrade must remove them too.
 FUNCTIONS = (
@@ -24,6 +26,7 @@ FUNCTIONS = (
     "enforce_version_increases",
     "enforce_version_never_decreases",
     "require_variant_and_image_on_submit",
+    "forbid_update_delete_truncate",
 )
 
 
@@ -63,6 +66,33 @@ def test_downgrade_removes_the_database_functions(alembic_config: Config, migrat
         finally:
             command.upgrade(alembic_config, "head")
         assert _function_count(engine) == len(FUNCTIONS)
+    finally:
+        engine.dispose()
+
+
+def _constraint_exists(engine: Engine, name: str) -> bool:
+    query = text("SELECT count(*) FROM pg_constraint WHERE conname = :name")
+    with engine.connect() as connection:
+        return bool(connection.scalar(query, {"name": name}))
+
+
+def test_the_review_migration_alone_can_be_undone_and_redone(
+    alembic_config: Config, migrated_db: str
+) -> None:
+    engine = create_engine(sync_url(migrated_db))
+    try:
+        assert _constraint_exists(engine, "uq_brand_profiles_id_vendor_id")
+        try:
+            command.downgrade(alembic_config, "0004")
+            tables = _tables(migrated_db)
+            assert {"products", "brand_profiles"} <= tables
+            assert not {"reviews", "review_events"} & tables
+            # The key it added to an earlier table goes too.
+            assert not _constraint_exists(engine, "uq_brand_profiles_id_vendor_id")
+        finally:
+            command.upgrade(alembic_config, "head")
+        assert {"reviews", "review_events"} <= _tables(migrated_db)
+        assert _constraint_exists(engine, "uq_brand_profiles_id_vendor_id")
     finally:
         engine.dispose()
 
