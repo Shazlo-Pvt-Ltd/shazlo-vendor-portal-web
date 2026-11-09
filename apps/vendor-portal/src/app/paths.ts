@@ -1,0 +1,16 @@
+export const paths = {
+  signIn: '/sign-in',
+  apply: '/apply',
+  setPassword: '/set-password',
+  forgotPassword: '/forgot-password',
+  overview: '/',
+  brand: '/brand',
+  products: '/products',
+  newProduct: '/products/new',
+  product: (id: string) => `/products/${id}`,
+  bulkImport: '/products/import',
+  review: '/review',
+  settings: '/settings',
+  team: '/team',
+  help: '/help',
+} as const

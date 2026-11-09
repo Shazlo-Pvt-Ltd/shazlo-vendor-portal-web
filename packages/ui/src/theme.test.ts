@@ -34,7 +34,18 @@ describe('theme', () => {
   })
 
   it('does not declare Voyage font files unless asked to', () => {
-    expect(baselineStyles(theme)).toBeUndefined()
+    const css = String(baselineStyles(theme))
+    expect(css).not.toContain('@font-face')
+    expect(css).not.toContain('voyage')
+  })
+
+  it('themes the browser surfaces: selection, focus ring and bold text', () => {
+    const css = String(baselineStyles(theme))
+    expect(css).toContain('::selection { background: #FFEDA3')
+    expect(css).toContain(':focus-visible { outline: 2px solid #103C64')
+    // Ovo has one weight, so bold would be synthesised.
+    expect(css).toContain('b, strong { font-weight: 400')
+    expect(theme.typography.fontWeightBold).toBe(400)
   })
 
   it('adds @font-face rules when a Voyage URL is given', () => {

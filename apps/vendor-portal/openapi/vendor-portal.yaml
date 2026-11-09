@@ -1,0 +1,487 @@
+openapi: 3.1.0
+info:
+  title: Shazlo vendor portal API (portal-side contract)
+  version: 0.1.0
+  description: |
+    The routes the seller portal calls, written from docs/05-api-design.md section 5 before
+    vendor-api implements them. Routes marked `x-proposal: true` are not in the design doc yet;
+    they are what the screens need and should be reviewed with the vendor-api owners.
+    When vendor-api serves its own openapi.json, generate src/api/schema.d.ts from that instead
+    and delete this file.
+servers:
+  - url: http://localhost:8001
+paths:
+  /api/v1/public/vendor-applications:
+    post:
+      operationId: applyToSell
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/VendorApplication' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/ApplicationReceipt' } } } }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /api/v1/vendor/auth/login:
+    post:
+      operationId: login
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [identifier, password], properties: { identifier: { type: string }, password: { type: string } } } } } }
+      responses:
+        '200': { description: Signed in, content: { application/json: { schema: { $ref: '#/components/schemas/TokenPair' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /api/v1/vendor/auth/refresh:
+    post:
+      operationId: refresh
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [refresh_token], properties: { refresh_token: { type: string } } } } } }
+      responses:
+        '200': { description: New pair, content: { application/json: { schema: { $ref: '#/components/schemas/TokenPair' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+  /api/v1/vendor/auth/logout:
+    post:
+      operationId: logout
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [refresh_token], properties: { refresh_token: { type: string } } } } } }
+      responses:
+        '204': { description: Signed out }
+  /api/v1/vendor/auth/invites/{token}:
+    get:
+      operationId: getInvite
+      x-proposal: true
+      description: Who an invite link is for, so the set-password screen can greet them.
+      parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Invite, content: { application/json: { schema: { type: object, required: [email, brand_name, owner_name], properties: { email: { type: string }, brand_name: { type: string }, owner_name: { type: string } } } } } }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/v1/vendor/auth/accept-invite:
+    post:
+      operationId: acceptInvite
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [token, password], properties: { token: { type: string }, password: { type: string } } } } } }
+      responses:
+        '200': { description: Password set and signed in, content: { application/json: { schema: { $ref: '#/components/schemas/TokenPair' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/vendor/auth/password/forgot:
+    post:
+      operationId: forgotPassword
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [identifier], properties: { identifier: { type: string } } } } } }
+      responses:
+        '202': { description: Always accepted, so accounts are not revealed }
+
+  /api/v1/vendor/me:
+    get:
+      operationId: getMe
+      responses:
+        '200': { description: Signed-in seller, content: { application/json: { schema: { $ref: '#/components/schemas/Me' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+  /api/v1/vendor/summary:
+    get:
+      operationId: getSummary
+      x-proposal: true
+      description: Counts for the sidebar, the overview figures and the review banner.
+      responses:
+        '200': { description: Summary, content: { application/json: { schema: { $ref: '#/components/schemas/Summary' } } } }
+
+  /api/v1/vendor/brand-page:
+    get:
+      operationId: getBrandPage
+      x-proposal: true
+      responses:
+        '200': { description: Draft and live versions, content: { application/json: { schema: { $ref: '#/components/schemas/BrandPage' } } } }
+  /api/v1/vendor/brand-page/draft:
+    put:
+      operationId: saveBrandDraft
+      x-proposal: true
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/BrandProfile' } } } }
+      responses:
+        '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/BrandPage' } } } }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      operationId: discardBrandDraft
+      x-proposal: true
+      responses:
+        '200': { description: Draft discarded, content: { application/json: { schema: { $ref: '#/components/schemas/BrandPage' } } } }
+  /api/v1/vendor/brand-page/submit:
+    post:
+      operationId: submitBrandPage
+      x-proposal: true
+      responses:
+        '200': { description: In review, content: { application/json: { schema: { $ref: '#/components/schemas/BrandPage' } } } }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /api/v1/vendor/uploads/presign:
+    post:
+      operationId: presignUpload
+      x-proposal: true
+      description: Signed Cloudinary upload for brand images and product photos (docs/adr/0005).
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [purpose, content_type, size_bytes], properties: { purpose: { type: string, enum: [logo, cover, product] }, content_type: { type: string }, size_bytes: { type: integer } } } } } }
+      responses:
+        '200': { description: Upload target, content: { application/json: { schema: { $ref: '#/components/schemas/Presign' } } } }
+        '413': { $ref: '#/components/responses/Error' }
+        '415': { $ref: '#/components/responses/Error' }
+
+  /api/v1/vendor/products:
+    get:
+      operationId: listProducts
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/ProductStatus' } }
+        - { name: q, in: query, schema: { type: string } }
+        - { name: category, in: query, schema: { type: string } }
+        - { name: gender, in: query, schema: { type: string } }
+        - { name: stock, in: query, schema: { type: string, enum: [in_stock, low, out] } }
+        - { name: sort, in: query, schema: { type: string, enum: [updated_desc, price_asc, price_desc, stock_asc] } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 50 } }
+      responses:
+        '200': { description: Page of products, content: { application/json: { schema: { $ref: '#/components/schemas/ProductPage' } } } }
+    post:
+      operationId: createProduct
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProductInput' } } } }
+      responses:
+        '201': { description: Draft created, content: { application/json: { schema: { $ref: '#/components/schemas/Product' } } } }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/vendor/products/bulk:
+    post:
+      operationId: bulkProducts
+      x-proposal: true
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [action, ids], properties: { action: { type: string, enum: [submit, archive] }, ids: { type: array, items: { type: string } } } } } } }
+      responses:
+        '200': { description: Per-product results, content: { application/json: { schema: { type: object, required: [results], properties: { results: { type: array, items: { type: object, required: [id, ok], properties: { id: { type: string }, ok: { type: boolean }, code: { type: string }, message: { type: string } } } } } } } } }
+  /api/v1/vendor/products/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get:
+      operationId: getProduct
+      responses:
+        '200': { description: Product, content: { application/json: { schema: { $ref: '#/components/schemas/Product' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      operationId: updateProduct
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProductInput' } } } }
+      responses:
+        '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/Product' } } } }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/vendor/products/{id}/submit:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      operationId: submitProduct
+      responses:
+        '200': { description: In review, content: { application/json: { schema: { $ref: '#/components/schemas/Product' } } } }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/vendor/products/{id}/archive:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      operationId: archiveProduct
+      responses:
+        '200': { description: Archived, content: { application/json: { schema: { $ref: '#/components/schemas/Product' } } } }
+  /api/v1/vendor/products/{id}/images:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      operationId: addProductImage
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [key, angle], properties: { key: { type: string }, angle: { $ref: '#/components/schemas/PhotoAngle' } } } } } }
+      responses:
+        '201': { description: Registered, content: { application/json: { schema: { $ref: '#/components/schemas/Product' } } } }
+  /api/v1/vendor/products/{id}/images/{image_id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - { name: image_id, in: path, required: true, schema: { type: string } }
+    delete:
+      operationId: removeProductImage
+      responses:
+        '200': { description: Removed, content: { application/json: { schema: { $ref: '#/components/schemas/Product' } } } }
+
+  /api/v1/vendor/reviews:
+    get:
+      operationId: listReviews
+      x-proposal: true
+      description: Everything the seller has sent for review, newest first.
+      parameters:
+        - { name: state, in: query, schema: { type: string, enum: [waiting, rejected, approved] } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 50 } }
+      responses:
+        '200': { description: Review items, content: { application/json: { schema: { $ref: '#/components/schemas/ReviewPage' } } } }
+
+  /api/v1/vendor/imports/template.csv:
+    get:
+      operationId: importTemplate
+      responses:
+        '200': { description: CSV template, content: { text/csv: { schema: { type: string } } } }
+  /api/v1/vendor/imports:
+    post:
+      operationId: startImport
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } } } } }
+      responses:
+        '202': { description: Checking, content: { application/json: { schema: { type: object, required: [job_id], properties: { job_id: { type: string } } } } } }
+        '413': { $ref: '#/components/responses/Error' }
+        '415': { $ref: '#/components/responses/Error' }
+  /api/v1/vendor/imports/{job_id}:
+    parameters: [{ name: job_id, in: path, required: true, schema: { type: string } }]
+    get:
+      operationId: getImport
+      responses:
+        '200': { description: Job, content: { application/json: { schema: { $ref: '#/components/schemas/ImportJob' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/v1/vendor/imports/{job_id}/commit:
+    parameters: [{ name: job_id, in: path, required: true, schema: { type: string } }]
+    post:
+      operationId: commitImport
+      x-proposal: true
+      responses:
+        '200': { description: Drafts created, content: { application/json: { schema: { type: object, required: [created], properties: { created: { type: integer } } } } } }
+        '409': { $ref: '#/components/responses/Error' }
+
+components:
+  responses:
+    Error:
+      description: Error envelope (docs/05-api-design.md section 2)
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  schemas:
+    Error:
+      type: object
+      required: [message, extra]
+      properties:
+        message: { type: string }
+        extra:
+          type: object
+          required: [code]
+          properties:
+            code: { type: string }
+            fields: { type: object, additionalProperties: { type: string } }
+    TokenPair:
+      type: object
+      required: [access_token, refresh_token, expires_in]
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        expires_in: { type: integer }
+    VendorApplication:
+      type: object
+      required: [brand_name, owner_name, phone, email, city, product_types, price_min_paise, price_max_paise, about]
+      properties:
+        brand_name: { type: string }
+        owner_name: { type: string }
+        phone: { type: string }
+        email: { type: string }
+        city: { type: string }
+        instagram_or_website: { type: string }
+        product_types: { type: array, items: { type: string } }
+        price_min_paise: { type: integer }
+        price_max_paise: { type: integer }
+        about: { type: string }
+    ApplicationReceipt:
+      type: object
+      required: [id, status]
+      properties: { id: { type: string }, status: { type: string, enum: [applied] } }
+    Me:
+      type: object
+      required: [vendor, user, role, setup]
+      properties:
+        vendor:
+          type: object
+          required: [id, brand_name, status, approved_at, commission_bps]
+          properties:
+            id: { type: string }
+            brand_name: { type: string }
+            status: { type: string, enum: [approved, suspended] }
+            approved_at: { type: [string, 'null'], format: date-time }
+            commission_bps: { type: integer }
+        user:
+          type: object
+          required: [id, name, email]
+          properties: { id: { type: string }, name: { type: string }, email: { type: string } }
+        role: { type: string, enum: [vendor_owner, vendor_staff] }
+        setup:
+          type: object
+          required: [password_set, brand_page, first_product, return_policy, live_products, live_target]
+          properties:
+            password_set: { type: boolean }
+            brand_page: { type: boolean }
+            first_product: { type: boolean }
+            return_policy: { type: boolean }
+            live_products: { type: integer }
+            live_target: { type: integer }
+    Summary:
+      type: object
+      required: [products, reviews_waiting, oldest_waiting_hours, sent_back]
+      properties:
+        products: { $ref: '#/components/schemas/StatusCounts' }
+        reviews_waiting: { type: integer }
+        oldest_waiting_hours: { type: [integer, 'null'] }
+        sent_back: { type: integer }
+    StatusCounts:
+      type: object
+      required: [all, approved, pending_review, rejected, draft, archived]
+      properties:
+        all: { type: integer }
+        approved: { type: integer }
+        pending_review: { type: integer }
+        rejected: { type: integer }
+        draft: { type: integer }
+        archived: { type: integer }
+    BrandProfile:
+      type: object
+      required: [brand_name, based_in, tagline, story, logo_url, cover_url, return_policy, dispatch_time, instagram, website]
+      properties:
+        brand_name: { type: string }
+        based_in: { type: string }
+        tagline: { type: string, maxLength: 60 }
+        story: { type: string, maxLength: 600 }
+        logo_url: { type: [string, 'null'] }
+        cover_url: { type: [string, 'null'] }
+        return_policy: { type: string, enum: [no_returns, '7_day', '14_day'] }
+        dispatch_time: { type: string, enum: ['1_2_days', '2_3_days', '3_5_days', '5_7_days'] }
+        instagram: { type: string }
+        website: { type: string }
+    BrandPage:
+      type: object
+      required: [live, live_since, draft, draft_saved_at, changed_fields, review]
+      properties:
+        live: { oneOf: [{ $ref: '#/components/schemas/BrandProfile' }, { type: 'null' }] }
+        live_since: { type: [string, 'null'], format: date-time }
+        draft: { oneOf: [{ $ref: '#/components/schemas/BrandProfile' }, { type: 'null' }] }
+        draft_saved_at: { type: [string, 'null'], format: date-time }
+        changed_fields: { type: array, items: { type: string } }
+        review: { $ref: '#/components/schemas/ReviewState' }
+    ReviewState:
+      type: object
+      required: [state]
+      properties:
+        state: { type: string, enum: [none, waiting, rejected, approved] }
+        reason: { type: string }
+        at: { type: string, format: date-time }
+    Presign:
+      type: object
+      required: [upload_url, key, fields]
+      properties:
+        upload_url: { type: string }
+        key: { type: string }
+        fields: { type: object, additionalProperties: { type: string } }
+    ProductStatus: { type: string, enum: [draft, pending_review, approved, rejected, archived] }
+    PhotoAngle: { type: string, enum: [front, back, closeup, extra] }
+    ProductSummary:
+      type: object
+      required: [id, title, sku, category, status, price_paise, mrp_paise, stock, thumbnail_url, updated_at, edit_in_review, publishing]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        sku: { type: string }
+        category: { type: string }
+        status: { $ref: '#/components/schemas/ProductStatus' }
+        price_paise: { type: [integer, 'null'] }
+        mrp_paise: { type: [integer, 'null'] }
+        stock: { type: [integer, 'null'] }
+        thumbnail_url: { type: [string, 'null'] }
+        updated_at: { type: string, format: date-time }
+        edit_in_review: { type: boolean }
+        publishing: { type: boolean }
+    ProductPage:
+      type: object
+      required: [items, next_cursor, total, counts]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/ProductSummary' } }
+        next_cursor: { type: [string, 'null'] }
+        total: { type: integer }
+        counts: { $ref: '#/components/schemas/StatusCounts' }
+    Variant:
+      type: object
+      required: [size, sku, stock]
+      properties:
+        size: { type: string }
+        sku: { type: string }
+        stock: { type: integer, minimum: 0 }
+    ProductInput:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+        category: { type: string }
+        gender: { type: string }
+        fabric: { type: string }
+        price_paise: { type: [integer, 'null'] }
+        mrp_paise: { type: [integer, 'null'] }
+        variants: { type: array, items: { $ref: '#/components/schemas/Variant' } }
+        returns_use_default: { type: boolean }
+    Product:
+      type: object
+      required: [id, title, description, category, gender, fabric, sku, status, price_paise, mrp_paise, images, variants, returns_use_default, review, history, updated_at, edit_in_review]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        category: { type: string }
+        gender: { type: string }
+        fabric: { type: string }
+        sku: { type: string }
+        status: { $ref: '#/components/schemas/ProductStatus' }
+        price_paise: { type: [integer, 'null'] }
+        mrp_paise: { type: [integer, 'null'] }
+        images:
+          type: array
+          items:
+            type: object
+            required: [id, url, angle]
+            properties: { id: { type: string }, url: { type: string }, angle: { $ref: '#/components/schemas/PhotoAngle' } }
+        variants: { type: array, items: { $ref: '#/components/schemas/Variant' } }
+        returns_use_default: { type: boolean }
+        review: { $ref: '#/components/schemas/ReviewState' }
+        history:
+          type: array
+          items:
+            type: object
+            required: [at, event]
+            properties:
+              at: { type: string, format: date-time }
+              event: { type: string, enum: [created, submitted, rejected, approved, archived] }
+              note: { type: string }
+        updated_at: { type: string, format: date-time }
+        edit_in_review: { type: boolean }
+    ReviewItem:
+      type: object
+      required: [id, subject, kind, state, submitted_at]
+      properties:
+        id: { type: string }
+        subject:
+          type: object
+          required: [type, id, title]
+          properties:
+            type: { type: string, enum: [product, brand_page] }
+            id: { type: string }
+            title: { type: string }
+            detail: { type: string }
+            thumbnail_url: { type: [string, 'null'] }
+        kind: { type: string, enum: [new, edit] }
+        state: { type: string, enum: [waiting, rejected, approved] }
+        submitted_at: { type: string, format: date-time }
+        decided_at: { type: string, format: date-time }
+        reason: { type: string }
+        publishing: { type: boolean }
+    ReviewPage:
+      type: object
+      required: [items, counts]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/ReviewItem' } }
+        counts:
+          type: object
+          required: [all, waiting, rejected, approved]
+          properties: { all: { type: integer }, waiting: { type: integer }, rejected: { type: integer }, approved: { type: integer } }
+    ImportJob:
+      type: object
+      required: [id, status, file_name, total_rows, ok_rows, error_rows, image_errors, errors]
+      properties:
+        id: { type: string }
+        status: { type: string, enum: [checking, ready, committed, failed] }
+        file_name: { type: string }
+        total_rows: { type: integer }
+        ok_rows: { type: integer }
+        error_rows: { type: integer }
+        image_errors: { type: integer }
+        errors:
+          type: array
+          items:
+            type: object
+            required: [row, product, column, message]
+            properties:
+              row: { type: integer }
+              product: { type: [string, 'null'] }
+              column: { type: string }
+              message: { type: string }

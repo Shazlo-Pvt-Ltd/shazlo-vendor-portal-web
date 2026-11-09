@@ -4,6 +4,7 @@ import { brand, fontFamily, neutral, radius, status, statusBackground, typeScale
 
 declare module '@mui/material/styles' {
   interface TypographyVariants {
+    pageTitle: CSSProperties
     display1: CSSProperties
     display2: CSSProperties
     stat: CSSProperties
@@ -11,6 +12,7 @@ declare module '@mui/material/styles' {
     informal: CSSProperties
   }
   interface TypographyVariantsOptions {
+    pageTitle?: CSSProperties
     display1?: CSSProperties
     display2?: CSSProperties
     stat?: CSSProperties
@@ -21,6 +23,7 @@ declare module '@mui/material/styles' {
 
 declare module '@mui/material/Typography' {
   interface TypographyPropsVariantOverrides {
+    pageTitle: true
     display1: true
     display2: true
     stat: true
@@ -46,6 +49,15 @@ function type(s: TypeStyle): CSSProperties {
     letterSpacing: `${s.letterSpacing}px`,
   }
 }
+
+// Browser surfaces themed from the palette: selection, caret, focus ring, figures.
+const baseCss = `
+::selection { background: ${brand.cream}; color: ${neutral.ink}; }
+:root { caret-color: ${brand.brown}; accent-color: ${brand.brown}; }
+:focus-visible { outline: 2px solid ${brand.navy}; outline-offset: 2px; }
+b, strong { font-weight: 400; color: ${neutral.ink}; }
+a { text-underline-offset: 0.18em; }
+`
 
 function baseOptions({ voyage }: ShazloThemeOptions): ThemeOptions {
   return {
@@ -73,6 +85,13 @@ function baseOptions({ voyage }: ShazloThemeOptions): ThemeOptions {
     shape: { borderRadius: radius.control },
     typography: {
       fontFamily: fontFamily.body,
+      // Ovo ships one weight; anything heavier would be synthesised by the browser.
+      fontWeightMedium: 400,
+      fontWeightBold: 400,
+      pageTitle: {
+        ...type(typeScale.pageTitle),
+        '@media (max-width: 599.95px)': { fontSize: '2rem', lineHeight: 1.15, letterSpacing: '-0.3px' },
+      },
       display1: type(typeScale.displayXl),
       display2: type(typeScale.displayL),
       h1: type(typeScale.h1),
@@ -93,10 +112,10 @@ function baseOptions({ voyage }: ShazloThemeOptions): ThemeOptions {
       informal: type(typeScale.informal),
     },
     components: {
-      MuiCssBaseline: voyage ? { styleOverrides: voyageFontFaces(voyage) } : {},
+      MuiCssBaseline: { styleOverrides: (voyage ? voyageFontFaces(voyage) : '') + baseCss },
       MuiTypography: {
         defaultProps: {
-          variantMapping: { display1: 'h1', display2: 'h2', stat: 'p', mono: 'code', informal: 'p' },
+          variantMapping: { pageTitle: 'h1', display1: 'h1', display2: 'h2', stat: 'p', mono: 'code', informal: 'p' },
         },
       },
       MuiButton: {
