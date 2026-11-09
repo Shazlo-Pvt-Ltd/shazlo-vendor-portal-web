@@ -38,7 +38,7 @@ services:
   identity-api:
     profiles: ["identity"]
     build:
-      # The image also contains packages/py-auth, so the context is the repository root
+      # The image also contains packages/py-auth and packages/py-security, so the context is the repository root
       # (services/identity-api/Dockerfile.dockerignore limits what is sent).
       context: .
       dockerfile: services/identity-api/Dockerfile

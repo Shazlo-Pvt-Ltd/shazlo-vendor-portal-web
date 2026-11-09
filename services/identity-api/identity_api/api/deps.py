@@ -6,15 +6,15 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from shazlo_auth import AccessClaims, InvalidTokenError, TokenVerifier
 from shazlo_auth.fastapi import AuthenticatedAdmin
 from shazlo_auth.fastapi import require_role as shared_require_role
+from shazlo_security.client_ip import Network, client_ip, rate_limit_subject
+from shazlo_security.rate_limit import RateLimitGuard
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from identity_api.core.client_ip import Network, client_ip, rate_limit_subject
 from identity_api.core.errors import ApiError
 from identity_api.core.settings import Settings
 from identity_api.db.models import Admin
 from identity_api.db.session import get_session
 from identity_api.services.auth import AuthService
-from identity_api.services.rate_limit import RateLimitGuard
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -35,7 +35,12 @@ def get_rate_limits(request: Request) -> RateLimitGuard:
 
 
 def get_client_ip(request: Request) -> str:
-    return client_ip(request, cast(list[Network], request.app.state.trusted_proxies))
+    peer = request.client.host if request.client else None
+    return client_ip(
+        peer,
+        request.headers.getlist("x-forwarded-for"),
+        cast(list[Network], request.app.state.trusted_proxies),
+    )
 
 
 def get_rate_limit_ip(request: Request) -> str:

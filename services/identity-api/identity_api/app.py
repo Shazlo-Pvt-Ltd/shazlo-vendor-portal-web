@@ -5,20 +5,25 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import Redis
 from shazlo_auth import StaticKeySource, TokenVerifier
+from shazlo_security.client_ip import parse_networks
+from shazlo_security.passwords import PasswordService
+from shazlo_security.rate_limit import RateLimitGuard, RedisRateLimiter
 
 from identity_api import __version__
 from identity_api.api import admins, auth, health, jwks, me
-from identity_api.core.client_ip import parse_networks
 from identity_api.core.errors import register_exception_handlers
 from identity_api.core.logging import configure_logging
 from identity_api.core.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
+from identity_api.core.security import (
+    RATE_LIMIT_KEY_PREFIX,
+    password_config,
+    rate_limit_config,
+)
 from identity_api.core.settings import Settings, get_settings
 from identity_api.db.session import create_engine, create_sessionmaker
 from identity_api.services.admins import AdminService
 from identity_api.services.auth import SELF_AUDIENCE, AuthService
 from identity_api.services.keys import load_keyring
-from identity_api.services.passwords import PasswordService
-from identity_api.services.rate_limit import RateLimitGuard, RedisRateLimiter
 from identity_api.services.refresh_tokens import RefreshTokenStore
 from identity_api.services.tokens import TokenIssuer
 
@@ -63,11 +68,13 @@ def create_app(
     )
     # Like the engine, the Redis client connects lazily.
     app.state.redis = redis or Redis.from_url(settings.redis_url)
-    passwords = PasswordService(settings)
+    passwords = PasswordService(password_config(settings))
     refresh_tokens = RefreshTokenStore(app.state.redis, settings)
     app.state.auth = AuthService(settings, passwords, app.state.token_issuer, refresh_tokens)
     app.state.admins = AdminService(settings, passwords, refresh_tokens)
-    app.state.rate_limits = RateLimitGuard(RedisRateLimiter(app.state.redis), settings)
+    app.state.rate_limits = RateLimitGuard(
+        RedisRateLimiter(app.state.redis, RATE_LIMIT_KEY_PREFIX), rate_limit_config(settings)
+    )
     app.state.trusted_proxies = parse_networks(settings.trusted_proxies)
     app.state.readiness_checks = (
         readiness_checks

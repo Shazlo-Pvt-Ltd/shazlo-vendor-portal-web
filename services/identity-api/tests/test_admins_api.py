@@ -7,13 +7,14 @@ import httpx
 import jwt
 import pytest
 from fakeredis import FakeAsyncRedis
+from shazlo_security.passwords import PasswordService
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from identity_api.app import create_app
+from identity_api.core.security import password_config
 from identity_api.core.settings import Settings
 from identity_api.db.models import Admin, Role
 from identity_api.db.session import get_session
-from identity_api.services.passwords import PasswordService
 
 PASSWORD = "correct horse battery"
 BOSS = "boss@shazlo.test"
@@ -71,7 +72,7 @@ def make_admin(session: AsyncSession, api_settings: Settings) -> Callable[..., A
     ) -> Admin:
         admin = Admin(
             email=email,
-            password_hash=await PasswordService(api_settings).hash(PASSWORD),
+            password_hash=await PasswordService(password_config(api_settings)).hash(PASSWORD),
             display_name=display_name,
             is_active=is_active,
             must_change_password=False,
