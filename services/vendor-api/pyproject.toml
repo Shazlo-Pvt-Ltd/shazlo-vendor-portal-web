@@ -2,10 +2,30 @@
 name = "vendor-api"
 version = "0.0.0"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "pydantic-settings>=2.7",
+    "asyncpg>=0.30",
+    "redis>=5.2",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "alembic>=1.14",
+    # Shared packages from this repository (packages/py-auth, packages/py-security) are
+    # deliberately never listed here: the names are not ours on PyPI, so a plain requirement could
+    # install someone else's package. They come from the repository path through a
+    # requirements-shared.txt, added together with the first issue that imports them.
+    # Sync driver for Alembic; the app itself uses asyncpg.
+    "psycopg[binary]>=3.2",
+]
 
 [project.optional-dependencies]
-dev = ["ruff", "mypy", "pytest"]
+dev = ["ruff", "mypy", "pytest", "pytest-asyncio>=0.24", "httpx>=0.28"]
+
+[tool.setuptools.packages.find]
+include = ["vendor_api*"]
+
+[tool.setuptools.package-data]
+"vendor_api.migrations" = ["script.py.mako"]
 
 [tool.ruff]
 extend = "../ruff.toml"
@@ -13,6 +33,13 @@ extend = "../ruff.toml"
 [tool.mypy]
 strict = true
 files = ["vendor_api", "tests"]
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = "asyncpg.*"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
