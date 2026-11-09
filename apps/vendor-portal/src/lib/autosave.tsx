@@ -69,7 +69,8 @@ export function useAutosave<T>({ values, save, enabled = true, delay = 1000, sav
   return { state, savedAt, flush, reset, dirty: serialized !== savedJson }
 }
 
-export function SaveStatus({ state, savedAt }: { state: SaveState; savedAt: string | null }) {
+// Pass component="span" when it sits inside another paragraph, such as a page subtitle.
+export function SaveStatus({ state, savedAt, component = 'p' }: { state: SaveState; savedAt: string | null; component?: 'p' | 'span' }) {
   const [, tick] = useState(0)
   useEffect(() => {
     const id = setInterval(() => tick((n) => n + 1), 30_000)
@@ -80,7 +81,7 @@ export function SaveStatus({ state, savedAt }: { state: SaveState; savedAt: stri
   if (!text) return null
   const Icon = state === 'saving' ? Loader2 : state === 'error' ? CloudOff : CheckCircle2
   return (
-    <Typography role="status" variant="body2" color={state === 'error' ? 'error.main' : 'text.secondary'} sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
+    <Typography component={component} role="status" variant="body2" color={state === 'error' ? 'error.main' : 'text.secondary'} sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75, verticalAlign: 'bottom' }}>
       <Icon size={14} aria-hidden="true" />
       {text}
     </Typography>
