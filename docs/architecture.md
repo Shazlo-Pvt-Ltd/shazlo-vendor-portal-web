@@ -57,7 +57,7 @@ Why this boundary: checkout and payments are part of the customer's buying path,
 | Customer app | React Native 0.80 (Android, iOS built) | Core only (plus Razorpay's hosted checkout when payments are on) |
 | Vendor portal | React, Vite, TypeScript (portal repo `frontend/`), Vercel | Vendor-admin service only |
 | Admin screens | SQLAdmin (data screens) and portal admin pages (order operations) | Vendor-admin service only |
-| Website | Vite 7, React 19, Vercel | Core (previews, config) and vendor-admin (vendor application form) |
+| Website | Vite 8, React 19, Vercel | Core (previews, config) and vendor-admin (vendor application form) |
 
 ### 2.3 Ownership matrix
 | Capability | Core | Vendor-admin |
@@ -171,7 +171,7 @@ Nothing in the data network is reachable from the internet. If Postgres is a man
 | --- | --- | --- | --- | --- | --- |
 | Customer app | React Native 0.80, React 19 | Phone; Google Play, App Store | Swipe feed, closets, cart, checkout, orders | Existing app; Expo migration only as a gated experiment | `[As-is]` |
 | Vendor portal | React, Vite, TypeScript, MUI | Vercel at `seller.shazlo.store` | Vendor sign-in, products, photos, orders, statements | Reuses the website's stack and design; typed API client generated from OpenAPI | `[MVP]` new |
-| Website | Vite 7, React 19, MUI | Vercel at `www.shazlo.store` | Marketing, legal pages, deep-link pages, vendor application form | Exists | `[As-is]` |
+| Website | Vite 8, React 19, MUI | Vercel at `www.shazlo.store` | Marketing, legal pages, deep-link pages, vendor application form | Exists | `[As-is]` |
 | Edge | Cloudflare | Cloudflare | DNS, TLS, WAF, rate limits, Access in front of admin | Zone already exists; free protection layer | `[As-is]` |
 | Reverse proxy | Caddy | The VM | Hostname routing, automatic TLS to origin, blocks `/internal/*` | Small config, safe defaults | `[MVP]` |
 | Core API | Django 5.2, Django REST Framework; Django 6 and Strawberry GraphQL later | Container `core` | Accounts, feed, closets, cart, checkout, orders, stock, payments | Existing code, mature ORM and migrations, transactions for money | `[As-is]` hardened |
