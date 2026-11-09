@@ -42,6 +42,16 @@ class Settings(BaseSettings):
     jwt_signing_kid: str | None = None
     access_token_ttl_seconds: int = Field(default=15 * 60, gt=0, le=3600)
 
+    # Argon2id cost (OWASP baseline: 19 MiB, 2 passes, 1 lane). Raising any of these makes
+    # existing hashes rehash on the next successful login.
+    argon2_memory_cost_kib: int = 19_456
+    argon2_time_cost: int = 2
+    argon2_parallelism: int = 1
+    password_min_length: int = 12
+
+    # How long an email-verification link works (24 hours).
+    email_verification_ttl_minutes: int = Field(default=24 * 60, ge=5, le=7 * 24 * 60)
+
     # Transactional email (signup verification, invites, password reset). The code depends on a
     # small interface; the provider is this setting. `console` sends nothing (it logs the link
     # in dev only), `smtp` works with Mailpit locally and with most providers in production.

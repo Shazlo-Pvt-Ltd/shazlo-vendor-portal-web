@@ -5,16 +5,18 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import Redis
 from shazlo_security.keys import load_keyring
+from shazlo_security.passwords import PasswordService
 
 from vendor_api import __version__
-from vendor_api.api import health, jwks
+from vendor_api.api import auth, health, jwks
 from vendor_api.core.errors import register_exception_handlers
 from vendor_api.core.logging import configure_logging
 from vendor_api.core.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
-from vendor_api.core.security import key_ring_config, token_issuer
+from vendor_api.core.security import key_ring_config, password_config, token_issuer
 from vendor_api.core.settings import Settings, get_settings
 from vendor_api.db.session import create_engine, create_sessionmaker
 from vendor_api.services.email import EmailService, build_sender
+from vendor_api.services.signup import SignupService
 from vendor_api.services.tokens import VendorTokens
 
 
@@ -56,6 +58,8 @@ def create_app(
     app.state.sessionmaker = create_sessionmaker(app.state.engine)
     app.state.redis = redis or Redis.from_url(settings.redis_url)
     app.state.emails = EmailService(build_sender(settings), attempts=settings.email_send_attempts)
+    app.state.passwords = PasswordService(password_config(settings))
+    app.state.signup = SignupService(settings, app.state.passwords)
     app.state.readiness_checks = (
         readiness_checks
         if readiness_checks is not None
@@ -77,5 +81,6 @@ def create_app(
     app.include_router(health.router)
     app.include_router(jwks.router)
     v1 = APIRouter(prefix="/v1")
+    v1.include_router(auth.router)
     app.include_router(v1)  # feature routers are added here
     return app

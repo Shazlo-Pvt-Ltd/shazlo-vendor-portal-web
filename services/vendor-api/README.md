@@ -55,6 +55,9 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `JWT_KEYS_DIR` / `JWT_KEYS` | none (one is required) | RS256 keys: a directory of `<kid>.pem` files and/or JSON `{"<kid>": "<PEM>"}` |
 | `JWT_SIGNING_KID` | unset | the key that signs; needed with several keys, the others are only published |
 | `ACCESS_TOKEN_TTL_SECONDS` | `900` | 1 to 3600 |
+| `ARGON2_MEMORY_COST_KIB` / `ARGON2_TIME_COST` / `ARGON2_PARALLELISM` | `19456` / `2` / `1` | password hashing cost (OWASP baseline); raising it rehashes on the next login |
+| `PASSWORD_MIN_LENGTH` | `12` | the longest accepted is 128 |
+| `EMAIL_VERIFICATION_TTL_MINUTES` | `1440` | how long a verification link works (5 minutes to 7 days) |
 | `EMAIL_BACKEND` | `console` | `console` (sends nothing, logs the link in dev only) or `smtp` |
 | `EMAIL_FROM` | `Shazlo <no-reply@shazlo.store>` | the sender of every email |
 | `SMTP_HOST` / `SMTP_PORT` | unset / `587` | required with `smtp` |
@@ -76,6 +79,21 @@ vendor-api signs **its own** tokens with **its own** RS256 key, never identity-a
 - `GET /.well-known/jwks.json` serves the public keys with `Cache-Control: max-age=600`, built from public keys only.
 - `python -m vendor_api.cli generate-key [--dir DIR] [--kid KID]` writes a new private key (mode `0600`, never overwriting) and prints the settings to use it.
 - Keys are RSA 2048-bit or larger. A key that is only published may be configured as a public PEM. Rotation follows [the runbook](../../docs/runbooks/jwt-key-rotation.md), which covers both services.
+
+## Signup and email verification
+
+| Endpoint | Notes |
+|---|---|
+| `POST /v1/auth/signup` | `{brand_name, contact_name, email, phone, product_type, website_or_instagram?, price_min_paise, price_max_paise, password, terms_accepted}`. Creates the vendor (`pending`), a status event and the owner (`active`, email not verified) in **one transaction**, and emails a verification link. Always `202` with the same body. `422` for a weak password (`weak_password`, same policy as identity-api), terms not accepted (`terms_not_accepted`) or invalid fields. |
+| `POST /v1/auth/verify-email` | `{token}`. Sets `email_verified_at`; `204`. An unknown, used or expired token is one generic `400 invalid_token`. |
+| `POST /v1/auth/resend-verification` | `{email}`. Always `202` with one body. Sends a new link only for an existing, active, unverified user; the new token ends the older ones. |
+
+- **No account enumeration.** An email that is already registered (in any letter case, vendor or staff) gets exactly the same `202` and body as a new one, but receives an "you already have an account" email instead of a verification email, and nothing is created. The password is hashed before the lookup in both cases, so the two take about the same time; two signups racing for one email are caught by the unique constraint and answered the same way.
+- **Tokens:** 256-bit random, sent only in the email (in the link fragment, see Email). Only the SHA-256 is stored in `auth_tokens`. A token works once within 24 hours: the `UPDATE ... RETURNING` that spends it is what stops two requests from both using it. Money is integer paise.
+- **The owner cannot sign in until the email is verified.** Login (a later issue) must check `email_verified_at`; signup alone grants nothing. Verifying does not approve the vendor: an admin does that (Phase 3), and the vendor stays `pending` until then.
+- **Slugs** come from the brand name (accents folded, ASCII letters and digits, hyphens), with `-2`, `-3`, ... on collision. A name with no Latin letters becomes `vendor`, `vendor-2`, ...
+- **Not yet limited:** these endpoints have no rate limit until the rate-limiting issue (#84). Until then repeated signups for one address can send that address repeated emails.
+- Validation errors name the field and the rule, never the value that was sent.
 
 ## Email
 
