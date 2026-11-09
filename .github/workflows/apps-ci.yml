@@ -98,6 +98,12 @@ jobs:
           npm --version > reports/npm-version.txt
       - run: npm run test:ci
       - run: npm run build:demo --workspace @shazlo/ui
+      - run: npm run build --workspace @shazlo/vendor-portal --workspace @shazlo/shazlo-one
+      - name: Build the vendor-admin module
+        # Production builds refuse to start without the exact shell origin (ADR 0001 §4–5).
+        env:
+          VITE_SHELL_ORIGIN: https://one.shazlo.store
+        run: npm run build --workspace @shazlo/vendor-admin
       - run: npm run build --prefix app
       - name: Retain test results and coverage
         if: always()

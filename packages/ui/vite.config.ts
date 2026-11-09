@@ -6,4 +6,6 @@ export default defineConfig({
   root: 'demo',
   publicDir: 'public',
   plugins: [react()],
+  // Keep every font subset as a real file so the artifact check can verify it is served locally.
+  build: { assetsInlineLimit: 0 },
 })

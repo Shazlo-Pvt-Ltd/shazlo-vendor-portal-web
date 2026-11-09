@@ -30,6 +30,23 @@ Add `"@shazlo/ui": "*"` to the app's dependencies; npm workspaces link it. The p
 
 Extra `Typography` variants: `display1` (64), `display2` (40), `stat` (28), `informal` (16) and `mono` (12). Bodoni Moda is used for headings/display/stat; Ovo for formal body; Schoolbell for informal body; monospace uses the system stack. Ovo/Schoolbell use regular weight. `theme.spacing()` retains MUI's 8 px unit; `space` exposes the 4 px grid. Dark mode is outside this scope.
 
+## Kit components
+
+`@shazlo/ui/components` holds the React components the apps share, built from the Penpot
+**Kit / Components** and **Kit / Icons** boards and the measured values in `src/kit.ts`
+(surfaces `#FFFDF7`, lines `#EDE3CB`, field borders `#D9C9A3`, secondary text `#5C4A3A`/`#7A6753`,
+the six status-badge pairs, JetBrains Mono for SKUs and ids).
+
+| Group | Components |
+|---|---|
+| Text and brand | `Text` (`v`: display, heading, title, label, button, stat, overline, body, small, caption, mono, informal), `Logo` (brush wordmark, ink or off-white), `ProductTag`, `Mono`, `TextLink` |
+| Actions and status | `Button` (primary, secondary, ghost, navy, danger; md/sm), `IconButton`, `StatusBadge`, `Icon` (the 54 kit icons via Lucide) |
+| Forms | `TextInput`, `TextArea`, `Select`, `FilterSelect`, `Checkbox`, `Switch`, `Field` |
+| Layout | `AppFrame`, `Sidebar`, `NavItem`, `NavGroup`, `TopBar`, `Breadcrumb`, `Content`, `PageHeader`, `Card`, `ListCard`, `StatCard`, `Banner`, `Tabs`, `Table`, `EmptyState`, `Skeleton` |
+| Feedback | `Dialog`, `ToastProvider`/`useToast`, `KitGlobalStyles` |
+
+Wrap the app in `UiLinkProvider` with the router's link so `to` props navigate client-side.
+
 ## Color and status rules
 
 - Primary actions: amber `#FAB62A` with wine `#620032` text. Secondary actions: navy `#103C64` with off-white `#FFFCE3`. Text/outlined primary actions use wine, not amber text.
