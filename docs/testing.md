@@ -78,7 +78,7 @@ All selected checks run on every pull request (any base branch), and pushes to
 
 ## Running the checks
 
-From the repository root, with Node 20+:
+From the repository root, with Node 22.12+ (Vitest 5 requires it):
 
 ```sh
 npm ci
