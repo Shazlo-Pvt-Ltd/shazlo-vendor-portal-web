@@ -11,7 +11,7 @@ from shazlo_security.rate_limit import RateLimitGuard, RedisRateLimiter
 from shazlo_security.refresh_tokens import RefreshTokenStore
 
 from vendor_api import __version__
-from vendor_api.api import auth, health, jwks, vendor
+from vendor_api.api import auth, health, jwks, team, vendor
 from vendor_api.core.errors import register_exception_handlers
 from vendor_api.core.logging import configure_logging
 from vendor_api.core.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
@@ -26,8 +26,10 @@ from vendor_api.core.security import (
 from vendor_api.core.settings import Settings, get_settings
 from vendor_api.db.session import create_engine, create_sessionmaker
 from vendor_api.services.auth import AuthService
+from vendor_api.services.credentials import CredentialService
 from vendor_api.services.email import EmailService, build_sender
 from vendor_api.services.signup import SignupService
+from vendor_api.services.team import TeamService
 from vendor_api.services.tokens import VendorTokens
 
 
@@ -75,6 +77,8 @@ def create_app(
     )
     app.state.trusted_proxies = parse_networks(settings.trusted_proxies)
     app.state.signup = SignupService(settings, app.state.passwords)
+    app.state.credentials = CredentialService(settings, app.state.passwords)
+    app.state.team = TeamService(settings)
     app.state.refresh_tokens = RefreshTokenStore(app.state.redis, refresh_token_config(settings))
     app.state.sessions = AuthService(
         settings, app.state.passwords, app.state.vendor_tokens, app.state.refresh_tokens
@@ -102,5 +106,6 @@ def create_app(
     v1 = APIRouter(prefix="/v1")
     v1.include_router(auth.router)
     v1.include_router(vendor.router)
+    v1.include_router(team.router)
     app.include_router(v1)  # feature routers are added here
     return app

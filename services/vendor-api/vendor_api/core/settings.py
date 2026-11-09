@@ -140,6 +140,11 @@ class Settings(BaseSettings):
     # not theft: it gets 409 and nothing is revoked. 0 makes any reuse revoke the family.
     refresh_reuse_grace_seconds: int = Field(default=10, ge=0, le=60)
 
+    # How long an invite link (a staff invite, or the invite of a migrated vendor's owner) works,
+    # and how long a password-reset link works. A reset is short because it replaces the password.
+    invite_token_ttl_minutes: int = Field(default=24 * 60, ge=5, le=14 * 24 * 60)
+    reset_token_ttl_minutes: int = Field(default=60, ge=5, le=24 * 60)
+
     # How long an email-verification link works (24 hours).
     email_verification_ttl_minutes: int = Field(default=24 * 60, ge=5, le=7 * 24 * 60)
 

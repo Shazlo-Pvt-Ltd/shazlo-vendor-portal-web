@@ -64,6 +64,7 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `TRUSTED_PROXIES` | empty | CIDRs of the reverse proxies whose `X-Forwarded-For` is believed (comma separated); empty means the TCP peer is the client |
 | `REFRESH_TOKEN_TTL_DAYS` / `REFRESH_FAMILY_MAX_DAYS` | `7` / `30` | a refresh token lives 7 days and never outlives its family |
 | `REFRESH_REUSE_GRACE_SECONDS` | `10` | a refresh token reused within this many seconds is a concurrent request (`409`), not theft; `0` revokes on any reuse |
+| `INVITE_TOKEN_TTL_MINUTES` / `RESET_TOKEN_TTL_MINUTES` | `1440` / `60` | how long an invite link and a password-reset link work (5 minutes to 14 days / 1 day) |
 | `EMAIL_VERIFICATION_TTL_MINUTES` | `1440` | how long a verification link works (5 minutes to 7 days) |
 | `EMAIL_BACKEND` | `console` | `console` (sends nothing, logs the link in dev only) or `smtp` |
 | `EMAIL_FROM` | `Shazlo <no-reply@shazlo.store>` | the sender of every email |
@@ -118,6 +119,23 @@ Vendor sessions work like admin sessions (ADR 0009): a 15-minute access token (t
 - **Dependencies** (`api/deps.py`): `current_vendor_user` verifies the token, then reads the user and the vendor **from the database on every request**: the user must be active with a verified email, the token's `vendor_id` must be the user's vendor, and the vendor must be `pending` or `approved`. So disabling a user or suspending a vendor takes effect at once, not when the 15-minute token expires, and a role change applies immediately. `require_vendor_role(VendorUserRole.OWNER)` lets only the listed roles through (`403 forbidden`).
 - **Ending sessions when a vendor's status changes**: `AuthService.end_sessions_of_vendor(db, vendor_id)` ends every session of every user of that vendor. Phase 3 calls it when an admin suspends or rejects a vendor. Refreshing is refused for those statuses anyway; the hook also stops a vendor that is approved again from getting its old sessions back. `end_sessions_of_user` does the same for one user (call it when a user is disabled).
 
+## Team, invites and password reset
+
+Three cases end with "someone gets an email and sets a password": an owner inviting a staff member, a user who forgot their password, and (Phase 8) the owner of a vendor migrated from MongoDB. All use the same one-time token: 256-bit, only its SHA-256 stored, single use, and a newer token for the same purpose ends the older ones.
+
+| Endpoint | Notes |
+|---|---|
+| `POST /v1/vendor/users` | **Owner only.** `{email}` invites a staff member: an `invited` user with no password and an emailed link (24 hours). An address already used **anywhere** (any vendor, any role, a vendor's own address) gets the same `202` and body and no email, so the endpoint cannot be used to find out who is registered. Limited per vendor |
+| `GET /v1/vendor/users` | **Owner only.** The vendor's users (id, email, role, status, last login, created). No hashes |
+| `PATCH /v1/vendor/users/{id}` | **Owner only.** `{"disabled": true}` disables a staff user and **ends their sessions at once** (and their unused links); `false` enables: back to `active`, or to `invited` for a user who never set a password. An owner cannot disable themselves (`409 cannot_disable_self`) and a vendor always keeps its owner (`409 owner_cannot_be_disabled`) |
+| `POST /v1/vendor/users/{id}/resend-invite` | **Owner only.** A new invite for a user who has not set a password yet (`409 not_invited` otherwise); the older link stops working |
+| `POST /v1/auth/forgot-password` | `{email}`. Always `202` with one body. Sends a reset link (1 hour) only to an existing **active** user; an invited user uses their invite, a disabled one cannot sign in. Limited per IP and per address as typed |
+| `POST /v1/auth/set-password` | `{token, password}`. Accepts an invite or a reset token. Same password policy as signup, used exactly as typed. It activates an invited user, **marks the email verified** (the link proved it), spends the token (and every other unused link of the user) and **ends all of the user's sessions**. It does not sign anyone in. A token that is unknown, used or expired, or that belongs to a user who may not use it, is one generic `400 invalid_token`. A weak password is `422` and the link stays usable |
+
+- **Another vendor's user is a `404`**, never a `403`: the owner's vendor id is part of every lookup, so the response does not reveal that the id exists (see the isolation issue, #86).
+- **Reset ends sessions** after the password is committed, as identity-api's change-password does. If Redis is down at that moment the request fails after the password changed; the sessions can be ended again with `AuthService.end_sessions_of_user`.
+- **`python -m vendor_api.cli invite-owner --vendor <slug or id> [--email ADDRESS] [--status STATUS]`** creates or re-invites a vendor's owner and sends the invite (used by the Phase 8 migration). The email defaults to the vendor's. A vendor with no owner gets an `invited` one; one whose owner is still `invited` gets a new link (and the address may be corrected); an owner who already set a password is left alone. `--status` sets the vendor's status too, with an audit event by the system. If sending fails the invite is saved: run it again to send a new one.
+
 ## Rate limits
 
 Vendor auth is open to the internet, so every auth endpoint is limited, with the shared limiter from `packages/py-security` (ADR 0010): Redis fixed-window counters whose subjects (emails, IPs, families) are **HMAC-hashed**, so a Redis dump reveals no email or IP. Over a limit the answer is `429 rate_limited` with `Retry-After` (the seconds until the window resets, from the key's TTL) and `Cache-Control: no-store`; a rate-limited refresh keeps its cookie and its token.
@@ -132,7 +150,9 @@ Keys are `vendor:rl:<endpoint>:<scope>:<hash>`: the prefix and the `RATE_LIMIT_H
 | `verify_email` | IP | 20 per minute |
 | `refresh` | IP; session (refresh family) | 60 per minute; 20 per minute |
 | `change_password` | user (wrong current passwords; cleared once it verifies) | 5 per 15 minutes |
-| `forgot_password`, `set_password`, `staff_invite` | IP / email / vendor | defined now (`RATE_LIMIT_FORGOT_PASSWORD_*`, `RATE_LIMIT_SET_PASSWORD_IP`, `RATE_LIMIT_STAFF_INVITE_VENDOR`) for the endpoints of issue #83 |
+| `forgot_password` | IP; email | 10 per hour; 3 per hour |
+| `set_password` | IP | 20 per 15 minutes |
+| `staff_invite` (invite and resend-invite) | vendor | 20 per hour |
 
 - **Signup and resend are limited on the address as typed**, whether or not it is registered, so the limit looks the same either way and reveals nothing. Per address matters because those endpoints send email (verification, or "you already have an account"): without it they would mail-bomb an inbox.
 - **When Redis is down** the endpoints in `RATE_LIMIT_FAIL_CLOSED` answer `503 rate_limiter_unavailable`: the ones that check a password (`login`, `change_password`) so guessing stays limited, and the ones that send email (`signup`, `resend_verification`, `forgot_password`, `staff_invite`) so an outage cannot be used to flood an inbox. The others skip the limit and log a warning (fail open): `refresh` (signed-in vendors keep working; refreshing needs Redis anyway), `verify_email` and `set_password` (they need a 256-bit token, which cannot be guessed at any rate).

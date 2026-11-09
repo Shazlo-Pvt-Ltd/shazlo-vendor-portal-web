@@ -2,7 +2,7 @@ import hashlib
 import json
 import logging
 from collections.abc import AsyncIterator, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -12,6 +12,7 @@ from fakeredis import FakeAsyncRedis
 from fastapi import FastAPI
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from support import RecordingSender
 
 from vendor_api.app import create_app
 from vendor_api.core.settings import Settings
@@ -26,7 +27,6 @@ from vendor_api.db.models import (
 from vendor_api.db.session import get_session
 from vendor_api.services.email import (
     ConsoleEmailSender,
-    EmailSender,
     EmailService,
     EmailTemplate,
 )
@@ -45,22 +45,6 @@ SIGNUP: dict[str, Any] = {
     "password": PASSWORD,
     "terms_accepted": True,
 }
-
-
-@dataclass
-class RecordingSender:
-    """Records what the app tries to send, and forwards it to the console backend (which logs
-    only the template outside dev), so the log assertions see the real log lines."""
-
-    inner: EmailSender
-    sent: list[tuple[str, EmailTemplate, Mapping[str, object]]] = field(default_factory=list)
-
-    async def send(self, to: str, template: EmailTemplate, context: Mapping[str, object]) -> None:
-        self.sent.append((to, template, dict(context)))
-        await self.inner.send(to, template, context)
-
-    def tokens(self) -> list[str]:
-        return [str(context["token"]) for _, _, context in self.sent if "token" in context]
 
 
 @dataclass
