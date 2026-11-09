@@ -98,6 +98,12 @@ export function useApply() {
   return useMutation({ mutationFn: (body: Schemas['VendorApplication']) => api.call((c) => c.POST('/api/v1/public/vendor-applications', { body })) })
 }
 
+// Sets the first password from an invite link; the response signs the seller in.
+export function useAcceptInvite() {
+  const api = useApi()
+  return useMutation({ mutationFn: (body: { token: string; password: string }) => api.call((c) => c.POST('/api/v1/vendor/auth/accept-invite', { body })) })
+}
+
 export function useForgotPassword() {
   const api = useApi()
   return useMutation({ mutationFn: (identifier: string) => api.call((c) => c.POST('/api/v1/vendor/auth/password/forgot', { body: { identifier } })) })
