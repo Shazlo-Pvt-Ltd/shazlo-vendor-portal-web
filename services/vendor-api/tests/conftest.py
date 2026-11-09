@@ -1,13 +1,16 @@
 import os
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 
 import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from vendor_api.core.settings import Settings
+from vendor_api.db.session import async_url
 
 SERVICE_DIR = Path(__file__).resolve().parents[1]
 
@@ -55,3 +58,23 @@ def migrated_db(alembic_config: Config) -> str:
     command.downgrade(alembic_config, "base")
     command.upgrade(alembic_config, "head")
     return TEST_DATABASE_URL
+
+
+@pytest.fixture
+async def session(migrated_db: str) -> AsyncIterator[AsyncSession]:
+    """A session inside a transaction that is rolled back after the test, so tests share no rows.
+
+    Commits inside the test only release a savepoint.
+    """
+    engine = create_async_engine(async_url(migrated_db), poolclass=NullPool)
+    async with engine.connect() as connection:
+        transaction = await connection.begin()
+        db_session = AsyncSession(
+            bind=connection, expire_on_commit=False, join_transaction_mode="create_savepoint"
+        )
+        try:
+            yield db_session
+        finally:
+            await db_session.close()
+            await transaction.rollback()
+    await engine.dispose()
