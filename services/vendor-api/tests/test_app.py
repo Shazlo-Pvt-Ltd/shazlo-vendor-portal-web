@@ -139,3 +139,13 @@ def test_logs_are_json_with_request_id(
     assert access["request_id"] == "log-me"
     assert access["path"] == "/health"
     assert access["status"] == 200
+
+
+def test_validation_errors_never_echo_what_was_sent(settings: Settings) -> None:
+    secret = "correct horse battery staple"  # noqa: S105
+    client = make_client(settings)
+    # A model-level failure: pydantic's `input` would be the whole body.
+    response = client.post("/echo", json={"name": 5, "password": secret})
+    assert response.status_code == 422
+    assert secret not in response.text
+    assert all("input" not in detail for detail in response.json()["error"]["details"])

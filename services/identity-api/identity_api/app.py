@@ -6,8 +6,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import Redis
 from shazlo_auth import StaticKeySource, TokenVerifier
 from shazlo_security.client_ip import parse_networks
+from shazlo_security.keys import load_keyring
 from shazlo_security.passwords import PasswordService
 from shazlo_security.rate_limit import RateLimitGuard, RedisRateLimiter
+from shazlo_security.refresh_tokens import RefreshTokenStore
 
 from identity_api import __version__
 from identity_api.api import admins, auth, health, jwks, me
@@ -16,16 +18,16 @@ from identity_api.core.logging import configure_logging
 from identity_api.core.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
 from identity_api.core.security import (
     RATE_LIMIT_KEY_PREFIX,
+    key_ring_config,
     password_config,
     rate_limit_config,
+    refresh_token_config,
+    token_issuer,
 )
 from identity_api.core.settings import Settings, get_settings
 from identity_api.db.session import create_engine, create_sessionmaker
 from identity_api.services.admins import AdminService
 from identity_api.services.auth import SELF_AUDIENCE, AuthService
-from identity_api.services.keys import load_keyring
-from identity_api.services.refresh_tokens import RefreshTokenStore
-from identity_api.services.tokens import TokenIssuer
 
 
 @asynccontextmanager
@@ -58,8 +60,8 @@ def create_app(
     app.state.engine = create_engine(settings.database_url)
     app.state.sessionmaker = create_sessionmaker(app.state.engine)
     # Keys are loaded now, so a missing or broken key stops the service at startup.
-    app.state.keyring = load_keyring(settings)
-    app.state.token_issuer = TokenIssuer(settings, app.state.keyring)
+    app.state.keyring = load_keyring(key_ring_config(settings))
+    app.state.token_issuer = token_issuer(settings, app.state.keyring)
     # The same verifier other services use, with the keys held in-process instead of a JWKS fetch.
     app.state.token_verifier = TokenVerifier(
         StaticKeySource(app.state.keyring.public_keys),
@@ -69,7 +71,7 @@ def create_app(
     # Like the engine, the Redis client connects lazily.
     app.state.redis = redis or Redis.from_url(settings.redis_url)
     passwords = PasswordService(password_config(settings))
-    refresh_tokens = RefreshTokenStore(app.state.redis, settings)
+    refresh_tokens = RefreshTokenStore(app.state.redis, refresh_token_config(settings))
     app.state.auth = AuthService(settings, passwords, app.state.token_issuer, refresh_tokens)
     app.state.admins = AdminService(settings, passwords, refresh_tokens)
     app.state.rate_limits = RateLimitGuard(

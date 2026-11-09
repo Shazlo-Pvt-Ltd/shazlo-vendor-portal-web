@@ -91,6 +91,12 @@ Each phase matches a milestone in this repo. The bullets are the proposed scope;
 - Admin auth that verifies identity-api JWTs through JWKS. The reviewer is always taken from the token.
 - Tests for auth and vendor data isolation.
 
+Delivered (as the issues #72 to #87 and #113 to #114), with these differences from the list above:
+- The shared security code was moved into `packages/py-security` and `packages/py-auth` learned extra claims (ADR 0010), so identity-api and vendor-api share one tested implementation.
+- Beyond signup and login: forgot and set password, a staff team per vendor (invite, list, disable), an owner-invite command for the Phase 8 migration, email sending (console and SMTP backends), rate limits on every auth endpoint, vendor-api's own signing keys and JWKS.
+- The schema also has `product_revisions` (an approved product keeps its live content while a revision is reviewed), per-revision variant prices, `review_events`, `vendor_status_events` and one-time `auth_tokens`.
+- `openapi.json` is committed and checked, and a dev seed command creates a demo vendor. An end-to-end test walks the whole flow against Postgres and Redis.
+
 ### Phase 3: Vendor API catalog, media & review
 - Brand profile: edit draft, submit for review, read the published version.
 - Products CRUD. Editing an approved product creates a pending revision instead of changing the live one.

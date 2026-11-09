@@ -119,8 +119,8 @@ def refresh_cookie(response: httpx.Response) -> str | None:
     for header in response.headers.get_list("set-cookie"):
         cookie: SimpleCookie = SimpleCookie()
         cookie.load(header)
-        if "refresh_token" in cookie:
-            return cookie["refresh_token"].value
+        if "identity_refresh" in cookie:
+            return cookie["identity_refresh"].value
     return None
 
 
@@ -160,6 +160,42 @@ async def test_the_global_email_limit_holds_across_ips(
         blocked = await sign_in(http, ip="203.0.113.77")
         assert blocked.status_code == 429
         assert 1 <= retry_after(blocked) <= 60
+
+
+async def test_one_ip_cannot_use_up_an_admins_global_email_limit(
+    api_settings: Settings,
+    session: AsyncSession,
+    redis: FakeAsyncRedis,
+    admin: Admin,
+    override: Callable[..., Settings],
+) -> None:
+    """Lockout: guesses the (email, IP) counter already refuses never reach the global one."""
+    capped = override(api_settings, rate_limit_login_email_global="5/60")
+    async with serve(capped, session, redis) as http:
+        attacker = "198.51.100.66"
+        statuses = [
+            (await sign_in(http, password="wrong password!!", ip=attacker)).status_code
+            for _ in range(30)
+        ]
+        assert set(statuses[3:]) == {429}
+        assert (await sign_in(http, ip="203.0.113.77")).status_code == 200
+
+
+async def test_a_network_the_admin_logged_in_from_skips_the_global_email_limit(
+    api_settings: Settings,
+    session: AsyncSession,
+    redis: FakeAsyncRedis,
+    admin: Admin,
+    override: Callable[..., Settings],
+) -> None:
+    capped = override(api_settings, rate_limit_login_email_global="4/60")
+    async with serve(capped, session, redis) as http:
+        assert (await sign_in(http, ip="203.0.113.77")).status_code == 200  # now a known pair
+        for number in range(3):
+            failed = await sign_in(http, password="wrong password!!", ip=f"198.51.100.{number}")
+            assert failed.status_code == 401
+        assert (await sign_in(http, ip="192.0.2.5")).status_code == 429  # a new network
+        assert (await sign_in(http, ip="203.0.113.77")).status_code == 200  # the known one
 
 
 async def test_a_successful_login_does_not_clear_the_global_email_counter(
@@ -402,18 +438,20 @@ async def test_refresh_is_limited_per_session_and_keeps_the_cookie(
         for _ in range(2):
             http.cookies.clear()
             response = await http.post(
-                "/v1/auth/refresh", headers={"Cookie": f"refresh_token={token}"}
+                "/v1/auth/refresh", headers={"Cookie": f"identity_refresh={token}"}
             )
             assert response.status_code == 200
             token = refresh_cookie(response)  # rotated: a new token, the same family
             assert token is not None
         http.cookies.clear()
-        blocked = await http.post("/v1/auth/refresh", headers={"Cookie": f"refresh_token={token}"})
+        blocked = await http.post(
+            "/v1/auth/refresh", headers={"Cookie": f"identity_refresh={token}"}
+        )
         assert blocked.status_code == 429
         assert blocked.json()["error"]["code"] == "rate_limited"
         assert 1 <= retry_after(blocked) <= 60
         # The limit says nothing about the token, so the cookie is not cleared.
-        assert "refresh_token" not in blocked.headers.get("set-cookie", "")
+        assert "identity_refresh" not in blocked.headers.get("set-cookie", "")
 
 
 async def test_refresh_is_limited_per_ip_even_without_a_cookie(

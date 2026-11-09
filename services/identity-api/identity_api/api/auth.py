@@ -31,11 +31,14 @@ from identity_api.services.auth import (
     AuthSession,
 )
 
-COOKIE_NAME = "refresh_token"
+COOKIE_NAME = "identity_refresh"
 # The browser sends the cookie to the auth endpoints only.
 COOKIE_PATH = "/v1/auth"
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# How long a successful login exempts its (email, IP) pair from the per-email login counter.
+KNOWN_LOGIN_PAIR_TTL_SECONDS = 30 * 24 * 3600
 
 Db = Annotated[AsyncSession, Depends(get_session)]
 Auth = Annotated[AuthService, Depends(get_auth_service)]
@@ -143,7 +146,6 @@ def _set_cookie(response: Response, settings: Settings, session: AuthSession) ->
         session.refresh.token,
         expires=session.refresh.expires_at,
         path=COOKIE_PATH,
-        domain=settings.cookie_domain,
         secure=settings.cookie_secure,
         httponly=True,
         samesite=settings.cookie_samesite,
@@ -154,7 +156,6 @@ def _clear_cookie(response: Response, settings: Settings) -> None:
     response.delete_cookie(
         COOKIE_NAME,
         path=COOKIE_PATH,
-        domain=settings.cookie_domain,
         secure=settings.cookie_secure,
         httponly=True,
         samesite=settings.cookie_samesite,
@@ -192,16 +193,20 @@ async def login(
     # past them. The strict one is per (email, IP): failures from one network cannot lock the
     # admin out of another. A successful login clears it, so in the end it counts failures.
     # The loose per-email one is never cleared, so spreading guesses over IPs stays slow.
-    await limits.check(
-        "login",
-        [
-            Check("ip", ip, settings.rate_limit_login_ip),
-            Check("email_ip", email_ip, settings.rate_limit_login_email),
-            Check("email", email, settings.rate_limit_login_email_global),
-        ],
-    )
+    # A pair that logged in before skips the loose per-email counter, so a vendor or admin on
+    # their usual network is never locked out by someone guessing from elsewhere. The checks stop
+    # at the first refusal, so a single attacking IP adds at most its per-pair limit to it.
+    known = await limits.remembers("login", "email_ip", email_ip)
+    checks = [
+        Check("ip", ip, settings.rate_limit_login_ip),
+        Check("email_ip", email_ip, settings.rate_limit_login_email),
+    ]
+    if not known:
+        checks.append(Check("email", email, settings.rate_limit_login_email_global))
+    await limits.check("login", checks)
     session = await auth.login(db, body.email, body.password)
     await limits.reset("login", "email_ip", email_ip)
+    await limits.remember("login", "email_ip", email_ip, KNOWN_LOGIN_PAIR_TTL_SECONDS)
     return _session_response(response, settings, session)
 
 

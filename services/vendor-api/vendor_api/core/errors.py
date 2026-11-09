@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from shazlo_security.rate_limit import RateLimited, RateLimiterUnavailable
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from vendor_api.core.middleware import REQUEST_ID_HEADER
@@ -55,6 +56,24 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def api_error(request: Request, exc: ApiError) -> JSONResponse:
         return error_response(request, exc.status_code, exc.code, exc.message, headers=exc.headers)
 
+    @app.exception_handler(RateLimited)
+    async def rate_limited(request: Request, exc: RateLimited) -> JSONResponse:
+        return error_response(
+            request,
+            429,
+            "rate_limited",
+            "Too many requests. Try again later.",
+            headers={"Retry-After": str(exc.retry_after), "Cache-Control": "no-store"},
+        )
+
+    @app.exception_handler(RateLimiterUnavailable)
+    async def rate_limiter_unavailable(
+        request: Request, exc: RateLimiterUnavailable
+    ) -> JSONResponse:
+        return error_response(
+            request, 503, "rate_limiter_unavailable", "Service temporarily unavailable"
+        )
+
     @app.exception_handler(StarletteHTTPException)
     async def http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         phrase = HTTPStatus(exc.status_code).phrase
@@ -70,8 +89,11 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        # Pydantic echoes the rejected `input`; for a model-level check that is the whole body,
+        # passwords included. Say where and why, never what was sent.
+        details = [{key: value for key, value in e.items() if key != "input"} for e in exc.errors()]
         return error_response(
-            request, 422, "validation_error", "Request validation failed", details=exc.errors()
+            request, 422, "validation_error", "Request validation failed", details=details
         )
 
     @app.exception_handler(Exception)

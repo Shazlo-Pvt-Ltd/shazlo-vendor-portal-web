@@ -42,6 +42,10 @@ These documents describe who Shazlo is for, how users move through it, how the s
 | [0006](adr/0006-manual-order-flow-before-online-payments.md) | Order requests and manual settlement at launch; online payments built behind a switch | Accepted (MVP), amended |
 | [0007](adr/0007-core-and-vendor-admin-services.md) | Two services: Core (Django) and Vendor-admin (FastAPI) | Accepted (direction), amended by 0008 |
 | [0008](adr/0008-commerce-in-core.md) | Commerce (cart, checkout, orders, stock, payments) lives in Core; vendor-admin is the seller back-office | Accepted |
+| [0009](adr/0009-auth-model.md) | Auth model: RS256 JWTs, JWKS and roles for Shazlo-One (identity-api) and the vendor API, each with its own issuer | Accepted; partly supersedes 0004-authentication.md |
+| [0010](adr/0010-shared-security-package.md) | Share the security plumbing between identity-api and vendor-api (`packages/py-security`); copy the glue | Proposed |
+
+The Phase 0 ADRs [0001-iframe-postmessage-protocol.md](adr/0001-iframe-postmessage-protocol.md) and [0003-central-app-publishing-contract.md](adr/0003-central-app-publishing-contract.md) reuse numbers from this table; [adr/README.md](adr/README.md) lists the current ADRs.
 
 ## Legend
 

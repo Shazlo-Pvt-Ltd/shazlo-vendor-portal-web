@@ -3,6 +3,8 @@ from pydantic import ValidationError
 
 from identity_api.core.settings import Settings
 
+PROD = {"env": "prod", "jwt_issuer": "https://identity.shazlo.example"}
+
 
 def make(**overrides: object) -> Settings:
     values: dict[str, object] = {
@@ -43,11 +45,10 @@ def test_cors_origins_are_comma_separated(monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_environment_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("COOKIE_SECURE", "false")
-    monkeypatch.setenv("ENV", "prod")
-    monkeypatch.setenv("RATE_LIMIT_HMAC_KEY", "x" * 32)
+    monkeypatch.setenv("ENV", "test")
     s = make()
     assert s.cookie_secure is False
-    assert s.env == "prod"
+    assert s.env == "test"
 
 
 @pytest.mark.parametrize(
@@ -111,10 +112,10 @@ def test_rate_limits_come_from_the_environment(monkeypatch: pytest.MonkeyPatch) 
         {"rate_limit_login_ip": "many/60"},
         {"rate_limit_fail_closed": ["logn"]},
         {"trusted_proxies": ["not-a-network"]},
-        {"env": "prod"},  # no RATE_LIMIT_HMAC_KEY
-        {"env": "prod", "rate_limit_hmac_key": ""},
-        {"env": "prod", "rate_limit_hmac_key": "   "},
-        {"env": "prod", "rate_limit_hmac_key": "x" * 31},
+        {**PROD},  # no RATE_LIMIT_HMAC_KEY
+        {**PROD, "rate_limit_hmac_key": ""},
+        {**PROD, "rate_limit_hmac_key": "   "},
+        {**PROD, "rate_limit_hmac_key": "x" * 31},
         {"rate_limit_hmac_key": "short"},  # a short key is refused outside prod too
         {"rate_limit_ipv6_prefix": 0},
         {"rate_limit_ipv6_prefix": 129},
@@ -135,9 +136,31 @@ def test_hmac_key_is_random_outside_prod_and_never_empty() -> None:
 
 
 def test_a_32_character_hmac_key_is_accepted_in_prod() -> None:
-    s = make(env="prod", rate_limit_hmac_key="x" * 32)
+    s = make(**PROD, rate_limit_hmac_key="x" * 32)
     assert s.rate_limit_hmac_key is not None
     assert s.rate_limit_hmac_key.get_secret_value() == "x" * 32
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"cookie_secure": False},
+        {"jwt_issuer": "http://localhost:8001"},  # the default left in place
+        {"jwt_issuer": "https://localhost:8001"},
+        {"jwt_issuer": "https://127.0.0.1"},
+        {"jwt_issuer": "http://identity.shazlo.example"},  # not https
+        {"jwt_issuer": "identity.shazlo.example"},
+    ],
+)
+def test_unsafe_prod_settings_are_rejected(overrides: dict[str, object]) -> None:
+    values = {**PROD, "rate_limit_hmac_key": "x" * 32, **overrides}
+    with pytest.raises(ValidationError):
+        make(**values)
+
+
+def test_the_same_unsafe_settings_are_fine_outside_prod() -> None:
+    s = make(cookie_secure=False, jwt_issuer="http://localhost:8001")
+    assert s.cookie_secure is False
 
 
 def test_an_empty_hmac_key_outside_prod_counts_as_unset() -> None:

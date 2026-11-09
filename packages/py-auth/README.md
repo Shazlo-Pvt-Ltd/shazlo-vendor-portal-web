@@ -44,6 +44,23 @@ Create the `JwksClient` once per process, never per request: it holds the cache.
 - **Roles:** `require_role(*roles)` passes an admin who holds any of them. `super_admin` always passes. `get_current_admin` refuses a token that only allows a password change (`must_change_password`).
 - **Errors:** missing or invalid token is `401` with `WWW-Authenticate: Bearer`, a missing role is `403`. Both are plain `HTTPException`s, so the service's own error handlers shape the response.
 
+## Extra claims
+
+A service can put claims of its own into its tokens (vendor-api adds `vendor_id`). `AccessClaims.extra` returns every claim the verifier does not read itself, as a read-only mapping. To refuse a token that lacks one, list it:
+
+```python
+verifier = TokenVerifier(
+    keys,
+    issuer="https://vendor.shazlo.store",
+    audience="vendor-api",
+    required_extra_claims=["vendor_id"],
+)
+claims = await verifier.verify(token)
+claims.extra["vendor_id"]
+```
+
+A token without the claim, or with it set to `null`, raises `InvalidTokenError`. The claims the verifier already reads (`sub`, `roles`, ...) cannot be listed.
+
 ## JWKS client
 
 | Rule | Value |

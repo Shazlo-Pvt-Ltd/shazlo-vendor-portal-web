@@ -1,7 +1,16 @@
+from collections.abc import Callable
+
 import pytest
 from pydantic import ValidationError
 
 from vendor_api.core.settings import Settings
+
+# What prod needs besides email: where admin tokens come from (identity-api), over https.
+PROD_IDENTITY = {
+    "identity_jwks_url": "https://identity.shazlo.store/.well-known/jwks.json",
+    "identity_issuer": "https://identity.shazlo.store",
+    "jwt_issuer": "https://vendor-api.shazlo.store",
+}
 
 
 def make(**overrides: object) -> Settings:
@@ -28,7 +37,7 @@ def test_defaults() -> None:
     assert s.cors_allowed_origins == ["http://localhost:5174"]
     assert s.cookie_secure is True
     assert s.cookie_samesite == "strict"
-    assert s.cookie_domain is None
+    assert not hasattr(s, "cookie_domain")  # host-only cookies: no Domain setting
     assert s.jwt_issuer == "http://localhost:8002"
 
 
@@ -38,10 +47,18 @@ def test_cors_origins_are_comma_separated(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_environment_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("COOKIE_SECURE", "false")
+    monkeypatch.setenv("COOKIE_SAMESITE", "lax")
     monkeypatch.setenv("ENV", "prod")
+    # Production must be able to send email, over TLS, with links to an https portal.
+    monkeypatch.setenv("EMAIL_BACKEND", "smtp")
+    monkeypatch.setenv("SMTP_HOST", "smtp.provider.example")
+    monkeypatch.setenv("PORTAL_BASE_URL", "https://vendors.shazlo.store")
+    monkeypatch.setenv("RATE_LIMIT_HMAC_KEY", "k" * 32)  # required in prod
+    monkeypatch.setenv("IDENTITY_JWKS_URL", PROD_IDENTITY["identity_jwks_url"])
+    monkeypatch.setenv("IDENTITY_ISSUER", PROD_IDENTITY["identity_issuer"])
+    monkeypatch.setenv("JWT_ISSUER", PROD_IDENTITY["jwt_issuer"])
     s = make()
-    assert s.cookie_secure is False
+    assert s.cookie_samesite == "lax"
     assert s.env == "prod"
 
 
@@ -69,3 +86,315 @@ def test_invalid_values_are_rejected(overrides: dict[str, object]) -> None:
 
 def test_samesite_none_is_fine_with_secure() -> None:
     assert make(cookie_samesite="none", cookie_secure=True).cookie_samesite == "none"
+
+
+def test_jwt_settings_defaults(settings: Settings) -> None:
+    assert settings.jwt_keys_dir is None
+    assert settings.jwt_signing_kid is None
+    assert settings.access_token_ttl_seconds == 900
+
+
+@pytest.mark.parametrize("seconds", [0, -1, 3601])
+def test_access_token_lifetime_is_bounded(
+    settings: Settings, override: Callable[..., Settings], seconds: int
+) -> None:
+    with pytest.raises(ValidationError):
+        override(settings, access_token_ttl_seconds=seconds)
+
+
+# --- Email -------------------------------------------------------------------------------
+
+
+def test_email_defaults_send_nothing_and_point_at_the_local_portal() -> None:
+    s = make()
+    assert s.email_backend == "console"
+    assert s.smtp_host is None
+    assert s.smtp_password is None
+    assert s.portal_base_url == "http://localhost:5174"
+    assert s.email_send_attempts == 3
+
+
+def test_the_smtp_password_is_a_secret() -> None:
+    s = make(smtp_user="mailer", smtp_password="hunter2-very-secret")  # noqa: S106
+    assert s.smtp_password is not None
+    assert "hunter2" not in repr(s)
+    assert "hunter2" not in str(s.model_dump())
+
+
+def test_the_portal_base_url_loses_its_trailing_slash() -> None:
+    assert make(portal_base_url="https://vendors.shazlo.store/").portal_base_url == (
+        "https://vendors.shazlo.store"
+    )
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"portal_base_url": "vendors.shazlo.store"},
+        {"portal_base_url": "ftp://vendors.shazlo.store"},
+        {"portal_base_url": "https://vendors.shazlo.store/#x"},
+        {"email_from": "no-at-sign"},
+        {"email_from": "a@b.c\nBcc: x@y.z"},
+        {"email_backend": "smtp"},  # no host
+        {"smtp_user": "mailer"},  # user without password
+        {"smtp_password": "secret-without-user"},
+        {"email_send_attempts": 0},
+        {"smtp_port": 0},
+        {"smtp_security": "tls"},
+    ],
+)
+def test_invalid_email_settings_are_rejected(overrides: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        make(**overrides)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {},  # the console backend sends nothing
+        {"email_backend": "smtp", "smtp_host": "h", "smtp_security": "none"},
+        {"email_backend": "smtp", "smtp_host": "h", "portal_base_url": "http://plain.example"},
+    ],
+    ids=["console", "no-tls", "http-portal"],
+)
+def test_prod_refuses_unsafe_email_settings(overrides: dict[str, object]) -> None:
+    values = {
+        "portal_base_url": "https://vendors.shazlo.store",
+        "rate_limit_hmac_key": "k" * 32,  # so the email settings are what is refused
+        **PROD_IDENTITY,
+        **overrides,
+    }
+    with pytest.raises(ValidationError, match="EMAIL_BACKEND|SMTP_SECURITY|PORTAL_BASE_URL"):
+        make(env="prod", **values)
+
+
+def test_prod_accepts_smtp_over_tls_with_an_https_portal() -> None:
+    s = make(
+        env="prod",
+        email_backend="smtp",
+        smtp_host="smtp.provider.example",
+        smtp_user="mailer",
+        smtp_password="s3cret-value",  # noqa: S106
+        portal_base_url="https://vendors.shazlo.store",
+        rate_limit_hmac_key="k" * 32,
+        **PROD_IDENTITY,
+    )
+    assert s.smtp_security == "starttls"
+
+
+def test_session_defaults_and_bounds() -> None:
+    s = make()
+    assert (s.refresh_token_ttl_days, s.refresh_family_max_days) == (7, 30)
+    assert s.refresh_reuse_grace_seconds == 10
+    assert make(refresh_reuse_grace_seconds=0).refresh_reuse_grace_seconds == 0
+    for seconds in (-1, 61):
+        with pytest.raises(ValidationError):
+            make(refresh_reuse_grace_seconds=seconds)
+
+
+# --- Rate limits -------------------------------------------------------------------------
+
+
+def test_rate_limit_defaults() -> None:
+    s = make()
+    assert (s.rate_limit_login_email.limit, s.rate_limit_login_email.window_seconds) == (5, 900)
+    assert (s.rate_limit_signup_ip.limit, s.rate_limit_signup_ip.window_seconds) == (10, 3600)
+    assert (s.rate_limit_signup_email.limit, s.rate_limit_signup_email.window_seconds) == (3, 3600)
+    assert s.rate_limit_ipv6_prefix == 64
+    assert s.trusted_proxies == []
+    # Endpoints that check a password or send email fail closed; the rest fail open.
+    assert set(s.rate_limit_fail_closed) == {
+        "login",
+        "signup",
+        "resend_verification",
+        "forgot_password",
+        "change_password",
+        "staff_invite",
+    }
+    assert "refresh" not in s.rate_limit_fail_closed
+    assert "verify_email" not in s.rate_limit_fail_closed
+
+
+def test_rate_limits_come_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RATE_LIMIT_SIGNUP_IP", "3/10")
+    monkeypatch.setenv("RATE_LIMIT_FAIL_CLOSED", "login, refresh")
+    monkeypatch.setenv("TRUSTED_PROXIES", "10.0.0.0/8, 192.168.1.5/32")
+    s = make()
+    assert (s.rate_limit_signup_ip.limit, s.rate_limit_signup_ip.window_seconds) == (3, 10)
+    assert s.rate_limit_fail_closed == ["login", "refresh"]
+    assert s.trusted_proxies == ["10.0.0.0/8", "192.168.1.5/32"]
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"rate_limit_signup_ip": "5"},
+        {"rate_limit_signup_ip": "0/60"},
+        {"rate_limit_signup_ip": "5/0"},
+        {"rate_limit_signup_ip": "many/60"},
+        {"rate_limit_fail_closed": ["logn"]},
+        {"trusted_proxies": ["not-a-network"]},
+        {"rate_limit_hmac_key": "short"},  # a short key is refused outside prod too
+        {"rate_limit_ipv6_prefix": 0},
+        {"rate_limit_ipv6_prefix": 129},
+    ],
+    ids=str,
+)
+def test_invalid_rate_limit_settings_are_rejected(overrides: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        make(**overrides)
+
+
+def test_the_hmac_key_is_required_in_prod_and_never_empty() -> None:
+    prod = {
+        "env": "prod",
+        "email_backend": "smtp",
+        "smtp_host": "smtp.provider.example",
+        "portal_base_url": "https://vendors.shazlo.store",
+        **PROD_IDENTITY,
+    }
+    for bad in (None, "", "   ", "x" * 31):
+        with pytest.raises(ValidationError, match="RATE_LIMIT_HMAC_KEY"):
+            make(**prod, rate_limit_hmac_key=bad)
+    accepted = make(**prod, rate_limit_hmac_key="x" * 32).rate_limit_hmac_key
+    assert accepted is not None
+    assert accepted.get_secret_value() == "x" * 32
+
+
+def test_outside_prod_each_process_gets_its_own_key_and_it_is_a_secret() -> None:
+    first, second = make(), make()
+    assert first.rate_limit_hmac_key is not None
+    assert second.rate_limit_hmac_key is not None
+    assert (
+        first.rate_limit_hmac_key.get_secret_value()
+        != second.rate_limit_hmac_key.get_secret_value()
+    )
+    assert len(first.rate_limit_hmac_key.get_secret_value()) == 64
+    assert first.rate_limit_hmac_key.get_secret_value() not in repr(first)
+    assert make(rate_limit_hmac_key="").rate_limit_hmac_key is not None  # empty counts as unset
+
+
+def test_link_lifetimes() -> None:
+    s = make()
+    assert s.invite_token_ttl_minutes == 24 * 60  # invites: 24 hours
+    assert s.reset_token_ttl_minutes == 60  # resets: 1 hour
+    assert make(reset_token_ttl_minutes=5).reset_token_ttl_minutes == 5
+    for name, value in (
+        ("invite_token_ttl_minutes", 4),
+        ("invite_token_ttl_minutes", 14 * 24 * 60 + 1),
+        ("reset_token_ttl_minutes", 4),
+        ("reset_token_ttl_minutes", 24 * 60 + 1),
+    ):
+        with pytest.raises(ValidationError):
+            make(**{name: value})
+
+
+# --- identity-api (admin tokens) ---------------------------------------------------------
+
+
+def test_admin_auth_is_off_unless_configured() -> None:
+    s = make()
+    assert (s.identity_jwks_url, s.identity_issuer) == (None, None)
+    # Empty counts as unset (a line copied from .env.example).
+    blank = make(identity_jwks_url="  ", identity_issuer="")
+    assert (blank.identity_jwks_url, blank.identity_issuer) == (None, None)
+
+
+def test_the_two_identity_settings_go_together() -> None:
+    with pytest.raises(ValidationError, match="go together"):
+        make(identity_jwks_url="https://identity.test/.well-known/jwks.json")
+    with pytest.raises(ValidationError, match="go together"):
+        make(identity_issuer="https://identity.test")
+
+
+def test_dev_may_use_plain_http_for_a_compose_hostname() -> None:
+    s = make(
+        identity_jwks_url="http://identity-api:8001/.well-known/jwks.json",
+        identity_issuer="http://localhost:8001",
+    )
+    assert s.identity_jwks_url is not None
+
+
+@pytest.mark.parametrize("env", ["test", "prod"])
+def test_outside_dev_the_jwks_url_must_be_https(env: str) -> None:
+    extra: dict[str, object] = {
+        "email_backend": "smtp",
+        "smtp_host": "smtp.provider.example",
+        "portal_base_url": "https://vendors.shazlo.store",
+        "rate_limit_hmac_key": "k" * 32,
+    }
+    for url in (
+        "http://identity.test/jwks",
+        "http://127.0.0.1:8001/jwks",
+        "ftp://x/jwks",
+        "nohost",
+    ):
+        with pytest.raises(ValidationError, match="IDENTITY_JWKS_URL"):
+            make(
+                env=env,
+                identity_jwks_url=url,
+                identity_issuer="https://identity.test",
+                jwt_issuer="https://vendor-api.test",
+                **extra,
+            )
+
+
+def test_prod_needs_the_identity_settings() -> None:
+    with pytest.raises(ValidationError, match="IDENTITY_JWKS_URL"):
+        make(
+            env="prod",
+            jwt_issuer="https://vendor-api.shazlo.store",
+            email_backend="smtp",
+            smtp_host="smtp.provider.example",
+            portal_base_url="https://vendors.shazlo.store",
+            rate_limit_hmac_key="k" * 32,
+        )
+
+
+PROD_EMAIL: dict[str, object] = {
+    "email_backend": "smtp",
+    "smtp_host": "smtp.provider.example",
+    "portal_base_url": "https://vendors.shazlo.store",
+    "rate_limit_hmac_key": "k" * 32,
+}
+
+
+@pytest.mark.parametrize(
+    "issuer",
+    [
+        "http://localhost:8002",
+        "https://localhost:8002",
+        "https://127.0.0.1",
+        "http://vendor.example",
+    ],
+)
+def test_prod_needs_a_public_https_issuer(issuer: str) -> None:
+    with pytest.raises(ValidationError, match="JWT_ISSUER"):
+        make(env="prod", **PROD_EMAIL, **{**PROD_IDENTITY, "jwt_issuer": issuer})
+
+
+def test_the_issuer_must_differ_from_identity_apis() -> None:
+    with pytest.raises(ValidationError, match="JWT_ISSUER must differ"):
+        make(
+            identity_jwks_url="http://identity-api:8001/.well-known/jwks.json",
+            identity_issuer="http://localhost:8001/",
+            jwt_issuer="http://localhost:8001",
+        )
+
+
+def test_prod_refuses_insecure_cookies() -> None:
+    with pytest.raises(ValidationError, match="COOKIE_SECURE"):
+        make(env="prod", **PROD_EMAIL, **PROD_IDENTITY, cookie_secure=False)
+    assert make(env="prod", **PROD_EMAIL, **PROD_IDENTITY).cookie_secure is True
+
+
+def test_smtp_credentials_are_never_sent_without_tls() -> None:
+    with pytest.raises(ValidationError, match="SMTP_SECURITY"):
+        make(
+            email_backend="smtp",
+            smtp_host="mailpit",
+            smtp_security="none",
+            smtp_user="mailer",
+            smtp_password="s3cret-value",  # noqa: S106
+        )
+    assert make(email_backend="smtp", smtp_host="mailpit", smtp_security="none").smtp_user is None

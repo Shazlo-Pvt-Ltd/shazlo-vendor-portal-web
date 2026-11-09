@@ -92,8 +92,8 @@ def cookie_value(response: httpx.Response) -> str | None:
     for header in response.headers.get_list("set-cookie"):
         cookie: SimpleCookie = SimpleCookie()
         cookie.load(header)
-        if "refresh_token" in cookie:
-            return cookie["refresh_token"].value or None
+        if "identity_refresh" in cookie:
+            return cookie["identity_refresh"].value or None
     return None
 
 
@@ -168,7 +168,7 @@ async def test_the_whole_auth_flow(
         )
         assert exchange.status_code == 200
         vendor_token = exchange.json()["access_token"]
-        assert "refresh_token" not in exchange.headers.get("set-cookie", "")
+        assert "identity_refresh" not in exchange.headers.get("set-cookie", "")
 
         # 6. vendor-api would check it with packages/py-auth, through the live JWKS.
         jwks = await http.get("/.well-known/jwks.json")
@@ -194,14 +194,14 @@ async def test_the_whole_auth_flow(
         # 8. Reuse detection: the first token again ends the whole family, even the new token.
         http.cookies.clear()
         replay = await http.post(
-            "/v1/auth/refresh", headers={"Cookie": f"refresh_token={first_refresh}"}
+            "/v1/auth/refresh", headers={"Cookie": f"identity_refresh={first_refresh}"}
         )
         assert (replay.status_code, replay.json()["error"]["code"]) == (
             401,
             "invalid_refresh_token",
         )
         dead = await http.post(
-            "/v1/auth/refresh", headers={"Cookie": f"refresh_token={second_refresh}"}
+            "/v1/auth/refresh", headers={"Cookie": f"identity_refresh={second_refresh}"}
         )
         assert dead.status_code == 401
 
@@ -216,13 +216,14 @@ async def test_the_whole_auth_flow(
         assert token
         assert (await http.post("/v1/auth/logout")).status_code == 204
         http.cookies.clear()
-        gone = await http.post("/v1/auth/refresh", headers={"Cookie": f"refresh_token={token}"})
+        gone = await http.post("/v1/auth/refresh", headers={"Cookie": f"identity_refresh={token}"})
         assert gone.status_code == 401
 
         # Redis kept hashes only: no refresh token, email or password in any key.
         keys = [key.decode() async for key in redis.scan_iter("*")]
         assert keys
         for key in keys:
+            assert key.startswith("identity:")  # the service's own Redis prefix
             assert token not in key
             assert first_refresh not in key
             assert "shazlo.test" not in key
@@ -310,7 +311,7 @@ async def test_key_rotation_with_a_token_in_flight(
         # The session survives the rotation: refresh gives a token signed with the new key.
         http.cookies.clear()
         refreshed = await http.post(
-            "/v1/auth/refresh", headers={"Cookie": f"refresh_token={session_cookie}"}
+            "/v1/auth/refresh", headers={"Cookie": f"identity_refresh={session_cookie}"}
         )
         assert refreshed.status_code == 200
         assert jwt.get_unverified_header(refreshed.json()["access_token"])["kid"] == "test-key-2"

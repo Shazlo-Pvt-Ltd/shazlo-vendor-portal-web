@@ -38,13 +38,23 @@ The new folders are placeholders until their phase starts; see the roadmap.
 
 ## Local development
 
-Postgres 16 and Redis 7 run in docker-compose:
+Postgres 16, Redis 7 and Mailpit (a local email catcher) run in docker-compose:
 
 ```bash
 cp .env.example .env        # then set POSTGRES_PASSWORD
 docker compose up -d
-docker compose ps           # postgres and redis should report "healthy"
+docker compose ps           # postgres, redis and mailpit should report "healthy"
 ```
+
+| Service | Port | Check |
+| --- | --- | --- |
+| Postgres | 5432 | `docker compose ps` shows "healthy" |
+| Redis | 6379 (127.0.0.1 only) | `docker compose exec redis redis-cli ping` prints `PONG` |
+| identity-api (profile `identity`) | 8001 | `curl localhost:8001/ready` |
+| vendor-api (profile `vendor`) | 8002 | `curl localhost:8002/ready` |
+| Mailpit SMTP / web UI | 1025 / 8025 (127.0.0.1 only) | open <http://localhost:8025> |
+
+Mailpit shows every email the services send (signup, invite and reset links) and delivers none of them. vendor-api in compose sends to it; from the host, `python -m vendor_api.cli send-test-email` (in `services/vendor-api`) puts an example there. From another container the SMTP server is `mailpit:1025`; from the host it is `localhost:1025`. Ports are set in `.env`.
 
 On first start it creates one database per service plus a test database for each: `identity`, `identity_test`, `vendor`, `vendor_test`. Connection string pattern: `postgresql://<user>:<password>@localhost:5432/<db>`.
 
@@ -56,7 +66,7 @@ identity-api can also run in a container, behind the `identity` profile. To work
 
 ```bash
 docker compose --profile identity build identity-api
-docker compose --profile identity run --rm --no-deps -T identity-api python -c "import json; from identity_api.services.keys import generate_private_key, new_kid, private_key_pem; print('IDENTITY_JWT_KEYS=' + json.dumps({new_kid(): private_key_pem(generate_private_key()).decode()}, separators=(',', ':')))"
+docker compose --profile identity run --rm --no-deps -T identity-api python -c "import json; from shazlo_security.keys import generate_private_key, new_kid, private_key_pem; print('IDENTITY_JWT_KEYS=' + json.dumps({new_kid(): private_key_pem(generate_private_key()).decode()}, separators=(',', ':')))"
 ```
 
 Then create the schema, seed the first admin and start it:
@@ -69,6 +79,24 @@ curl localhost:8001/ready   # {"status":"ok", ...}
 ```
 
 The key is a local development key: keep it out of git (`.env` is ignored) and never reuse it elsewhere.
+
+vendor-api runs the same way behind the `vendor` profile. It signs its own tokens, so it needs its **own** signing key (never identity-api's) in `.env`. Make it with the image, and copy the printed `VENDOR_JWT_KEYS=...` line over the empty one:
+
+```bash
+docker compose --profile vendor build vendor-api
+docker compose --profile vendor run --rm --no-deps -T vendor-api python -c "import json; from shazlo_security.keys import generate_private_key, new_kid, private_key_pem; print('VENDOR_JWT_KEYS=' + json.dumps({new_kid(): private_key_pem(generate_private_key()).decode()}, separators=(',', ':')))"
+```
+
+It uses the `vendor` database and Redis database 1 (identity-api uses 0):
+
+```bash
+docker compose --profile vendor run --rm vendor-api alembic upgrade head
+docker compose --profile vendor up -d --wait
+curl localhost:8002/ready   # {"status":"ok", ...}
+curl localhost:8002/.well-known/jwks.json   # the public key
+```
+
+To run both APIs, add both keys as above and use `--profile full` (it includes both profiles): `docker compose --profile full up -d --build --wait`. Run each service's `alembic upgrade head` first, with `run --rm` as above.
 
 For the legacy apps, see `app/README.md` and `backend/README.md` and copy each `.env.example` to `.env`.
 

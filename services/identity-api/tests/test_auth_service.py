@@ -11,21 +11,25 @@ from typing import Any, cast
 
 import pytest
 from fakeredis import FakeAsyncRedis
+from shazlo_security.keys import load_keyring
 from shazlo_security.passwords import PasswordCheck, PasswordService
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from identity_api.core.errors import ApiError
-from identity_api.core.security import password_config
-from identity_api.core.settings import Settings
-from identity_api.db.models import Admin
-from identity_api.services.auth import AuthService, AuthSession
-from identity_api.services.keys import load_keyring
-from identity_api.services.refresh_tokens import (
+from shazlo_security.refresh_tokens import (
     InvalidRefreshTokenError,
     RefreshSession,
     RefreshTokenStore,
 )
-from identity_api.services.tokens import TokenIssuer
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from identity_api.core.errors import ApiError
+from identity_api.core.security import (
+    key_ring_config,
+    password_config,
+    refresh_token_config,
+    token_issuer,
+)
+from identity_api.core.settings import Settings
+from identity_api.db.models import Admin
+from identity_api.services.auth import AuthService, AuthSession
 
 ADMIN_ID = uuid.UUID("11111111-2222-3333-4444-555555555555")
 EMAIL = "reviewer@shazlo.test"
@@ -100,14 +104,14 @@ def passwords(fast_settings: Settings) -> PasswordService:
 
 @pytest.fixture
 def store(redis: FakeAsyncRedis, fast_settings: Settings) -> RefreshTokenStore:
-    return RefreshTokenStore(redis, fast_settings)
+    return RefreshTokenStore(redis, refresh_token_config(fast_settings))
 
 
 @pytest.fixture
 def auth(
     fast_settings: Settings, passwords: PasswordService, store: RefreshTokenStore
 ) -> AuthService:
-    issuer = TokenIssuer(fast_settings, load_keyring(fast_settings))
+    issuer = token_issuer(fast_settings, load_keyring(key_ring_config(fast_settings)))
     return AuthService(fast_settings, passwords, issuer, store)
 
 
@@ -177,7 +181,8 @@ async def test_password_change_before_the_family_starts_fails_the_login(
         await auth.login(database.session(), EMAIL, PASSWORD)
     assert error.value.code == "invalid_credentials"
     families = {
-        f.decode() if isinstance(f, bytes) else f for f in await redis.smembers(f"ra:{ADMIN_ID}")
+        f.decode() if isinstance(f, bytes) else f
+        for f in await redis.smembers(f"identity:ra:{ADMIN_ID}")
     }
     assert families == {changed[0].refresh.family_id}
 

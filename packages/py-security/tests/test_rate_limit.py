@@ -110,15 +110,50 @@ async def test_guard_raises_rate_limited_with_retry_after(
     assert 119 <= caught.value.retry_after <= 120
 
 
-async def test_retry_after_is_the_longest_of_the_checks_that_are_over(
+async def test_a_refused_check_stops_the_later_counters(
+    redis: FakeAsyncRedis,
+) -> None:
+    """Login lockout: requests a narrow counter (per IP) already refuses must not reach the loose
+    per-email counter, or one client could use up a victim's per-email limit for everyone."""
+    guard = make_guard(redis)
+    email_rule = rule(3, 3600)
+    attacker = [Check("ip", "203.0.113.7", rule(1, window=60)), Check("email", EMAIL, email_rule)]
+    await guard.check("login", attacker)
+    for _ in range(10):
+        with pytest.raises(RateLimited) as caught:
+            await guard.check("login", attacker)
+        assert caught.value.retry_after <= 60  # the IP's window, the first one over
+    # The attacker's refused requests did not count: the owner, elsewhere, still gets in.
+    owner = [Check("ip", "198.51.100.1", rule(5, window=60)), Check("email", EMAIL, email_rule)]
+    await guard.check("login", owner)
+    await guard.check("login", owner)
+    with pytest.raises(RateLimited) as caught:
+        await guard.check("login", owner)
+    assert caught.value.retry_after > 60
+
+
+async def test_remembered_subjects_expire_and_never_store_the_subject(
     redis: FakeAsyncRedis,
 ) -> None:
     guard = make_guard(redis)
-    checks = [Check("ip", "1.1.1.1", rule(1, window=10)), Check("email", "a@b.c", rule(1, 500))]
-    await guard.check("login", checks)
-    with pytest.raises(RateLimited) as caught:
-        await guard.check("login", checks)
-    assert caught.value.retry_after > 400
+    assert not await guard.remembers("login", "email_ip", f"1.1.1.1 {EMAIL}")
+    await guard.remember("login", "email_ip", f"1.1.1.1 {EMAIL}", 120)
+    assert await guard.remembers("login", "email_ip", f"1.1.1.1 {EMAIL}")
+    assert not await guard.remembers("login", "email_ip", f"2.2.2.2 {EMAIL}")
+    keys = [key.decode() async for key in redis.scan_iter("*")]
+    assert len(keys) == 1
+    assert EMAIL.split("@")[0] not in keys[0]
+    assert 0 < await redis.ttl(keys[0]) <= 120
+
+
+async def test_remember_and_remembers_never_fail_the_request() -> None:
+    server = FakeServer()
+    server.connected = False
+    client = FakeAsyncRedis(server=server)
+    guard = make_guard(client)
+    await guard.remember("login", "email_ip", EMAIL, 60)  # does not raise
+    assert not await guard.remembers("login", "email_ip", EMAIL)
+    await client.aclose()
 
 
 async def test_redis_holds_no_plain_subject(
@@ -230,6 +265,8 @@ def test_a_prefix_is_required(redis: FakeAsyncRedis) -> None:
         RedisRateLimiter(redis)  # type: ignore[call-arg]
     with pytest.raises(ValueError, match="prefix"):
         RedisRateLimiter(redis, "")
+    with pytest.raises(ValueError, match="must end with ':'"):
+        RedisRateLimiter(redis, "vendor")
 
 
 @pytest.mark.parametrize(("limit", "window"), [(0, 60), (5, 0), (-1, 60)])
