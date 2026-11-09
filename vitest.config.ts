@@ -53,8 +53,8 @@ export default defineConfig({
     maxWorkers: 1,
     coverage: {
       provider: 'v8',
-      include: ['app/src/**/*.{js,jsx}', 'backend/**/*.js', 'packages/ui/src/**/*.ts', 'apps/*/src/**/*.ts'],
-      exclude: ['**/*.test.*', 'backend/test/**', '**/node_modules/**'],
+      include: ['app/src/**/*.{js,jsx}', 'backend/**/*.js', 'packages/ui/src/**/*.{ts,tsx}', 'apps/*/src/**/*.{ts,tsx}'],
+      exclude: ['**/*.test.*', 'backend/test/**', '**/node_modules/**', '**/*.d.ts', 'apps/*/src/test/**', 'apps/*/src/main.tsx', 'apps/*/src/mocks/browser.ts'],
       reporter: ['text', 'html', 'json-summary'],
       reportsDirectory: 'coverage',
       reportOnFailure: true,

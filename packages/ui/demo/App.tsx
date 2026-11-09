@@ -12,7 +12,7 @@ import {
   Typography,
 } from '@mui/material'
 import { useId, type ReactNode } from 'react'
-import { annotation, brand, contrastRatio, link, neutral, radius, reviewStatus, space, status, typeScale } from '../src'
+import { annotation, Banner, brand, contrastRatio, EmptyState, link, neutral, PageHeader, radius, reviewStatus, SectionCard, space, StatFigure, status, StatusPill, typeScale, type PillStatus } from '../src'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   const id = useId()
@@ -189,6 +189,26 @@ export function App() {
               </Typography>
             </CardContent>
           </Card>
+        </Stack>
+      </Section>
+      <Section title="Seller components">
+        <Stack spacing={3}>
+          <PageHeader title="Products" subtitle="27 products · 18 live in the app" actions={<Button variant="contained">Add product</Button>} />
+          <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 1 }}>
+            {(['live', 'pending', 'sentBack', 'draft', 'editInReview', 'publishing', 'archived', 'suspended'] as PillStatus[]).map((s) => (
+              <StatusPill key={s} status={s} />
+            ))}
+          </Stack>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <StatFigure label="Live on Shazlo" value={18} baseline="Visible in the app feed" />
+            <StatFigure label="Pending review" value={4} baseline="Usually reviewed within 24 h" />
+          </Stack>
+          <Banner tone="warning" title="2 products were sent back by the review team">
+            Fix the notes on each product and resubmit.
+          </Banner>
+          <SectionCard title="Recent review decisions">
+            <EmptyState illustration="kurta" tip="Start with your best seller" title="No products yet" body="Add your first product to start selling." action={<Button variant="contained">Add product</Button>} />
+          </SectionCard>
         </Stack>
       </Section>
       <Section title="Shazlo-One shell">

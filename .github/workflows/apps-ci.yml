@@ -99,6 +99,7 @@ jobs:
       - run: npm run test:ci
       - run: npm run build:demo --workspace @shazlo/ui
       - run: npm run build --prefix app
+      - run: npm run build --workspace @shazlo/vendor-portal
       - name: Retain test results and coverage
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -107,5 +108,40 @@ jobs:
           path: |
             reports/
             coverage/
+          retention-days: 14
+          if-no-files-found: warn
+
+  e2e:
+    # Seller portal in a real browser: journeys, axe accessibility and screenshots at 1440 px and 390 px.
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --prefer-offline --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/vendor-portal
+      # Missing Linux baselines are written (and uploaded below) instead of failing, so a new
+      # screen's first run produces the images to review and commit.
+      - run: npx playwright test --update-snapshots=missing
+        working-directory: apps/vendor-portal
+      - name: Keep the report and screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: seller-portal-e2e-${{ github.sha }}
+          path: |
+            apps/vendor-portal/playwright-report/
+            apps/vendor-portal/test-results/
+            apps/vendor-portal/e2e/__screenshots__/
           retention-days: 14
           if-no-files-found: warn
