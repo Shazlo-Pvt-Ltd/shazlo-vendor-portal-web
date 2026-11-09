@@ -75,6 +75,7 @@ Each phase matches a milestone in this repo. The bullets are the proposed scope;
 - Admin user management (super_admin only): list, create, update, deactivate, reset password, `GET /v1/roles`.
 - Rate limiting on auth endpoints (Redis), with trusted-proxy handling and a per-endpoint fail-open or fail-closed choice.
 - `packages/py-auth`: the shared token verifier, JWKS client and `require_role` that every service uses.
+- `packages/py-security`: password hashing, the rate limiter and client-IP detection shared by identity-api and vendor-api (ADR 0010).
 - End-to-end test of the whole flow against Postgres and Redis, including key rotation with a token in flight.
 
 ### Phase 2: Vendor API core
