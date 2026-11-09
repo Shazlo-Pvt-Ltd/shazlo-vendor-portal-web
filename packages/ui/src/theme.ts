@@ -170,6 +170,8 @@ function baseOptions({ voyage }: ShazloThemeOptions): ThemeOptions {
           }),
         },
       },
+      // 16 px inputs on phones, so iOS does not zoom the page when a field gets focus.
+      MuiInputBase: { styleOverrides: { input: { '@media (max-width: 899.95px)': { fontSize: '1rem' } } } },
       MuiInputLabel: { styleOverrides: { root: { '&.Mui-focused:not(.Mui-error):not(.Mui-disabled)': { color: brand.brown } } } },
     },
   }
