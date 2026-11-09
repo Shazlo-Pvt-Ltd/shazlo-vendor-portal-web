@@ -71,9 +71,10 @@ The app refuses to start if `DATABASE_URL`, `REDIS_URL` or the JWT keys are miss
 
 - The **refresh token** is an `HttpOnly` cookie named `identity_refresh` on `/v1/auth` and is never in a response body (vendor-api uses `vendor_refresh`, so the two never share a cookie). The browser keeps it; JavaScript only ever holds the 15-minute access token.
 - **`COOKIE_SECURE=true`** (the default) works on `http://localhost` in Chrome and Firefox, which treat localhost as secure. Safari and curl do not, so set `COOKIE_SECURE=false` locally for them. Never in production.
-- **`SameSite=Strict`**: the shell (`http://localhost:5173`) and this API (`http://localhost:8001`) are the same site because ports do not count, so the cookie is sent. In production they share a parent domain: set `COOKIE_DOMAIN` (for example `shazlo.store`).
+- **`SameSite=Strict`**: the shell (`http://localhost:5173`) and this API (`http://localhost:8001`) are the same site because ports do not count, so the cookie is sent. In production they share a parent domain, which also makes them the same site.
+- **Host-only:** the cookie has no `Domain` attribute, so the browser sends it back only to this API's own host, never to vendor-api or another service under the same parent domain. There is no setting for it.
 - **CORS**: the shell's exact origin must be in `CORS_ALLOWED_ORIGINS` (comma separated; no wildcard, because credentials are allowed), and its requests need `credentials: "include"` so the cookie is sent to `/v1/auth/refresh` and `/v1/auth/logout`.
-- Refresh from **one place** in the shell: two tabs refreshing with the same token at once count as reuse and end the session.
+- Refresh from **one place** in the shell if you can. Two tabs that refresh with the same token at once do not end the session: the second request, within 10 seconds of the first use (`REFRESH_REUSE_GRACE_SECONDS`), gets `409 refresh_conflict`, and a retry works because the browser already holds the new cookie. A used token that comes back later revokes the whole family.
 
 ## First admin (seed)
 
@@ -115,7 +116,7 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `ENV` | `dev` | `dev`, `test` or `prod`; `prod` turns off `/docs` |
 | `LOG_LEVEL` | `INFO` | |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` | comma separated; credentials allowed for these only |
-| `COOKIE_SECURE` / `COOKIE_SAMESITE` / `COOKIE_DOMAIN` | `true` / `strict` / unset | refresh-token cookie |
+| `COOKIE_SECURE` / `COOKIE_SAMESITE` | `true` / `strict` | refresh-token cookie (always host-only: no `Domain` attribute) |
 | `JWT_ISSUER` | `http://localhost:8001` | `iss` claim |
 | `JWT_KEYS_DIR` / `JWT_KEYS` | none (one is required) | RS256 keys: a directory of `<kid>.pem` files and/or JSON `{"<kid>": "<PEM>"}`; the app refuses to start without a key, or (on Linux/macOS) with a private key file other users can read (looser than `0600`, or `0640` if owned by root) |
 | `AUDIENCE_ROLES` | `vendor-api` for `super_admin` and `vendor_reviewer` | JSON `{"<service>": ["<role>", ...]}`; must not list `identity-api`; see Auth endpoints |
@@ -123,6 +124,7 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `ACCESS_TOKEN_TTL_SECONDS` | `900` | 1 to 3600 |
 | `EXCHANGED_TOKEN_TTL_SECONDS` | `300` | 30 to 900; tokens from `POST /v1/auth/token`, capped at the asking token's `exp` |
 | `REFRESH_TOKEN_TTL_DAYS` / `REFRESH_FAMILY_MAX_DAYS` | `7` / `30` | |
+| `REFRESH_REUSE_GRACE_SECONDS` | `10` | 0 to 60; a used refresh token that comes back within this many seconds gets `409 refresh_conflict` instead of revoking the family |
 | `RATE_LIMIT_LOGIN_IP` / `RATE_LIMIT_LOGIN_EMAIL` | `20/60` / `5/900` | `<limit>/<window seconds>`; the email limit is per (email, client IP); see Rate limiting |
 | `RATE_LIMIT_LOGIN_EMAIL_GLOBAL` | `50/3600` | logins for one email from any IP |
 | `RATE_LIMIT_REFRESH_IP` / `RATE_LIMIT_REFRESH_SESSION` | `60/60` / `20/60` | |
@@ -170,7 +172,7 @@ The live reference is the OpenAPI document at `/docs` (dev). Every error is `{"e
 | `GET /health` / `GET /ready` | Liveness; readiness (Postgres and Redis). |
 | `GET /.well-known/jwks.json` | The public keys, `Cache-Control: max-age=600`. |
 | `POST /v1/auth/login` | `{email, password}` returns `{access_token, token_type, expires_in, must_change_password, admin}` and sets the refresh cookie. Unknown email, wrong password and inactive admin all give the same `401 invalid_credentials`. |
-| `POST /v1/auth/refresh` | Reads the cookie, rotates it and returns the same body as login. A token that was already used revokes its whole family. A rejected token is answered with `401` and the cookie is cleared. |
+| `POST /v1/auth/refresh` | Reads the cookie, rotates it and returns the same body as login. A token that was already used gets `409 refresh_conflict` within 10 seconds of its first use (nothing is revoked; retry), and revokes its whole family after that. A rejected token is answered with `401` and the cookie is cleared. |
 | `POST /v1/auth/logout` | Revokes the cookie's family and clears the cookie. Always `204`. |
 | `POST /v1/auth/token` | Bearer identity-api token plus `{"audience": "<service>"}`. Returns a 5-minute token for that one service (`{access_token, token_type, expires_in, audience}`), never outliving the asking token, with no refresh token. The token carries only the admin's roles that are listed for that service. `400 audience_not_exchangeable` for `identity-api` itself, `400 unknown_audience` if the service is not in `AUDIENCE_ROLES`, `403 audience_not_allowed` if none of the admin's roles is listed for it. |
 | `GET /v1/me` | The signed-in admin: id, email, display name, roles, `must_change_password`. Never hashes or tokens. |
@@ -186,7 +188,7 @@ The live reference is the OpenAPI document at `/docs` (dev). Every error is `{"e
 - **First login:** an admin with `must_change_password` gets an access token with **no roles** and a `must_change_password` claim. Services grant it nothing, and identity-api's own `current_admin` dependency answers `403 password_change_required`. Only `change-password` accepts it. The new token returned by `change-password` is a normal one.
 - **Audiences:** `AUDIENCE_ROLES` (JSON in the environment) maps each other service's name to the roles allowed to get a token for it. It must not include `identity-api`: only login and refresh issue identity-api tokens, so a stolen access token cannot renew itself without the refresh cookie. Adding a service is a settings change only. Roles are read from the database at exchange time, and a token for another audience is rejected by identity-api's own `current_admin` dependency.
 - `api/deps.py` has the dependencies later endpoints use: `current_admin` (active admin, password already changed), `current_admin_pending_password` and `require_role(...)`. Tokens are verified by `packages/py-auth` (`shazlo-auth`), the same verifier other services use, here fed with this service's own keys. `require_role` is the shared one (`super_admin` always passes) but reads roles from the database, so a role change applies to this API at once.
-- Concurrent refreshes with the same token (two tabs at once) count as reuse and end the session; the shell must refresh from one place (ADR 0009).
+- Concurrent refreshes with the same token (two tabs at once) do not end the session: reuse inside the grace window (`REFRESH_REUSE_GRACE_SECONDS`, default 10) gets `409 refresh_conflict` and revokes nothing, and the retry succeeds with the new cookie. Reuse after the window revokes the whole family ([ADR 0009](../../docs/adr/0009-auth-model.md)).
 
 ## Rate limiting
 
@@ -194,7 +196,7 @@ Fixed-window counters in Redis (`identity:rl:<endpoint>:<scope>:<hash>`), so the
 
 | Endpoint | Limited by |
 |---|---|
-| `POST /v1/auth/login` | client IP, the (email, client IP) pair, and the email alone (email trimmed, lower-cased) |
+| `POST /v1/auth/login` | client IP, the (email, client IP) pair, and the email alone (email trimmed, lower-cased), counted in that order; a pair that logged in before skips the email-alone counter |
 | `POST /v1/auth/refresh` | client IP, and the refresh family (when the cookie is valid) |
 | `POST /v1/auth/token` | client IP, and the admin |
 | `POST /v1/auth/change-password` | the admin (wrong current passwords only) |
@@ -202,7 +204,9 @@ Fixed-window counters in Redis (`identity:rl:<endpoint>:<scope>:<hash>`), so the
 - **Login email counters:** both are counted before the password is checked, so parallel guesses cannot slip past. Unknown emails are counted the same way, so the response does not reveal whether an email exists.
   - The strict one (`RATE_LIMIT_LOGIN_EMAIL`, 5 per 15 minutes) is per (email, client IP) and cleared by a successful login, so in effect it limits failed attempts for one email from one IP. Keyed on the email alone it would let anyone lock any admin out indefinitely with 6 bad logins per 15 minutes, from anywhere.
   - The loose one (`RATE_LIMIT_LOGIN_EMAIL_GLOBAL`, 50 per hour) is per email from any IP and is not cleared by a successful login. It caps guessing spread over many IPs.
-  - The trade-off: an attacker with many IPs gets 5 guesses per IP per 15 minutes until the global cap stops them, and an attacker who sustains 50 attempts an hour (at least 3 IPs or IPv6 /64s at the strict limit) can still lock an email out. That takes far more than one client, and the global limit can be raised or lowered per deployment.
+  - The checks stop at the first one that refuses, and the narrow ones come first, so a request already refused per IP or per (email, IP) never counts against the email. One client adds at most its per-pair limit to the loose counter.
+  - A successful login remembers its (email, client IP) pair for 30 days. Logins from a remembered pair skip the loose counter, so an attacker who fills it from elsewhere cannot lock the admin out of their usual network. If Redis cannot say whether the pair is remembered, the loose counter applies.
+  - The trade-off: an attacker with many IPs gets 5 guesses per IP per 15 minutes until the global cap stops them. Filling the global cap blocks the email only from pairs that have not logged in within 30 days (a new network or device). The global limit can be raised or lowered per deployment.
 - **A rate-limited refresh keeps its cookie:** the limit says nothing about the token.
 - **No plain subjects in Redis:** emails, IPs, admin IDs and families are hashed with HMAC-SHA256 under `RATE_LIMIT_HMAC_KEY`. The key matters because emails are guessable: a plain hash could be reversed from a Redis dump.
 - **Change-password counter:** counted before the current password is checked (it limits guesses with a stolen access token) and cleared once the current password verifies, so new passwords the policy rejects do not use it up.

@@ -64,7 +64,7 @@ The sections below describe each group.
 ## Cookies and CORS (local development)
 
 - The **refresh token** is an `HttpOnly` cookie named **`vendor_refresh`**, path `/v1/auth`, never in a response body. identity-api uses `identity_refresh`. **The names differ on purpose:** both services run under one parent domain in production and share a Redis, so equal names would overwrite each other's cookie (and equal Redis prefixes would mix their sessions: vendor-api's are `vendor:`, identity-api's `identity:`).
-- `COOKIE_SECURE=true` (the default) works on `http://localhost` in Chrome and Firefox. Safari and curl do not treat localhost as secure: set `COOKIE_SECURE=false` locally for them. Never in production. `SameSite=Strict` works because the portal (`http://localhost:5174`) and this API (`http://localhost:8002`) are the same site; in production set `COOKIE_DOMAIN` to the shared parent domain.
+- `COOKIE_SECURE=true` (the default) works on `http://localhost` in Chrome and Firefox. Safari and curl do not treat localhost as secure: set `COOKIE_SECURE=false` locally for them. Never in production. `SameSite=Strict` works because the portal (`http://localhost:5174`) and this API (`http://localhost:8002`) are the same site. The cookie is **host-only** (no `Domain` attribute, and no setting for one): the browser sends it back only to this service, never to identity-api or another `*.shazlo.store` host. `ENV=prod` refuses `COOKIE_SECURE=false`.
 - **CORS:** the portal's exact origin must be in `CORS_ALLOWED_ORIGINS` (comma separated, no wildcard: credentials are allowed), and its requests need `credentials: "include"` so the cookie reaches `/v1/auth/refresh` and `/v1/auth/logout`. Those two endpoints also check `Origin` (or `Referer`) against the same list, as a CSRF guard.
 
 ## Layout
@@ -93,8 +93,8 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `ENV` | `dev` | `dev`, `test` or `prod`; `prod` turns off `/docs` |
 | `LOG_LEVEL` | `INFO` | |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:5174` | comma separated; credentials allowed for these only; no wildcard |
-| `COOKIE_SECURE` / `COOKIE_SAMESITE` / `COOKIE_DOMAIN` | `true` / `strict` / unset | refresh-token cookie; `none` requires `COOKIE_SECURE=true` |
-| `JWT_ISSUER` | `http://localhost:8002` | `iss` of the tokens vendor-api issues |
+| `COOKIE_SECURE` / `COOKIE_SAMESITE` | `true` / `strict` | refresh-token cookie (host-only); `none` requires `COOKIE_SECURE=true`; prod requires `COOKIE_SECURE=true` |
+| `JWT_ISSUER` | `http://localhost:8002` | `iss` of the tokens vendor-api issues; prod requires this service's public `https://` URL (not localhost), and it must always differ from `IDENTITY_ISSUER` |
 | `JWT_KEYS_DIR` / `JWT_KEYS` | none (one is required) | RS256 keys: a directory of `<kid>.pem` files and/or JSON `{"<kid>": "<PEM>"}` |
 | `JWT_SIGNING_KID` | unset | the key that signs; needed with several keys, the others are only published |
 | `ACCESS_TOKEN_TTL_SECONDS` | `900` | 1 to 3600 |
@@ -113,7 +113,7 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `EMAIL_BACKEND` | `console` | `console` (sends nothing, logs the link in dev only) or `smtp` |
 | `EMAIL_FROM` | `Shazlo <no-reply@shazlo.store>` | the sender of every email |
 | `SMTP_HOST` / `SMTP_PORT` | unset / `587` | required with `smtp` |
-| `SMTP_USER` / `SMTP_PASSWORD` | unset | set both or neither; the password is a secret with no default |
+| `SMTP_USER` / `SMTP_PASSWORD` | unset | set both or neither; the password is a secret with no default; refused with `SMTP_SECURITY=none` (they would travel in clear text) |
 | `SMTP_SECURITY` | `starttls` | `none` (local Mailpit only), `starttls` or `ssl` |
 | `EMAIL_SEND_ATTEMPTS` | `3` | tries before an email is given up |
 | `PORTAL_BASE_URL` | `http://localhost:5174` | the vendor portal: links in emails point here |
@@ -142,9 +142,10 @@ vendor-api signs **its own** tokens with **its own** RS256 key, never identity-a
 
 - **No account enumeration.** An email that is already registered (in any letter case, vendor or staff) gets exactly the same `202` and body as a new one, but receives an "you already have an account" email instead of a verification email, and nothing is created. The password is hashed before the lookup in both cases, so the two take about the same time; two signups racing for one email are caught by the unique constraint and answered the same way.
 - **Tokens:** 256-bit random, sent only in the email (in the link fragment, see Email). Only the SHA-256 is stored in `auth_tokens`. A token works once within 24 hours: the `UPDATE ... RETURNING` that spends it is what stops two requests from both using it. Money is integer paise.
-- **The owner cannot sign in until the email is verified.** Login (a later issue) must check `email_verified_at`; signup alone grants nothing. Verifying does not approve the vendor: an admin does that (Phase 3), and the vendor stays `pending` until then.
+- **The owner cannot sign in until the email is verified.** Login answers `401 invalid_credentials` until then, exactly as for a wrong password; signup alone grants nothing. Verifying does not approve the vendor: an admin does that (Phase 3), and the vendor stays `pending` until then.
 - **Slugs** come from the brand name (accents folded, ASCII letters and digits, hyphens), with `-2`, `-3`, ... on collision. A name with no Latin letters becomes `vendor`, `vendor-2`, ...
-- **Not yet limited:** these endpoints have no rate limit until the rate-limiting issue (#84). Until then repeated signups for one address can send that address repeated emails.
+- **Input the database would refuse is refused first.** Emails must be a plain address (no display name, quotes, commas or spaces), the phone fits the 32-character column, and free-text fields refuse control characters (NUL included) and lone surrogates. Otherwise such input would reach the INSERT only for unregistered emails and fail there with a `500`, telling them apart from registered ones. As a backstop, a database error during signup still answers `202` and sends nothing.
+- **Rate limits:** see [Rate limits](#rate-limits).
 - Validation errors name the field and the rule, never the value that was sent.
 
 ## Sessions
@@ -153,7 +154,7 @@ Vendor sessions work like admin sessions (ADR 0009): a 15-minute access token (t
 
 | Endpoint | Notes |
 |---|---|
-| `POST /v1/auth/login` | `{email, password}` returns `{access_token, token_type, expires_in, user, vendor}` and sets the refresh cookie. `401 invalid_credentials` for an unknown email, a wrong password, a user who has no password yet and a disabled user alike (each costs one password verification). A correct password with an unverified email is `403 email_not_verified`; a `rejected` or `suspended` vendor is `403 vendor_not_allowed`. A `pending` vendor can sign in: it must be able to edit and submit. Rehashes when the Argon2 cost changed; sets `last_login_at` |
+| `POST /v1/auth/login` | `{email, password}` returns `{access_token, token_type, expires_in, user, vendor}` and sets the refresh cookie. `401 invalid_credentials` for an unknown email, a wrong password, a user who has no password yet, a disabled user and an unverified email alike (each costs one password verification). Unverified is not a separate answer: anyone can sign up with another person's address and a password they chose, and a `403` (signup created the account) against a `401` (the address was already registered, so signup created nothing) would reveal which addresses have accounts. A `rejected` or `suspended` vendor is `403 vendor_not_allowed`. A `pending` vendor can sign in: it must be able to edit and submit. Rehashes when the Argon2 cost changed; sets `last_login_at` |
 | `POST /v1/auth/refresh` | Reads the cookie, rotates it, returns the same body as login. A token that was already used ends its whole family (`401`, cookie cleared); one used within the grace window is `409 refresh_conflict` and revokes nothing. A suspended or rejected vendor, a disabled user or an unverified email cannot refresh: the family ends. Needs an allowed `Origin` (or `Referer`), like logout |
 | `POST /v1/auth/logout` | Ends the cookie's family and clears the cookie. Always `204` |
 | `POST /v1/auth/change-password` | Bearer token plus `{current_password, new_password}`. Same policy as signup. Ends **every** session of the user and starts a new one |
@@ -217,7 +218,7 @@ Keys are `vendor:rl:<endpoint>:<scope>:<hash>`: the prefix and the `RATE_LIMIT_H
 
 | Endpoint | Counted per | Default |
 |---|---|---|
-| `login` | IP; email + IP (failures: cleared by a success); email from any IP | 20 per minute; 5 per 15 minutes; 50 per hour |
+| `login` | IP; email + IP (failures: cleared by a success); email from any IP (skipped for an email + IP pair that logged in within 30 days) | 20 per minute; 5 per 15 minutes; 50 per hour |
 | `signup` | IP; email | 10 per hour; 3 per hour |
 | `resend_verification` | IP; email | 10 per hour; 3 per hour |
 | `verify_email` | IP | 20 per minute |
@@ -227,6 +228,7 @@ Keys are `vendor:rl:<endpoint>:<scope>:<hash>`: the prefix and the `RATE_LIMIT_H
 | `set_password` | IP | 20 per 15 minutes |
 | `staff_invite` (invite and resend-invite) | vendor | 20 per hour |
 
+- **Nobody can lock a vendor out.** The checks run in order and stop at the first one that refuses, so a request the per-IP or per-pair counter already refuses never reaches the per-email counter: one attacking IP adds at most 5 per 15 minutes to it. And an email + IP pair that logged in successfully in the last 30 days skips the per-email counter, so a vendor on their usual network gets in even while someone guesses from elsewhere.
 - **Signup and resend are limited on the address as typed**, whether or not it is registered, so the limit looks the same either way and reveals nothing. Per address matters because those endpoints send email (verification, or "you already have an account"): without it they would mail-bomb an inbox.
 - **When Redis is down** the endpoints in `RATE_LIMIT_FAIL_CLOSED` answer `503 rate_limiter_unavailable`: the ones that check a password (`login`, `change_password`) so guessing stays limited, and the ones that send email (`signup`, `resend_verification`, `forgot_password`, `staff_invite`) so an outage cannot be used to flood an inbox. The others skip the limit and log a warning (fail open): `refresh` (signed-in vendors keep working; refreshing needs Redis anyway), `verify_email` and `set_password` (they need a 256-bit token, which cannot be guessed at any rate).
 - **Behind a proxy**, set `TRUSTED_PROXIES`. Without it every client looks like the proxy and shares one set of per-IP counters.
@@ -242,12 +244,12 @@ Signup verification, staff invites and password reset send email (issue #80). Th
 
 ## Database
 
-Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (psycopg 3). Migration `0001` is an empty baseline; `0002` adds the vendor and vendor-user tables; `0003` adds assets and brand profiles; `0004` adds products; `0005` adds reviews.
+Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (psycopg 3). Migration `0001` is an empty baseline; `0002` adds the vendor and vendor-user tables; `0003` adds assets and brand profiles; `0004` adds products; `0005` adds reviews; `0006` freezes submitted content and decided reviews (triggers), requires a pending revision for a product in review, and indexes the review foreign keys.
 
 | Table | Notes |
 |---|---|
 | `vendors` | A company. UUID `id`; `name`; `slug` (unique, `^[a-z0-9]+(-[a-z0-9]+)*$`); `email` (unique, stored trimmed and lower-cased, enforced by a check constraint); `phone`, `contact_name`, `product_type`, `website_or_instagram`; declared price range in **integer paise** (`price_min_paise` >= 0, `price_max_paise` >= min); `status` (`pending` by default, `approved`, `rejected`, `suspended`) with `status_reason`, `status_changed_at` and `status_changed_by` (an identity-api admin id, no foreign key: another database) |
-| `vendor_status_events` | **Append-only** audit of every status change: vendor, `from_status` (NULL when the vendor is created), `to_status`, `actor_type` (`admin`, `system`, `vendor`), `actor_id` (required unless the actor is the system), `reason`. A trigger refuses UPDATE and DELETE, and a vendor with events cannot be deleted |
+| `vendor_status_events` | **Append-only** audit of every status change: vendor, `from_status` (NULL when the vendor is created), `to_status`, `actor_type` (`admin`, `system`, `vendor`), `actor_id` (required unless the actor is the system), `reason`. Triggers refuse UPDATE, DELETE and TRUNCATE, and a vendor with events cannot be deleted |
 | `vendor_users` | A person who signs in for a vendor. `email` unique across all vendors (trimmed, lower-cased); `password_hash` is NULL until an invite is accepted (only `invited` or `disabled` users may lack one); `role` (`owner`, `staff`; **at most one owner per vendor**, by a partial unique index); `status` (`invited`, `active`, `disabled`); `email_verified_at`, `terms_accepted_at`, `last_login_at` |
 | `auth_tokens` | One-time tokens for email verification, invites and password reset. `purpose` (`verify_email`, `invite`, `reset_password`), `token_hash` (unique, must be a 64-character lower-case hex SHA-256), `expires_at`, `used_at`. **The token itself is never stored.** Deleting the user deletes their tokens |
 | `assets` | An uploaded image; the file lives at the provider (Cloudinary), this is its record. `kind` (`brand_logo`, `brand_banner`, `product_image`), `provider` (`cloudinary`), `public_id` (unique), `url` (**https only**), `format`, `bytes`, `width`, `height` (all required once `status` is `ready`), `status` (`pending`, `ready`, `deleted`), `created_by`. `(vendor_id, id)` is unique so other tables can reference an asset together with its vendor |
@@ -272,7 +274,8 @@ Why rows, and not two columns or a JSON blob: the database enforces **at most on
 - **A profile can only use its own vendor's assets**: `logo_asset_id` and `banner_asset_id` are composite foreign keys `(vendor_id, asset_id)` to `assets (vendor_id, id)`, so the database refuses another vendor's file. An asset in use cannot be deleted; mark it `deleted` instead.
 - **Approval is one transaction of two UPDATEs, in this order**: the old `published` row to `superseded`, then the approved row to `published` (the unique index is checked per statement, so publishing first fails).
 - **Submitted means complete enough**: a draft may be empty, but anything `pending_review`, `published`, `superseded` or `rejected` needs at least one category and a `submitted_at`; `published_at` is set exactly for `published` and `superseded`. `categories` are trimmed, non-empty, at most 80 characters and unique (case-sensitive, like the contract).
-- **Not constrained here**: how many versions may be `pending_review` at once, and that a logo asset has kind `brand_logo`. Both are Phase 3 rules for the service.
+- **A submitted version is history** (migration 0006): once a row leaves `draft`, a trigger refuses any change to its content (every column except `state`, `published_at` and `updated_at`, so a column added later is frozen too). `state` may only move `pending_review` to `published` or `rejected`, and `published` to `superseded`; nothing goes back to `draft`, so a withdrawn or rejected version stays as it was and the vendor edits a new draft row. `published_at` is set once. `vendor_id` never changes, not even on a draft.
+- **Not constrained here**: how many versions may be `pending_review` at once, that a logo asset has kind `brand_logo`, and what state a withdrawn version is left in (it cannot be edited or go back to `draft`). These are Phase 3 rules for the service.
 
 ### Products: identity here, content in revisions
 
@@ -283,18 +286,21 @@ An approved product keeps its live content while a new revision is edited and re
 - **Images belong to a revision** and may reuse an asset across revisions. The asset must be the revision's vendor's: `(vendor_id, asset_id)` is a composite foreign key to `assets (vendor_id, id)`, and `(revision_id, vendor_id)` ties the image's vendor to its revision.
 - **Submitting needs something to review**: a trigger refuses a `submitted_at` on a revision without at least one active variant and one image. Insert a revision as a draft, add those, then submit.
 - **Two version rules**: a revision's `version` increases per product and never changes (the trigger from brand profiles); `products.version` is the aggregate version the central app uses to drop stale events: the service raises it whenever the live product changes, and the database never lets it go down.
-- **Not constrained here**: that an image asset has kind `product_image`, that a product's revisions are only edited while unsubmitted, and the status transitions. Those are Phase 3 rules for the service.
+- **A submitted revision is frozen** (migration 0006): once `submitted_at` is set, triggers refuse any UPDATE or DELETE of the revision (clearing `submitted_at` too) and any INSERT, UPDATE or DELETE of its `product_revision_variants` and `product_images`; the review and the live product point at it. The submitting UPDATE itself is allowed. Editing again means a new revision. A never-submitted draft revision can still be edited or deleted (its variants and images cascade). A revision's `product_id` and `vendor_id` never change. The child triggers lock the revision row (`FOR SHARE`), so a change racing a submit is either seen by the submit check or refused.
+- **A product in review has a revision in review**: `status = 'pending_review'` needs `pending_revision_id` (`ck_products_pending_review_has_pending`).
+- **Not constrained here**: that an image asset has kind `product_image`, and the other status transitions. Those are Phase 3 rules for the service.
 
 ### Reviews
 
 Everything a vendor submits (a brand profile version, a product revision) stays pending until an admin reviews it.
 
 - **A review points at the exact version row**, not at "the profile" or "the product": a real foreign key to a `brand_profiles` row (one row per version) or a `product_revisions` row. So "the version reviewed" is that row's `version`, a later edit cannot change what was reviewed, and the reference is checked by the database. (A polymorphic `subject_id` plus a version number could not be a foreign key.) Each reference is composite with `vendor_id`, so a review and its subject always belong to the same vendor, and a version that has been reviewed cannot be deleted.
-- **At most one pending review per version**, by two partial unique indexes. A decided version can be reviewed again; reopening a review while another is pending is refused.
+- **At most one pending review per version**, by two partial unique indexes. A decided version can be reviewed again, with a new review row.
 - **Rules in the database**: a `rejected` review needs a non-empty `reason`; an `approved` or `rejected` one needs `reviewer_id` and `decided_at`; a `withdrawn` one has a time but no reviewer (it is the vendor's); a `pending` one has neither; `decided_at` is not before `submitted_at`.
 - **The reviewer** is an identity-api admin: only the UUID is stored, and it always comes from the verified token, never from the request body.
-- **Queue indexes** for Phase 3: pending reviews by `submitted_at` (a partial index), reviews by vendor and status, and by status and `submitted_at`.
-- **`review_events` cannot be changed**, even by a bug in the application: a trigger raises for every UPDATE and DELETE, and another for TRUNCATE. The application should only ever INSERT; the trigger is the backstop. (`vendor_status_events` has the same trigger without the TRUNCATE guard, which a later migration can add.)
+- **A decided review is a record** (migration 0006): a trigger lets a `pending` review change only its decision columns (to `approved`, `rejected` or `withdrawn`); once decided, nothing changes, so a review is never reopened in place. What it reviews (`vendor_id`, `subject`, `brand_profile_id`, `product_revision_id`) and `submitted_by`/`submitted_at` never change, even while pending. Reviews are never deleted: DELETE and TRUNCATE raise.
+- **Queue indexes** for Phase 3: pending reviews by `submitted_at` (a partial index), reviews by vendor and status, and by status and `submitted_at`. Plus full indexes on `brand_profile_id` and `product_revision_id` (0006), for the foreign-key checks and "every review of this version".
+- **`review_events` cannot be changed**, even by a bug in the application: a trigger raises for every UPDATE and DELETE, and another for TRUNCATE. The application should only ever INSERT; the trigger is the backstop. `vendor_status_events` has the same guards (its TRUNCATE trigger came in 0006).
 
 ```sh
 alembic upgrade head

@@ -1,5 +1,14 @@
 # Repository test strategy and evidence
 
+## Current state of the Python services (2026-11-09)
+
+The inventory and evidence below were recorded on 29 October 2026, before Phase 1 and Phase 2 landed. Their statements that the Python services have no routes, auth, SQL models or migrations are no longer true:
+
+- **identity-api** and **vendor-api** are FastAPI services with routes, auth and Alembic migrations (`identity_api/migrations/`, `vendor_api/migrations/`). Shared code is tested in `packages/py-auth` and `packages/py-security`.
+- **Database tests** run against a real Postgres from `DATABASE_URL` and are **skipped** when it is unset. The suite refuses any database not named `test` or `*_test`, drops and recreates the schema with Alembic, and rolls each test back.
+- **End-to-end tests** (`tests/test_e2e_auth.py` in each service) also need a real Redis in `REDIS_URL`. They empty that Redis database, so they refuse database 0; use `redis://localhost:6379/1`.
+- CI (`services-ci.yml`) runs ruff, mypy and pytest for both services and both packages on every pull request, with Postgres 16 and Redis 7, and a `compose` job that builds both images and signs in. Each service README has the exact local commands.
+
 ## Source inventory
 
 Assessment started on 29 October 2026 in `shazlo/Shazlo_vendor_portal`.
@@ -133,9 +142,10 @@ threshold or 100% target is imposed. Assertions, not line counts, determine the
 risk evidence. JUnit/HTML/JSON coverage and source/environment metadata are kept
 for 14 days by CI; all original exit codes propagate.
 
-Inside each Python service, use an isolated Python >=3.12 environment:
+Inside each Python service, use an isolated Python >=3.12 environment (the shared packages first):
 
 ```sh
+pip install -r requirements-shared.txt
 pip install -e '.[dev]'
 ruff check .
 ruff format --check .
