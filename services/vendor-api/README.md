@@ -235,6 +235,15 @@ A vendor's catalog. Any active user of the vendor (owner or staff) can do everyt
 
 Every write first locks the product row, so two requests on one product run one after the other.
 
+## Events for the central app (`services/central_events.py`)
+
+Pure builders turn the rows of an approved page, product or vendor status into the contract's full-state events (ADR 0003, [`docs/adr/0003-contract/`](../../docs/adr/0003-contract/README.md)): `brand_profile_published` / `brand_profile_unpublished`, `product_published` / `product_unpublished`, `vendor_status_changed`. Each returns a `BuiltEvent` whose fields are the outbox row's columns (`event_type`, `aggregate_type`, `aggregate_id`, `vendor_id`, `version`, `payload`) and whose `body()` is the exact bytes to sign and send.
+
+- **Validated before it is returned** against the schemas in `docs/adr/0003-contract/schemas/` (read from there; the image sets `CONTRACT_DIR`). The schemas refuse unknown fields, so stock and vendor contact data cannot be added by accident; an invalid event raises `InvalidEvent` (a bug, not an event). A body over 256 KB raises `EventTooLarge`.
+- **Full state, stable bytes.** Same rows, same `event_id` and time: same bytes. Variants are in the order the vendor created them, images by position, prices in integer paise, times UTC to the second. Empty optional fields are left out (the contract has no `null`).
+- **Versions** are the caller's: a brand page uses the published profile's `version` (its aggregate id is the vendor id), a product its `Product.version`, a vendor the number of the status change (`vendor_status_version`: the vendor's creation counts as the first). An `unpublished` event needs a version above the last published one and is refused for something that was never published (`last_published_version=None`).
+- `load_brand_snapshot` and `load_product_snapshot` read the rows; the builders never query.
+
 ## Image uploads (Cloudinary)
 
 Images go **straight from the browser to Cloudinary** (ADR 0005): this service signs the upload and later checks what was stored, and never handles file bytes. Any active user of the vendor (owner or staff) can use both endpoints.
