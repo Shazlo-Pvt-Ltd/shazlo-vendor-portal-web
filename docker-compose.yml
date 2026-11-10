@@ -99,6 +99,12 @@ services:
       SMTP_PORT: "1025"
       SMTP_SECURITY: none
       PORTAL_BASE_URL: ${VENDOR_PORTAL_BASE_URL:-http://localhost:5174}
+      # Image uploads: set all three in .env to try them (empty means off: the asset endpoints
+      # answer 503 and everything else works). Use a test Cloudinary account locally.
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+      CLOUDINARY_ROOT_FOLDER: ${CLOUDINARY_ROOT_FOLDER:-shazlo-dev}
     ports:
       - "${VENDOR_API_PORT:-8002}:8002"
 

@@ -10,6 +10,8 @@ dependencies = [
     "redis>=5.2",
     "sqlalchemy[asyncio]>=2.0.36",
     "alembic>=1.14",
+    # Cloudinary Admin API calls (services/cloudinary.py).
+    "httpx>=0.28",
     # Shared packages from this repository (packages/py-auth, packages/py-security) are
     # deliberately never listed here: the names are not ours on PyPI, so a plain requirement could
     # install someone else's package. They come from the repository path through

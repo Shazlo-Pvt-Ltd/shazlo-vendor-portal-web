@@ -23,6 +23,103 @@
         "title": "AdminMe",
         "type": "object"
       },
+      "AssetKind": {
+        "enum": [
+          "brand_logo",
+          "brand_banner",
+          "product_image"
+        ],
+        "title": "AssetKind",
+        "type": "string"
+      },
+      "AssetOut": {
+        "properties": {
+          "bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bytes"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "public_id",
+          "url",
+          "format",
+          "bytes",
+          "width",
+          "height",
+          "created_at"
+        ],
+        "title": "AssetOut",
+        "type": "object"
+      },
       "BrandProfileBody": {
         "additionalProperties": false,
         "description": "The whole editable content of the draft. A `PUT` replaces it, so a field left out is\ncleared; send the page as the editor shows it. The limits are the ones of the published\ncontract (ADR 0003), so what is saved here can always be published.",
@@ -1073,6 +1170,22 @@
         "title": "ProductSummaryOut",
         "type": "object"
       },
+      "RegisterRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "public_id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Public Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_id"
+        ],
+        "title": "RegisterRequest",
+        "type": "object"
+      },
       "ResendRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1331,6 +1444,87 @@
           "password"
         ],
         "title": "SetPasswordRequest",
+        "type": "object"
+      },
+      "SignRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "content_type": {
+            "enum": [
+              "image/jpeg",
+              "image/png",
+              "image/webp"
+            ],
+            "title": "Content Type",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AssetKind"
+          },
+          "size_bytes": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 1099511627776.0,
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "content_type",
+          "size_bytes"
+        ],
+        "title": "SignRequest",
+        "type": "object"
+      },
+      "SignResponse": {
+        "properties": {
+          "allowed_content_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Content Types",
+            "type": "array"
+          },
+          "asset_id": {
+            "format": "uuid",
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "max_bytes": {
+            "title": "Max Bytes",
+            "type": "integer"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "upload_url": {
+            "title": "Upload Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id",
+          "public_id",
+          "upload_url",
+          "fields",
+          "expires_at",
+          "max_bytes",
+          "allowed_content_types"
+        ],
+        "title": "SignResponse",
         "type": "object"
       },
       "SignupRequest": {
@@ -2170,6 +2364,100 @@
         "summary": "Verify Email",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/v1/vendor/assets": {
+      "post": {
+        "description": "Registers an uploaded image: Cloudinary is asked what it stored (never the browser), and\nthe asset becomes `ready` if its real size and format are allowed. Only a `public_id` that was\nsigned for this vendor can be registered (anything else is `404 asset_not_found`).\n`409 upload_not_found` until the file has been uploaded; registering twice is harmless.",
+        "operationId": "register_asset_v1_vendor_assets_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Register Asset",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/v1/vendor/assets/sign": {
+      "post": {
+        "description": "A signed upload for one image. The server picks the file's name (in this vendor's own\nfolder) and records a `pending` asset; upload the file to `upload_url` with `fields`, then\ncall `POST /v1/vendor/assets` with the `public_id` to register it. The signature is good for\nabout an hour and for one upload (`overwrite=false`). Limited per user.",
+        "operationId": "sign_upload_v1_vendor_assets_sign_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Sign Upload",
+        "tags": [
+          "assets"
         ]
       }
     },
