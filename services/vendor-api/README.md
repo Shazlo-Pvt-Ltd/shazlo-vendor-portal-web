@@ -2,16 +2,21 @@
 
 FastAPI service for vendors, brand profiles, products, assets, reviews and publishing to the central app. See the [roadmap](../../docs/ROADMAP.md) (Phases 2 to 4), [ADR 0009](../../docs/adr/0009-auth-model.md) for the auth model, [ADR 0010](../../docs/adr/0010-shared-security-package.md) for what it shares with identity-api, and the [key-rotation runbook](../../docs/runbooks/jwt-key-rotation.md).
 
-## What it does today (Phase 2)
+## What it does today (Phase 3)
 
 - **Vendor accounts:** signup with email verification, login, refresh (rotating tokens with reuse detection), logout, change-password, forgot and set password.
 - **A team per vendor:** the owner invites staff, lists, disables and enables them; invites and resets go by email.
 - **Vendor-scoped data isolation**, with helpers and tests that fail when a route or table skips the rule.
 - **Admin API** (`/v1/admin/*`): accepts only identity-api tokens, verified through its JWKS. The review queue is the first part of it.
 - **Its own tokens and keys:** vendor-api signs vendor tokens with its own key and serves its own JWKS.
-- **The schema** for vendors, users, tokens and (in the open Phase 2 PRs) brand profiles, products and reviews.
+- **The schema** for vendors, users, tokens, brand profiles, products (identity and revisions), assets and reviews.
+- **A brand page per vendor:** edit a draft, submit it for review, read the published version.
+- **A catalog:** products with variants and images, where editing a live product makes a pending revision and never changes what is live; a bulk import from `.xlsx` or `.csv` with a report for every row.
+- **Image uploads** straight to Cloudinary with a signature made here, and a record of each image.
+- **Review:** a queue for reviewers with the exact fields that changed, approve and reject (a reason is required) with an audit trail, and a hook point for Phase 4's outbox.
+- **Vendor accounts:** approve, reject and suspend, with sessions ended at once and an email to the vendor.
 
-Phase 3 (the vendor catalog, media and review) is below: the vendor's brand profile, products and their bulk import, signed image uploads, and the reviewers' side (queue, decisions, vendor accounts). `tests/test_e2e_catalog.py` walks the whole flow.
+Each part is described below. `tests/test_e2e_catalog.py` walks the whole flow against Postgres and Redis, and [Try the review flow](#try-the-review-flow-locally) does it by hand.
 
 ## Quick start: from nothing to a signed-in vendor
 
@@ -27,7 +32,7 @@ pip install -e '.[dev]'
 cp .env.example .env                       # put the same POSTGRES_PASSWORD into DATABASE_URL
 python -m vendor_api.cli generate-key      # writes ./.keys/<kid>.pem; JWT_KEYS_DIR in .env points there
 alembic upgrade head
-python -m vendor_api.cli seed-dev          # a demo vendor with an owner and a staff user
+python -m vendor_api.cli seed-dev          # a demo vendor, its catalog, and two more vendors
 uvicorn vendor_api.main:app --reload --port 8002
 ```
 
@@ -43,9 +48,40 @@ curl -s localhost:8002/v1/auth/login -H 'content-type: application/json' \
 
 **Or sign up as a new vendor:** `POST /v1/auth/signup` (try it at <http://localhost:8002/docs>), then open Mailpit at <http://localhost:8025>, copy the token from the link (`...#token=<token>`) and `POST /v1/auth/verify-email` with `{"token": "<token>"}`; now you can log in.
 
+- **`seed-dev` also fills a demo catalog**, so every screen and admin endpoint has something to show:
+  - **Demo Brand** (approved): a published brand profile and a newer version in review, and four products: `KURTA-DEMO-01` (approved, with an edit in review), `TOTE-DEMO-03` (a first submission in review), `SCARF-DEMO-02` (a draft) and the images they use.
+  - **Demo Pending Brand** (`owner@demo-pending.test`, pending): a brand profile in review, the first submission of an application. A pending vendor can sign in.
+  - **Demo Suspended Brand** (`owner@demo-suspended.test`, suspended): its owner cannot sign in.
+  - That leaves **four pending reviews** in `GET /v1/admin/reviews` and one pending vendor in `GET /v1/admin/vendors`. The extra owners use the same seed password. Running it again changes nothing.
+  - **A reviewer** is not created here: reviewers are identity-api admins. Seed identity-api (`python -m identity_api.cli seed`) and use the token of the `super_admin` it creates; a `super_admin` passes every reviewer check. A dedicated `vendor_reviewer` is made through identity-api's admin API.
 - **`seed-dev`** creates one approved vendor `demo-brand` with a verified owner (`owner@demo-brand.test`) and a staff user (`staff@demo-brand.test`), both with one password: `demo-password-1234`, a **local-only** default (set your own with `--password` or `SEED_VENDOR_PASSWORD`). The command never prints a password, runs only with `ENV=dev`, and is safe to run twice: it never changes anything that exists.
 - If `generate-key` printed a `JWT_SIGNING_KID`, put it in `.env` (it is only needed with more than one key). The app refuses to start without a signing key.
 - To also run identity-api (admin tokens for `/v1/admin/*`) see the [root README](../../README.md), Local development. vendor-api starts without it.
+
+## Try the review flow locally
+
+With vendor-api and identity-api running (see the root README, Local development) and `seed-dev` done. `$VENDOR` is a vendor token (the `access_token` of a login), `$ADMIN` an identity-api token for the seeded admin with `aud` `vendor-api` (`POST /v1/auth/token` on identity-api).
+
+```sh
+# What is waiting, oldest first (four reviews after seed-dev):
+curl -s localhost:8002/v1/admin/reviews -H "authorization: Bearer $ADMIN"
+# One of them with the exact fields that changed (and `content.version`, which you send back):
+curl -s localhost:8002/v1/admin/reviews/<id> -H "authorization: Bearer $ADMIN"
+# Approve it, or reject it with a reason:
+curl -s -X POST localhost:8002/v1/admin/reviews/<id>/approve -H "authorization: Bearer $ADMIN" \
+  -H 'content-type: application/json' -d '{"version": 2}'
+curl -s -X POST localhost:8002/v1/admin/reviews/<id>/reject -H "authorization: Bearer $ADMIN" \
+  -H 'content-type: application/json' -d '{"version": 2, "reason": "The logo is too small to read."}'
+# As the vendor: the page shoppers see now, and the catalog:
+curl -s localhost:8002/v1/vendor/brand-profile/published -H "authorization: Bearer $VENDOR"
+curl -s localhost:8002/v1/vendor/products -H "authorization: Bearer $VENDOR"
+# Vendor accounts: the pending application, then approve or suspend it:
+curl -s localhost:8002/v1/admin/vendors -H "authorization: Bearer $ADMIN"
+curl -s -X POST localhost:8002/v1/admin/vendors/<id>/approve -H "authorization: Bearer $ADMIN" \
+  -H 'content-type: application/json' -d '{}'
+```
+
+Every request body has an example in the OpenAPI document at <http://localhost:8002/docs> ("Try it out"). Image uploads need Cloudinary credentials (`CLOUDINARY_*`, see Settings); without them the asset endpoints answer `503` and everything else works.
 
 ## Endpoints
 
@@ -487,6 +523,8 @@ DATABASE_URL=postgresql://shazlo:<password>@localhost:5432/vendor_test pytest
 ```
 
 The suite drops and recreates the schema (`alembic downgrade base` then `upgrade head`) and refuses any database whose name is not `test` or `*_test`.
+
+The end-to-end tests (`test_e2e_auth.py` for sign-in and sessions, `test_e2e_catalog.py` for the brand page, the catalog, the review and the vendor account) also need a real Redis in `REDIS_URL`, on a database other than 0 because they empty it (CI sets one), and are skipped without it. Cloudinary is the one fake in them: nothing talks to the network.
 
 ## Docker
 

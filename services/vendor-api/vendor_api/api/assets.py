@@ -26,9 +26,22 @@ def get_assets(request: Request) -> AssetService:
 
 Assets = Annotated[AssetService, Depends(get_assets)]
 
+# The name of an uploaded file, for the examples below: the vendor's folder, then a random name.
+EXAMPLE_PUBLIC_ID = (
+    "shazlo/vendors/7a9d4e2b-1c3f-4b5a-8d6e-9f0a1b2c3d4e/"
+    + "products/9c1e2d3f4a5b6c7d8e9f0a1b2c3d4e5f"
+)
+
 
 class SignRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {"kind": "product_image", "content_type": "image/jpeg", "size_bytes": 482113}
+            ]
+        },
+    )
 
     kind: AssetKind
     # What the browser says the file is. It is checked against the allowed types and sizes here
@@ -38,6 +51,29 @@ class SignRequest(BaseModel):
 
 
 class SignResponse(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "asset_id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
+                    "public_id": EXAMPLE_PUBLIC_ID,
+                    "upload_url": "https://api.cloudinary.com/v1_1/democloud/image/upload",
+                    "fields": {
+                        "public_id": EXAMPLE_PUBLIC_ID,
+                        "timestamp": "1762851600",
+                        "allowed_formats": "jpg,jpeg,png,webp",
+                        "overwrite": "false",
+                        "api_key": "123456789012345",
+                        "signature": "0123456789abcdef0123456789abcdef01234567",
+                    },
+                    "expires_at": "2026-11-11T10:00:00Z",
+                    "max_bytes": 10485760,
+                    "allowed_content_types": ["image/jpeg", "image/png", "image/webp"],
+                }
+            ]
+        }
+    )
+
     asset_id: uuid.UUID
     public_id: str
     # POST a multipart/form-data request here: every entry of `fields` as a form field, then the
@@ -50,12 +86,34 @@ class SignResponse(BaseModel):
 
 
 class RegisterRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={"examples": [{"public_id": EXAMPLE_PUBLIC_ID}]},
+    )
 
     public_id: str = Field(min_length=1, max_length=255)
 
 
 class AssetOut(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
+                    "kind": "product_image",
+                    "status": "ready",
+                    "public_id": EXAMPLE_PUBLIC_ID,
+                    "url": "https://res.cloudinary.com/democloud/image/upload/v1/shazlo/products/9c1e.jpg",
+                    "format": "jpg",
+                    "bytes": 482113,
+                    "width": 1200,
+                    "height": 1500,
+                    "created_at": "2026-11-10T09:30:00Z",
+                }
+            ]
+        }
+    )
+
     id: uuid.UUID
     kind: str
     status: str

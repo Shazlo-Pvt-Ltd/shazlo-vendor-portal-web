@@ -2,7 +2,7 @@ import uuid
 from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from shazlo_security.rate_limit import Check
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -88,6 +88,49 @@ class SummaryOut(BaseModel):
 
 
 class ImportReportOut(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "mode": "import",
+                    "file_format": "csv",
+                    "committed": True,
+                    "summary": {
+                        "products": 3,
+                        "created": 2,
+                        "unchanged": 0,
+                        "valid": 0,
+                        "rejected": 1,
+                        "rows_read": 4,
+                        "rows_with_errors": 1,
+                    },
+                    "ignored_columns": [],
+                    "products": [
+                        {
+                            "sku": "KURTA-001",
+                            "rows": [2, 3],
+                            "status": "created",
+                            "product_id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
+                        },
+                        {"sku": "BAD-002", "rows": [4], "status": "rejected", "product_id": None},
+                    ],
+                    "errors": [
+                        {
+                            "row": 4,
+                            "column": "price",
+                            "code": "invalid_number",
+                            "message": (
+                                "Use an amount in rupees such as 999 or 999.50 "
+                                "(no symbols or commas)"
+                            ),
+                        }
+                    ],
+                    "errors_truncated": False,
+                }
+            ]
+        }
+    )
+
     mode: str
     file_format: str
     # Whether anything was written.

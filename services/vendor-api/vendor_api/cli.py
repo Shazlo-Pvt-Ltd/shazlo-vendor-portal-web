@@ -18,6 +18,8 @@ from vendor_api.services.seed import (
     DEV_SEED_PASSWORD,
     SEED_OWNER_EMAIL,
     SEED_STAFF_EMAIL,
+    CatalogSeed,
+    seed_demo_catalog,
     seed_demo_vendor,
 )
 from vendor_api.services.team import TeamError, TeamService
@@ -68,6 +70,28 @@ async def _seed_dev(password: str) -> bool:
             return await seed_demo_vendor(db, PasswordService(password_config(settings)), password)
     finally:
         await engine.dispose()
+
+
+async def _seed_catalog(password: str) -> CatalogSeed | None:
+    settings = get_settings()
+    engine = create_engine(settings.database_url)
+    try:
+        async with create_sessionmaker(engine)() as db:
+            return await seed_demo_catalog(db, PasswordService(password_config(settings)), password)
+    finally:
+        await engine.dispose()
+
+
+def _print_catalog(catalog: CatalogSeed) -> None:
+    print("Created the demo catalog:")
+    for vendor in catalog.vendors:
+        print(f"  vendor   {vendor}")
+    for product in catalog.products:
+        print(f"  product  {product}")
+    print(f"  {catalog.pending_reviews} reviews are waiting (GET /v1/admin/reviews).")
+    print("  The owners of the pending and the suspended vendor use the seed password too.")
+    print("  To review, use a token from identity-api's seeded super_admin (it passes the")
+    print("  reviewer check): this service cannot create admins.")
 
 
 def _export_openapi(check: bool, path: Path) -> None:
@@ -180,6 +204,9 @@ def main(argv: list[str] | None = None) -> int:
                 print("  both use the seed password (local use only).")
             else:
                 print("The demo vendor already exists; nothing changed.")
+            catalog = asyncio.run(_seed_catalog(chosen))
+            if catalog is not None:
+                _print_catalog(catalog)
         elif args.command == "invite-owner":
             try:
                 to = asyncio.run(_invite_owner(args.vendor, args.email, args.status))
