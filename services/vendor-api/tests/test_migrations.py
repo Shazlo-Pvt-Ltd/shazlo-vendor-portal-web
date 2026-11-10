@@ -20,6 +20,9 @@ TABLES = {
     "review_events",
     "outbox_events",
 }
+# The tables that exist before the outbox migration (0008): what a rollback to an earlier
+# migration still leaves.
+BEFORE_OUTBOX = TABLES - {"outbox_events"}
 # Helper functions the schema creates: a downgrade must remove them too.
 FUNCTIONS = (
     "vendor_status_events_append_only",
@@ -117,7 +120,7 @@ def test_the_hardening_migration_alone_can_be_undone_and_redone(
         try:
             command.downgrade(alembic_config, "0005")
             assert _hardening_objects(engine) == set()
-            assert _tables(migrated_db) >= TABLES  # only 0006's objects go
+            assert _tables(migrated_db) >= BEFORE_OUTBOX  # only 0006's objects go
         finally:
             command.upgrade(alembic_config, "head")
         assert _hardening_objects(engine) == expected
@@ -141,7 +144,7 @@ def test_the_outbox_migration_alone_can_be_undone_and_redone(
             assert "outbox_events" not in _tables(migrated_db)
             # Its trigger function goes with it; everything earlier stays.
             assert _function_count(engine) == len(FUNCTIONS) - 1
-            assert _tables(migrated_db) >= TABLES - {"outbox_events"}
+            assert _tables(migrated_db) >= BEFORE_OUTBOX
         finally:
             command.upgrade(alembic_config, "head")
         assert "outbox_events" in _tables(migrated_db)
@@ -159,7 +162,7 @@ def test_the_event_detail_migration_alone_can_be_undone_and_redone(
         try:
             command.downgrade(alembic_config, "0006")
             assert "detail" not in _event_columns(engine)
-            assert _tables(migrated_db) >= TABLES  # only the column goes
+            assert _tables(migrated_db) >= BEFORE_OUTBOX  # only the column goes
         finally:
             command.upgrade(alembic_config, "head")
         assert "detail" in _event_columns(engine)
