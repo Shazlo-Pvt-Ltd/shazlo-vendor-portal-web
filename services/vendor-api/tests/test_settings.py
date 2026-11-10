@@ -398,3 +398,102 @@ def test_smtp_credentials_are_never_sent_without_tls() -> None:
             smtp_password="s3cret-value",  # noqa: S106
         )
     assert make(email_backend="smtp", smtp_host="mailpit", smtp_security="none").smtp_user is None
+
+
+# --- Cloudinary --------------------------------------------------------------------------
+
+CLOUDINARY = {
+    "cloudinary_cloud_name": "demo",
+    "cloudinary_api_key": "123456",
+    "cloudinary_api_secret": "a-secret",
+}
+
+
+def test_cloudinary_is_optional_and_off_by_default() -> None:
+    s = make()
+    assert (s.cloudinary_cloud_name, s.cloudinary_api_key, s.cloudinary_api_secret) == (
+        None,
+        None,
+        None,
+    )
+    assert s.cloudinary_root_folder == "shazlo"
+    assert s.cloudinary_upload_preset is None
+    assert s.upload_max_bytes == 10 * 1024 * 1024
+
+
+def test_cloudinary_credentials_work_together_and_the_secret_stays_secret() -> None:
+    s = make(**CLOUDINARY)
+    assert s.cloudinary_cloud_name == "demo"
+    assert s.cloudinary_api_secret is not None
+    assert s.cloudinary_api_secret.get_secret_value() == "a-secret"
+    assert "a-secret" not in repr(s)
+
+
+@pytest.mark.parametrize("missing", list(CLOUDINARY))
+def test_cloudinary_credentials_all_or_none(missing: str) -> None:
+    partial = {k: v for k, v in CLOUDINARY.items() if k != missing}
+    with pytest.raises(ValidationError, match="go together"):
+        make(**partial)
+
+
+def test_blank_cloudinary_values_copied_from_the_example_file_mean_not_set() -> None:
+    s = make(cloudinary_cloud_name="", cloudinary_api_key=" ", cloudinary_api_secret="")
+    assert s.cloudinary_cloud_name is None and s.cloudinary_api_secret is None
+
+
+@pytest.mark.parametrize("name", ["has space", "a/b", "demo.cloud", "x;y"])
+def test_a_cloud_name_with_odd_characters_is_refused(name: str) -> None:
+    with pytest.raises(ValidationError, match="CLOUDINARY_CLOUD_NAME"):
+        make(**{**CLOUDINARY, "cloudinary_cloud_name": name})
+
+
+@pytest.mark.parametrize(
+    ("folder", "expected"),
+    [("shazlo", "shazlo"), ("/shazlo/staging/", "shazlo/staging"), (" dev_1 ", "dev_1")],
+)
+def test_the_root_folder_is_normalised(folder: str, expected: str) -> None:
+    assert make(cloudinary_root_folder=folder).cloudinary_root_folder == expected
+
+
+@pytest.mark.parametrize("folder", ["", "/", "Shazlo", "a//b", "../up", "a b", "a/../b"])
+def test_a_root_folder_that_could_escape_or_clash_is_refused(folder: str) -> None:
+    with pytest.raises(ValidationError, match="CLOUDINARY_ROOT_FOLDER"):
+        make(cloudinary_root_folder=folder)
+
+
+@pytest.mark.parametrize("size", [0, -1, 100 * 1024 * 1024 + 1])
+def test_the_upload_size_limit_has_sane_bounds(size: int) -> None:
+    with pytest.raises(ValidationError):
+        make(upload_max_bytes=size)
+
+
+def test_asset_sign_is_a_known_rate_limited_endpoint() -> None:
+    s = make(rate_limit_fail_closed=["asset_sign"])
+    assert s.rate_limit_fail_closed == ["asset_sign"]
+    assert (s.rate_limit_asset_sign_user.limit, s.rate_limit_asset_sign_user.window_seconds) == (
+        60,
+        3600,
+    )
+
+
+# --- Bulk import -------------------------------------------------------------------------
+
+
+def test_the_import_limits_have_defaults_and_bounds() -> None:
+    s = make()
+    assert (s.import_max_bytes, s.import_max_rows) == (2 * 1024 * 1024, 1000)
+    rule = s.rate_limit_bulk_import_vendor
+    assert (rule.limit, rule.window_seconds) == (10, 3600)
+    bad_values: list[dict[str, int]] = [
+        {"import_max_bytes": 0},
+        {"import_max_bytes": 20 * 1024 * 1024 + 1},
+        {"import_max_rows": 0},
+        {"import_max_rows": 5001},
+    ]
+    for bad in bad_values:
+        with pytest.raises(ValidationError):
+            make(**bad)
+
+
+def test_bulk_import_is_a_known_rate_limited_endpoint() -> None:
+    assert make(rate_limit_fail_closed=["bulk_import"]).rate_limit_fail_closed == ["bulk_import"]
