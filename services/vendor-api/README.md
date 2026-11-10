@@ -11,7 +11,7 @@ FastAPI service for vendors, brand profiles, products, assets, reviews and publi
 - **Its own tokens and keys:** vendor-api signs vendor tokens with its own key and serves its own JWKS.
 - **The schema** for vendors, users, tokens and (in the open Phase 2 PRs) brand profiles, products and reviews.
 
-Brand profiles, products, assets, imports and the review flow are Phase 3.
+Phase 3 so far: the vendor's brand profile (below). Products, assets, imports and the review flow are still to come.
 
 ## Quick start: from nothing to a signed-in vendor
 
@@ -56,7 +56,7 @@ The live reference is the OpenAPI document at <http://localhost:8002/docs> (dev;
 | Health | `GET /health`, `GET /ready` | anyone |
 | Keys | `GET /.well-known/jwks.json` | anyone |
 | Vendor auth | `POST /v1/auth/signup`, `verify-email`, `resend-verification`, `login`, `refresh`, `logout`, `change-password`, `forgot-password`, `set-password` | anyone, or a vendor token for `change-password` |
-| Vendor | `GET /v1/vendor/me`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only) | vendor-api tokens only |
+| Vendor | `GET /v1/vendor/me`; `GET`/`PUT /v1/vendor/brand-profile`, `POST /v1/vendor/brand-profile/submit`, `GET /v1/vendor/brand-profile/published`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only) | vendor-api tokens only |
 | Admin | `GET /v1/admin/me`, `GET /v1/admin/reviews`, `GET /v1/admin/reviews/{id}` | identity-api tokens only (`vendor_reviewer` or `super_admin`) |
 
 The sections below describe each group.
@@ -192,6 +192,21 @@ A vendor cannot read, change or learn about another vendor's data, and another v
 **What fails CI if it is forgotten**: `tests/test_isolation_structure.py` fails when a table of vendor data has no `vendor_id`, no foreign key to `vendors`, or no index on it, and when a route under `/v1/vendor` does not depend on `current_vendor_user`. It finds routers by walking `vendor_api/api`, so a new module is checked without anyone adding it to a list, and its last tests feed it bad samples to show it does fail.
 
 **What is covered today**: `/v1/vendor/me`, the staff list, disable and enable, and resend-invite: each vendor's lists hold only its own rows; B's user ids (the owner, a staff member, an invited user) and random ids are the same 404 (identical bodies), in both directions, with B's rows unchanged afterwards; a staff member gets the same 403 for their own, another vendor's and unknown ids; an invite always lands in the caller's vendor; a token whose vendor is not the user's vendor is refused; admin and vendor tokens are not interchangeable.
+
+## Brand profile (vendor side)
+
+A vendor edits a draft, submits it, and reads what was approved. Any active user of the vendor (owner or staff) can do all four; a `pending` vendor can too (it must be able to submit), a `rejected` or `suspended` one gets `403 vendor_not_allowed`. The vendor always comes from the token, never from the request.
+
+| Endpoint | What it does |
+| --- | --- |
+| `GET /v1/vendor/brand-profile` | The draft to edit, with `in_review_version` (the version now in review, if any). If there is no draft (never started, or the last one was submitted) one is **created from the latest version**, or from the signup details (name, price range) for a new vendor. Repeated reads return the same draft |
+| `PUT /v1/vendor/brand-profile` | **Replaces** the draft's content, so a field left out is cleared. Same limits as the published contract (ADR 0003): name 1 to 120, tagline 160, about 4000, `https` website, Instagram handle (a leading `@` is dropped), up to 20 unique categories of 1 to 80 characters, price range in paise. `logo_asset_id` / `banner_asset_id` must be the vendor's own **ready** `brand_logo` / `brand_banner` assets; another vendor's id and a missing id give the same `422 invalid_asset`. Never touches the published version |
+| `POST /v1/vendor/brand-profile/submit` | Sends the draft for review: it becomes `pending_review` (frozen from then on) and a pending `review` plus its `submitted` audit event (actor: the vendor user) are written in one transaction. `409 nothing_to_submit` without a draft, `422 profile_incomplete` without a category, `422 invalid_asset` if an image was deleted since saving, `409 review_pending` if a version is already in review |
+| `GET /v1/vendor/brand-profile/published` | The version shoppers see: the last one an admin approved. `404 no_published_profile` until there is one |
+
+**Editing while a version is in review** (decided here): the submitted version is frozen, so editing never changes it. The next `PUT` (or `GET`) opens a **new draft** (next version number, copied from the version in review) and the vendor can keep working; submitting it waits for the first review to be decided (`409 review_pending`). There is no withdraw: the database does not allow a submitted version to go back to `draft`, and a reviewer decides soon enough. Phase 3's review endpoints will make the decision and, on approval, publish the version.
+
+Every write first locks the vendor's row, so two tabs saving, or a save racing a submit, are handled one after the other for that vendor only.
 
 ## Review queue (reviewers)
 
