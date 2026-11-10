@@ -8,6 +8,7 @@ import { ApiError } from '../../api/http'
 import type { components } from '../../api/schema'
 import { reviewCopy, type ReasonCode } from '../../copy/review'
 import { fieldProps } from '../../lib/forms'
+import { usePhone } from '../../lib/responsive'
 
 const copy = reviewCopy.sendBack
 const MAX = 600
@@ -28,8 +29,10 @@ export function SendBackDialog({ open, onClose, ...props }: Props & { open: bool
   const titleId = useId()
   const bodyId = useId()
   const [busy, setBusy] = useState(false)
+  // A phone gets the whole screen: the reasons and the message need the room, and the keyboard takes half.
+  const phone = usePhone()
   return (
-    <Dialog open={open} onClose={busy ? undefined : onClose} aria-labelledby={titleId} aria-describedby={bodyId} maxWidth="sm" fullWidth>
+    <Dialog open={open} onClose={busy ? undefined : onClose} aria-labelledby={titleId} aria-describedby={bodyId} maxWidth="sm" fullWidth fullScreen={phone}>
       {/* The form mounts with the dialog, so each opening starts empty. */}
       <SendBackForm {...props} onClose={onClose} titleId={titleId} bodyId={bodyId} onBusy={setBusy} />
     </Dialog>
@@ -120,7 +123,7 @@ function SendBackForm({ subject, reasons, onClose, onSubmit, titleId, bodyId, on
           />
         </Stack>
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+      <DialogActions sx={{ px: { xs: 2, sm: 3 }, pb: 'calc(20px + env(safe-area-inset-bottom, 0px))', gap: 1, flexDirection: { xs: 'column-reverse', sm: 'row' }, alignItems: { xs: 'stretch', sm: 'center' }, '& > :not(style) ~ :not(style)': { ml: { xs: 0, sm: 1 } }, '& .MuiButton-root': { minHeight: { xs: 44, sm: 0 } } }}>
         <Button variant="text" onClick={onClose} disabled={pending}>
           {copy.cancel}
         </Button>

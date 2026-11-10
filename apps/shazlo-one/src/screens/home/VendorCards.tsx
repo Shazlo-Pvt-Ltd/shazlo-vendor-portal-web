@@ -1,5 +1,6 @@
-import { Box, Button, Link, Skeleton, Stack, Typography } from '@mui/material'
+import { Box, Button, Link, Skeleton, Stack, Typography, useMediaQuery, useTheme } from '@mui/material'
 import { Banner, brand, EmptyState, neutral, SectionCard, StatFigure, StatusPill } from '@shazlo/ui'
+import type { ReactNode } from 'react'
 import { Link as RouterLink } from 'react-router'
 import type { components } from '../../api/vendor-admin'
 import { homeCopy } from '../../copy/home'
@@ -18,6 +19,14 @@ export const vendorLinks = {
 }
 
 const touch = { minHeight: { xs: 44, md: 36 } }
+
+// A banner's button sits beside its text; on a phone that leaves the text a narrow column, so the
+// button moves under the text instead.
+export function usePhone() {
+  const theme = useTheme()
+  return useMediaQuery(theme.breakpoints.down('sm'), { noSsr: true })
+}
+export const actionBelow = (action: ReactNode) => <Box sx={{ mt: 1.25 }}>{action}</Box>
 const grid = { display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1.5, md: 2 } } as const
 
 function FigureSkeletons({ label }: { label: string }) {
@@ -58,6 +67,7 @@ export function VendorsCard({ summary }: { summary: Summary | undefined }) {
 export function PublishingCard({ summary }: { summary: Summary | undefined }) {
   const copy = homeCopy.publishing
   const failed = summary?.publishing.failed ?? 0
+  const phone = usePhone()
   const open = (
     <Button variant="outlined" component={RouterLink} to={vendorLinks.publishing} sx={{ ...touch, whiteSpace: 'nowrap', bgcolor: 'background.paper' }}>
       {copy.open}
@@ -78,7 +88,7 @@ export function PublishingCard({ summary }: { summary: Summary | undefined }) {
         <FigureSkeletons label={copy.loading} />
       ) : (
         <Stack spacing={2}>
-          {failed > 0 && <Banner tone="warning" title={copy.failedTitle(failed)} action={open} />}
+          {failed > 0 && (phone ? <Banner tone="warning" title={copy.failedTitle(failed)}>{actionBelow(open)}</Banner> : <Banner tone="warning" title={copy.failedTitle(failed)} action={open} />)}
           <Box aria-label={copy.label} role="group" sx={grid}>
             <StatFigure label={copy.delivered} value={formatCount(summary.publishing.delivered_24h)} baseline={copy.deliveredBaseline} />
             <StatFigure label={copy.waiting} value={formatCount(summary.publishing.waiting)} baseline={copy.waitingBaseline} />
@@ -193,17 +203,16 @@ export function RecentDecisions({ summary }: { summary: Summary | undefined }) {
 }
 
 export function SummaryError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const phone = usePhone()
+  const retry = (
+    <Button variant="outlined" sx={{ ...touch, bgcolor: 'background.paper' }} onClick={onRetry}>
+      {homeCopy.retry}
+    </Button>
+  )
   return (
-    <Banner
-      tone="error"
-      title={homeCopy.vendors.error}
-      action={
-        <Button variant="outlined" sx={{ ...touch, bgcolor: 'background.paper' }} onClick={onRetry}>
-          {homeCopy.retry}
-        </Button>
-      }
-    >
+    <Banner tone="error" title={homeCopy.vendors.error} action={phone ? undefined : retry}>
       {message}
+      {phone && actionBelow(retry)}
     </Banner>
   )
 }

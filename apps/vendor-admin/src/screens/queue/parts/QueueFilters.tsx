@@ -3,6 +3,7 @@ import { Search, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { components } from '../../../api/schema'
 import { queueCopy } from '../../../copy/queue'
+import { filterBar, filterSpacer, fullRow } from '../../../lib/responsive'
 import type { Patch, QueueParams } from './useQueueParams'
 
 const copy = queueCopy.filters
@@ -37,7 +38,7 @@ function SearchField({ value, onCommit }: { value: string; onCommit: (q: string)
       onKeyDown={(event) => {
         if (event.key === 'Enter') onCommit(text.trim())
       }}
-      sx={{ width: { xs: '100%', sm: 280 }, flexShrink: 0 }}
+      sx={{ ...fullRow, width: { xs: '100%', sm: 280 }, flexShrink: 0 }}
       slotProps={{
         htmlInput: { enterKeyHint: 'search', spellCheck: false },
         input: {
@@ -77,7 +78,7 @@ function FilterSelect({ label, value, options, allLabel, onChange }: { label: st
       label={label}
       value={known ? value : ''}
       onChange={(event) => onChange(event.target.value)}
-      sx={{ minWidth: 168 }}
+      sx={{ minWidth: { xs: 0, sm: 168 } }}
       slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
     >
       <MenuItem value="">{allLabel}</MenuItem>
@@ -99,6 +100,7 @@ function SortSelect({ value, onChange }: { value: string; onChange: (value: stri
       value={value}
       onChange={(event) => onChange(event.target.value)}
       inputProps={{ 'aria-label': copy.sort }}
+      sx={{ minWidth: 0, ...fullRow }}
       renderValue={(v) => (
         <>
           <Box component="span" sx={{ color: 'text.secondary' }}>
@@ -120,16 +122,16 @@ function SortSelect({ value, onChange }: { value: string; onChange: (value: stri
 export function QueueFilters({ params, update, onSearch, vendors }: { params: QueueParams; update: Update; onSearch: (q: string) => void; vendors: components['schemas']['VendorRef'][] }) {
   const vendorOptions = vendors.map((v) => ({ value: v.id, label: v.name })).sort((a, b) => a.label.localeCompare(b.label))
   return (
-    <Stack role="search" aria-label={copy.label} direction="row" spacing={1.5} useFlexGap sx={{ alignItems: 'center', minHeight: 56, flexWrap: 'wrap', rowGap: 1.5 }}>
+    <Stack role="search" aria-label={copy.label} direction="row" spacing={1.5} useFlexGap sx={{ alignItems: 'center', minHeight: 56, flexWrap: 'wrap', rowGap: 1.5, ...filterBar }}>
       <SearchField value={params.q} onCommit={onSearch} />
       <FilterSelect label={copy.vendor} value={params.vendor} options={vendorOptions} allLabel={copy.allVendors} onChange={(vendor) => update({ vendor })} />
       <FilterSelect label={copy.submitted} value={params.submitted ?? ''} options={copy.submittedOptions} allLabel={copy.anyTime} onChange={(submitted) => update({ submitted })} />
       <FormControlLabel
         control={<Switch checked={params.resubmissions} onChange={(event) => update({ resubmissions: event.target.checked })} slotProps={{ input: { role: 'switch' } }} />}
         label={copy.resubmissions}
-        sx={{ ml: 0, mr: 0, flexShrink: 0 }}
+        sx={{ ml: 0, mr: 0, flexShrink: 0, minHeight: 44, ...fullRow }}
       />
-      <Box sx={{ flex: 1 }} />
+      <Box sx={filterSpacer} />
       <SortSelect value={params.sort} onChange={(sort) => update({ sort })} />
     </Stack>
   )

@@ -6,9 +6,11 @@ import { ApiError } from '../../api/http'
 import { useApproveBrand, useBrandReview, useRejectBrand } from '../../api/queries'
 import type { components } from '../../api/schema'
 import { reviewCopy } from '../../copy/review'
+import { usePhone } from '../../lib/responsive'
 import { decisionPill, queuePill } from '../../lib/status'
 import { useModuleTitle } from '../../runtime/runtime'
-import { DecisionCard } from './DecisionCard'
+import { DecisionBar, DecisionCard, useChecklist } from './DecisionCard'
+import { StackedCompare } from './ProductDetails'
 import { decisionIn, HistoryCard, LoadError, NotFound, OutcomeBanner, QueueNav, ReviewColumns, ReviewSkeleton, submittedLine, submitterOf } from './parts'
 import { dispatchLabel, PhonePreview, returnsLabel } from './PhonePreview'
 import { SendBackDialog } from './SendBackDialog'
@@ -45,9 +47,31 @@ const cellSx = { verticalAlign: 'top', overflowWrap: 'anywhere', whiteSpace: 'pr
 // Each changed field, the live value struck through and the submitted one beside it.
 function ChangesCard({ live, draft, changed }: { live: Profile; draft: Profile; changed: string[] }) {
   const fields = FIELDS.filter((f) => changed.includes(f))
+  const phone = usePhone()
+  const before = (f: Field) => (
+    <Box component="del" sx={{ color: neutral.inkTertiary, textDecorationThickness: '1px' }}>
+      {valueOf(f, live, 'before')}
+    </Box>
+  )
+  const after = (f: Field) => (
+    <Box component="ins" sx={{ textDecoration: 'none' }}>
+      {valueOf(f, draft, 'after')}
+    </Box>
+  )
   return (
     <SectionCard title={copy.changes.title} padded={fields.length === 0}>
-      {fields.length === 0 ? (
+      {fields.length > 0 && phone ? (
+        <StackedCompare
+          items={fields.map((f) => ({
+            key: f,
+            field: copy.fields[f],
+            rows: [
+              { label: copy.preview.live, value: before(f) },
+              { label: copy.preview.draft, value: after(f) },
+            ],
+          }))}
+        />
+      ) : fields.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
           {copy.changes.none}
         </Typography>
@@ -73,16 +97,8 @@ function ChangesCard({ live, draft, changed }: { live: Profile; draft: Profile; 
                   <TableCell component="th" scope="row" sx={{ ...cellSx, color: neutral.inkSecondary }}>
                     {copy.fields[f]}
                   </TableCell>
-                  <TableCell sx={cellSx}>
-                    <Box component="del" sx={{ color: neutral.inkTertiary, textDecorationThickness: '1px' }}>
-                      {valueOf(f, live, 'before')}
-                    </Box>
-                  </TableCell>
-                  <TableCell sx={cellSx}>
-                    <Box component="ins" sx={{ textDecoration: 'none' }}>
-                      {valueOf(f, draft, 'after')}
-                    </Box>
-                  </TableCell>
+                  <TableCell sx={cellSx}>{before(f)}</TableCell>
+                  <TableCell sx={cellSx}>{after(f)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -108,6 +124,8 @@ function Review({ vendorId }: { vendorId: string }) {
     toasts: { approved: copy.toast.approved(vendor), sentBack: copy.toast.sentBack(vendor, seller) },
   })
   const [sending, setSending] = useState(false)
+  const checklist = useChecklist(copy.checks)
+  const phone = usePhone()
 
   if (review.isPending) return <ReviewSkeleton />
   if (notFound) return <NotFound title={copy.notFound} body={copy.notFoundBody} />
@@ -137,7 +155,7 @@ function Review({ vendorId }: { vendorId: string }) {
           main={
             <>
               <SectionCard title={copy.preview.title}>
-                <Box sx={{ display: 'grid', gridTemplateColumns: data.live ? 'repeat(auto-fit, minmax(240px, 1fr))' : 'minmax(0, 1fr)', gap: 3, pt: 1 }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: data.live ? 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))' : 'minmax(0, 1fr)', gap: 3, pt: 1 }}>
                   {data.live && <PhonePreview heading={copy.preview.live} brandName={vendor} profile={data.live} />}
                   <PhonePreview heading={copy.preview.draft} brandName={vendor} profile={data.draft} note={data.live ? undefined : copy.preview.notLive} />
                 </Box>
@@ -147,12 +165,13 @@ function Review({ vendorId }: { vendorId: string }) {
           }
           side={
             <>
-              {!decided && <DecisionCard checks={copy.checks} approving={decision.approving} onApprove={decision.approve} onSendBack={() => setSending(true)} />}
+              {!decided && <DecisionCard checklist={checklist} withActions={!phone} approving={decision.approving} onApprove={decision.approve} onSendBack={() => setSending(true)} />}
               <HistoryCard history={data.history} />
             </>
           }
         />
       </Stack>
+      {phone && !decided && <DecisionBar checklist={checklist} approving={decision.approving} onApprove={decision.approve} onSendBack={() => setSending(true)} />}
       <SendBackDialog open={sending && !decided} subject={copy.title(vendor)} reasons={reviewCopy.brandReasons} onClose={() => setSending(false)} onSubmit={decision.sendBack} />
     </>
   )

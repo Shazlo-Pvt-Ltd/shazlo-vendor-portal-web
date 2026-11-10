@@ -4,6 +4,7 @@ import { useState, type ReactNode } from 'react'
 import type { components } from '../../api/schema'
 import { reviewCopy } from '../../copy/review'
 import { formatCount, formatINR } from '../../lib/format'
+import { usePhone } from '../../lib/responsive'
 import { photoNames } from './ProductPhotos'
 
 const copy = reviewCopy.product
@@ -46,14 +47,75 @@ function rowsOf(before: Version, after: Version): Row[] {
 
 const cellSx = { verticalAlign: 'top', overflowWrap: 'anywhere', whiteSpace: 'pre-line' } as const
 
+// Phones: one field after another, the earlier value over this one, instead of three columns.
+export function StackedCompare({ items }: { items: { key: string; field: ReactNode; rows: { label: string; value: ReactNode; muted?: boolean }[]; extra?: ReactNode }[] }) {
+  return (
+    <Box component="dl" sx={{ m: 0, px: 2, pb: 1 }}>
+      {items.map((item) => (
+        <Box key={item.key} sx={{ py: 1.5, borderTop: `1px solid ${neutral.line}` }}>
+          <Box component="dt" sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, typography: 'body2', color: neutral.inkSecondary }}>
+            {item.field}
+          </Box>
+          <Box component="dd" sx={{ m: 0, mt: 0.75, display: 'grid', gap: 0.5 }}>
+            {item.rows.map((row) => (
+              <Typography key={row.label} variant="body2" component="div" sx={{ overflowWrap: 'anywhere', whiteSpace: 'pre-line', ...(row.muted ? { color: neutral.inkTertiary } : null) }}>
+                <Box component="span" sx={{ color: neutral.inkSecondary }}>{`${row.label}: `}</Box>
+                {row.value}
+              </Typography>
+            ))}
+            {item.extra}
+          </Box>
+        </Box>
+      ))}
+    </Box>
+  )
+}
+
 // What changed since the version a reviewer last saw: the sent-back version for a resubmission,
 // the live one for an edit. Hidden for a first submission.
 export function CompareCard({ label, before, after }: { label: 'sent_back' | 'live'; before: Version; after: Version }) {
   const [full, setFull] = useState(false)
+  const phone = usePhone()
   const rows = rowsOf(before, after)
   const long = before.description.length > CLIP || after.description.length > CLIP
+  const title = label === 'live' ? copy.compare.live : copy.compare.sentBack
+  const beforeColumn = label === 'live' ? copy.compare.liveColumn : copy.compare.sentBackColumn
+  const toggleFor = (key: Row['key']) =>
+    key === 'description' && long ? (
+      <Button variant="text" size="small" onClick={() => setFull((f) => !f)} aria-expanded={full} sx={{ mt: 0.5, ml: -1, px: 1, justifySelf: 'start' }}>
+        {full ? copy.compare.showLess : copy.compare.showFull}
+      </Button>
+    ) : null
+
+  if (phone) {
+    return (
+      <SectionCard title={title} padded={false}>
+        <StackedCompare
+          items={rows.map((row) => {
+            const changed = row.before !== row.after
+            const show = (text: string) => (row.key === 'description' && !full ? clip(text) : text)
+            return {
+              key: row.key,
+              field: (
+                <>
+                  {copy.compare.rows[row.key]}
+                  {changed && <StatusPill status="pending" label={copy.compare.changed} />}
+                </>
+              ),
+              rows: [
+                { label: beforeColumn, value: show(row.before) },
+                { label: copy.compare.thisColumn, value: changed ? show(row.after) : copy.compare.same, muted: !changed },
+              ],
+              extra: toggleFor(row.key),
+            }
+          })}
+        />
+      </SectionCard>
+    )
+  }
+
   return (
-    <SectionCard title={label === 'live' ? copy.compare.live : copy.compare.sentBack} padded={false}>
+    <SectionCard title={title} padded={false}>
       <Box sx={{ overflowX: 'auto' }}>
         <Table sx={{ tableLayout: 'fixed', minWidth: 520 }}>
           <TableHead>
@@ -62,7 +124,7 @@ export function CompareCard({ label, before, after }: { label: 'sent_back' | 'li
                 {copy.compare.field}
               </TableCell>
               <TableCell component="th" scope="col">
-                {label === 'live' ? copy.compare.liveColumn : copy.compare.sentBackColumn}
+                {beforeColumn}
               </TableCell>
               <TableCell component="th" scope="col">
                 {copy.compare.thisColumn}
@@ -73,14 +135,7 @@ export function CompareCard({ label, before, after }: { label: 'sent_back' | 'li
             {rows.map((row) => {
               const changed = row.before !== row.after
               const show = (text: string) => (row.key === 'description' && !full ? clip(text) : text)
-              let toggle: ReactNode = null
-              if (row.key === 'description' && long) {
-                toggle = (
-                  <Button variant="text" size="small" onClick={() => setFull((f) => !f)} aria-expanded={full} sx={{ mt: 0.5, ml: -1, px: 1 }}>
-                    {full ? copy.compare.showLess : copy.compare.showFull}
-                  </Button>
-                )
-              }
+              const toggle = toggleFor(row.key)
               return (
                 <TableRow key={row.key}>
                   <TableCell component="th" scope="row" sx={{ ...cellSx, color: neutral.inkSecondary }}>

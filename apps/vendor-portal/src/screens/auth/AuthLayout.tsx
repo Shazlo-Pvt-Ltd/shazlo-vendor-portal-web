@@ -9,10 +9,14 @@ function Header() {
   return (
     <Stack component="header" direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 2, px: { xs: 2, sm: 5 }, pt: { xs: 2.5, sm: 4 } }}>
       <Logo product="Seller" />
-      <Typography variant="body2" color="text.secondary" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
         <HelpCircle size={16} aria-hidden="true" />
         <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>{copy.help}</Box>
-        <Box component="span" sx={{ userSelect: 'all' }}>{copy.helpEmail}</Box>
+        {/* The narrowest phones (320–399 px) have no room for the address beside the logo: a mail link instead. */}
+        <Box component="span" sx={{ userSelect: 'all', '@media (max-width: 399.95px)': { display: 'none' } }}>{copy.helpEmail}</Box>
+        <Link href={`mailto:${copy.helpEmail}`} color="inherit" underline="always" sx={{ display: 'none', '@media (max-width: 399.95px)': { display: 'inline-flex', alignItems: 'center', minHeight: 44 } }}>
+          {copy.helpShort}
+        </Link>
       </Typography>
     </Stack>
   )

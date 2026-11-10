@@ -31,7 +31,7 @@ const layout: Record<string, { width?: number | string }> = {
 const waitedMs = (iso: string) => Date.now() - Date.parse(iso)
 
 // Applications have no photo yet: the brand's initials stand in, shaped like the product thumbs.
-function Initials({ name }: { name: string }) {
+export function Initials({ name }: { name: string }) {
   const letters = name
     .split(/\s+/)
     .filter(Boolean)
@@ -68,7 +68,7 @@ function ItemCell({ item }: { item: QueueItem }) {
 }
 
 // Over a day is flagged with a tint and a clock, so it never rests on colour alone.
-function Waiting({ submittedAt }: { submittedAt: string }) {
+export function Waiting({ submittedAt }: { submittedAt: string }) {
   const ms = waitedMs(submittedAt)
   const text = formatWait(ms)
   if (ms <= DAY_MS) {

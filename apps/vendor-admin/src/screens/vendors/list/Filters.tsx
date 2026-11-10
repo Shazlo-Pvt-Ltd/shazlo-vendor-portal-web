@@ -2,6 +2,7 @@ import { Box, IconButton, InputAdornment, MenuItem, Select, Stack, TextField } f
 import { Search, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { vendorsCopy } from '../../../copy/vendors'
+import { filterBar, filterSpacer, fullRow } from '../../../lib/responsive'
 import type { Update, VendorParams } from './useVendorParams'
 
 const copy = vendorsCopy
@@ -46,7 +47,7 @@ function SearchField({ value, onCommit }: { value: string; onCommit: (q: string)
       onKeyDown={(event) => {
         if (event.key === 'Enter') commit(text.trim())
       }}
-      sx={{ width: 320, maxWidth: '100%', flexShrink: 0 }}
+      sx={{ ...fullRow, width: { xs: '100%', sm: 320 }, maxWidth: '100%', flexShrink: 0 }}
       slotProps={{
         htmlInput: { enterKeyHint: 'search', spellCheck: false },
         input: {
@@ -82,7 +83,7 @@ export function VendorFilters({ params, update, cities, onSearch }: { params: Ve
   // Keep a city from the URL selectable even before the list (and its cities) has loaded.
   const options = params.city && !cities.includes(params.city) ? [params.city, ...cities] : cities
   return (
-    <Stack direction="row" spacing={1.5} useFlexGap sx={{ alignItems: 'center', minHeight: 56, flexWrap: 'wrap', rowGap: 1.5 }}>
+    <Stack direction="row" spacing={1.5} useFlexGap sx={{ alignItems: 'center', minHeight: 56, flexWrap: 'wrap', rowGap: 1.5, ...filterBar }}>
       <SearchField value={params.q} onCommit={onSearch} />
       <TextField
         select
@@ -90,7 +91,7 @@ export function VendorFilters({ params, update, cities, onSearch }: { params: Ve
         label={copy.filters.city}
         value={params.city}
         onChange={(event) => update({ city: event.target.value })}
-        sx={{ minWidth: 200 }}
+        sx={{ minWidth: { xs: 0, sm: 200 } }}
         slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
       >
         <MenuItem value="">{copy.filters.allCities}</MenuItem>
@@ -100,12 +101,13 @@ export function VendorFilters({ params, update, cities, onSearch }: { params: Ve
           </MenuItem>
         ))}
       </TextField>
-      <Box sx={{ flex: 1 }} />
+      <Box sx={filterSpacer} />
       <Select
         size="small"
         value={params.sort}
         onChange={(event) => update({ sort: event.target.value })}
         inputProps={{ 'aria-label': copy.filters.sort }}
+        sx={{ minWidth: 0 }}
         renderValue={(v) => (
           <>
             <Box component="span" sx={{ color: 'text.secondary' }}>

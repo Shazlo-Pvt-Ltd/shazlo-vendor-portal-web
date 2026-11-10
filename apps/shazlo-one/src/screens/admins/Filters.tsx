@@ -1,4 +1,4 @@
-import { IconButton, InputAdornment, MenuItem, Stack, TextField } from '@mui/material'
+import { Box, IconButton, InputAdornment, MenuItem, TextField } from '@mui/material'
 import { Search, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { adminsCopy } from '../../copy/admins'
@@ -36,7 +36,7 @@ function SearchField({ value, onCommit }: { value: string; onCommit: (q: string)
       onKeyDown={(event) => {
         if (event.key === 'Enter') onCommit(text.trim())
       }}
-      sx={{ width: { xs: '100%', sm: 300 } }}
+      sx={{ width: { xs: '100%', sm: 300 }, gridColumn: '1 / -1' }}
       slotProps={{
         htmlInput: { enterKeyHint: 'search', spellCheck: false },
         input: {
@@ -69,9 +69,10 @@ function SearchField({ value, onCommit }: { value: string; onCommit: (q: string)
 export function AdminFilters({ filters, roles, onChange }: { filters: Filters; roles: Role[] | undefined; onChange: (patch: Partial<Filters>) => void }) {
   const onSearch = useCallback((q: string) => onChange({ q }), [onChange])
   return (
-    <Stack direction="row" spacing={1.5} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1.5 }}>
+    // Phones: search on its own row, then Role and Status side by side, all full width.
+    <Box sx={{ display: { xs: 'grid', sm: 'flex' }, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 1.5, alignItems: 'center', flexWrap: 'wrap', width: { xs: '100%', sm: 'auto' } }}>
       <SearchField value={filters.q} onCommit={onSearch} />
-      <TextField select size="small" label={copy.role} value={filters.role} onChange={(event) => onChange({ role: event.target.value })} sx={{ minWidth: 172 }} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}>
+      <TextField select size="small" label={copy.role} value={filters.role} onChange={(event) => onChange({ role: event.target.value })} sx={{ minWidth: { sm: 172 } }} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}>
         <MenuItem value="">{copy.allRoles}</MenuItem>
         {(roles ?? []).map((r) => (
           <MenuItem key={r.name} value={r.name}>
@@ -81,13 +82,13 @@ export function AdminFilters({ filters, roles, onChange }: { filters: Filters; r
         {/* Until roles load, keep a chosen role selectable so the select shows it. */}
         {!roles && filters.role && <MenuItem value={filters.role}>{roleName(filters.role)}</MenuItem>}
       </TextField>
-      <TextField select size="small" label={copy.status} value={filters.status} onChange={(event) => onChange({ status: event.target.value as StatusFilter })} sx={{ minWidth: 148 }}>
+      <TextField select size="small" label={copy.status} value={filters.status} onChange={(event) => onChange({ status: event.target.value as StatusFilter })} sx={{ minWidth: { sm: 148 } }}>
         {copy.statusOptions.map((o) => (
           <MenuItem key={o.value} value={o.value}>
             {o.label}
           </MenuItem>
         ))}
       </TextField>
-    </Stack>
+    </Box>
   )
 }

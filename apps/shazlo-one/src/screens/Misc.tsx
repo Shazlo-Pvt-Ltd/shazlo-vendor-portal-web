@@ -9,7 +9,7 @@ import { useSession } from '../session/useSession'
 import { ModuleHost } from '../shell/ModuleHost'
 
 export function NotFound() {
-  return <EmptyState illustration="box" title="We could not find that page" body="The link may be old. Everything in Shazlo One is in the menu on the left." action={<Button variant="contained" component={RouterLink} to={paths.home}>Back to Home</Button>} />
+  return <EmptyState illustration="box" title="We could not find that page" body="The link may be old. Everything in Shazlo One is in the menu." action={<Button variant="contained" component={RouterLink} to={paths.home}>Back to Home</Button>} />
 }
 
 export function RouteError() {

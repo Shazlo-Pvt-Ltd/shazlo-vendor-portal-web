@@ -8,6 +8,7 @@ import { useVendorAction } from '../../api/queries'
 import type { components } from '../../api/schema'
 import { REASON_MIN, vendorActionsCopy } from '../../copy/vendors'
 import { fieldProps } from '../../lib/forms'
+import { usePhone } from '../../lib/responsive'
 
 const copy = vendorActionsCopy
 type VendorDetail = components['schemas']['VendorDetail']
@@ -33,6 +34,7 @@ export function ReasonDialog({ open, title, body, label, confirm, pending, onCan
   const bodyId = useId()
   const { register, handleSubmit, reset, setError, formState } = useForm<ReasonValues>({ resolver: zodResolver(reasonSchema), defaultValues: { text: '' } })
   const busy = formState.isSubmitting
+  const phone = usePhone()
 
   useEffect(() => {
     if (open) reset({ text: '' })
@@ -44,7 +46,7 @@ export function ReasonDialog({ open, title, body, label, confirm, pending, onCan
   })
 
   return (
-    <Dialog open={open} onClose={busy ? undefined : onCancel} aria-labelledby={titleId} aria-describedby={bodyId} maxWidth="sm" fullWidth>
+    <Dialog open={open} onClose={busy ? undefined : onCancel} aria-labelledby={titleId} aria-describedby={bodyId} maxWidth="sm" fullWidth fullScreen={phone}>
       <form noValidate onSubmit={submit}>
         <DialogTitle id={titleId} variant="h2" component="h2" sx={{ pb: 1 }}>
           {title}

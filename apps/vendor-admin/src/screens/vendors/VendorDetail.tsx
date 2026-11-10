@@ -10,6 +10,7 @@ import type { components } from '../../api/schema'
 import { modulePaths } from '../../app/routes'
 import { vendorActionsCopy, vendorDetailCopy as copy } from '../../copy/vendors'
 import { formatCount, formatDate } from '../../lib/format'
+import { phoneFullWidth, scrollingTabs } from '../../lib/responsive'
 import { vendorPill } from '../../lib/status'
 import { useModuleTitle, useRuntime } from '../../runtime/runtime'
 import { ApplicationTab, ExternalLink } from './detail/ApplicationTab'
@@ -28,7 +29,7 @@ const DAY_MS = 86_400_000
 
 function BackLink() {
   return (
-    <Link component={RouterLink} to={modulePaths.vendors} underline="hover" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, mb: 1.5, color: neutral.inkSecondary, typography: 'body2' }}>
+    <Link component={RouterLink} to={modulePaths.vendors} underline="hover" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, mb: 1.5, color: neutral.inkSecondary, typography: 'body2', minHeight: { xs: 44, md: 0 } }}>
       <ArrowLeft size={16} strokeWidth={1.5} aria-hidden="true" />
       {copy.back}
     </Link>
@@ -39,8 +40,8 @@ function DetailSkeleton() {
   return (
     <Box aria-busy="true">
       <Skeleton variant="text" width={80} sx={{ mb: 1.5 }} />
-      <Skeleton variant="text" width={360} height={56} />
-      <Skeleton variant="text" width={420} sx={{ mb: 4 }} />
+      <Skeleton variant="text" height={56} sx={{ width: 360, maxWidth: '80%' }} />
+      <Skeleton variant="text" sx={{ width: 420, maxWidth: '100%', mb: 4 }} />
       <Skeleton variant="rectangular" height={44} sx={{ mb: 3, borderRadius: 1 }} />
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
         <Skeleton variant="rounded" height={360} sx={{ flex: 2 }} />
@@ -156,8 +157,8 @@ function VendorView({ vendor }: { vendor: Vendor }) {
   if (open) {
     const blocked = !isValid
     actions = (
-      <Stack spacing={0.75} sx={{ alignItems: { md: 'flex-end' } }}>
-        <Stack direction="row" spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
+      <Stack spacing={0.75} sx={{ alignItems: { md: 'flex-end' }, ...phoneFullWidth }}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
           <Button variant="outlined" onClick={() => ask('request-info')}>
             {vendorActionsCopy.requestInfo.button}
           </Button>
@@ -177,13 +178,13 @@ function VendorView({ vendor }: { vendor: Vendor }) {
     )
   } else if (vendor.status === 'approved') {
     actions = (
-      <Button variant="outlined" onClick={() => ask('suspend')}>
+      <Button variant="outlined" onClick={() => ask('suspend')} sx={phoneFullWidth}>
         {copy.actions.suspend}
       </Button>
     )
   } else if (vendor.status === 'suspended') {
     actions = (
-      <Button variant="contained" onClick={() => ask('reactivate')}>
+      <Button variant="contained" onClick={() => ask('reactivate')} sx={phoneFullWidth}>
         {copy.actions.reactivate}
       </Button>
     )
@@ -220,8 +221,7 @@ function VendorView({ vendor }: { vendor: Vendor }) {
           value={tab}
           onChange={(_, next: TabKey) => selectTab(next)}
           aria-label={copy.tabsLabel}
-          variant="scrollable"
-          scrollButtons="auto"
+          {...scrollingTabs}
           textColor="inherit"
           sx={{ borderBottom: `1px solid ${neutral.line}`, minHeight: 44, '& .MuiTabs-indicator': { bgcolor: brand.brown } }}
         >

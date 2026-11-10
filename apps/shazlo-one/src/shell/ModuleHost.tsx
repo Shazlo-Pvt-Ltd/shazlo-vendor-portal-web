@@ -139,13 +139,13 @@ export function ModuleHost({ module }: { module: ShellModule }) {
   )
 
   return (
-    <Box sx={{ position: 'relative', height: '100%', minHeight: 'calc(100dvh - 56px)' }}>
+    <Box sx={{ position: 'relative', height: '100%', minHeight: 'calc(100dvh - var(--shell-top, 56px))' }}>
       {state.kind === 'loading' && (
-        <Box role="status" aria-label={copy.loading(module.title)} aria-busy="true" sx={{ position: 'absolute', inset: 0, px: 5, pt: 4, bgcolor: neutral.canvas, zIndex: 1 }}>
+        <Box role="status" aria-label={copy.loading(module.title)} aria-busy="true" sx={{ position: 'absolute', inset: 0, px: { xs: 2, md: 5 }, pt: { xs: 3, md: 4 }, bgcolor: neutral.canvas, zIndex: 1 }}>
           <Skeleton variant="text" sx={{ width: 320, maxWidth: '100%' }} height={60} />
-          <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
-            {[0, 1, 2, 3].map((i) => <Skeleton key={i} variant="rounded" height={104} sx={{ flex: 1 }} />)}
-          </Stack>
+          <Box sx={{ mt: 3, display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(4, minmax(0, 1fr))' }, gap: 2 }}>
+            {[0, 1, 2, 3].map((i) => <Skeleton key={i} variant="rounded" height={104} />)}
+          </Box>
           <Skeleton variant="rounded" height={420} sx={{ mt: 3 }} />
         </Box>
       )}
@@ -162,7 +162,7 @@ export function ModuleHost({ module }: { module: ShellModule }) {
           sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"
           referrerPolicy="no-referrer"
           allow=""
-          sx={{ display: state.kind === 'failed' ? 'none' : 'block', width: '100%', height: 'calc(100dvh - 56px)', border: 0, bgcolor: neutral.canvas }}
+          sx={{ display: state.kind === 'failed' ? 'none' : 'block', width: '100%', minWidth: 0, height: 'calc(100dvh - var(--shell-top, 56px))', border: 0, bgcolor: neutral.canvas }}
         />
       )}
     </Box>

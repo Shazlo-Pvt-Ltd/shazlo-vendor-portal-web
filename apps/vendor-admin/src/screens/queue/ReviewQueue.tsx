@@ -5,12 +5,13 @@ import { useCallback, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 import { useQueue, useSummary } from '../../api/queries'
 import type { components } from '../../api/schema'
-import { modulePaths } from '../../app/routes'
 import { queueCopy as copy, type KindKey } from '../../copy/queue'
 import { formatCount } from '../../lib/format'
+import { phoneFullWidth, scrollingTabs, statGrid, useCompact } from '../../lib/responsive'
 import { formatWait } from '../../lib/status'
 import { useModuleTitle, useRuntime } from '../../runtime/runtime'
 import { csvFilename, downloadText, queueCsv } from './parts/csv'
+import { QueueCards, reviewPath } from './parts/QueueCards'
 import { QueueFilters } from './parts/QueueFilters'
 import { QueueTable } from './parts/QueueTable'
 import { clearedFilters, hasFilters, toFilters, useQueueParams } from './parts/useQueueParams'
@@ -19,13 +20,6 @@ type QueueItem = components['schemas']['QueueItem']
 type Counts = components['schemas']['QueuePage']['counts']
 
 const icon = { size: 18, strokeWidth: 1.5, 'aria-hidden': true } as const
-
-// Where each kind of item is decided.
-function reviewPath(item: Pick<QueueItem, 'kind' | 'subject_id'>): string {
-  if (item.kind === 'product') return modulePaths.product(item.subject_id)
-  if (item.kind === 'brand_page') return modulePaths.brand(item.subject_id)
-  return modulePaths.vendor(item.subject_id)
-}
 
 // How long the oldest item has waited, from the whole queue (not the filtered view).
 function oldestWait(items: QueueItem[] | undefined): string | null {
@@ -39,8 +33,7 @@ function KindTabs({ value, counts, onChange }: { value: string; counts: Counts |
     <Tabs
       value={value}
       onChange={(_, key: string) => onChange(key)}
-      variant="scrollable"
-      scrollButtons="auto"
+      {...scrollingTabs}
       aria-label={copy.tabsLabel}
       textColor="inherit"
       sx={{ borderBottom: `1px solid ${neutral.line}`, minHeight: 44, '& .MuiTabs-indicator': { bgcolor: brand.brown } }}
@@ -74,7 +67,7 @@ function Figures() {
   const s = summary.data
   const value = (v: ReactNode) => (s ? v : summary.isPending ? <Skeleton variant="text" width={56} component="span" sx={{ display: 'inline-block' }} /> : '—')
   return (
-    <Box component="section" aria-label={copy.figures.label} sx={{ display: 'grid', gap: 2, gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+    <Box component="section" aria-label={copy.figures.label} sx={statGrid}>
       <StatFigure label={copy.figures.waiting} value={value(formatCount(s?.queue.all))} baseline={s ? copy.figures.waitingBaseline(s.queue.product, s.queue.brand_page, s.queue.application) : undefined} />
       <StatFigure label={copy.figures.decidedToday} value={value(formatCount(s?.decided_today))} baseline={copy.figures.decidedBaseline} />
       <StatFigure label={copy.figures.median} value={value(s?.median_minutes == null ? '—' : formatWait(s.median_minutes * 60_000))} baseline={copy.figures.medianBaseline} />
@@ -86,6 +79,7 @@ function Figures() {
 export default function ReviewQueue() {
   useModuleTitle(copy.title)
   const navigate = useNavigate()
+  const compact = useCompact()
   const { toast } = useRuntime()
   const [params, update] = useQueueParams()
   const query = useQueue(toFilters(params))
@@ -154,7 +148,7 @@ export default function ReviewQueue() {
       />
     )
   } else {
-    body = <QueueTable items={items} fetching={query.isFetching} onOpen={onOpen} />
+    body = compact ? <QueueCards items={items} fetching={query.isFetching} /> : <QueueTable items={items} fetching={query.isFetching} onOpen={onOpen} />
   }
 
   return (
@@ -163,7 +157,7 @@ export default function ReviewQueue() {
         title={copy.title}
         subtitle={subtitle}
         actions={
-          <Button variant="outlined" startIcon={<Download {...icon} />} onClick={exportCsv} disabled={!items?.length}>
+          <Button variant="outlined" startIcon={<Download {...icon} />} onClick={exportCsv} disabled={!items?.length} sx={phoneFullWidth}>
             {copy.exportCsv}
           </Button>
         }

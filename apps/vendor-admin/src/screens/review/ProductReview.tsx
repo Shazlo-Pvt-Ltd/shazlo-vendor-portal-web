@@ -5,9 +5,10 @@ import { useParams } from 'react-router'
 import { ApiError } from '../../api/http'
 import { useApproveProduct, useProductReview, useRejectProduct } from '../../api/queries'
 import { reviewCopy } from '../../copy/review'
+import { usePhone } from '../../lib/responsive'
 import { decisionPill, queuePill } from '../../lib/status'
 import { useModuleTitle } from '../../runtime/runtime'
-import { DecisionCard } from './DecisionCard'
+import { DecisionBar, DecisionCard, useChecklist } from './DecisionCard'
 import { CompareCard, DescriptionCard, SizesCard } from './ProductDetails'
 import { ProductPhotos } from './ProductPhotos'
 import { HistoryCard, LoadError, NotFound, OutcomeBanner, QueueNav, ReviewColumns, ReviewSkeleton, submittedLine, submitterOf } from './parts'
@@ -39,6 +40,8 @@ function Review({ id }: { id: string }) {
     toasts: { approved: copy.toast.approved(title), sentBack: copy.toast.sentBack(title, seller) },
   })
   const [sending, setSending] = useState(false)
+  const checklist = useChecklist(copy.checks)
+  const phone = usePhone()
 
   if (review.isPending) return <ReviewSkeleton />
   if (notFound) return <NotFound title={copy.notFound} body={copy.notFoundBody} />
@@ -73,12 +76,13 @@ function Review({ id }: { id: string }) {
           }
           side={
             <>
-              {!decided && <DecisionCard checks={copy.checks} approving={decision.approving} onApprove={decision.approve} onSendBack={() => setSending(true)} />}
+              {!decided && <DecisionCard checklist={checklist} withActions={!phone} approving={decision.approving} onApprove={decision.approve} onSendBack={() => setSending(true)} />}
               <HistoryCard history={data.history} />
             </>
           }
         />
       </Stack>
+      {phone && !decided && <DecisionBar checklist={checklist} approving={decision.approving} onApprove={decision.approve} onSendBack={() => setSending(true)} />}
       <SendBackDialog open={sending && !decided} subject={title} reasons={reviewCopy.productReasons} onClose={() => setSending(false)} onSubmit={decision.sendBack} />
     </>
   )

@@ -1,4 +1,4 @@
-import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, Typography } from '@mui/material'
+import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, Typography, useMediaQuery, useTheme } from '@mui/material'
 import { Banner, useSnackbar } from '@shazlo/ui'
 import { useRef, useState } from 'react'
 import { ApiError } from '../../api/http'
@@ -174,8 +174,10 @@ function Deactivate({ admin, onClose }: { admin: Admin; onClose: () => void }) {
 
 // One dialog host; it keeps the last admin while closing so the content does not blank mid-fade.
 export function ManageDialog({ target, selfId, onClose, onExited }: { target: { kind: DialogKind; admin: Admin; open: boolean } | null; selfId: string | undefined; onClose: () => void; onExited: () => void }) {
+  const theme = useTheme()
+  const phone = useMediaQuery(theme.breakpoints.down('sm'), { noSsr: true })
   return (
-    <Dialog open={Boolean(target?.open)} onClose={onClose} fullWidth maxWidth="sm" slotProps={{ transition: { onExited } }}>
+    <Dialog open={Boolean(target?.open)} onClose={onClose} fullWidth fullScreen={phone} maxWidth="sm" slotProps={{ transition: { onExited } }}>
       {target?.kind === 'roles' && <EditRoles admin={target.admin} self={target.admin.id === selfId} onClose={onClose} />}
       {target?.kind === 'reset' && <ResetPassword admin={target.admin} onClose={onClose} />}
       {target?.kind === 'deactivate' && <Deactivate admin={target.admin} onClose={onClose} />}

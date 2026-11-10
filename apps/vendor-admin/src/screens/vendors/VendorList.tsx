@@ -8,11 +8,13 @@ import type { components } from '../../api/schema'
 import { modulePaths } from '../../app/routes'
 import { vendorActionsCopy, vendorsCopy as copy, vendorTabs } from '../../copy/vendors'
 import { formatCount } from '../../lib/format'
+import { phoneFullWidth, scrollingTabs, useCompact } from '../../lib/responsive'
 import { useModuleTitle, useRuntime } from '../../runtime/runtime'
 import { VendorActionDialog, type DialogKind } from './dialogs'
 import { downloadCsv, vendorsCsv } from './list/csv'
 import { VendorFilters } from './list/Filters'
 import { toFilters, useVendorParams, type VendorParams } from './list/useVendorParams'
+import { VendorCards } from './list/VendorCards'
 import { VendorTable } from './list/VendorTable'
 
 type S = components['schemas']
@@ -26,8 +28,7 @@ function StatusTabs({ value, counts, onChange }: { value: string; counts: Counts
     <Tabs
       value={value}
       onChange={(_, key: string) => onChange(key)}
-      variant="scrollable"
-      scrollButtons="auto"
+      {...scrollingTabs}
       aria-label={copy.tabsLabel}
       textColor="inherit"
       sx={{ borderBottom: `1px solid ${neutral.line}`, minHeight: 44, '& .MuiTabs-indicator': { bgcolor: brand.brown } }}
@@ -117,6 +118,7 @@ function RowMenu({ target, onClose, onOpen, onAction }: { target: { anchor: HTML
 export default function VendorList() {
   useModuleTitle(copy.title)
   const navigate = useNavigate()
+  const compact = useCompact()
   const { toast } = useRuntime()
   const [params, update] = useVendorParams()
   const query = useVendors(toFilters(params))
@@ -171,7 +173,7 @@ export default function VendorList() {
   } else if (data && data.items.length === 0) {
     body = <ListEmpty params={params} onClearFilters={clearFilters} onShowAll={() => update({ status: undefined })} />
   } else {
-    body = <VendorTable items={data?.items} fetching={query.isFetching} onOpen={openVendor} onMenu={onMenu} />
+    body = compact ? <VendorCards items={data?.items} fetching={query.isFetching} onMenu={onMenu} /> : <VendorTable items={data?.items} fetching={query.isFetching} onOpen={openVendor} onMenu={onMenu} />
   }
 
   const waiting = data ? data.counts.applied + data.counts.under_review : 0
@@ -181,7 +183,7 @@ export default function VendorList() {
         title={copy.title}
         subtitle={data ? copy.subtitle(data.counts.all, waiting) : query.isPending ? <Skeleton variant="text" width={240} component="span" sx={{ display: 'inline-block' }} /> : undefined}
         actions={
-          <Button variant="outlined" onClick={exportCsv} disabled={!data} startIcon={<Download {...icon} />}>
+          <Button variant="outlined" onClick={exportCsv} disabled={!data} startIcon={<Download {...icon} />} sx={phoneFullWidth}>
             {copy.exportCsv}
           </Button>
         }

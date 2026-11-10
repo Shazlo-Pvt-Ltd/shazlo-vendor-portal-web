@@ -48,7 +48,8 @@ export function PhonePreview({ heading, brandName, profile, note }: { heading: s
             {profile.cover_url && <Box component="img" src={profile.cover_url} alt={copy.preview.cover} sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
           </Box>
           <Box sx={{ px: 2, mt: '-28px' }}>
-            <Box sx={{ width: 56, height: 56, borderRadius: '50%', overflow: 'hidden', display: 'grid', placeItems: 'center', bgcolor: brand.cream, color: brand.brown, border: `3px solid ${neutral.surface}` }}>
+            {/* Positioned, so the logo paints over the cover photo it overlaps. */}
+            <Box sx={{ position: 'relative', width: 56, height: 56, borderRadius: '50%', overflow: 'hidden', display: 'grid', placeItems: 'center', bgcolor: brand.cream, color: brand.brown, border: `3px solid ${neutral.surface}` }}>
               {profile.logo_url ? (
                 <Box component="img" src={profile.logo_url} alt="" sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
               ) : (

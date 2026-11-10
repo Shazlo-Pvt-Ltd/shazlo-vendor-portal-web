@@ -7,6 +7,7 @@ import type { components } from '../../api/schema'
 import { modulePaths } from '../../app/routes'
 import { reviewCopy as copy } from '../../copy/review'
 import { formatStamp } from '../../lib/format'
+import { touchIcon } from '../../lib/responsive'
 import { formatWait } from '../../lib/status'
 import type { Outcome } from './useDecision'
 
@@ -38,14 +39,15 @@ export function decisionIn(history: History): 'approved' | 'rejected' | null {
 }
 
 export function submittedLine(iso: string): string {
-  return copy.submitted(formatStamp(iso), formatWait(Date.now() - Date.parse(iso)))
+  // No-break spaces keep "5 h 26 m" on one line.
+  return copy.submitted(formatStamp(iso), formatWait(Date.now() - Date.parse(iso)).replace(/ /g, '\u00a0'))
 }
 
 function NavButton({ id, label, empty, icon }: { id: string | null; label: string; empty: string; icon: ReactNode }) {
   if (id) {
     return (
       <Tooltip title={label}>
-        <IconButton component={RouterLink} to={reviewPath(id)} aria-label={label} sx={{ color: neutral.ink }}>
+        <IconButton component={RouterLink} to={reviewPath(id)} aria-label={label} sx={{ ...touchIcon, color: neutral.ink }}>
           {icon}
         </IconButton>
       </Tooltip>
@@ -54,7 +56,7 @@ function NavButton({ id, label, empty, icon }: { id: string | null; label: strin
   return (
     <Tooltip title={empty} describeChild>
       <Box component="span" sx={{ display: 'inline-flex' }}>
-        <IconButton disabled aria-label={label}>
+        <IconButton disabled aria-label={label} sx={touchIcon}>
           {icon}
         </IconButton>
       </Box>
@@ -66,11 +68,11 @@ function NavButton({ id, label, empty, icon }: { id: string | null; label: strin
 export function QueueNav({ prevId, nextId }: { prevId: string | null; nextId: string | null }) {
   return (
     <Stack component="nav" aria-label={copy.nav.back} direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 2, gap: 2 }}>
-      <Link component={RouterLink} to={modulePaths.queue} underline="hover" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75, color: neutral.inkSecondary, typography: 'body2', minHeight: 36 }}>
+      <Link component={RouterLink} to={modulePaths.queue} underline="hover" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75, color: neutral.inkSecondary, typography: 'body2', minHeight: { xs: 44, md: 36 } }}>
         <ArrowLeft size={16} strokeWidth={1.5} aria-hidden="true" />
         {copy.nav.back}
       </Link>
-      <Stack direction="row" spacing={0.5}>
+      <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
         <NavButton id={prevId} label={copy.nav.prev} empty={copy.nav.noPrev} icon={<ChevronLeft size={18} strokeWidth={1.5} aria-hidden="true" />} />
         <NavButton id={nextId} label={copy.nav.next} empty={copy.nav.noNext} icon={<ChevronRight size={18} strokeWidth={1.5} aria-hidden="true" />} />
       </Stack>
@@ -212,16 +214,16 @@ export function ReviewSkeleton() {
         <Skeleton variant="text" width={110} />
         <Skeleton variant="rounded" width={80} height={36} />
       </Stack>
-      <Skeleton variant="text" width="45%" height={56} />
+      <Skeleton variant="text" height={56} sx={{ width: { xs: '80%', md: '45%' } }} />
       <Skeleton variant="text" width="35%" sx={{ mb: 4 }} />
       <ReviewColumns
         main={
           <>
             <Card sx={{ p: 3 }}>
               <Skeleton variant="text" width={120} height={28} />
-              <Stack direction="row" spacing={2} sx={{ mt: 1.5 }}>
-                <Skeleton variant="rounded" width={300} height={375} />
-                <Stack spacing={1.5}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 1.5 }}>
+                <Skeleton variant="rounded" height={375} sx={{ width: 300, maxWidth: '100%' }} />
+                <Stack direction={{ xs: 'row', sm: 'column' }} spacing={1.5}>
                   {[0, 1, 2].map((i) => (
                     <Skeleton key={i} variant="rounded" width={72} height={90} />
                   ))}

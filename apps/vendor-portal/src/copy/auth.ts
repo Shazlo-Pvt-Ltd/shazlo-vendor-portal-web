@@ -1,5 +1,6 @@
 export const authCopy = {
   help: 'Need help?',
+  helpShort: 'Email us',
   helpEmail: 'partners@shazlo.store',
   footer: [
     { label: 'Seller terms', href: 'https://shazlo.store/seller-terms' },

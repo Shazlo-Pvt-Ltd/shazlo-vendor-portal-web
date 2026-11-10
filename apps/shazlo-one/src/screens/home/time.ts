@@ -8,11 +8,13 @@ export function partOfDay(now: Date = new Date()): 'morning' | 'afternoon' | 'ev
   return 'evening'
 }
 
-// "5 h 20 m"; under an hour, "40 m". A missing median is a dash.
+// "5 h 20 m"; under an hour, "40 m". A missing median is a dash. A number and its unit are joined by
+// a no-break space, so a narrow stat card wraps "5 h / 20 m" and never strands a lone "m".
+const NBSP = ' '
 export function formatMinutes(minutes: number | null | undefined): string {
   if (minutes == null) return '—'
   const total = Math.round(minutes)
   const h = Math.floor(total / 60)
   const m = total % 60
-  return h > 0 ? `${h} h ${m} m` : `${m} m`
+  return h > 0 ? `${h}${NBSP}h ${m}${NBSP}m` : `${m}${NBSP}m`
 }

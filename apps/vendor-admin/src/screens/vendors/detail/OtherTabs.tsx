@@ -21,11 +21,14 @@ function ProductRow({ product }: { product: Product }) {
   const row: ReactNode = (
     <Stack direction="row" spacing={2} sx={{ alignItems: 'center', minHeight: 64, px: { xs: 2, sm: 3 }, py: 1 }}>
       <ProductThumb src={product.thumbnail_url} size={40} />
-      <Typography variant="body1" sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
-        {product.title}
-      </Typography>
-      <StatusPill status={productPill[product.status] ?? 'draft'} label={copy.products.status[product.status] ?? product.status} />
-      <Typography variant="body1" sx={{ width: 96, textAlign: 'right', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+      {/* On a phone the status sits under the title, so the title keeps a readable width. */}
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={{ xs: 0.5, sm: 2 }} sx={{ flex: 1, minWidth: 0, alignItems: { xs: 'flex-start', sm: 'center' } }}>
+        <Typography variant="body1" sx={{ flex: 1, minWidth: 0, overflowWrap: 'break-word', maxWidth: '100%' }}>
+          {product.title}
+        </Typography>
+        <StatusPill status={productPill[product.status] ?? 'draft'} label={copy.products.status[product.status] ?? product.status} />
+      </Stack>
+      <Typography variant="body1" sx={{ width: { xs: 'auto', sm: 96 }, textAlign: 'right', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
         {formatINR(product.price_paise)}
       </Typography>
     </Stack>

@@ -29,6 +29,7 @@ export const reviewCopy = {
     approving: 'Approving…',
     sendBack: 'Send back',
     tickAll: 'Tick every check to approve',
+    bar: 'Decision',
   },
 
   history: {

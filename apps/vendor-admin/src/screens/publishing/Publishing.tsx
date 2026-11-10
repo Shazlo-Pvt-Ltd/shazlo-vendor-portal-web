@@ -1,4 +1,4 @@
-import { Box, Button, Skeleton, Stack, Tab, Tabs, Typography } from '@mui/material'
+import { Box, Button, Dialog, Skeleton, Stack, Tab, Tabs, Typography } from '@mui/material'
 import { Banner, brand, EmptyState, neutral, PageHeader, StatFigure } from '@shazlo/ui'
 import { RefreshCw } from 'lucide-react'
 import { useId, useState, type ReactNode } from 'react'
@@ -7,7 +7,9 @@ import { useOutbox, useRetryEvent, useRetryFailed, useSummary } from '../../api/
 import type { components } from '../../api/schema'
 import { publishingCopy as copy } from '../../copy/publishing'
 import { formatCount } from '../../lib/format'
+import { phoneFullWidth, scrollingTabs, statGrid, useCompact, usePhone } from '../../lib/responsive'
 import { useModuleTitle, useRuntime } from '../../runtime/runtime'
+import { EventCards } from './parts/EventCards'
 import { EventDetails } from './parts/EventDetails'
 import { EventsTable } from './parts/EventsTable'
 
@@ -26,8 +28,7 @@ function StatusTabs({ value, counts, onChange }: { value: TabKey; counts: Counts
     <Tabs
       value={value}
       onChange={(_, key: TabKey) => onChange(key)}
-      variant="scrollable"
-      scrollButtons="auto"
+      {...scrollingTabs}
       aria-label={copy.tabsLabel}
       textColor="inherit"
       sx={{ borderBottom: `1px solid ${neutral.line}`, minHeight: 44, '& .MuiTabs-indicator': { bgcolor: brand.brown } }}
@@ -61,7 +62,7 @@ function Figures() {
   const p = summary.data?.publishing
   const value = (n: number | undefined) => (p ? formatCount(n) : summary.isPending ? <Skeleton variant="text" width={56} component="span" sx={{ display: 'inline-block' }} /> : '—')
   return (
-    <Box component="section" aria-label={copy.figures.label} sx={{ display: 'grid', gap: 2, gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+    <Box component="section" aria-label={copy.figures.label} sx={statGrid}>
       <StatFigure label={copy.figures.delivered} value={value(p?.delivered_24h)} baseline={copy.figures.deliveredBaseline} />
       <StatFigure label={copy.figures.waiting} value={value(p?.waiting)} baseline={copy.figures.waitingBaseline} />
       <StatFigure label={copy.figures.retrying} value={value(p?.retrying)} baseline={copy.figures.retryingBaseline} />
@@ -75,7 +76,7 @@ function RetryAll({ failed, pending, onRetry }: { failed: number | undefined; pe
   const reasonId = useId()
   const none = failed === 0
   return (
-    <Stack spacing={0.5} sx={{ alignItems: { md: 'flex-end' } }}>
+    <Stack spacing={0.5} sx={{ alignItems: { xs: 'stretch', sm: 'flex-start', md: 'flex-end' }, ...phoneFullWidth }}>
       <Button variant="contained" startIcon={<RefreshCw {...icon} />} onClick={onRetry} disabled={failed === undefined || none || pending} aria-describedby={none ? reasonId : undefined}>
         {pending ? copy.retryAllRunning : copy.retryAll(failed ?? 0)}
       </Button>
@@ -91,6 +92,8 @@ function RetryAll({ failed, pending, onRetry }: { failed: number | undefined; pe
 export default function Publishing() {
   useModuleTitle(copy.title)
   const { toast } = useRuntime()
+  const compact = useCompact()
+  const phone = usePhone()
   const [search, setSearch] = useSearchParams()
   const statusParam = search.get('status')
   const status = isStatus(statusParam) ? statusParam : undefined
@@ -186,8 +189,19 @@ export default function Publishing() {
       />
     )
   } else {
-    table = <EventsTable items={data?.items} fetching={query.isFetching} selectedId={selectedId} onSelect={select} />
+    table = compact ? <EventCards items={data?.items} fetching={query.isFetching} selectedId={selectedId} onSelect={select} /> : <EventsTable items={data?.items} fetching={query.isFetching} selectedId={selectedId} onSelect={select} />
   }
+
+  const details = selected ? (
+    <EventDetails
+      event={selected}
+      retrying={retryOne.isPending && retryOne.variables === selected.id}
+      retryError={retryError?.id === selected.id ? retryError.text : null}
+      onRetry={() => void retry(selected)}
+      onCopy={() => void copyPayload(selected)}
+      onClose={closeDetails}
+    />
+  ) : null
 
   return (
     <>
@@ -202,23 +216,18 @@ export default function Publishing() {
           )}
           {errorBanner}
           <StatusTabs value={status ?? 'all'} counts={data?.counts} onChange={(key) => setParam('status', key === 'all' ? undefined : key)} />
-          <Box sx={{ display: 'grid', gap: 3, alignItems: 'start', gridTemplateColumns: selected ? { xs: 'minmax(0, 1fr)', md: 'minmax(0, 1fr) 320px' } : 'minmax(0, 1fr)' }}>
+          <Box sx={{ display: 'grid', gap: 3, alignItems: 'start', gridTemplateColumns: details && !compact ? { xs: 'minmax(0, 1fr)', md: 'minmax(0, 1fr) 320px' } : 'minmax(0, 1fr)' }}>
             <Box sx={{ minWidth: 0 }}>{table}</Box>
-            {selected && (
-              <Box sx={{ position: { md: 'sticky' }, top: { md: 16 }, minWidth: 0 }}>
-                <EventDetails
-                  event={selected}
-                  retrying={retryOne.isPending && retryOne.variables === selected.id}
-                  retryError={retryError?.id === selected.id ? retryError.text : null}
-                  onRetry={() => void retry(selected)}
-                  onCopy={() => void copyPayload(selected)}
-                  onClose={closeDetails}
-                />
-              </Box>
-            )}
+            {details && !compact && <Box sx={{ position: { md: 'sticky' }, top: { md: 16 }, minWidth: 0 }}>{details}</Box>}
           </Box>
         </Stack>
       </Stack>
+      {/* Under 900 px the details open over the list: the whole screen on a phone. */}
+      {compact && (
+        <Dialog open={details !== null} onClose={closeDetails} fullScreen={phone} fullWidth maxWidth="sm" slotProps={{ paper: { 'aria-label': copy.details.label } }}>
+          <Box sx={{ '& > .MuiCard-root': { border: 0, borderRadius: 0 } }}>{details}</Box>
+        </Dialog>
+      )}
     </>
   )
 }

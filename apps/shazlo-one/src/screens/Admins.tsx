@@ -94,7 +94,7 @@ export default function Admins() {
       />
       <Stack spacing={{ xs: 2.5, md: 3 }}>
         {pageError && <Banner tone="error" title={pageError} onClose={() => setPageError(null)} />}
-        <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', rowGap: 1.5 }}>
+        <Stack direction="row" useFlexGap sx={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', columnGap: 2, rowGap: 1.5 }}>
           <AdminFilters filters={filters} roles={roles.data} onChange={update} />
           {items && (
             <Typography variant="body2" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>

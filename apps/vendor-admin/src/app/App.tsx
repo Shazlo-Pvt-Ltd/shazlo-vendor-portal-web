@@ -39,7 +39,8 @@ function Gate() {
   }
   return (
     <QueryClientProvider client={queryClient}>
-      <Box component="main" sx={{ px: { xs: 2, md: 5 }, pt: 4, pb: 8 }}>
+      {/* Page titles wrap between words, never inside one (the shared header allows any break). */}
+      <Box component="main" sx={{ px: { xs: 2, md: 5 }, pt: { xs: 3, md: 4 }, pb: 8, '& h1': { overflowWrap: 'break-word', hyphens: 'none', minWidth: 0, maxWidth: '100%' } }}>
         <Box sx={{ maxWidth: 1240, mx: 'auto' }}>
           <Suspense fallback={<PageFallback />}>
             <Outlet />

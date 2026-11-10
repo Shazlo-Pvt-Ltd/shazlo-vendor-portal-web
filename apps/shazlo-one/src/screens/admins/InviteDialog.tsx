@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField, Typography } from '@mui/material'
+import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField, Typography, useMediaQuery, useTheme } from '@mui/material'
 import { Banner, fontFamily } from '@shazlo/ui'
 import { RefreshCw } from 'lucide-react'
 import { useState } from 'react'
@@ -49,7 +49,8 @@ function InviteForm({ onCreated, onClose }: { onCreated: (admin: Admin, password
   })
 
   return (
-    <Box component="form" noValidate onSubmit={onSubmit}>
+    // A flex column, so on a full-screen phone dialog the fields scroll and the buttons stay in view.
+    <Box component="form" noValidate onSubmit={onSubmit} sx={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 }}>
       <DialogTitle>{copy.title}</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
@@ -116,8 +117,10 @@ function Sent({ admin, password, onClose }: { admin: Admin; password: string; on
 // Create, then a second step with the details to send; the dialog keeps the password until it closes.
 export function InviteDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [sent, setSent] = useState<{ admin: Admin; password: string } | null>(null)
+  const theme = useTheme()
+  const phone = useMediaQuery(theme.breakpoints.down('sm'), { noSsr: true })
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" slotProps={{ transition: { onExited: () => setSent(null) } }}>
+    <Dialog open={open} onClose={onClose} fullWidth fullScreen={phone} maxWidth="sm" slotProps={{ transition: { onExited: () => setSent(null) } }}>
       {sent ? <Sent admin={sent.admin} password={sent.password} onClose={onClose} /> : <InviteForm onCreated={(admin, password) => setSent({ admin, password })} onClose={onClose} />}
     </Dialog>
   )
