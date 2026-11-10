@@ -11,7 +11,7 @@ FastAPI service for vendors, brand profiles, products, assets, reviews and publi
 - **Its own tokens and keys:** vendor-api signs vendor tokens with its own key and serves its own JWKS.
 - **The schema** for vendors, users, tokens and (in the open Phase 2 PRs) brand profiles, products and reviews.
 
-Brand profiles, products, assets, imports and the review flow are Phase 3.
+Phase 3 so far: signed image uploads (below). Brand profiles, products, imports and the review flow are still to come.
 
 ## Quick start: from nothing to a signed-in vendor
 
@@ -56,7 +56,7 @@ The live reference is the OpenAPI document at <http://localhost:8002/docs> (dev;
 | Health | `GET /health`, `GET /ready` | anyone |
 | Keys | `GET /.well-known/jwks.json` | anyone |
 | Vendor auth | `POST /v1/auth/signup`, `verify-email`, `resend-verification`, `login`, `refresh`, `logout`, `change-password`, `forgot-password`, `set-password` | anyone, or a vendor token for `change-password` |
-| Vendor | `GET /v1/vendor/me`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only) | vendor-api tokens only |
+| Vendor | `GET /v1/vendor/me`; `POST /v1/vendor/assets/sign`, `POST /v1/vendor/assets`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only) | vendor-api tokens only |
 | Admin | `GET /v1/admin/me` | identity-api tokens only (`vendor_reviewer` or `super_admin`) |
 
 The sections below describe each group.
@@ -117,6 +117,10 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `SMTP_SECURITY` | `starttls` | `none` (local Mailpit only), `starttls` or `ssl` |
 | `EMAIL_SEND_ATTEMPTS` | `3` | tries before an email is given up |
 | `PORTAL_BASE_URL` | `http://localhost:5174` | the vendor portal: links in emails point here |
+| `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | unset | set all three or none; the secret has no default and is never logged or returned. Without them the asset endpoints answer `503 uploads_not_configured` and the rest of the service works |
+| `CLOUDINARY_ROOT_FOLDER` | `shazlo` | every file lives under `<root>/vendors/<vendor id>/...`; give each environment its own root (lower-case letters, digits, `-`, `_`, `/`) |
+| `CLOUDINARY_UPLOAD_PRESET` | unset | an upload preset (made in Cloudinary) that is signed into every upload, so the provider enforces its own size and format limits as a second layer |
+| `UPLOAD_MAX_BYTES` | `10485760` | largest image accepted (10 MiB; at most 100 MiB) |
 
 `ENV=prod` refuses the `console` backend (it sends nothing), `SMTP_SECURITY=none` and an `http://` portal address.
 
@@ -193,6 +197,23 @@ A vendor cannot read, change or learn about another vendor's data, and another v
 
 **What is covered today**: `/v1/vendor/me`, the staff list, disable and enable, and resend-invite: each vendor's lists hold only its own rows; B's user ids (the owner, a staff member, an invited user) and random ids are the same 404 (identical bodies), in both directions, with B's rows unchanged afterwards; a staff member gets the same 403 for their own, another vendor's and unknown ids; an invite always lands in the caller's vendor; a token whose vendor is not the user's vendor is refused; admin and vendor tokens are not interchangeable.
 
+## Image uploads (Cloudinary)
+
+Images go **straight from the browser to Cloudinary** (ADR 0005): this service signs the upload and later checks what was stored, and never handles file bytes. Any active user of the vendor (owner or staff) can use both endpoints.
+
+1. **`POST /v1/vendor/assets/sign`** with `{kind, content_type, size_bytes}` (`kind`: `brand_logo`, `brand_banner` or `product_image`; `content_type`: `image/jpeg`, `image/png` or `image/webp`). The service picks the file's name itself, `<root>/vendors/<vendor id>/<brand|products>/<random 128-bit>`, signs it, and records a `pending` asset. It answers `{asset_id, public_id, upload_url, fields, expires_at, max_bytes, allowed_content_types}`. Limited per user (`asset_sign`).
+2. **The browser** POSTs `multipart/form-data` to `upload_url` with every entry of `fields` and the file as `file`. Nothing else: Cloudinary rejects parameters that were not signed.
+3. **`POST /v1/vendor/assets`** with `{public_id}`. Cloudinary is asked (Admin API, with the secret) what it really stored; the asset becomes `ready` with the **real** format, size and dimensions, which the client cannot claim. Registering again returns the same asset.
+
+What the signature fixes, so the browser cannot change it:
+- **The folder and name.** `public_id` is signed, so a vendor can only upload to the one name it was given, inside its own folder. Registration only accepts a name this service issued to the calling vendor: another vendor's name and a name nobody issued are the same `404 asset_not_found`.
+- **No overwriting.** `overwrite=false`, so a signature is good for one upload; it also expires (Cloudinary refuses timestamps older than an hour).
+- **The format list.** `allowed_formats=jpg,jpeg,png,webp`, and `upload_preset` when `CLOUDINARY_UPLOAD_PRESET` is set.
+
+Limits: the declared type and size are checked when signing (`422 validation_error` for a type that is not allowed, `422 image_too_large` over `UPLOAD_MAX_BYTES`), and **the real ones again when registering** (`422 image_too_large`, `422 unsupported_image_type`, `422 invalid_upload`). A file that breaks a rule is **deleted from Cloudinary** and its asset is marked `deleted` (it cannot be registered again; sign a new one). Errors: `409 upload_not_found` until the file has been uploaded (retry), `502 image_host_unavailable` if Cloudinary does not answer (the asset stays `pending`, retry), `503 uploads_not_configured` without credentials.
+
+A `ready` asset of the right kind and vendor is what the brand profile and products accept as an image. Assets that were signed but never registered stay `pending`; a cleanup job for them (and for the files at Cloudinary) is not part of this issue.
+
 ## Team, invites and password reset
 
 Three cases end with "someone gets an email and sets a password": an owner inviting a staff member, a user who forgot their password, and (Phase 8) the owner of a vendor migrated from MongoDB. All use the same one-time token: 256-bit, only its SHA-256 stored, single use, and a newer token for the same purpose ends the older ones.
@@ -227,10 +248,11 @@ Keys are `vendor:rl:<endpoint>:<scope>:<hash>`: the prefix and the `RATE_LIMIT_H
 | `forgot_password` | IP; email | 10 per hour; 3 per hour |
 | `set_password` | IP | 20 per 15 minutes |
 | `staff_invite` (invite and resend-invite) | vendor | 20 per hour |
+| `asset_sign` (upload signatures) | user | 60 per hour |
 
 - **Nobody can lock a vendor out.** The checks run in order and stop at the first one that refuses, so a request the per-IP or per-pair counter already refuses never reaches the per-email counter: one attacking IP adds at most 5 per 15 minutes to it. And an email + IP pair that logged in successfully in the last 30 days skips the per-email counter, so a vendor on their usual network gets in even while someone guesses from elsewhere.
 - **Signup and resend are limited on the address as typed**, whether or not it is registered, so the limit looks the same either way and reveals nothing. Per address matters because those endpoints send email (verification, or "you already have an account"): without it they would mail-bomb an inbox.
-- **When Redis is down** the endpoints in `RATE_LIMIT_FAIL_CLOSED` answer `503 rate_limiter_unavailable`: the ones that check a password (`login`, `change_password`) so guessing stays limited, and the ones that send email (`signup`, `resend_verification`, `forgot_password`, `staff_invite`) so an outage cannot be used to flood an inbox. The others skip the limit and log a warning (fail open): `refresh` (signed-in vendors keep working; refreshing needs Redis anyway), `verify_email` and `set_password` (they need a 256-bit token, which cannot be guessed at any rate).
+- **When Redis is down** the endpoints in `RATE_LIMIT_FAIL_CLOSED` answer `503 rate_limiter_unavailable`: the ones that check a password (`login`, `change_password`) so guessing stays limited, and the ones that send email (`signup`, `resend_verification`, `forgot_password`, `staff_invite`) so an outage cannot be used to flood an inbox. The others skip the limit and log a warning (fail open): `asset_sign` (add it to `RATE_LIMIT_FAIL_CLOSED` if upload cost matters more than availability), `refresh` (signed-in vendors keep working; refreshing needs Redis anyway), `verify_email` and `set_password` (they need a 256-bit token, which cannot be guessed at any rate).
 - **Behind a proxy**, set `TRUSTED_PROXIES`. Without it every client looks like the proxy and shares one set of per-IP counters.
 
 ## Email
