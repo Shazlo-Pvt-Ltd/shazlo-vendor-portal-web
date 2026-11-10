@@ -1,6 +1,7 @@
 """The brand profile endpoints: edit the draft, submit it for review, read the published version."""
 
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -11,6 +12,8 @@ from factories import saved_asset, saved_profile
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from vendor_api.app import create_app
+from vendor_api.core.settings import Settings
 from vendor_api.db.models import (
     Asset,
     AssetKind,
@@ -178,6 +181,7 @@ async def test_text_is_trimmed_and_a_pasted_handle_loses_its_at_sign(tenants: Te
         ({"price_min_paise": -1}, "price_min_paise"),
         ({"price_min_paise": 5, "price_max_paise": 4}, None),
         ({"logo_asset_id": "not-a-uuid"}, "logo_asset_id"),
+        ({"brand_name": "invalid\x00name"}, "brand_name"),
     ],
 )
 async def test_content_the_published_contract_would_refuse_is_a_422(
@@ -484,3 +488,27 @@ async def test_the_vendor_id_in_the_request_is_ignored(
     assert response.status_code == 200
     assert len(await rows(session, BrandProfile, tenants.a.vendor)) == 1
     assert await rows(session, BrandProfile, tenants.b.vendor) == []
+
+
+async def test_allowed_origin_can_preflight_a_profile_update(
+    settings: Settings, override: Callable[..., Settings]
+) -> None:
+    origin = "https://portal.example"
+    app = create_app(override(settings, cors_allowed_origins=[origin]), readiness_checks={})
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="https://api.test"
+        ) as http,
+    ):
+        response = await http.options(
+            "/v1/vendor/brand-profile",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "PUT",
+                "Access-Control-Request-Headers": "authorization, content-type",
+            },
+        )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == origin
+    assert "PUT" in response.headers["access-control-allow-methods"]

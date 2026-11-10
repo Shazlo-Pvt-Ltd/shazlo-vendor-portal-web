@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from vendor_api.api.auth import no_store
 from vendor_api.api.deps import CurrentVendorUser, current_vendor_user
+from vendor_api.core.validation import DatabaseText
 from vendor_api.db.session import get_session
 from vendor_api.services.brand_profiles import BrandContent, BrandProfileService, ProfileView
 
@@ -46,14 +47,14 @@ class BrandProfileBody(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    brand_name: str = Field(min_length=1, max_length=120)
-    tagline: str | None = Field(default=None, max_length=160)
-    about: str | None = Field(default=None, max_length=4000)
+    brand_name: DatabaseText = Field(min_length=1, max_length=120)
+    tagline: DatabaseText | None = Field(default=None, max_length=160)
+    about: DatabaseText | None = Field(default=None, max_length=4000)
     logo_asset_id: uuid.UUID | None = None
     banner_asset_id: uuid.UUID | None = None
-    website_url: str | None = Field(default=None, max_length=500)
+    website_url: DatabaseText | None = Field(default=None, max_length=500)
     instagram_handle: str | None = Field(default=None, max_length=31)
-    categories: list[str] = Field(default_factory=list, max_length=MAX_CATEGORIES)
+    categories: list[DatabaseText] = Field(default_factory=list, max_length=MAX_CATEGORIES)
     price_min_paise: int = Field(ge=0, le=MAX_PAISE)
     price_max_paise: int = Field(ge=0, le=MAX_PAISE)
 
