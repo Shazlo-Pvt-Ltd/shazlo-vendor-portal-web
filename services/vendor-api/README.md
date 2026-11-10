@@ -11,7 +11,7 @@ FastAPI service for vendors, brand profiles, products, assets, reviews and publi
 - **Its own tokens and keys:** vendor-api signs vendor tokens with its own key and serves its own JWKS.
 - **The schema** for vendors, users, tokens and (in the open Phase 2 PRs) brand profiles, products and reviews.
 
-Phase 3 so far: signed image uploads (below). Brand profiles, products, imports and the review flow are still to come.
+Phase 3 adds the vendor brand profile, product catalog and signed media uploads.
 
 ## Quick start: from nothing to a signed-in vendor
 
@@ -56,7 +56,7 @@ The live reference is the OpenAPI document at <http://localhost:8002/docs> (dev;
 | Health | `GET /health`, `GET /ready` | anyone |
 | Keys | `GET /.well-known/jwks.json` | anyone |
 | Vendor auth | `POST /v1/auth/signup`, `verify-email`, `resend-verification`, `login`, `refresh`, `logout`, `change-password`, `forgot-password`, `set-password` | anyone, or a vendor token for `change-password` |
-| Vendor | `GET /v1/vendor/me`; `POST /v1/vendor/assets/sign`, `POST /v1/vendor/assets`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only) | vendor-api tokens only |
+| Vendor | `GET /v1/vendor/me`; `GET`/`PUT /v1/vendor/brand-profile`, `POST /v1/vendor/brand-profile/submit`, `GET /v1/vendor/brand-profile/published`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only); `GET`/`POST /v1/vendor/products`, `GET`/`PUT`/`DELETE /v1/vendor/products/{id}`, `POST /v1/vendor/products/{id}/submit`; `POST /v1/vendor/assets/sign`, `POST /v1/vendor/assets` | vendor-api tokens only |
 | Admin | `GET /v1/admin/me` | identity-api tokens only (`vendor_reviewer` or `super_admin`) |
 
 The sections below describe each group.
@@ -117,7 +117,7 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `SMTP_SECURITY` | `starttls` | `none` (local Mailpit only), `starttls` or `ssl` |
 | `EMAIL_SEND_ATTEMPTS` | `3` | tries before an email is given up |
 | `PORTAL_BASE_URL` | `http://localhost:5174` | the vendor portal: links in emails point here |
-| `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | unset | set all three or none; the secret has no default and is never logged or returned. Without them the asset endpoints answer `503 uploads_not_configured` and the rest of the service works. Signatures are SHA-256: set the account's API signature algorithm to SHA-256 |
+| `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | unset | set all three or none; the secret has no default and is never logged or returned. Without them the asset endpoints answer `503 uploads_not_configured` and the rest of the service works |
 | `CLOUDINARY_ROOT_FOLDER` | `shazlo` | every file lives under `<root>/vendors/<vendor id>/...`; give each environment its own root (lower-case letters, digits, `-`, `_`, `/`) |
 | `CLOUDINARY_UPLOAD_PRESET` | unset | an upload preset (made in Cloudinary) that is signed into every upload, so the provider enforces its own size and format limits as a second layer |
 | `UPLOAD_MAX_BYTES` | `10485760` | largest image accepted (10 MiB; at most 100 MiB) |
@@ -197,6 +197,42 @@ A vendor cannot read, change or learn about another vendor's data, and another v
 
 **What is covered today**: `/v1/vendor/me`, the staff list, disable and enable, and resend-invite: each vendor's lists hold only its own rows; B's user ids (the owner, a staff member, an invited user) and random ids are the same 404 (identical bodies), in both directions, with B's rows unchanged afterwards; a staff member gets the same 403 for their own, another vendor's and unknown ids; an invite always lands in the caller's vendor; a token whose vendor is not the user's vendor is refused; admin and vendor tokens are not interchangeable.
 
+## Brand profile (vendor side)
+
+A vendor edits a draft, submits it, and reads what was approved. Any active user of the vendor (owner or staff) can do all four; a `pending` vendor can too (it must be able to submit), a `rejected` or `suspended` one gets `403 vendor_not_allowed`. The vendor always comes from the token, never from the request.
+
+| Endpoint | What it does |
+| --- | --- |
+| `GET /v1/vendor/brand-profile` | The draft to edit, with `in_review_version` (the version now in review, if any). If there is no draft (never started, or the last one was submitted) one is **created from the latest version**, or from the signup details (name, price range) for a new vendor. Repeated reads return the same draft |
+| `PUT /v1/vendor/brand-profile` | **Replaces** the draft's content, so a field left out is cleared. Same limits as the published contract (ADR 0003): name 1 to 120, tagline 160, about 4000, `https` website, Instagram handle (a leading `@` is dropped), up to 20 unique categories of 1 to 80 characters, price range in paise. `logo_asset_id` / `banner_asset_id` must be the vendor's own **ready** `brand_logo` / `brand_banner` assets; another vendor's id and a missing id give the same `422 invalid_asset`. Never touches the published version |
+| `POST /v1/vendor/brand-profile/submit` | Sends the draft for review: it becomes `pending_review` (frozen from then on) and a pending `review` plus its `submitted` audit event (actor: the vendor user) are written in one transaction. `409 nothing_to_submit` without a draft, `422 profile_incomplete` without a category, `422 invalid_asset` if an image was deleted since saving, `409 review_pending` if a version is already in review |
+| `GET /v1/vendor/brand-profile/published` | The version shoppers see: the last one an admin approved. `404 no_published_profile` until there is one |
+
+**Editing while a version is in review** (decided here): the submitted version is frozen, so editing never changes it. The next `PUT` (or `GET`) opens a **new draft** (next version number, copied from the version in review) and the vendor can keep working; submitting it waits for the first review to be decided (`409 review_pending`). There is no withdraw: the database does not allow a submitted version to go back to `draft`, and a reviewer decides soon enough. Phase 3's review endpoints will make the decision and, on approval, publish the version.
+
+Every write first locks the vendor's row, so two tabs saving, or a save racing a submit, are handled one after the other for that vendor only.
+
+## Products (vendor side)
+
+A vendor's catalog. Any active user of the vendor (owner or staff) can do everything here; another vendor's product is `404 product_not_found`, the same as an id that does not exist. The vendor comes from the token, never the request.
+
+| Endpoint | What it does |
+| --- | --- |
+| `POST /v1/vendor/products` | Creates a `draft` product with revision 1 as its editable (`working`) revision. Body: `sku` (identity, cannot change later) plus the content below. `409 sku_taken` if the vendor already uses the SKU (case ignored; archived products keep theirs) or a variant SKU is used by another product of the vendor |
+| `GET /v1/vendor/products` | Paged list, most recently changed first: `limit` (1 to 100, default 25), `offset`, `status`, `category` (case ignored), `q` (part of the SKU or title). Returns `{items, total, limit, offset}`. Archived products show only with `status=archived`. Each item has the title of the latest revision and `has_pending_changes` |
+| `GET /v1/vendor/products/{id}` | `live` (the approved revision, what shoppers see; null until approved) and `working` (the revision being edited, in review, or the last rejected one, with its review and the admin's reason) |
+| `PUT /v1/vendor/products/{id}` | **Replaces** the content of the editable revision (a field or list left out is cleared). **Never changes `live`**: editing an approved product creates a new pending revision (next version number) and the status stays `approved`; further edits change that same revision. A rejected product gets a new revision and goes back to `draft`. `409 product_in_review` while a version is in review, `409 product_archived` |
+| `POST /v1/vendor/products/{id}/submit` | Sends the editable revision for review (it is frozen from then on) and writes a pending review plus its `submitted` audit event in one transaction; a never-approved product becomes `pending_review`. `422 product_incomplete` without an active variant or an image, `409 nothing_to_submit` when nothing is being edited |
+| `DELETE /v1/vendor/products/{id}` | A product that was **never submitted** is deleted for good (SKU free again). One that was ever submitted is **archived**: history and SKU kept, an approved one goes off sale and its `version` is raised (the Phase 4 `product.unpublished` hook). `409 product_in_review` while in review; deleting an archived product again is a no-op |
+
+**Content** (limits from the published contract, ADR 0003): `title` (200), `description` (4000), `category` (100), `subcategory`, `gender` (`women`, `men`, `unisex`), `fabric` (80), `weight_grams` (> 0), `returnable` and `return_window_days` (0 to 30, required when returnable; ignored otherwise), up to 100 `variants` and 10 `images`.
+- **Variants** are `{sku, size, color, price_paise, mrp_paise, is_active}`. The **SKU is the variant's identity**: listing the same SKU (any letter case) in a later edit is the same variant, so the central app keeps updating one `variant_id`. Its size and colour cannot change (`422 variant_identity_changed`; use a new SKU). SKUs are unique per vendor across all products; two variants of one product cannot share size and colour.
+- **Images** are `{asset_id, alt_text}` in display order. Each must be the vendor's own **ready `product_image`** asset; another vendor's id and a missing id give the same `422 invalid_asset`. An image can be used once per product.
+
+**Editing while a version is in review** (decided here): the submitted revision is frozen by the database and a product has room for one pending revision, so the product cannot be edited until the review is decided (`409 product_in_review`). There is no withdraw.
+
+Every write first locks the product row, so two requests on one product run one after the other.
+
 ## Image uploads (Cloudinary)
 
 Images go **straight from the browser to Cloudinary** (ADR 0005): this service signs the upload and later checks what was stored, and never handles file bytes. Any active user of the vendor (owner or staff) can use both endpoints.
@@ -209,7 +245,7 @@ What the signature fixes, so the browser cannot change it:
 - **The folder and name.** `public_id` is signed, so a vendor can only upload to the one name it was given, inside its own folder. Registration only accepts a name this service issued to the calling vendor: another vendor's name and a name nobody issued are the same `404 asset_not_found`.
 - **No overwriting.** `overwrite=false`, so a signature is good for one upload; it also expires (Cloudinary refuses timestamps older than an hour).
 - **The format list.** `allowed_formats=jpg,jpeg,png,webp`, and `upload_preset` when `CLOUDINARY_UPLOAD_PRESET` is set.
-- **The algorithm: SHA-256.** The signature is the SHA-256 (64 hex characters) of the sorted parameters with the API secret appended. Cloudinary's default is SHA-1, so **the account's "API signature algorithm" must be set to SHA-256** in the Cloudinary console (Settings, Security), in every environment that uploads; otherwise every upload is refused as an invalid signature. (This was chosen over SHA-1 to satisfy CodeQL's weak-hash rule; try one real upload with a test account before relying on it.)
+- **The signature algorithm.** The API signs uploads with SHA-256. A Cloudinary product environment that restricts signatures to one algorithm must accept SHA-256.
 
 Limits: the declared type and size are checked when signing (`422 validation_error` for a type that is not allowed, `422 image_too_large` over `UPLOAD_MAX_BYTES`), and **the real ones again when registering** (`422 image_too_large`, `422 unsupported_image_type`, `422 invalid_upload`). A file that breaks a rule is **deleted from Cloudinary** and its asset is marked `deleted` (it cannot be registered again; sign a new one). Errors: `409 upload_not_found` until the file has been uploaded (retry), `502 image_host_unavailable` if Cloudinary does not answer (the asset stays `pending`, retry), `503 uploads_not_configured` without credentials.
 

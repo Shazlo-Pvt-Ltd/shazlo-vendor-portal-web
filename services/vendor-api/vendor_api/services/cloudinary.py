@@ -53,10 +53,7 @@ class ImageHost(Protocol):
 
 def sign_params(params: Mapping[str, str], api_secret: str) -> str:
     """Cloudinary's request signature: the parameters sorted by name and joined as `k=v&k=v`,
-    with the API secret appended, hashed with SHA-256 (64 hex characters). Cloudinary's default
-    is SHA-1, but it also accepts SHA-256: the account's "API signature algorithm" must be set to
-    SHA-256 in the Cloudinary console (Settings, Security), or every upload is refused as an
-    invalid signature.
+    with the API secret appended, hashed with SHA-256 (supported by Cloudinary).
 
     Only parameters that are signed here may be sent by the browser, and Cloudinary rejects an
     upload whose parameters differ from the ones signed, so the browser cannot change the file's
@@ -98,7 +95,7 @@ class CloudinaryClient:
             raise ImageHostError(f"the image host answered {response.status_code}")
         try:
             return _parse(response.json())
-        except (ValueError, KeyError, TypeError) as error:
+        except (ValueError, KeyError, TypeError, OverflowError) as error:
             raise ImageHostError("the image host sent an unreadable answer") from error
 
     async def delete(self, public_id: str) -> None:
@@ -116,7 +113,11 @@ class CloudinaryClient:
 
 
 def _parse(body: Any) -> UploadedImage:
-    if body.get("resource_type") != "image" or body.get("type") != "upload":
+    if (
+        not isinstance(body, dict)
+        or body.get("resource_type") != "image"
+        or body.get("type") != "upload"
+    ):
         raise ValueError("not an uploaded image")
     return UploadedImage(
         public_id=str(body["public_id"]),

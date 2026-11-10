@@ -1,6 +1,5 @@
 """Cloudinary's signature and the Admin API client (no network: a mock transport answers)."""
 
-import hashlib
 import json
 import logging
 from typing import Any
@@ -19,16 +18,12 @@ from vendor_api.services.cloudinary import (
 SECRET = "abcd"
 
 
-def sha256(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()
-
-
 # --- Signing -----------------------------------------------------------------------------
 
 
 def test_the_signature_is_the_sorted_parameters_with_the_secret_appended() -> None:
     params = {"timestamp": "1315060510", "public_id": "sample", "overwrite": "false"}
-    expected = sha256("overwrite=false&public_id=sample&timestamp=1315060510" + SECRET)
+    expected = "80c62db012da68b43cbc2c2d19955acd53ae7cf300d644783f7641370b44393c"
     assert sign_params(params, SECRET) == expected
 
 
@@ -49,7 +44,7 @@ def test_a_changed_value_name_or_secret_changes_the_signature() -> None:
 def test_the_secret_is_not_part_of_the_signature_text() -> None:
     signature = sign_params({"a": "1"}, SECRET)
     assert SECRET not in signature
-    assert len(signature) == 64  # SHA-256, hex
+    assert len(signature) == 64
 
 
 def test_the_urls() -> None:
@@ -137,12 +132,15 @@ async def test_a_network_failure_is_an_image_host_error() -> None:
         {},
         {"public_id": "x"},
         stored(bytes="many"),
+        stored(bytes="1e1000"),
+        [],
+        None,
         stored(width=None),
         stored(resource_type="video"),
         stored(type="private"),
     ],
 )
-async def test_an_answer_that_is_not_an_uploaded_image_is_refused(body: dict[str, Any]) -> None:
+async def test_an_answer_that_is_not_an_uploaded_image_is_refused(body: object) -> None:
     api, _ = client(lambda _: httpx.Response(200, json=body))
     with pytest.raises(ImageHostError):
         await api.describe("shazlo/x")
