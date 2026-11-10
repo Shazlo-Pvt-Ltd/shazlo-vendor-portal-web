@@ -120,6 +120,8 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | unset | set all three or none; the secret has no default and is never logged or returned. Without them the asset endpoints answer `503 uploads_not_configured` and the rest of the service works |
 | `CLOUDINARY_ROOT_FOLDER` | `shazlo` | every file lives under `<root>/vendors/<vendor id>/...`; give each environment its own root (lower-case letters, digits, `-`, `_`, `/`) |
 | `CLOUDINARY_UPLOAD_PRESET` | unset | an upload preset (made in Cloudinary) that is signed into every upload, so the provider enforces its own size and format limits as a second layer |
+| `CENTRAL_PUBLISHING_ENABLED` | `false` | publish outbox events to the central app (ADR 0003); needs the next three |
+| `CENTRAL_API_URL` / `CENTRAL_SIGNING_KEY_ID` / `CENTRAL_SIGNING_SECRET` | unset | the central app's base URL (https outside dev), the id it knows our secret by, and the secret (at least 32 characters, never logged; see the key-rotation runbook). Every request is signed `HMAC_SHA256(secret, timestamp + "." + body)` by `shazlo_security.signing` |
 | `UPLOAD_MAX_BYTES` | `10485760` | largest image accepted (10 MiB; at most 100 MiB) |
 
 `ENV=prod` refuses the `console` backend (it sends nothing), `SMTP_SECURITY=none` and an `http://` portal address.

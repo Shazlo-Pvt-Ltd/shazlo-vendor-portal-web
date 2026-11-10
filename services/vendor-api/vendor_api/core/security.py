@@ -7,6 +7,7 @@ from shazlo_security.keys import KeyRing, KeyRingConfig
 from shazlo_security.passwords import PasswordConfig
 from shazlo_security.rate_limit import RateLimitConfig
 from shazlo_security.refresh_tokens import RefreshTokenConfig
+from shazlo_security.signing import RequestSigner, SigningKey
 from shazlo_security.tokens import TokenIssuer
 
 from vendor_api.core.settings import Settings
@@ -64,3 +65,16 @@ def token_issuer(
         access_ttl_seconds=settings.access_token_ttl_seconds,
         clock=clock,
     )
+
+
+def central_request_signer(
+    settings: Settings, clock: Callable[[], float] | None = None
+) -> RequestSigner | None:
+    """The signer for requests to the central app, or None while publishing is off."""
+    if not settings.central_publishing_enabled:
+        return None
+    secret = settings.central_signing_secret
+    if secret is None or settings.central_signing_key_id is None:  # Settings checks this
+        raise ValueError("the central signing key is not set")
+    key = SigningKey(settings.central_signing_key_id, secret.get_secret_value().encode())
+    return RequestSigner(key) if clock is None else RequestSigner(key, clock)
