@@ -11,7 +11,7 @@ FastAPI service for vendors, brand profiles, products, assets, reviews and publi
 - **Its own tokens and keys:** vendor-api signs vendor tokens with its own key and serves its own JWKS.
 - **The schema** for vendors, users, tokens and (in the open Phase 2 PRs) brand profiles, products and reviews.
 
-Brand profiles, products, assets, imports and the review flow are Phase 3.
+Phase 3 adds brand profiles, products, media uploads, bulk imports and the reviewer queue.
 
 ## Quick start: from nothing to a signed-in vendor
 
@@ -56,7 +56,7 @@ The live reference is the OpenAPI document at <http://localhost:8002/docs> (dev;
 | Health | `GET /health`, `GET /ready` | anyone |
 | Keys | `GET /.well-known/jwks.json` | anyone |
 | Vendor auth | `POST /v1/auth/signup`, `verify-email`, `resend-verification`, `login`, `refresh`, `logout`, `change-password`, `forgot-password`, `set-password` | anyone, or a vendor token for `change-password` |
-| Vendor | `GET /v1/vendor/me`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only) | vendor-api tokens only |
+| Vendor | `GET /v1/vendor/me`; `GET`/`PUT /v1/vendor/brand-profile`, `POST /v1/vendor/brand-profile/submit`, `GET /v1/vendor/brand-profile/published`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only); `GET`/`POST /v1/vendor/products`, `GET`/`PUT`/`DELETE /v1/vendor/products/{id}`, `POST /v1/vendor/products/{id}/submit`; `POST /v1/vendor/assets/sign`, `POST /v1/vendor/assets`; `POST /v1/vendor/products/import`, `GET /v1/vendor/products/import/template` | vendor-api tokens only |
 | Admin | `GET /v1/admin/me`, `GET /v1/admin/reviews`, `GET /v1/admin/reviews/{id}`, `GET /v1/admin/vendors`, `GET /v1/admin/vendors/{id}`, `POST /v1/admin/vendors/{id}/approve`, `POST /v1/admin/vendors/{id}/reject`, `POST /v1/admin/vendors/{id}/suspend` | identity-api tokens only (`vendor_reviewer` or `super_admin`) |
 
 The sections below describe each group.
@@ -117,6 +117,10 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `SMTP_SECURITY` | `starttls` | `none` (local Mailpit only), `starttls` or `ssl` |
 | `EMAIL_SEND_ATTEMPTS` | `3` | tries before an email is given up |
 | `PORTAL_BASE_URL` | `http://localhost:5174` | the vendor portal: links in emails point here |
+| `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | unset | set all three or none; the secret has no default and is never logged or returned. Without them the asset endpoints answer `503 uploads_not_configured` and the rest of the service works |
+| `CLOUDINARY_ROOT_FOLDER` | `shazlo` | every file lives under `<root>/vendors/<vendor id>/...`; give each environment its own root (lower-case letters, digits, `-`, `_`, `/`) |
+| `CLOUDINARY_UPLOAD_PRESET` | unset | an upload preset (made in Cloudinary) that is signed into every upload, so the provider enforces its own size and format limits as a second layer |
+| `UPLOAD_MAX_BYTES` | `10485760` | largest image accepted (10 MiB; at most 100 MiB) |
 
 `ENV=prod` refuses the `console` backend (it sends nothing), `SMTP_SECURITY=none` and an `http://` portal address.
 
@@ -192,6 +196,82 @@ A vendor cannot read, change or learn about another vendor's data, and another v
 **What fails CI if it is forgotten**: `tests/test_isolation_structure.py` fails when a table of vendor data has no `vendor_id`, no foreign key to `vendors`, or no index on it, and when a route under `/v1/vendor` does not depend on `current_vendor_user`. It finds routers by walking `vendor_api/api`, so a new module is checked without anyone adding it to a list, and its last tests feed it bad samples to show it does fail.
 
 **What is covered today**: `/v1/vendor/me`, the staff list, disable and enable, and resend-invite: each vendor's lists hold only its own rows; B's user ids (the owner, a staff member, an invited user) and random ids are the same 404 (identical bodies), in both directions, with B's rows unchanged afterwards; a staff member gets the same 403 for their own, another vendor's and unknown ids; an invite always lands in the caller's vendor; a token whose vendor is not the user's vendor is refused; admin and vendor tokens are not interchangeable.
+
+## Brand profile (vendor side)
+
+A vendor edits a draft, submits it, and reads what was approved. Any active user of the vendor (owner or staff) can do all four; a `pending` vendor can too (it must be able to submit), a `rejected` or `suspended` one gets `403 vendor_not_allowed`. The vendor always comes from the token, never from the request.
+
+| Endpoint | What it does |
+| --- | --- |
+| `GET /v1/vendor/brand-profile` | The draft to edit, with `in_review_version` (the version now in review, if any). If there is no draft (never started, or the last one was submitted) one is **created from the latest version**, or from the signup details (name, price range) for a new vendor. Repeated reads return the same draft |
+| `PUT /v1/vendor/brand-profile` | **Replaces** the draft's content, so a field left out is cleared. Same limits as the published contract (ADR 0003): name 1 to 120, tagline 160, about 4000, `https` website, Instagram handle (a leading `@` is dropped), up to 20 unique categories of 1 to 80 characters, price range in paise. `logo_asset_id` / `banner_asset_id` must be the vendor's own **ready** `brand_logo` / `brand_banner` assets; another vendor's id and a missing id give the same `422 invalid_asset`. Never touches the published version |
+| `POST /v1/vendor/brand-profile/submit` | Sends the draft for review: it becomes `pending_review` (frozen from then on) and a pending `review` plus its `submitted` audit event (actor: the vendor user) are written in one transaction. `409 nothing_to_submit` without a draft, `422 profile_incomplete` without a category, `422 invalid_asset` if an image was deleted since saving, `409 review_pending` if a version is already in review |
+| `GET /v1/vendor/brand-profile/published` | The version shoppers see: the last one an admin approved. `404 no_published_profile` until there is one |
+
+**Editing while a version is in review** (decided here): the submitted version is frozen, so editing never changes it. The next `PUT` (or `GET`) opens a **new draft** (next version number, copied from the version in review) and the vendor can keep working; submitting it waits for the first review to be decided (`409 review_pending`). There is no withdraw: the database does not allow a submitted version to go back to `draft`, and a reviewer decides soon enough. Phase 3's review endpoints will make the decision and, on approval, publish the version.
+
+Every write first locks the vendor's row, so two tabs saving, or a save racing a submit, are handled one after the other for that vendor only.
+
+## Products (vendor side)
+
+A vendor's catalog. Any active user of the vendor (owner or staff) can do everything here; another vendor's product is `404 product_not_found`, the same as an id that does not exist. The vendor comes from the token, never the request.
+
+| Endpoint | What it does |
+| --- | --- |
+| `POST /v1/vendor/products` | Creates a `draft` product with revision 1 as its editable (`working`) revision. Body: `sku` (identity, cannot change later) plus the content below. `409 sku_taken` if the vendor already uses the SKU (case ignored; archived products keep theirs) or a variant SKU is used by another product of the vendor |
+| `GET /v1/vendor/products` | Paged list, most recently changed first: `limit` (1 to 100, default 25), `offset`, `status`, `category` (case ignored), `q` (part of the SKU or title). Returns `{items, total, limit, offset}`. Archived products show only with `status=archived`. Each item has the title of the latest revision and `has_pending_changes` |
+| `GET /v1/vendor/products/{id}` | `live` (the approved revision, what shoppers see; null until approved) and `working` (the revision being edited, in review, or the last rejected one, with its review and the admin's reason) |
+| `PUT /v1/vendor/products/{id}` | **Replaces** the content of the editable revision (a field or list left out is cleared). **Never changes `live`**: editing an approved product creates a new pending revision (next version number) and the status stays `approved`; further edits change that same revision. A rejected product gets a new revision and goes back to `draft`. `409 product_in_review` while a version is in review, `409 product_archived` |
+| `POST /v1/vendor/products/{id}/submit` | Sends the editable revision for review (it is frozen from then on) and writes a pending review plus its `submitted` audit event in one transaction; a never-approved product becomes `pending_review`. `422 product_incomplete` without an active variant or an image, `409 nothing_to_submit` when nothing is being edited |
+| `DELETE /v1/vendor/products/{id}` | A product that was **never submitted** is deleted for good (SKU free again). One that was ever submitted is **archived**: history and SKU kept, an approved one goes off sale and its `version` is raised (the Phase 4 `product.unpublished` hook). `409 product_in_review` while in review; deleting an archived product again is a no-op |
+
+**Content** (limits from the published contract, ADR 0003): `title` (200), `description` (4000), `category` (100), `subcategory`, `gender` (`women`, `men`, `unisex`), `fabric` (80), `weight_grams` (> 0), `returnable` and `return_window_days` (0 to 30, required when returnable; ignored otherwise), up to 100 `variants` and 10 `images`.
+- **Variants** are `{sku, size, color, price_paise, mrp_paise, is_active}`. The **SKU is the variant's identity**: listing the same SKU (any letter case) in a later edit is the same variant, so the central app keeps updating one `variant_id`. Its size and colour cannot change (`422 variant_identity_changed`; use a new SKU). SKUs are unique per vendor across all products; two variants of one product cannot share size and colour.
+- **Images** are `{asset_id, alt_text}` in display order. Each must be the vendor's own **ready `product_image`** asset; another vendor's id and a missing id give the same `422 invalid_asset`. An image can be used once per product.
+
+**Editing while a version is in review** (decided here): the submitted revision is frozen by the database and a product has room for one pending revision, so the product cannot be edited until the review is decided (`409 product_in_review`). There is no withdraw.
+
+Every write first locks the product row, so two requests on one product run one after the other.
+
+## Image uploads (Cloudinary)
+
+Images go **straight from the browser to Cloudinary** (ADR 0005): this service signs the upload and later checks what was stored, and never handles file bytes. Any active user of the vendor (owner or staff) can use both endpoints.
+
+1. **`POST /v1/vendor/assets/sign`** with `{kind, content_type, size_bytes}` (`kind`: `brand_logo`, `brand_banner` or `product_image`; `content_type`: `image/jpeg`, `image/png` or `image/webp`). The service picks the file's name itself, `<root>/vendors/<vendor id>/<brand|products>/<random 128-bit>`, signs it, and records a `pending` asset. It answers `{asset_id, public_id, upload_url, fields, expires_at, max_bytes, allowed_content_types}`. Limited per user (`asset_sign`).
+2. **The browser** POSTs `multipart/form-data` to `upload_url` with every entry of `fields` and the file as `file`. Nothing else: Cloudinary rejects parameters that were not signed.
+3. **`POST /v1/vendor/assets`** with `{public_id}`. Cloudinary is asked (Admin API, with the secret) what it really stored; the asset becomes `ready` with the **real** format, size and dimensions, which the client cannot claim. Registering again returns the same asset.
+
+What the signature fixes, so the browser cannot change it:
+- **The folder and name.** `public_id` is signed, so a vendor can only upload to the one name it was given, inside its own folder. Registration only accepts a name this service issued to the calling vendor: another vendor's name and a name nobody issued are the same `404 asset_not_found`.
+- **No overwriting.** `overwrite=false`, so a signature is good for one upload; it also expires (Cloudinary refuses timestamps older than an hour).
+- **The format list.** `allowed_formats=jpg,jpeg,png,webp`, and `upload_preset` when `CLOUDINARY_UPLOAD_PRESET` is set.
+- **The signature algorithm.** The API signs uploads with SHA-256. A Cloudinary product environment that restricts signatures to one algorithm must accept SHA-256.
+
+Limits: the declared type and size are checked when signing (`422 validation_error` for a type that is not allowed, `422 image_too_large` over `UPLOAD_MAX_BYTES`), and **the real ones again when registering** (`422 image_too_large`, `422 unsupported_image_type`, `422 invalid_upload`). A file that breaks a rule is **deleted from Cloudinary** and its asset is marked `deleted` (it cannot be registered again; sign a new one). Errors: `409 upload_not_found` until the file has been uploaded (retry), `502 image_host_unavailable` if Cloudinary does not answer (the asset stays `pending`, retry), `503 uploads_not_configured` without credentials.
+
+A `ready` asset of the right kind and vendor is what the brand profile and products accept as an image. Assets that were signed but never registered stay `pending`; a cleanup job for them (and for the files at Cloudinary) is not part of this issue.
+
+## Bulk product import (`.xlsx` / `.csv`)
+
+A vendor can create many products from one spreadsheet. Any active user of the vendor (owner or staff) can use it.
+
+- **`GET /v1/vendor/products/import/template?format=xlsx|csv`** downloads a sample: the columns, three example rows (two products, three variants) and, in the Excel file, an instructions sheet.
+- **`POST /v1/vendor/products/import?mode=import|validate|all_or_nothing`** takes the file **as the request body** (not a multipart form), with `Content-Type: text/csv` or the `.xlsx` type (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`). The bytes decide the format (an `.xlsx` is a zip); the type only turns away things that are plainly something else (`415`). Limited per vendor (`bulk_import`).
+
+**The sheet.** The first row names the columns (case, spaces and dashes do not matter; unknown columns are ignored and listed). **One row is one variant**; rows that share a product `sku` (ignoring case) are one product with several variants. Columns: `sku`, `title`, `description`, `category`, `subcategory`, `gender` (`women`, `men`, `unisex`), `fabric`, `weight_grams`, `returnable`, `return_window_days`, `variant_sku`, `size`, `color`, `price`, `mrp`, `is_active`. Required: `sku`, `title`, `category`, `gender`, `variant_sku`, `price` (`sku`, `variant_sku` and `price` on every row; the product's details on its first row). The other rows of a product repeat the details (they must match, or `conflicting_value`) or leave them blank. Prices are in **rupees** (`1499`, `899.50`, no symbols or commas) and become exact paise; `mrp` defaults to `price`; `returnable` and `is_active` take yes/no; a returnable product needs `return_window_days`. **Images cannot be imported** (an image is an uploaded asset): imported products are `draft`s, and the vendor adds images in the portal and submits them.
+
+**The rules are the products API's.** Each product is validated with the same model as `POST /v1/vendor/products`, so a row that imports could have been created by hand and the limits never drift apart. On top of that, per row: duplicates in the file (variant SKUs, size and colour), SKUs already used in the database (`variant_sku_taken`), and what only a spreadsheet needs (numbers, yes/no, text).
+
+**The report.** The answer is always `200` with a report (file-level problems are `413`, `415` or `422`): `summary` (products, created, unchanged, valid, rejected, rows read, rows with errors), `products` (each SKU with its rows, `status` and `product_id`) and `errors`: **every rejected row with its row number (as in the spreadsheet: the header is row 1), column, code and a plain reason**. The report includes a reason for each row with a validation error. It caps extra details at 500 total entries unless more rows each need a reason (`errors_truncated`). A product is never half imported: if any of its rows has an error, the whole product is `rejected`. The report never echoes a rejected cell's content.
+
+**Modes** (decided here):
+- `import` (default): every product whose rows are all valid is created, the rest are reported. Products are created in one transaction, each inside a savepoint, so one that fails to save (a SKU taken a moment ago by another request) is reported as `sku_taken` and the others still import.
+- `validate`: reads and checks everything, writes nothing (the products are `valid`). Use it to preview.
+- `all_or_nothing`: creates nothing unless the whole file is valid (`committed: false` otherwise); if a product fails to save, everything is undone.
+
+**Importing the same file again creates nothing new.** A product whose SKU exists with the same details and variants is `unchanged`; one that exists with different details is `sku_exists` (an import never changes a product: edit it through the products API). So fixing the rejected rows and uploading the whole file again only creates what is missing.
+
+**A hostile file.** Limits are checked before anything is parsed: the size (`IMPORT_MAX_BYTES`, enforced while the body streams in, so a body that does not declare its length is cut off), the rows (`IMPORT_MAX_ROWS`; blank rows count toward a scan limit of five times that, so a file of empty rows cannot keep the server busy), at most 40 columns, and 5000 characters per cell. An `.xlsx` is a zip: it is refused if it unpacks to more than 50 MiB, has an entry that unpacks to over 100 times its size, has more than 200 parts, or contains macros, external links or embedded objects. It is read in streaming mode with `defusedxml` installed, so XML entity tricks are refused. Only the first sheet is read. **Formulas** (a cell that holds a formula) and **text that a spreadsheet would run as one** (starting with `=`, `+`, `-`, `@`, a tab or a carriage return) are rejected, so such text can never be stored and come back out in an export opened in a spreadsheet. (In a number column a leading `-` is a sign, and gets the "use an amount in rupees" message.)
 
 ## Review queue (reviewers)
 
@@ -279,10 +359,11 @@ Keys are `vendor:rl:<endpoint>:<scope>:<hash>`: the prefix and the `RATE_LIMIT_H
 | `forgot_password` | IP; email | 10 per hour; 3 per hour |
 | `set_password` | IP | 20 per 15 minutes |
 | `staff_invite` (invite and resend-invite) | vendor | 20 per hour |
+| `asset_sign` (upload signatures) | user | 60 per hour |
 
 - **Nobody can lock a vendor out.** The checks run in order and stop at the first one that refuses, so a request the per-IP or per-pair counter already refuses never reaches the per-email counter: one attacking IP adds at most 5 per 15 minutes to it. And an email + IP pair that logged in successfully in the last 30 days skips the per-email counter, so a vendor on their usual network gets in even while someone guesses from elsewhere.
 - **Signup and resend are limited on the address as typed**, whether or not it is registered, so the limit looks the same either way and reveals nothing. Per address matters because those endpoints send email (verification, or "you already have an account"): without it they would mail-bomb an inbox.
-- **When Redis is down** the endpoints in `RATE_LIMIT_FAIL_CLOSED` answer `503 rate_limiter_unavailable`: the ones that check a password (`login`, `change_password`) so guessing stays limited, and the ones that send email (`signup`, `resend_verification`, `forgot_password`, `staff_invite`) so an outage cannot be used to flood an inbox. The others skip the limit and log a warning (fail open): `refresh` (signed-in vendors keep working; refreshing needs Redis anyway), `verify_email` and `set_password` (they need a 256-bit token, which cannot be guessed at any rate).
+- **When Redis is down** the endpoints in `RATE_LIMIT_FAIL_CLOSED` answer `503 rate_limiter_unavailable`: the ones that check a password (`login`, `change_password`) so guessing stays limited, and the ones that send email (`signup`, `resend_verification`, `forgot_password`, `staff_invite`) so an outage cannot be used to flood an inbox. The others skip the limit and log a warning (fail open): `asset_sign` and `bulk_import` (add them to `RATE_LIMIT_FAIL_CLOSED` to enforce the limits during an outage), `refresh` (signed-in vendors keep working; refreshing needs Redis anyway), `verify_email` and `set_password` (they need a 256-bit token, which cannot be guessed at any rate).
 - **Behind a proxy**, set `TRUSTED_PROXIES`. Without it every client looks like the proxy and shares one set of per-IP counters.
 
 ## Email

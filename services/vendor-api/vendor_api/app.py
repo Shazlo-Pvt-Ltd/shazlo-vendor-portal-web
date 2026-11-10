@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import Redis
@@ -12,7 +13,20 @@ from shazlo_security.rate_limit import RateLimitGuard, RedisRateLimiter
 from shazlo_security.refresh_tokens import RefreshTokenStore
 
 from vendor_api import __version__
-from vendor_api.api import admin, admin_reviews, admin_vendors, auth, health, jwks, team, vendor
+from vendor_api.api import (
+    admin,
+    admin_reviews,
+    admin_vendors,
+    assets,
+    auth,
+    brand_profile,
+    health,
+    jwks,
+    product_import,
+    products,
+    team,
+    vendor,
+)
 from vendor_api.core.errors import register_exception_handlers
 from vendor_api.core.logging import configure_logging
 from vendor_api.core.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
@@ -26,9 +40,14 @@ from vendor_api.core.security import (
 )
 from vendor_api.core.settings import Settings, get_settings
 from vendor_api.db.session import create_engine, create_sessionmaker
+from vendor_api.services.assets import AssetService
 from vendor_api.services.auth import AuthService
+from vendor_api.services.brand_profiles import BrandProfileService
+from vendor_api.services.cloudinary import CloudinaryClient, ImageHost
 from vendor_api.services.credentials import CredentialService
 from vendor_api.services.email import EmailService, build_sender
+from vendor_api.services.product_import import ProductImportService
+from vendor_api.services.products import ProductService
 from vendor_api.services.review_queue import ReviewQueueService
 from vendor_api.services.signup import SignupService
 from vendor_api.services.team import TeamService
@@ -42,6 +61,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
     await app.state.engine.dispose()
     await app.state.redis.aclose()
+    await app.state.http.aclose()
 
 
 def create_app(
@@ -49,6 +69,7 @@ def create_app(
     readiness_checks: dict[str, health.ReadinessCheck] | None = None,
     redis: Redis | None = None,
     identity_keys: KeySource | None = None,
+    image_host: ImageHost | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level)
@@ -94,6 +115,26 @@ def create_app(
     app.state.signup = SignupService(settings, app.state.passwords)
     app.state.credentials = CredentialService(settings, app.state.passwords)
     app.state.team = TeamService(settings)
+    app.state.brand_profiles = BrandProfileService()
+    app.state.products = ProductService()
+    # One HTTP client per process for the image host's Admin API: short timeouts, so a slow
+    # Cloudinary cannot hold requests open.
+    app.state.http = httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0))
+    secret = settings.cloudinary_api_secret
+    if (
+        image_host is None
+        and settings.cloudinary_cloud_name
+        and settings.cloudinary_api_key
+        and secret
+    ):
+        image_host = CloudinaryClient(
+            settings.cloudinary_cloud_name,
+            settings.cloudinary_api_key,
+            secret.get_secret_value(),
+            app.state.http,
+        )
+    app.state.assets = AssetService(settings, image_host)
+    app.state.product_import = ProductImportService(settings, app.state.products)
     app.state.review_queue = ReviewQueueService()
     app.state.refresh_tokens = RefreshTokenStore(app.state.redis, refresh_token_config(settings))
     app.state.sessions = AuthService(
@@ -111,7 +152,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=settings.cors_allowed_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["Authorization", "Content-Type", REQUEST_ID_HEADER],
         expose_headers=[REQUEST_ID_HEADER],
     )
@@ -124,6 +165,10 @@ def create_app(
     v1.include_router(auth.router)
     v1.include_router(vendor.router)
     v1.include_router(team.router)
+    v1.include_router(brand_profile.router)
+    v1.include_router(assets.router)
+    v1.include_router(product_import.router)
+    v1.include_router(products.router)
     if settings.identity_jwks_url:
         v1.include_router(admin.router)
         v1.include_router(admin_reviews.router)

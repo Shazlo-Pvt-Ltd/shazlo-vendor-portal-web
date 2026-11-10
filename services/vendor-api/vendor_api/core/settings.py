@@ -1,4 +1,5 @@
 import ipaddress
+import re
 import secrets
 from functools import lru_cache
 from typing import Annotated, Literal, Self
@@ -23,10 +24,14 @@ RATE_LIMITED_ENDPOINTS = frozenset(
         "refresh",
         "change_password",
         "staff_invite",
+        "asset_sign",
+        "bulk_import",
     }
 )
 # HMAC-SHA256 keys shorter than this are guessable enough to reverse the hashed emails in Redis.
 MIN_HMAC_KEY_LENGTH = 32
+# A Cloudinary folder path: lower-case segments, so one environment's files never land in another's.
+FOLDER_PATH = re.compile(r"^[a-z0-9_-]+(/[a-z0-9_-]+)*$")
 # Hosts a production JWT_ISSUER must not name.
 LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})  # noqa: S104
 
@@ -118,6 +123,13 @@ class Settings(BaseSettings):
     rate_limit_refresh_ip: Rule = RateRule(limit=60, window_seconds=60)
     rate_limit_refresh_session: Rule = RateRule(limit=20, window_seconds=60)
     rate_limit_change_password_user: Rule = RateRule(limit=5, window_seconds=900)
+    # Signing an upload lets a user store a file at the provider, so it is limited per user.
+    # Not fail-closed by default (a Redis outage should not stop uploads); add `asset_sign` to
+    # RATE_LIMIT_FAIL_CLOSED to make it so.
+    rate_limit_asset_sign_user: Rule = RateRule(limit=60, window_seconds=3600)
+    # A bulk import (or a validation run of one) parses a whole file, so it is limited per vendor.
+    # Not fail-closed by default; add `bulk_import` to RATE_LIMIT_FAIL_CLOSED to make it so.
+    rate_limit_bulk_import_vendor: Rule = RateRule(limit=10, window_seconds=3600)
     # What happens when Redis is down. Endpoints listed here answer 503 (fail closed): the ones
     # that check a password (login, change_password) so guessing stays limited, and the ones that
     # send email (signup, resend_verification, forgot_password, staff_invite) so an outage cannot
@@ -174,6 +186,26 @@ class Settings(BaseSettings):
     email_send_attempts: int = Field(default=3, ge=1, le=10)
     # The vendor portal's address, without a trailing slash: the links in emails point here.
     portal_base_url: str = "http://localhost:5174"
+
+    # Cloudinary (ADR 0005): images upload straight from the browser with a signature made here,
+    # so the API never handles file bytes. The three credentials go together; without them the
+    # asset endpoints answer 503 `uploads_not_configured` and everything else works.
+    cloudinary_cloud_name: str | None = None
+    cloudinary_api_key: str | None = None
+    # A secret with no default: set it in the environment, never in the repository.
+    cloudinary_api_secret: SecretStr | None = None
+    # Every file lives under `<root>/vendors/<vendor id>/...`. Give each environment its own root.
+    cloudinary_root_folder: str = "shazlo"
+    # Optional: the name of an upload preset (created in Cloudinary) that is signed into every
+    # upload, so the provider can enforce its own size and format limits as a second layer.
+    cloudinary_upload_preset: str | None = None
+    # Largest image accepted, in bytes. Checked when signing (the size the client declares) and
+    # again when registering (the size Cloudinary reports, which is the one that counts).
+    upload_max_bytes: int = Field(default=10 * 1024 * 1024, gt=0, le=100 * 1024 * 1024)
+    # Bulk product import (.xlsx / .csv): the largest file in bytes, and the most data rows (blank
+    # rows do not count). Both are checked before anything is parsed or written.
+    import_max_bytes: int = Field(default=2 * 1024 * 1024, gt=0, le=20 * 1024 * 1024)
+    import_max_rows: int = Field(default=1000, gt=0, le=5000)
 
     @field_validator("cors_allowed_origins", mode="before")
     @classmethod
@@ -282,6 +314,32 @@ class Settings(BaseSettings):
                 "must be an http(s) address without a fragment, e.g. https://vendors.shazlo.store"
             )
         return value
+
+    @model_validator(mode="after")
+    def _check_cloudinary(self) -> Self:
+        # `CLOUDINARY_API_KEY=` copied from .env.example means "not set".
+        name = (self.cloudinary_cloud_name or "").strip() or None
+        key = (self.cloudinary_api_key or "").strip() or None
+        secret = self.cloudinary_api_secret
+        if secret is not None and not secret.get_secret_value().strip():
+            secret = None
+        self.cloudinary_cloud_name, self.cloudinary_api_key = name, key
+        self.cloudinary_api_secret = secret
+        if len({name is None, key is None, secret is None}) != 1:
+            raise ValueError(
+                "CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET go together"
+            )
+        if name is not None and not re.fullmatch(r"[A-Za-z0-9_-]+", name):
+            raise ValueError("CLOUDINARY_CLOUD_NAME may only hold letters, digits, - and _")
+        root = self.cloudinary_root_folder.strip().strip("/")
+        if not FOLDER_PATH.match(root):
+            raise ValueError(
+                "CLOUDINARY_ROOT_FOLDER must be lower-case letters, digits, - and _ "
+                "(segments may be separated by /)"
+            )
+        self.cloudinary_root_folder = root
+        self.cloudinary_upload_preset = (self.cloudinary_upload_preset or "").strip() or None
+        return self
 
     @field_validator("email_from")
     @classmethod
