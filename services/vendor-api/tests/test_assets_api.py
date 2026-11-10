@@ -43,7 +43,8 @@ class FakeHost:
         self.deleted.append(public_id)
         self.stored.pop(public_id, None)
 
-    def upload(self, public_id: str, **changes: Any) -> UploadedImage:
+    def upload(self, public_id: str, /, **changes: Any) -> UploadedImage:
+        """Stores a file under `public_id`; `changes` may also make it report another name."""
         values: dict[str, Any] = {
             "public_id": public_id,
             "secure_url": f"https://res.cloudinary.com/{CLOUD}/image/upload/v1/{public_id}.png",
@@ -365,8 +366,11 @@ async def test_only_a_name_signed_for_this_vendor_can_be_registered(
 ) -> None:
     theirs = await signed_id(uploads, uploads.b)
     host.upload(theirs)
+    # Read before the first refused request: it rolls the shared test session back, which
+    # expires the loaded vendor row.
+    unissued = f"shazlo/vendors/{uploads.a.vendor.id}/products/x"
     stolen = await register(uploads, uploads.a, theirs)
-    nobody = await register(uploads, uploads.a, f"shazlo/vendors/{uploads.a.vendor.id}/products/x")
+    nobody = await register(uploads, uploads.a, unissued)
     assert stolen.status_code == nobody.status_code == 404
     assert stolen.json()["error"]["code"] == "asset_not_found"
     assert stolen.json()["error"]["message"] == nobody.json()["error"]["message"]
@@ -412,9 +416,10 @@ async def test_a_file_that_breaks_the_rules_is_removed_and_the_asset_is_dead(
     assert host.deleted == [public_id]
     row = await asset_row(session, public_id)
     assert row.status == "deleted"
-    # It cannot be registered again, and nothing was copied onto the row.
-    assert (await register(uploads, uploads.a, public_id)).status_code == 404
+    # Nothing the file reported was copied onto the row.
     assert (row.format, row.bytes, row.width, row.height) == (None, None, None, None)
+    # And it cannot be registered again.
+    assert (await register(uploads, uploads.a, public_id)).status_code == 404
 
 
 async def test_an_image_host_that_is_down_is_a_502_and_the_asset_stays_pending(
