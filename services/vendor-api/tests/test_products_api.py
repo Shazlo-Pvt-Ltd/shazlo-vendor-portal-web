@@ -69,15 +69,24 @@ def content(**changes: Any) -> dict[str, Any]:
     }
 
 
+async def refreshed(session: AsyncSession, tenant: Tenant) -> None:
+    """A request that fails rolls the shared test session back, which expires the loaded rows."""
+    await session.refresh(tenant.vendor)
+    await session.refresh(tenant.owner)
+
+
 async def image(session: AsyncSession, tenant: Tenant, **changes: Any) -> uuid.UUID:
-    asset = await saved_asset(
-        session,
-        tenant.vendor,
-        tenant.owner,
-        public_id=f"shazlo/{tenant.vendor.slug}/{next(COUNTER)}",
-        kind=AssetKind.PRODUCT_IMAGE,
+    """A saved and committed product image of the tenant. Committed, because a request that is
+    refused rolls the shared test session back: an asset that was only flushed would vanish and
+    the refusal would be about a missing asset, not the one under test."""
+    await refreshed(session, tenant)
+    values: dict[str, Any] = {
+        "public_id": f"shazlo/{tenant.vendor.slug}/{next(COUNTER)}",
+        "kind": AssetKind.PRODUCT_IMAGE,
         **changes,
-    )
+    }
+    asset = await saved_asset(session, tenant.vendor, tenant.owner, **values)
+    await session.commit()
     return asset.id
 
 
@@ -143,6 +152,7 @@ async def listing(tenants: Tenants, tenant: Tenant, query: str = "") -> dict[str
 
 async def approved(session: AsyncSession, tenant: Tenant, sku: str = "LIVE-01") -> Product:
     """A product as an admin's approval leaves it: its one revision submitted and live."""
+    await refreshed(session, tenant)
     product, revision = await submittable_revision(session, tenant.vendor, tenant.owner, sku)
     revision.submitted_at = datetime.now(UTC)
     await session.flush()
@@ -333,13 +343,8 @@ async def test_another_vendors_image_is_the_same_422_as_one_that_does_not_exist(
 async def test_an_image_of_the_wrong_kind_or_state_is_refused(
     tenants: Tenants, session: AsyncSession, changes: dict[str, Any]
 ) -> None:
-    asset = await saved_asset(
-        session,
-        tenants.a.vendor,
-        tenants.a.owner,
-        **{"kind": AssetKind.PRODUCT_IMAGE, "public_id": "shazlo/odd", **changes},
-    )
-    response = await create(tenants, tenants.a, images=[{"asset_id": str(asset.id)}])
+    asset_id = await image(session, tenants.a, **changes)
+    response = await create(tenants, tenants.a, images=[{"asset_id": str(asset_id)}])
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "invalid_asset"
 
@@ -568,7 +573,11 @@ async def test_a_rejected_product_is_reworked_in_a_new_revision(
     assert shown["working"]["state"] == "rejected"
     assert shown["working"]["review"]["reason"] == "Blurry photos"
 
-    reworked = (await put(tenants, tenants.a, created["id"], title="Better photos")).json()
+    # A PUT replaces everything, so the image is listed again (the same asset may be reused).
+    again = [{"asset_id": created["working"]["images"][0]["asset_id"]}]
+    reworked = (
+        await put(tenants, tenants.a, created["id"], title="Better photos", images=again)
+    ).json()
     assert reworked["status"] == "draft"
     assert (reworked["working"]["version"], reworked["working"]["state"]) == (2, "editing")
     assert reworked["working"]["id"] != str(revision_id)
