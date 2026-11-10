@@ -248,14 +248,7 @@ class ProductService:
     ) -> ProductView:
         """A new `draft` product with revision 1 as its pending (editable) revision."""
         try:
-            await self._check_assets(db, vendor.id, content)
-            product = Product(vendor_id=vendor.id, sku=sku)
-            db.add(product)
-            await db.flush()
-            revision = await self._new_revision(db, product, user_id, 1, content)
-            product.pending_revision_id = revision.id
-            await self._write_children(db, product, revision, content)
-            await db.flush()
+            product = await self.stage_create(db, vendor, user_id, sku, content)
             await db.commit()
         except IntegrityError as error:
             await db.rollback()
@@ -264,6 +257,27 @@ class ProductService:
             await db.rollback()
             raise
         return await self._view(db, product)
+
+    async def stage_create(
+        self,
+        db: AsyncSession,
+        vendor: Vendor,
+        user_id: uuid.UUID,
+        sku: str,
+        content: ProductContent,
+    ) -> Product:
+        """`create` without the commit or the rollback, for a caller that creates many products in
+        one transaction (the bulk import) and decides what to do with a failure. A uniqueness
+        clash raises `IntegrityError`; `conflict_of` turns it into the API's answer."""
+        await self._check_assets(db, vendor.id, content)
+        product = Product(vendor_id=vendor.id, sku=sku)
+        db.add(product)
+        await db.flush()
+        revision = await self._new_revision(db, product, user_id, 1, content)
+        product.pending_revision_id = revision.id
+        await self._write_children(db, product, revision, content)
+        await db.flush()
+        return product
 
     async def update(
         self,
@@ -668,6 +682,11 @@ def _apply(revision: ProductRevision, content: ProductContent) -> None:
     revision.weight_grams = content.weight_grams
     revision.returnable = content.returnable
     revision.return_window_days = content.return_window_days
+
+
+def conflict_of(error: IntegrityError) -> ApiError:
+    """The API's answer for a uniqueness error raised by `stage_create` (or re-raises it)."""
+    return _conflict(error)
 
 
 def _conflict(error: IntegrityError) -> ApiError:
