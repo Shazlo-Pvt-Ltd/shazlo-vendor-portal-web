@@ -23,26 +23,6 @@
         "title": "AdminMe",
         "type": "object"
       },
-      "ApproveRequest": {
-        "additionalProperties": false,
-        "description": "A reason is optional when approving (for example why a rejection was overturned).",
-        "properties": {
-          "reason": {
-            "anyOf": [
-              {
-                "maxLength": 2000,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          }
-        },
-        "title": "ApproveRequest",
-        "type": "object"
-      },
       "AssetKind": {
         "enum": [
           "brand_logo",
@@ -806,6 +786,18 @@
             "title": "Created At",
             "type": "string"
           },
+          "detail": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
           "reason": {
             "anyOf": [
               {
@@ -823,6 +815,7 @@
           "actor_type",
           "actor_id",
           "reason",
+          "detail",
           "created_at"
         ],
         "title": "EventOut",
@@ -1395,6 +1388,28 @@
           "public_id"
         ],
         "title": "RegisterRequest",
+        "type": "object"
+      },
+      "RejectRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "reason"
+        ],
+        "title": "RejectRequest",
         "type": "object"
       },
       "ResendRequest": {
@@ -2572,6 +2587,21 @@
         "title": "VersionOut",
         "type": "object"
       },
+      "vendor_api__api__admin_reviews__ApproveRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "ApproveRequest",
+        "type": "object"
+      },
       "vendor_api__api__admin_reviews__ReviewOut": {
         "properties": {
           "decided_at": {
@@ -2717,6 +2747,26 @@
           "status"
         ],
         "title": "VendorOut",
+        "type": "object"
+      },
+      "vendor_api__api__admin_vendors__ApproveRequest": {
+        "additionalProperties": false,
+        "description": "A reason is optional when approving (for example why a rejection was overturned).",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "ApproveRequest",
         "type": "object"
       },
       "vendor_api__api__admin_vendors__VendorOut": {
@@ -3143,6 +3193,124 @@
         ]
       }
     },
+    "/v1/admin/reviews/{review_id}/approve": {
+      "post": {
+        "description": "Approves a pending review: a brand profile version becomes the published one (the old one\nis superseded), a product revision becomes the live revision. All in one transaction, with one\naudit event naming the reviewer from the token and what changed. `409 stale_review` if the\nsubmission is not the `version` the reviewer saw (or is no longer waiting, or a newer profile\nversion is already live); `409 review_already_decided` if it was decided first.",
+        "operationId": "approve_review_v1_admin_reviews__review_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/vendor_api__api__admin_reviews__ApproveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Approve Review",
+        "tags": [
+          "admin-reviews"
+        ]
+      }
+    },
+    "/v1/admin/reviews/{review_id}/reject": {
+      "post": {
+        "description": "Rejects a pending review. A reason is required (`422` without one) and the vendor sees it.\nSame `409`s as approving. A live product stays live: only the rejected revision is turned\ndown.",
+        "operationId": "reject_review_v1_admin_reviews__review_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reject Review",
+        "tags": [
+          "admin-reviews"
+        ]
+      }
+    },
     "/v1/admin/vendors": {
       "get": {
         "description": "Vendors, paged. Pending applications come oldest first, so the one that has waited\nlongest is on top; other statuses come newest first.",
@@ -3313,7 +3481,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ApproveRequest"
+                "$ref": "#/components/schemas/vendor_api__api__admin_vendors__ApproveRequest"
               }
             }
           },
