@@ -23,6 +23,7 @@ RATE_LIMITED_ENDPOINTS = frozenset(
         "refresh",
         "change_password",
         "staff_invite",
+        "bulk_import",
     }
 )
 # HMAC-SHA256 keys shorter than this are guessable enough to reverse the hashed emails in Redis.
@@ -118,6 +119,9 @@ class Settings(BaseSettings):
     rate_limit_refresh_ip: Rule = RateRule(limit=60, window_seconds=60)
     rate_limit_refresh_session: Rule = RateRule(limit=20, window_seconds=60)
     rate_limit_change_password_user: Rule = RateRule(limit=5, window_seconds=900)
+    # A bulk import (or a validation run of one) parses a whole file, so it is limited per vendor.
+    # Not fail-closed by default; add `bulk_import` to RATE_LIMIT_FAIL_CLOSED to make it so.
+    rate_limit_bulk_import_vendor: Rule = RateRule(limit=10, window_seconds=3600)
     # What happens when Redis is down. Endpoints listed here answer 503 (fail closed): the ones
     # that check a password (login, change_password) so guessing stays limited, and the ones that
     # send email (signup, resend_verification, forgot_password, staff_invite) so an outage cannot
@@ -174,6 +178,11 @@ class Settings(BaseSettings):
     email_send_attempts: int = Field(default=3, ge=1, le=10)
     # The vendor portal's address, without a trailing slash: the links in emails point here.
     portal_base_url: str = "http://localhost:5174"
+
+    # Bulk product import (.xlsx / .csv): the largest file in bytes, and the most data rows (blank
+    # rows do not count). Both are checked before anything is parsed or written.
+    import_max_bytes: int = Field(default=2 * 1024 * 1024, gt=0, le=20 * 1024 * 1024)
+    import_max_rows: int = Field(default=1000, gt=0, le=5000)
 
     @field_validator("cors_allowed_origins", mode="before")
     @classmethod
