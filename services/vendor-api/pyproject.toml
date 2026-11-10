@@ -14,6 +14,8 @@ dependencies = [
     # installed, which refuses XML entity tricks in an uploaded workbook; a test checks it is on.
     "openpyxl>=3.1",
     "defusedxml>=0.7",
+    # Cloudinary Admin API calls (services/cloudinary.py).
+    "httpx>=0.28",
     # Shared packages from this repository (packages/py-auth, packages/py-security) are
     # deliberately never listed here: the names are not ours on PyPI, so a plain requirement could
     # install someone else's package. They come from the repository path through

@@ -23,24 +23,389 @@
         "title": "AdminMe",
         "type": "object"
       },
-      "ApproveRequest": {
-        "additionalProperties": false,
-        "description": "A reason is optional when approving (for example why a rejection was overturned).",
+      "AssetKind": {
+        "enum": [
+          "brand_logo",
+          "brand_banner",
+          "product_image"
+        ],
+        "title": "AssetKind",
+        "type": "string"
+      },
+      "AssetOut": {
         "properties": {
-          "reason": {
+          "bytes": {
             "anyOf": [
               {
-                "maxLength": 2000,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bytes"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "format": {
+            "anyOf": [
+              {
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Reason"
+            "title": "Format"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
           }
         },
-        "title": "ApproveRequest",
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "public_id",
+          "url",
+          "format",
+          "bytes",
+          "width",
+          "height",
+          "created_at"
+        ],
+        "title": "AssetOut",
+        "type": "object"
+      },
+      "BrandProfileBody": {
+        "additionalProperties": false,
+        "description": "The whole editable content of the draft. A `PUT` replaces it, so a field left out is\ncleared; send the page as the editor shows it. The limits are the ones of the published\ncontract (ADR 0003), so what is saved here can always be published.",
+        "properties": {
+          "about": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "About"
+          },
+          "banner_asset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banner Asset Id"
+          },
+          "brand_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Brand Name",
+            "type": "string"
+          },
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Categories",
+            "type": "array"
+          },
+          "instagram_handle": {
+            "anyOf": [
+              {
+                "maxLength": 31,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instagram Handle"
+          },
+          "logo_asset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Asset Id"
+          },
+          "price_max_paise": {
+            "maximum": 1000000000000.0,
+            "minimum": 0.0,
+            "title": "Price Max Paise",
+            "type": "integer"
+          },
+          "price_min_paise": {
+            "maximum": 1000000000000.0,
+            "minimum": 0.0,
+            "title": "Price Min Paise",
+            "type": "integer"
+          },
+          "tagline": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tagline"
+          },
+          "website_url": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Url"
+          }
+        },
+        "required": [
+          "brand_name",
+          "price_min_paise",
+          "price_max_paise"
+        ],
+        "title": "BrandProfileBody",
+        "type": "object"
+      },
+      "BrandProfileOut": {
+        "properties": {
+          "about": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "About"
+          },
+          "banner_asset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banner Asset Id"
+          },
+          "banner_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banner Url"
+          },
+          "brand_name": {
+            "title": "Brand Name",
+            "type": "string"
+          },
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "instagram_handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instagram Handle"
+          },
+          "logo_asset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Asset Id"
+          },
+          "logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Url"
+          },
+          "price_max_paise": {
+            "title": "Price Max Paise",
+            "type": "integer"
+          },
+          "price_min_paise": {
+            "title": "Price Min Paise",
+            "type": "integer"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "tagline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tagline"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "website_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Url"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "state",
+          "brand_name",
+          "tagline",
+          "about",
+          "logo_asset_id",
+          "logo_url",
+          "banner_asset_id",
+          "banner_url",
+          "website_url",
+          "instagram_handle",
+          "categories",
+          "price_min_paise",
+          "price_max_paise",
+          "submitted_at",
+          "published_at",
+          "updated_at"
+        ],
+        "title": "BrandProfileOut",
         "type": "object"
       },
       "ChangeOut": {
@@ -87,6 +452,313 @@
         "title": "ChangePasswordRequest",
         "type": "object"
       },
+      "CreateProductBody": {
+        "additionalProperties": false,
+        "description": "A new product. The `sku` is its identity and cannot be changed afterwards.",
+        "properties": {
+          "category": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Category",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "fabric": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fabric"
+          },
+          "gender": {
+            "$ref": "#/components/schemas/Gender"
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/ImageBody"
+            },
+            "maxItems": 10,
+            "title": "Images",
+            "type": "array"
+          },
+          "return_window_days": {
+            "anyOf": [
+              {
+                "maximum": 30.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Window Days"
+          },
+          "returnable": {
+            "default": false,
+            "title": "Returnable",
+            "type": "boolean"
+          },
+          "sku": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Sku",
+            "type": "string"
+          },
+          "subcategory": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/VariantBody"
+            },
+            "maxItems": 100,
+            "title": "Variants",
+            "type": "array"
+          },
+          "weight_grams": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 1000000.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Grams"
+          }
+        },
+        "required": [
+          "title",
+          "category",
+          "gender",
+          "sku"
+        ],
+        "title": "CreateProductBody",
+        "type": "object"
+      },
+      "DraftOut": {
+        "properties": {
+          "about": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "About"
+          },
+          "banner_asset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banner Asset Id"
+          },
+          "banner_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banner Url"
+          },
+          "brand_name": {
+            "title": "Brand Name",
+            "type": "string"
+          },
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "in_review_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Review Version"
+          },
+          "instagram_handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instagram Handle"
+          },
+          "logo_asset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Asset Id"
+          },
+          "logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Url"
+          },
+          "price_max_paise": {
+            "title": "Price Max Paise",
+            "type": "integer"
+          },
+          "price_min_paise": {
+            "title": "Price Min Paise",
+            "type": "integer"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "tagline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tagline"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "website_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Url"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "state",
+          "brand_name",
+          "tagline",
+          "about",
+          "logo_asset_id",
+          "logo_url",
+          "banner_asset_id",
+          "banner_url",
+          "website_url",
+          "instagram_handle",
+          "categories",
+          "price_min_paise",
+          "price_max_paise",
+          "submitted_at",
+          "published_at",
+          "updated_at",
+          "in_review_version"
+        ],
+        "title": "DraftOut",
+        "type": "object"
+      },
       "EventOut": {
         "properties": {
           "action": {
@@ -114,6 +786,18 @@
             "title": "Created At",
             "type": "string"
           },
+          "detail": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
           "reason": {
             "anyOf": [
               {
@@ -131,6 +815,7 @@
           "actor_type",
           "actor_id",
           "reason",
+          "detail",
           "created_at"
         ],
         "title": "EventOut",
@@ -153,6 +838,15 @@
         "title": "ForgotPasswordRequest",
         "type": "object"
       },
+      "Gender": {
+        "enum": [
+          "women",
+          "men",
+          "unisex"
+        ],
+        "title": "Gender",
+        "type": "string"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -164,6 +858,134 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "ImageBody": {
+        "additionalProperties": false,
+        "properties": {
+          "alt_text": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alt Text"
+          },
+          "asset_id": {
+            "format": "uuid",
+            "title": "Asset Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id"
+        ],
+        "title": "ImageBody",
+        "type": "object"
+      },
+      "ImageOut": {
+        "properties": {
+          "alt_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alt Text"
+          },
+          "asset_id": {
+            "format": "uuid",
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id",
+          "url",
+          "position",
+          "alt_text"
+        ],
+        "title": "ImageOut",
+        "type": "object"
+      },
+      "ImportMode": {
+        "enum": [
+          "validate",
+          "import",
+          "all_or_nothing"
+        ],
+        "title": "ImportMode",
+        "type": "string"
+      },
+      "ImportReportOut": {
+        "properties": {
+          "committed": {
+            "title": "Committed",
+            "type": "boolean"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/RowErrorOut"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "errors_truncated": {
+            "title": "Errors Truncated",
+            "type": "boolean"
+          },
+          "file_format": {
+            "title": "File Format",
+            "type": "string"
+          },
+          "ignored_columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ignored Columns",
+            "type": "array"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "products": {
+            "items": {
+              "$ref": "#/components/schemas/ProductResultOut"
+            },
+            "title": "Products",
+            "type": "array"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/SummaryOut"
+          }
+        },
+        "required": [
+          "mode",
+          "file_format",
+          "committed",
+          "summary",
+          "ignored_columns",
+          "products",
+          "errors",
+          "errors_truncated"
+        ],
+        "title": "ImportReportOut",
         "type": "object"
       },
       "InviteRequest": {
@@ -241,6 +1063,300 @@
         "title": "Message",
         "type": "object"
       },
+      "ProductContentBody": {
+        "additionalProperties": false,
+        "description": "The whole content of one revision. A `PUT` replaces it, so a field or list left out is\ncleared. Limits are the ones of the published contract (ADR 0003).",
+        "properties": {
+          "category": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Category",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "fabric": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fabric"
+          },
+          "gender": {
+            "$ref": "#/components/schemas/Gender"
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/ImageBody"
+            },
+            "maxItems": 10,
+            "title": "Images",
+            "type": "array"
+          },
+          "return_window_days": {
+            "anyOf": [
+              {
+                "maximum": 30.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Window Days"
+          },
+          "returnable": {
+            "default": false,
+            "title": "Returnable",
+            "type": "boolean"
+          },
+          "subcategory": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/VariantBody"
+            },
+            "maxItems": 100,
+            "title": "Variants",
+            "type": "array"
+          },
+          "weight_grams": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 1000000.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Grams"
+          }
+        },
+        "required": [
+          "title",
+          "category",
+          "gender"
+        ],
+        "title": "ProductContentBody",
+        "type": "object"
+      },
+      "ProductOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "live": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RevisionOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sku": {
+            "title": "Sku",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "working": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RevisionOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "sku",
+          "status",
+          "version",
+          "created_at",
+          "updated_at",
+          "live",
+          "working"
+        ],
+        "title": "ProductOut",
+        "type": "object"
+      },
+      "ProductPageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProductSummaryOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "ProductPageOut",
+        "type": "object"
+      },
+      "ProductResultOut": {
+        "properties": {
+          "product_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          },
+          "rows": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "sku": {
+            "title": "Sku",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sku",
+          "rows",
+          "status",
+          "product_id"
+        ],
+        "title": "ProductResultOut",
+        "type": "object"
+      },
+      "ProductSummaryOut": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "has_pending_changes": {
+            "title": "Has Pending Changes",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "sku": {
+            "title": "Sku",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "sku",
+          "status",
+          "version",
+          "title",
+          "category",
+          "has_pending_changes",
+          "updated_at"
+        ],
+        "title": "ProductSummaryOut",
+        "type": "object"
+      },
       "ReasonRequest": {
         "additionalProperties": false,
         "description": "Rejecting and suspending need a reason, which the vendor is told: a missing, empty or\nwhitespace-only one is a 422.",
@@ -256,6 +1372,44 @@
           "reason"
         ],
         "title": "ReasonRequest",
+        "type": "object"
+      },
+      "RegisterRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "public_id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Public Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_id"
+        ],
+        "title": "RegisterRequest",
+        "type": "object"
+      },
+      "RejectRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "reason"
+        ],
+        "title": "RejectRequest",
         "type": "object"
       },
       "ResendRequest": {
@@ -424,129 +1578,11 @@
         "title": "ReviewDetailOut",
         "type": "object"
       },
-      "ReviewOut": {
-        "properties": {
-          "decided_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Decided At"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "product_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Product Id"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          },
-          "reviewer_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reviewer Id"
-          },
-          "sku": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sku"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "subject": {
-            "title": "Subject",
-            "type": "string"
-          },
-          "submitted_at": {
-            "format": "date-time",
-            "title": "Submitted At",
-            "type": "string"
-          },
-          "submitted_by": {
-            "format": "uuid",
-            "title": "Submitted By",
-            "type": "string"
-          },
-          "submitted_by_email": {
-            "title": "Submitted By Email",
-            "type": "string"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          },
-          "vendor": {
-            "$ref": "#/components/schemas/vendor_api__api__admin_reviews__VendorOut"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "subject",
-          "status",
-          "vendor",
-          "submitted_by",
-          "submitted_by_email",
-          "submitted_at",
-          "version",
-          "title",
-          "product_id",
-          "sku",
-          "reviewer_id",
-          "decided_at",
-          "reason"
-        ],
-        "title": "ReviewOut",
-        "type": "object"
-      },
       "ReviewPageOut": {
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/ReviewOut"
+              "$ref": "#/components/schemas/vendor_api__api__admin_reviews__ReviewOut"
             },
             "title": "Items",
             "type": "array"
@@ -580,6 +1616,191 @@
         ],
         "title": "ReviewSubject",
         "type": "string"
+      },
+      "RevisionOut": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "fabric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fabric"
+          },
+          "gender": {
+            "title": "Gender",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/ImageOut"
+            },
+            "title": "Images",
+            "type": "array"
+          },
+          "return_window_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Window Days"
+          },
+          "returnable": {
+            "title": "Returnable",
+            "type": "boolean"
+          },
+          "review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/vendor_api__api__products__ReviewOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/VariantOut"
+            },
+            "title": "Variants",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "weight_grams": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Grams"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "state",
+          "title",
+          "description",
+          "category",
+          "subcategory",
+          "gender",
+          "fabric",
+          "weight_grams",
+          "returnable",
+          "return_window_days",
+          "variants",
+          "images",
+          "submitted_at",
+          "review",
+          "updated_at"
+        ],
+        "title": "RevisionOut",
+        "type": "object"
+      },
+      "RowErrorOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "row": {
+            "title": "Row",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row",
+          "column",
+          "code",
+          "message"
+        ],
+        "title": "RowErrorOut",
+        "type": "object"
       },
       "SessionResponse": {
         "description": "The refresh token is never in the body; it is only ever in the HttpOnly cookie.",
@@ -634,6 +1855,87 @@
           "password"
         ],
         "title": "SetPasswordRequest",
+        "type": "object"
+      },
+      "SignRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "content_type": {
+            "enum": [
+              "image/jpeg",
+              "image/png",
+              "image/webp"
+            ],
+            "title": "Content Type",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AssetKind"
+          },
+          "size_bytes": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 1099511627776.0,
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "content_type",
+          "size_bytes"
+        ],
+        "title": "SignRequest",
+        "type": "object"
+      },
+      "SignResponse": {
+        "properties": {
+          "allowed_content_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Content Types",
+            "type": "array"
+          },
+          "asset_id": {
+            "format": "uuid",
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "max_bytes": {
+            "title": "Max Bytes",
+            "type": "integer"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "upload_url": {
+            "title": "Upload Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id",
+          "public_id",
+          "upload_url",
+          "fields",
+          "expires_at",
+          "max_bytes",
+          "allowed_content_types"
+        ],
+        "title": "SignResponse",
         "type": "object"
       },
       "SignupRequest": {
@@ -779,6 +2081,49 @@
         "title": "StatusEventOut",
         "type": "object"
       },
+      "SummaryOut": {
+        "properties": {
+          "created": {
+            "title": "Created",
+            "type": "integer"
+          },
+          "products": {
+            "title": "Products",
+            "type": "integer"
+          },
+          "rejected": {
+            "title": "Rejected",
+            "type": "integer"
+          },
+          "rows_read": {
+            "title": "Rows Read",
+            "type": "integer"
+          },
+          "rows_with_errors": {
+            "title": "Rows With Errors",
+            "type": "integer"
+          },
+          "unchanged": {
+            "title": "Unchanged",
+            "type": "integer"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "products",
+          "created",
+          "unchanged",
+          "valid",
+          "rejected",
+          "rows_read",
+          "rows_with_errors"
+        ],
+        "title": "SummaryOut",
+        "type": "object"
+      },
       "UpdateUserRequest": {
         "additionalProperties": false,
         "description": "Only the fields that are sent change.",
@@ -917,6 +2262,98 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VariantBody": {
+        "additionalProperties": false,
+        "description": "A sellable variant. Its `sku` is its identity: the same SKU in a later edit is the same\nvariant, so its size and colour cannot change (use a new SKU instead).",
+        "properties": {
+          "color": {
+            "default": "",
+            "maxLength": 32,
+            "title": "Color",
+            "type": "string"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "mrp_paise": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 1000000000000.0,
+            "title": "Mrp Paise",
+            "type": "integer"
+          },
+          "price_paise": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 1000000000000.0,
+            "title": "Price Paise",
+            "type": "integer"
+          },
+          "size": {
+            "default": "",
+            "maxLength": 32,
+            "title": "Size",
+            "type": "string"
+          },
+          "sku": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Sku",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sku",
+          "price_paise",
+          "mrp_paise"
+        ],
+        "title": "VariantBody",
+        "type": "object"
+      },
+      "VariantOut": {
+        "properties": {
+          "color": {
+            "title": "Color",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "mrp_paise": {
+            "title": "Mrp Paise",
+            "type": "integer"
+          },
+          "price_paise": {
+            "title": "Price Paise",
+            "type": "integer"
+          },
+          "size": {
+            "title": "Size",
+            "type": "string"
+          },
+          "sku": {
+            "title": "Sku",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sku",
+          "size",
+          "color",
+          "price_paise",
+          "mrp_paise",
+          "is_active"
+        ],
+        "title": "VariantOut",
         "type": "object"
       },
       "VendorDetailOut": {
@@ -1150,6 +2587,139 @@
         "title": "VersionOut",
         "type": "object"
       },
+      "vendor_api__api__admin_reviews__ApproveRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "ApproveRequest",
+        "type": "object"
+      },
+      "vendor_api__api__admin_reviews__ReviewOut": {
+        "properties": {
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "product_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "reviewer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Id"
+          },
+          "sku": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sku"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          },
+          "submitted_by": {
+            "format": "uuid",
+            "title": "Submitted By",
+            "type": "string"
+          },
+          "submitted_by_email": {
+            "title": "Submitted By Email",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "vendor": {
+            "$ref": "#/components/schemas/vendor_api__api__admin_reviews__VendorOut"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "subject",
+          "status",
+          "vendor",
+          "submitted_by",
+          "submitted_by_email",
+          "submitted_at",
+          "version",
+          "title",
+          "product_id",
+          "sku",
+          "reviewer_id",
+          "decided_at",
+          "reason"
+        ],
+        "title": "ReviewOut",
+        "type": "object"
+      },
       "vendor_api__api__admin_reviews__VendorOut": {
         "properties": {
           "id": {
@@ -1177,6 +2747,26 @@
           "status"
         ],
         "title": "VendorOut",
+        "type": "object"
+      },
+      "vendor_api__api__admin_vendors__ApproveRequest": {
+        "additionalProperties": false,
+        "description": "A reason is optional when approving (for example why a rejection was overturned).",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "ApproveRequest",
         "type": "object"
       },
       "vendor_api__api__admin_vendors__VendorOut": {
@@ -1292,6 +2882,44 @@
           "created_at"
         ],
         "title": "VendorOut",
+        "type": "object"
+      },
+      "vendor_api__api__products__ReviewOut": {
+        "properties": {
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "reason",
+          "decided_at"
+        ],
+        "title": "ReviewOut",
         "type": "object"
       }
     },
@@ -1565,6 +3193,124 @@
         ]
       }
     },
+    "/v1/admin/reviews/{review_id}/approve": {
+      "post": {
+        "description": "Approves a pending review: a brand profile version becomes the published one (the old one\nis superseded), a product revision becomes the live revision. All in one transaction, with one\naudit event naming the reviewer from the token and what changed. `409 stale_review` if the\nsubmission is not the `version` the reviewer saw (or is no longer waiting, or a newer profile\nversion is already live); `409 review_already_decided` if it was decided first.",
+        "operationId": "approve_review_v1_admin_reviews__review_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/vendor_api__api__admin_reviews__ApproveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Approve Review",
+        "tags": [
+          "admin-reviews"
+        ]
+      }
+    },
+    "/v1/admin/reviews/{review_id}/reject": {
+      "post": {
+        "description": "Rejects a pending review. A reason is required (`422` without one) and the vendor sees it.\nSame `409`s as approving. A live product stays live: only the rejected revision is turned\ndown.",
+        "operationId": "reject_review_v1_admin_reviews__review_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reject Review",
+        "tags": [
+          "admin-reviews"
+        ]
+      }
+    },
     "/v1/admin/vendors": {
       "get": {
         "description": "Vendors, paged. Pending applications come oldest first, so the one that has waited\nlongest is on top; other statuses come newest first.",
@@ -1735,7 +3481,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ApproveRequest"
+                "$ref": "#/components/schemas/vendor_api__api__admin_vendors__ApproveRequest"
               }
             }
           },
@@ -2266,6 +4012,226 @@
         ]
       }
     },
+    "/v1/vendor/assets": {
+      "post": {
+        "description": "Registers an uploaded image: Cloudinary is asked what it stored (never the browser), and\nthe asset becomes `ready` if its real size and format are allowed. Only a `public_id` that was\nsigned for this vendor can be registered (anything else is `404 asset_not_found`).\n`409 upload_not_found` until the file has been uploaded; registering twice is harmless.",
+        "operationId": "register_asset_v1_vendor_assets_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Register Asset",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/v1/vendor/assets/sign": {
+      "post": {
+        "description": "A signed upload for one image. The server picks the file's name (in this vendor's own\nfolder) and records a `pending` asset; upload the file to `upload_url` with `fields`, then\ncall `POST /v1/vendor/assets` with the `public_id` to register it. The signature is good for\nabout an hour and for one upload (`overwrite=false`). Limited per user.",
+        "operationId": "sign_upload_v1_vendor_assets_sign_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Sign Upload",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/v1/vendor/brand-profile": {
+      "get": {
+        "description": "The draft to edit. The first time (and after a submission) it is created from the latest\nversion, or from the details given at signup, so the editor always has something to show.",
+        "operationId": "get_draft_v1_vendor_brand_profile_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Draft",
+        "tags": [
+          "brand-profile"
+        ]
+      },
+      "put": {
+        "description": "Replaces the draft's content. It never changes the published version. Staff and owner can\nboth edit; images must be this vendor's ready logo and banner uploads.",
+        "operationId": "save_draft_v1_vendor_brand_profile_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrandProfileBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save Draft",
+        "tags": [
+          "brand-profile"
+        ]
+      }
+    },
+    "/v1/vendor/brand-profile/published": {
+      "get": {
+        "description": "The version shoppers see: the last one an admin approved (404 until there is one).",
+        "operationId": "get_published_v1_vendor_brand_profile_published_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Published",
+        "tags": [
+          "brand-profile"
+        ]
+      }
+    },
+    "/v1/vendor/brand-profile/submit": {
+      "post": {
+        "description": "Sends the draft for review. It needs at least one category, and only one version can be in\nreview at a time (409 `review_pending`). While it waits, the vendor can keep editing a new\ndraft. The submitted version can no longer be changed.",
+        "operationId": "submit_v1_vendor_brand_profile_submit_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit",
+        "tags": [
+          "brand-profile"
+        ]
+      }
+    },
     "/v1/vendor/me": {
       "get": {
         "description": "The signed-in vendor user, their role and their vendor. No password hash, no tokens.",
@@ -2290,6 +4256,488 @@
         "summary": "Me",
         "tags": [
           "vendor"
+        ]
+      }
+    },
+    "/v1/vendor/products": {
+      "get": {
+        "description": "The vendor's products, most recently changed first.",
+        "operationId": "list_products_v1_vendor_products_get",
+        "parameters": [
+          {
+            "description": "Only products in this status. Archived ones show only when asked.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "draft",
+                    "pending_review",
+                    "approved",
+                    "rejected",
+                    "archived"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only products in this status. Archived ones show only when asked.",
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "description": "Part of the SKU or title",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Part of the SKU or title",
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 100000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Products",
+        "tags": [
+          "products"
+        ]
+      },
+      "post": {
+        "description": "A new `draft` product. Images and variants can be added later, but are needed to submit.\n`409 sku_taken` if the vendor already uses the SKU (case is ignored, archived products keep\ntheirs).",
+        "operationId": "create_product_v1_vendor_products_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProductBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Product",
+        "tags": [
+          "products"
+        ]
+      }
+    },
+    "/v1/vendor/products/import": {
+      "post": {
+        "description": "Imports products from a `.xlsx` or `.csv` sent as the request body. Always `200` with a\nreport listing every rejected row (row, column, reason); file-level problems are `413`, `415`\nor `422`. One row is one variant; rows with the same `sku` are one product. Download the\ntemplate for the columns. Imported products are drafts without images. Uploading the same\nfile again creates nothing new. Limited per vendor.",
+        "operationId": "import_products_v1_vendor_products_import_post",
+        "parameters": [
+          {
+            "description": "`validate` writes nothing; `import` creates every valid product and reports the rest; `all_or_nothing` creates nothing unless the whole file is valid.",
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ImportMode",
+              "default": "import",
+              "description": "`validate` writes nothing; `import` creates every valid product and reports the rest; `all_or_nothing` creates nothing unless the whole file is valid."
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "text/csv": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "description": "The file itself, as the request body (not a multipart form).",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportReportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Import Products",
+        "tags": [
+          "products-import"
+        ]
+      }
+    },
+    "/v1/vendor/products/import/template": {
+      "get": {
+        "description": "The sample file: the columns, three example rows (two products, three variants) and, in\nthe Excel version, an instructions sheet. Uploading it untouched with `mode=validate` shows what\na clean report looks like.",
+        "operationId": "import_template_v1_vendor_products_import_template_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "xlsx",
+              "enum": [
+                "xlsx",
+                "csv"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Import Template",
+        "tags": [
+          "products-import"
+        ]
+      }
+    },
+    "/v1/vendor/products/{product_id}": {
+      "delete": {
+        "description": "Deletes a product that was never submitted; archives one that was (it keeps its history\nand SKU, and an approved one goes off sale). `409 product_in_review` while in review.",
+        "operationId": "delete_product_v1_vendor_products__product_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Product",
+        "tags": [
+          "products"
+        ]
+      },
+      "get": {
+        "operationId": "get_product_v1_vendor_products__product_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Product",
+        "tags": [
+          "products"
+        ]
+      },
+      "put": {
+        "description": "Replaces the content of the revision being edited. Editing an approved product leaves\nwhat is live untouched: it creates a new pending revision (`working`) that goes live only\nwhen approved. `409 product_in_review` while a version is in review. The SKU cannot change.",
+        "operationId": "update_product_v1_vendor_products__product_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductContentBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Product",
+        "tags": [
+          "products"
+        ]
+      }
+    },
+    "/v1/vendor/products/{product_id}/submit": {
+      "post": {
+        "description": "Sends the revision being edited for review. It needs at least one active variant and one\nimage (`422 product_incomplete`). The submitted revision is frozen.",
+        "operationId": "submit_product_v1_vendor_products__product_id__submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Product Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit Product",
+        "tags": [
+          "products"
         ]
       }
     },
