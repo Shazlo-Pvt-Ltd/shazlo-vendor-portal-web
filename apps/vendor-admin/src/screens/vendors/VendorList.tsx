@@ -2,14 +2,14 @@
 import Popover from '@mui/material/Popover'
 import { styled } from '@mui/material/styles'
 import { useMemo, useState, type MouseEvent } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import {
   Avatar, Button, Card, EmptyState, Icon, IconButton, kit, Mono, PageHeader, Skeleton, Table, TableFrame, Tabs, Text, TextInput, textStyle,
 } from '@shazlo/ui/components'
 import { useReactivateVendor, useVendors, type Vendor, type VendorStatus } from '../../api'
 import { useModuleTitle, useShell } from '../../app/shell'
 import { downloadCsv, plural } from '../shared/format'
-import { ErrorCard, FilterMenu, Screen, Toolbar } from '../shared/ui'
+import { CardLine, CardList, ErrorCard, FilterMenu, RowCard, Screen, Toolbar, useIsCompact, useIsPhone } from '../shared/ui'
 import { needsDecision, SuspendDialog, VendorStatusBadge, vendorStatusLabel } from './shared'
 
 type Tab = 'all' | VendorStatus
@@ -38,7 +38,7 @@ const MenuItem = styled('button')({
   '&:hover, &:focus-visible': { background: kit.chip, outline: 'none' },
 })
 
-function RowMenu({ vendor, onSuspend }: { vendor: Vendor; onSuspend: () => void }) {
+function RowMenu({ vendor, onSuspend, className }: { vendor: Vendor; onSuspend: () => void; className?: string }) {
   const navigate = useNavigate()
   const { toast } = useShell()
   const reactivate = useReactivateVendor()
@@ -46,7 +46,7 @@ function RowMenu({ vendor, onSuspend }: { vendor: Vendor; onSuspend: () => void 
   const close = () => setAnchor(null)
   return (
     <>
-      <IconButton aria-label={`More actions for ${vendor.brand}`} aria-haspopup="menu" aria-expanded={Boolean(anchor)} onClick={e => setAnchor(e.currentTarget)} style={{ margin: '-8px -8px -8px 0' }}>
+      <IconButton className={className} aria-label={`More actions for ${vendor.brand}`} aria-haspopup="menu" aria-expanded={Boolean(anchor)} onClick={e => setAnchor(e.currentTarget)} style={{ margin: '-8px -8px -8px 0' }}>
         <Icon name="more" size={16} color={kit.ink} />
       </IconButton>
       <Popover
@@ -84,9 +84,63 @@ function RowMenu({ vendor, onSuspend }: { vendor: Vendor; onSuspend: () => void 
   )
 }
 
+/** The brand name as the card's link, covering the card (vendors with no decision to make). */
+const BrandLink = styled(Link)({
+  ...textStyle.label,
+  color: kit.ink,
+  textDecoration: 'none',
+  borderRadius: 4,
+  '&:focus-visible': { outline: `2px solid ${kit.focus}`, outlineOffset: 2 },
+})
+
+/** The decision a vendor's row offers: Open (under review), Review (applied), else the row menu. */
+function decisionLink(v: Vendor) {
+  if (v.status === 'under_review') return { label: 'Open', name: `Open ${v.brand}` }
+  if (v.status === 'applied') return { label: 'Review', name: `Review ${v.brand}` }
+  return null
+}
+
+/** A-08 on phones: each vendor is a card; tapping it opens the vendor. */
+function VendorCards({ rows, onSuspend }: { rows: Vendor[]; onSuspend: (v: Vendor) => void }) {
+  return (
+    <CardList aria-label="Vendors">
+      {rows.map(v => {
+        const decision = decisionLink(v)
+        return (
+          <RowCard key={v.id}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+              <Avatar initials={v.initials} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
+                {decision ? <Text v="label">{v.brand}</Text> : <BrandLink className="stretch" to={`/vendors/${v.id}`}>{v.brand}</BrandLink>}
+                <Text v="caption" tone="subtle">{v.city} · {v.categories.join(', ')}</Text>
+              </div>
+              {!decision && <RowMenu vendor={v} className="above" onSuspend={() => onSuspend(v)} />}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+              <Text v="small">{v.owner}</Text>
+              <Mono>{v.phone}</Mono>
+            </div>
+            <CardLine>
+              <VendorStatusBadge status={v.status} />
+              <Text v="caption" tone="muted" tabular>
+                {[v.liveCount === null ? null : `${v.liveCount} live`, v.commissionPct === null ? null : `${v.commissionPct}%`, `since ${v.sinceLabel}`].filter(Boolean).join(' · ')}
+              </Text>
+            </CardLine>
+            {decision && (
+              <Button size="sm" fullWidth className="stretch shz-btn" to={`/vendors/${v.id}`} aria-label={decision.name} iconEnd="chevronRight">{decision.label}</Button>
+            )}
+          </RowCard>
+        )
+      })}
+    </CardList>
+  )
+}
+
 export function VendorList() {
   useModuleTitle('Vendors')
   const navigate = useNavigate()
+  const phone = useIsPhone()
+  const compact = useIsCompact()
   const vendors = useVendors()
   const [tab, setTab] = useState<Tab>('all')
   const [search, setSearch] = useState('')
@@ -191,17 +245,20 @@ export function VendorList() {
                 {all.length ? 'Try another name, city or category, or clear the filters.' : 'Applications from the website’s “Sell on Shazlo” form appear here.'}
               </EmptyState>
             </Card>
+          ) : phone ? (
+            <VendorCards rows={rows} onSuspend={setSuspending} />
           ) : (
             <TableFrame style={{ position: 'relative' }}>
-              <Table aria-label="Vendors" style={{ tableLayout: 'fixed', minWidth: 900 }}>
+              {/* Tablets drop Since and Commission (both are on the vendor's page). */}
+              <Table aria-label="Vendors" style={{ tableLayout: 'fixed', minWidth: compact ? 640 : 900 }}>
                 <colgroup>
                   <col />
-                  <col style={{ width: 186 }} />
-                  <col style={{ width: 72 }} />
-                  <col style={{ width: 146 }} />
-                  <col style={{ width: 112 }} />
-                  <col style={{ width: 112 }} />
-                  <col style={{ width: 104 }} />
+                  <col style={{ width: compact ? 160 : 186 }} />
+                  <col style={{ width: compact ? 56 : 72 }} />
+                  <col style={{ width: compact ? 136 : 146 }} />
+                  {!compact && <col style={{ width: 112 }} />}
+                  {!compact && <col style={{ width: 112 }} />}
+                  <col style={{ width: compact ? 96 : 104 }} />
                 </colgroup>
                 <thead>
                   <tr>
@@ -209,8 +266,8 @@ export function VendorList() {
                     <th scope="col">Owner</th>
                     <th scope="col" className="num">Live</th>
                     <th scope="col">Status</th>
-                    <th scope="col">Since</th>
-                    <th scope="col" className="num">Commission</th>
+                    {!compact && <th scope="col">Since</th>}
+                    {!compact && <th scope="col" className="num">Commission</th>}
                     <th scope="col"><span className="shz-visually-hidden">Action</span></th>
                   </tr>
                 </thead>
@@ -234,8 +291,8 @@ export function VendorList() {
                       </td>
                       <td className="num">{v.liveCount ?? '—'}</td>
                       <td><VendorStatusBadge status={v.status} /></td>
-                      <td><Text v="small" tone="muted">{v.sinceLabel}</Text></td>
-                      <td className="num">{v.commissionPct === null ? '—' : `${v.commissionPct}%`}</td>
+                      {!compact && <td><Text v="small" tone="muted">{v.sinceLabel}</Text></td>}
+                      {!compact && <td className="num">{v.commissionPct === null ? '—' : `${v.commissionPct}%`}</td>}
                       <td style={{ textAlign: 'right' }}>
                         {v.status === 'under_review' ? (
                           <Button size="sm" to={`/vendors/${v.id}`} aria-label={`Open ${v.brand}`}>Open</Button>

@@ -1,5 +1,6 @@
 // A-09 · Vendor application: decide on a new vendor (flow V1 / A1). For an approved vendor the same
 // page shows their products, brand page and activity, and offers Suspend.
+import { styled } from '@mui/material/styles'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useParams } from 'react-router'
 import {
@@ -12,7 +13,7 @@ import {
 import { useModuleTitle, useShell } from '../../app/shell'
 import { itemPath, plural } from '../shared/format'
 import { ReasonDialog, type ReasonTemplate } from '../shared/ReasonDialog'
-import { BackLink, ErrorCard, LoadingDetail, Screen } from '../shared/ui'
+import { BackLink, ErrorCard, LoadingDetail, PHONE, Screen, StickyActions, useIsPhone } from '../shared/ui'
 import { needsDecision, SuspendDialog, VendorStatusBadge } from './shared'
 
 type Tab = 'application' | 'products' | 'brand' | 'activity'
@@ -35,6 +36,16 @@ const capitalised = (list: string[]) => list.map((c, i) => (i === 0 ? c[0]!.toUp
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 /* ---------- Pieces ---------- */
+
+/** Approval settings and activity: 360 px beside the details, full width on phones. */
+const SideColumn = styled('div')({
+  flex: '0 1 360px',
+  minWidth: 280,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 16,
+  [PHONE]: { flex: '1 1 100%', minWidth: 0 },
+})
 
 function DetailRows({ rows }: { rows: Array<[string, ReactNode]> }) {
   return (
@@ -188,11 +199,11 @@ function ProductsTab({ vendor }: { vendor: Vendor }) {
           <Text v="small" tone="muted" as="p">Waiting for review:</Text>
           {waiting.map(i => (
             <div key={i.id} style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between', flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                 <Text v="label">{i.title}</Text>
                 <Text v="caption" tone="subtle">{i.subtitle} · {i.typeLabel}</Text>
               </div>
-              <Button size="sm" to={itemPath(i)} aria-label={`Review ${i.title}`}>Review</Button>
+              <Button size="sm" className="shz-btn" to={itemPath(i)} aria-label={`Review ${i.title}`}>Review</Button>
             </div>
           ))}
         </>
@@ -208,7 +219,7 @@ function BrandTab({ vendor }: { vendor: Vendor }) {
   const waiting = (queue.data?.items ?? []).find(i => i.vendorId === vendor.id && i.kind === 'brand_page')
   if (waiting) {
     return (
-      <Banner title="A brand page edit is waiting for review" icon="clock" action={<Button size="sm" to={itemPath(waiting)}>Review</Button>}>
+      <Banner title="A brand page edit is waiting for review" icon="clock" action={<Button size="sm" className="shz-btn" to={itemPath(waiting)}>Review</Button>}>
         {waiting.subtitle} · submitted {waiting.submittedLabel.toLowerCase()}
       </Banner>
     )
@@ -229,6 +240,7 @@ function BrandTab({ vendor }: { vendor: Vendor }) {
 function Application({ vendor }: { vendor: Vendor }) {
   useModuleTitle(vendor.brand, ['Vendors', vendor.brand])
   const { toast } = useShell()
+  const phone = useIsPhone()
   const [tab, setTab] = useState<Tab>('application')
   const [dialog, setDialog] = useState<'info' | 'reject' | 'suspend' | null>(null)
   const open = useOpenApplication()
@@ -294,7 +306,8 @@ function Application({ vendor }: { vendor: Vendor }) {
   return (
     <Screen gap={16}>
       <div><BackLink to="/vendors">Vendors</BackLink></div>
-      <PageHeader title={vendor.brand} badge={<VendorStatusBadge status={vendor.status} />} subtitle={subtitle} actions={actions} />
+      {/* On phones the application decision moves to a bar pinned to the bottom of the frame. */}
+      <PageHeader title={vendor.brand} badge={<VendorStatusBadge status={vendor.status} />} subtitle={subtitle} actions={phone && deciding ? undefined : actions} />
 
       {vendor.statusReason && (vendor.status === 'rejected' || vendor.status === 'suspended') && (
         <Banner
@@ -335,15 +348,16 @@ function Application({ vendor }: { vendor: Vendor }) {
               </ul>
             </Card>
           </div>
-          <div style={{ flex: '0 1 360px', minWidth: 280, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <SideColumn>
             {deciding ? approval.card : vendor.status !== 'rejected' ? <VendorSettings vendor={vendor} /> : null}
             <ActivityCard vendor={vendor} limit={4} />
-          </div>
+          </SideColumn>
         </div>
       )}
       {tab === 'products' && <ProductsTab vendor={vendor} />}
       {tab === 'brand' && <BrandTab vendor={vendor} />}
       {tab === 'activity' && <ActivityCard vendor={vendor} />}
+      {phone && deciding && <StickyActions role="region" aria-label="Decision">{actions}</StickyActions>}
 
       <ReasonDialog
         open={dialog === 'info'}

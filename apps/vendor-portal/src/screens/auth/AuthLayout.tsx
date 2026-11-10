@@ -50,6 +50,9 @@ const HelpLink = styled('a')({
   '&:hover .shz-help-email': { textDecoration: 'underline', textUnderlineOffset: 2 },
   '&:focus-visible': { outline: `2px solid ${kit.focus}`, outlineOffset: 2 },
   [MOBILE]: { minHeight: 44, '& .shz-help-prefix': { display: 'none' } },
+  // 320–399 px phones: the address does not fit beside the logo, so the link reads "Email us".
+  '& .shz-help-short': { display: 'none' },
+  '@media (max-width: 399.95px)': { '& .shz-help-email': { display: 'none' }, '& .shz-help-short': { display: 'inline', textDecoration: 'underline', textUnderlineOffset: 2 } },
 })
 
 const Main = styled('main', { shouldForwardProp: p => p !== 'center' })<{ center: boolean }>(({ center }) => ({
@@ -83,7 +86,7 @@ export function HelpContact() {
   return (
     <HelpLink href={`mailto:${PARTNERS_EMAIL}`}>
       <Icon name="help" size={16} />
-      <span><span className="shz-help-prefix">Need help? </span><span className="shz-help-email">{PARTNERS_EMAIL}</span></span>
+      <span><span className="shz-help-prefix">Need help? </span><span className="shz-help-email">{PARTNERS_EMAIL}</span><span className="shz-help-short">Email us</span></span>
     </HelpLink>
   )
 }

@@ -1,4 +1,5 @@
 // A-05 · Product review, with A-06 · Send back (reason required).
+import { styled } from '@mui/material/styles'
 import { useState } from 'react'
 import { useParams } from 'react-router'
 import { Button, Card, Icon, ImagePlaceholder, kit, PageHeader, StatusBadge, TableFrame, Text } from '@shazlo/ui/components'
@@ -6,7 +7,7 @@ import { ApiError, useDecideProduct, useProductSubmission, type ProductSubmissio
 import { useModuleTitle, useShell } from '../../app/shell'
 import { plural } from '../shared/format'
 import { ReasonDialog, type ReasonTemplate } from '../shared/ReasonDialog'
-import { CheckItem, DecisionBar, ErrorCard, ItemNav, LoadingDetail, PanelTitle, Screen } from '../shared/ui'
+import { CheckItem, DecisionBar, ErrorCard, ItemNav, LoadingDetail, PanelTitle, PHONE, Screen, useIsPhone } from '../shared/ui'
 import { DiffTable, Split, useQueueNeighbours } from './shared'
 
 const CHECKLIST = [
@@ -35,11 +36,21 @@ function Badge({ product }: { product: ProductSubmission }) {
   return <StatusBadge tone="pending" icon="clock">{typeLabelOf(product)}</StatusBadge>
 }
 
+/** The photo column: 400 px beside the details, full width once the frame is a phone. */
+const PhotoColumn = styled('section')({
+  flex: '0 1 400px',
+  minWidth: 280,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 10,
+  [PHONE]: { flex: '1 1 100%', minWidth: 0 },
+})
+
 function Photos({ product }: { product: ProductSubmission }) {
   const [selected, setSelected] = useState(0)
   const current = product.photos[selected] ?? product.photos[0]
   return (
-    <section aria-label="Photos" style={{ flex: '0 1 400px', minWidth: 280, display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <PhotoColumn aria-label="Photos">
       <ImagePlaceholder width="100%" height="auto" alt={current ? `${current.label} photo` : 'Photo'} style={{ aspectRatio: '400 / 470' }} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
         {product.photos.map((p, i) => (
@@ -56,61 +67,91 @@ function Photos({ product }: { product: ProductSubmission }) {
               height="auto"
               style={{ aspectRatio: '94 / 112', outline: i === selected ? `2px solid ${kit.brown}` : undefined, outlineOffset: -2 }}
             />
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4, minHeight: 19 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, minHeight: 19, flexWrap: 'wrap' }}>
               <Text v="caption" tone="muted">{p.label}</Text>
               {p.isNew && <StatusBadge tone="pending" icon="clock">New</StatusBadge>}
             </span>
           </button>
         ))}
       </div>
-    </section>
+    </PhotoColumn>
+  )
+}
+
+/** The diff on phones: one block per field (was, now, Changed) instead of a four-column table. */
+function DiffList({ product, label }: { product: ProductSubmission; label: string }) {
+  const isNew = product.change === 'new'
+  const was = product.change === 'edit' ? 'Live version' : 'Sent back version'
+  return (
+    <ul aria-label={label} style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column' }}>
+      {product.fields.map((f, i) => {
+        const same = f.before !== null && f.before === f.after
+        return (
+          <li key={f.field} style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, padding: '10px 0', borderTop: i ? `1px solid ${kit.line}` : 0, overflowWrap: 'anywhere' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <Text v="small" tone="muted">{f.field}</Text>
+              {!isNew && !same && <StatusBadge tone="pending" icon="clock">Changed</StatusBadge>}
+            </div>
+            {same ? <Text v="label">Same</Text> : isNew ? <Text v="small">{f.after}</Text> : (
+              <>
+                <Text v="small" tone="subtle" style={{ textDecoration: 'line-through' }}><span className="shz-visually-hidden">{was}: </span>{f.before ?? '—'}</Text>
+                <Text v="label"><span className="shz-visually-hidden">This submission: </span>{f.after}</Text>
+              </>
+            )}
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 
 function Changes({ product }: { product: ProductSubmission }) {
+  const phone = useIsPhone()
   const isNew = product.change === 'new'
   const changed = product.fields.filter(f => f.before !== null && f.before !== f.after).length
   const heading = isNew ? 'New product, first review' : product.change === 'edit' ? 'Compared with the live version' : 'Compared with the version you sent back'
   return (
     <Card pad={16} gap={12}>
       <PanelTitle icon="diff" aside={<Text v="caption" tone="subtle">{isNew ? plural(product.fields.length, 'field') : plural(changed, 'change')}</Text>}>{heading}</PanelTitle>
-      <TableFrame style={{ position: 'relative' }}>
-        <DiffTable aria-label={heading} style={{ minWidth: 520 }}>
-          <colgroup>
-            <col style={{ width: 120 }} />
-            <col />
-            {!isNew && <col />}
-            {!isNew && <col style={{ width: 98 }} />}
-          </colgroup>
-          <thead>
-            <tr>
-              <th scope="col">Field</th>
-              {!isNew && <th scope="col">{product.change === 'edit' ? 'Live version' : 'Sent back version'}</th>}
-              <th scope="col">This submission</th>
-              {!isNew && <th scope="col"><span className="shz-visually-hidden">Change</span></th>}
-            </tr>
-          </thead>
-          <tbody>
-            {product.fields.map(f => {
-              const same = f.before !== null && f.before === f.after
-              return (
-                <tr key={f.field}>
-                  <td><Text v="small" tone="muted">{f.field}</Text></td>
-                  {!isNew && (
-                    <td>
-                      <Text v="small" tone={same ? 'ink' : 'subtle'} style={same ? undefined : { textDecoration: 'line-through' }}>
-                        {f.before ?? '—'}
-                      </Text>
-                    </td>
-                  )}
-                  <td>{same ? <Text v="label">Same</Text> : isNew ? <Text v="small">{f.after}</Text> : <Text v="label">{f.after}</Text>}</td>
-                  {!isNew && <td>{!same && <StatusBadge tone="pending" icon="clock">Changed</StatusBadge>}</td>}
-                </tr>
-              )
-            })}
-          </tbody>
-        </DiffTable>
-      </TableFrame>
+      {phone ? <DiffList product={product} label={heading} /> : (
+        <TableFrame style={{ position: 'relative' }}>
+          <DiffTable aria-label={heading} style={{ minWidth: 520 }}>
+            <colgroup>
+              <col style={{ width: 120 }} />
+              <col />
+              {!isNew && <col />}
+              {!isNew && <col style={{ width: 98 }} />}
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col">Field</th>
+                {!isNew && <th scope="col">{product.change === 'edit' ? 'Live version' : 'Sent back version'}</th>}
+                <th scope="col">This submission</th>
+                {!isNew && <th scope="col"><span className="shz-visually-hidden">Change</span></th>}
+              </tr>
+            </thead>
+            <tbody>
+              {product.fields.map(f => {
+                const same = f.before !== null && f.before === f.after
+                return (
+                  <tr key={f.field}>
+                    <td><Text v="small" tone="muted">{f.field}</Text></td>
+                    {!isNew && (
+                      <td>
+                        <Text v="small" tone={same ? 'ink' : 'subtle'} style={same ? undefined : { textDecoration: 'line-through' }}>
+                          {f.before ?? '—'}
+                        </Text>
+                      </td>
+                    )}
+                    <td>{same ? <Text v="label">Same</Text> : isNew ? <Text v="small">{f.after}</Text> : <Text v="label">{f.after}</Text>}</td>
+                    {!isNew && <td>{!same && <StatusBadge tone="pending" icon="clock">Changed</StatusBadge>}</td>}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </DiffTable>
+        </TableFrame>
+      )}
     </Card>
   )
 }
@@ -120,6 +161,7 @@ function Review({ product }: { product: ProductSubmission }) {
   useModuleTitle(title, ['Review queue', title])
   const { toast } = useShell()
   const nav = useQueueNeighbours('product', product.id)
+  const phone = useIsPhone()
   const decide = useDecideProduct()
   const [checks, setChecks] = useState<string[]>([])
   const [sendBackOpen, setSendBackOpen] = useState(false)
@@ -174,7 +216,7 @@ function Review({ product }: { product: ProductSubmission }) {
 
           <Card pad={16} gap={10}>
             <Text v="label" as="h2" id="product-checklist">Review checklist</Text>
-            <div role="group" aria-labelledby="product-checklist" style={{ display: 'flex', flexWrap: 'wrap', columnGap: 24, rowGap: 24 }}>
+            <div role="group" aria-labelledby="product-checklist" style={{ display: 'flex', flexWrap: 'wrap', columnGap: 24, rowGap: phone ? 0 : 24 }}>
               {CHECKLIST.map(item => (
                 <CheckItem
                   key={item}
@@ -201,6 +243,7 @@ function Review({ product }: { product: ProductSubmission }) {
 
       {pending ? (
         <DecisionBar
+          sticky
           actions={
             <>
               <Button icon="x" onClick={() => { setError(null); setSendBackOpen(true) }} disabled={decide.isPending}>Send back</Button>
@@ -215,7 +258,7 @@ function Review({ product }: { product: ProductSubmission }) {
       ) : (
         <DecisionBar
           icon={product.status === 'approved' ? 'check' : 'x'}
-          actions={<Button to="/queue" icon="arrowLeft">Back to the queue</Button>}
+          actions={<Button to="/queue" icon="arrowLeft" className="shz-btn">Back to the queue</Button>}
         >
           {product.status === 'approved'
             ? `Approved by ${decided?.by ?? 'a reviewer'} · ${decided?.at ?? ''}. Publishing to the app; follow it in Publishing status.`

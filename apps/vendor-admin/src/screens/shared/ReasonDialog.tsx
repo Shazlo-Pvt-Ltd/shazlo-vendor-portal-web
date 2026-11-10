@@ -4,6 +4,7 @@ import MuiDialog from '@mui/material/Dialog'
 import { styled } from '@mui/material/styles'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Button, Icon, IconButton, kit, Text, TextArea, textStyle, type IconName } from '@shazlo/ui/components'
+import { PHONE, useIsPhone } from './ui'
 
 export const MIN_MESSAGE = 10
 export const MAX_MESSAGE = 500
@@ -32,6 +33,20 @@ const Chip = styled('button', { shouldForwardProp: p => p !== 'on' })<{ on: bool
   '&:focus-visible': { outline: `2px solid ${kit.focus}`, outlineOffset: 2 },
 }))
 
+/** Hint, Cancel and confirm. On phones it sits at the bottom of the full-screen dialog, buttons sharing the row. */
+const Footer = styled('div')({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'flex-end',
+  gap: 8,
+  flexWrap: 'wrap',
+  [PHONE]: {
+    marginTop: 'auto',
+    '& > .hint': { flex: '1 1 100%' },
+    '& > button': { flex: '1 1 auto' },
+  },
+})
+
 export function ReasonDialog({
   open, onClose, title, subtitle, templates, reasonLabel = 'Reason', messageLabel = 'Message to the vendor (required)',
   helper = 'Shown to the vendor exactly as written', consequence, confirmLabel, confirmIcon = 'x', pending, error, onConfirm,
@@ -56,6 +71,7 @@ export function ReasonDialog({
   const [reasons, setReasons] = useState<string[]>([])
   const [message, setMessage] = useState('')
   const textRef = useRef<HTMLTextAreaElement>(null)
+  const phone = useIsPhone()
 
   // Start clean each time the dialog opens.
   useEffect(() => {
@@ -79,14 +95,19 @@ export function ReasonDialog({
       open={open}
       onClose={pending ? undefined : onClose}
       aria-labelledby={titleId}
+      fullScreen={phone}
       slotProps={{
-        paper: { sx: { width: 560, maxWidth: 'calc(100vw - 32px)', m: 2, background: kit.surface, borderRadius: '12px', boxShadow: '0 24px 48px rgba(16, 60, 100, 0.25)' } },
+        paper: {
+          sx: phone
+            ? { background: kit.surface }
+            : { width: 560, maxWidth: 'calc(100vw - 32px)', m: 2, background: kit.surface, borderRadius: '12px', boxShadow: '0 24px 48px rgba(16, 60, 100, 0.25)' },
+        },
         backdrop: { sx: { background: 'rgba(16, 60, 100, 0.55)' } },
       }}
     >
       <form
         onSubmit={e => { e.preventDefault(); if (ready) onConfirm({ reasons, message: message.trim() }) }}
-        style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: 24 }}
+        style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: phone ? '16px 16px 24px' : 24, flex: phone ? 1 : undefined }}
       >
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
@@ -136,9 +157,9 @@ export function ReasonDialog({
           </div>
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+        <Footer>
           {!ready && !pending && (
-            <Text v="caption" tone="subtle" id={hintId} style={{ marginRight: 'auto' }}>
+            <Text v="caption" tone="subtle" id={hintId} className="hint" style={{ marginRight: 'auto' }}>
               {length === 0 ? 'Write a message to send this.' : `Write at least ${MIN_MESSAGE} characters (${length} so far).`}
             </Text>
           )}
@@ -146,7 +167,7 @@ export function ReasonDialog({
           <Button type="submit" variant="primary" icon={confirmIcon} disabled={!ready} aria-describedby={!ready && !pending ? hintId : undefined}>
             {pending ? 'Saving…' : confirmLabel}
           </Button>
-        </div>
+        </Footer>
       </form>
     </MuiDialog>
   )

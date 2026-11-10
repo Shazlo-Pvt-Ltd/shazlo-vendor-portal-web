@@ -2,12 +2,12 @@
 import { useMemo, useState, type MouseEvent } from 'react'
 import { useNavigate } from 'react-router'
 import {
-  Button, Card, Checkbox, EmptyState, kit, PageHeader, Skeleton, StatCard, Table, TableFrame, Tabs, Text, TextInput,
+  Button, Card, Checkbox, EmptyState, Icon, kit, PageHeader, Skeleton, StatCard, StatusBadge, Table, TableFrame, Tabs, Text, TextInput,
 } from '@shazlo/ui/components'
 import { useQueue, type QueueItem, type QueueKind } from '../../api'
 import { useModuleTitle } from '../../app/shell'
 import { downloadCsv, formatDuration, formatWaiting, isOverdue, itemPath, plural } from '../shared/format'
-import { ErrorCard, FilterMenu, Screen, StatGrid, Toolbar } from '../shared/ui'
+import { CardLine, CardList, ErrorCard, FilterMenu, RowCard, Screen, StatGrid, Toolbar, useIsCompact, useIsPhone } from '../shared/ui'
 
 type Tab = 'all' | QueueKind
 type Submitted = 'any' | QueueItem['submittedDay']
@@ -30,9 +30,49 @@ function Thumb({ kind }: { kind: QueueKind }) {
   return <span aria-hidden style={{ width: 36, height: product ? 44 : 36, borderRadius: product ? 6 : 18, background: kit.placeholder, flexShrink: 0, display: 'block' }} />
 }
 
+/** How long an item has waited; heavier (with an alert glyph on phones) past the 24-hour target. */
+function Waiting({ minutes, icon }: { minutes: number; icon?: boolean }) {
+  const overdue = isOverdue(minutes)
+  const text = <Text v={overdue ? 'label' : 'small'} tabular title={overdue ? 'Over the 24-hour target' : undefined}>{formatWaiting(minutes)}</Text>
+  if (!icon) return text
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+      <Icon name={overdue ? 'alert' : 'clock'} size={14} color={overdue ? kit.ink : kit.muted} label={overdue ? 'Waiting, over the 24-hour target:' : 'Waiting'} />
+      {text}
+    </span>
+  )
+}
+
+/** A-04 on phones: each row is a card; tapping anywhere on it opens the review. */
+function QueueCards({ rows }: { rows: QueueItem[] }) {
+  return (
+    <CardList aria-label="Review queue">
+      {rows.map(item => (
+        <RowCard key={`${item.kind}-${item.id}`}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, minWidth: 0 }}>
+            <Thumb kind={item.kind} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
+              <Text v="label">{item.title}</Text>
+              <Text v="caption" tone="subtle">{item.subtitle}</Text>
+              <Text v="caption" tone="muted">{[item.vendorName, item.submittedLabel].filter(Boolean).join(' · ')}</Text>
+            </div>
+            <Waiting minutes={item.waitingMinutes} icon />
+          </div>
+          <CardLine>
+            <StatusBadge tone="pending" icon={item.resubmission ? 'refresh' : 'clock'}>{item.typeLabel}</StatusBadge>
+            <Button size="sm" className="stretch shz-btn" to={itemPath(item)} aria-label={`Review ${item.title}`} iconEnd="chevronRight" style={{ marginLeft: 'auto' }}>Review</Button>
+          </CardLine>
+        </RowCard>
+      ))}
+    </CardList>
+  )
+}
+
 export function ReviewQueue() {
   useModuleTitle('Review queue')
   const navigate = useNavigate()
+  const phone = useIsPhone()
+  const compact = useIsCompact()
   const queue = useQueue()
   const [tab, setTab] = useState<Tab>('all')
   const [search, setSearch] = useState('')
@@ -157,53 +197,51 @@ export function ReviewQueue() {
                 {filtered ? 'Try another vendor or time, or clear the filters to see the whole queue.' : 'Nothing of this type is waiting. Pick another tab.'}
               </EmptyState>
             </Card>
+          ) : phone ? (
+            <QueueCards rows={rows} />
           ) : (
             <TableFrame style={{ position: 'relative' }}>
-              <Table aria-label="Review queue" style={{ tableLayout: 'fixed', minWidth: 860 }}>
+              {/* Tablets drop the Submitted column (the waiting time says the same thing). */}
+              <Table aria-label="Review queue" style={{ tableLayout: 'fixed', minWidth: compact ? 640 : 860 }}>
                 <colgroup>
                   <col />
-                  <col style={{ width: 166 }} />
-                  <col style={{ width: 136 }} />
+                  <col style={{ width: compact ? 140 : 166 }} />
+                  {!compact && <col style={{ width: 136 }} />}
                   <col style={{ width: 96 }} />
-                  <col style={{ width: 166 }} />
+                  <col style={{ width: compact ? 150 : 166 }} />
                   <col style={{ width: 94 }} />
                 </colgroup>
                 <thead>
                   <tr>
                     <th scope="col">Item</th>
                     <th scope="col">Vendor</th>
-                    <th scope="col">Submitted</th>
+                    {!compact && <th scope="col">Submitted</th>}
                     <th scope="col">Waiting</th>
                     <th scope="col">Type</th>
                     <th scope="col"><span className="shz-visually-hidden">Action</span></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map(item => {
-                    const overdue = isOverdue(item.waitingMinutes)
-                    return (
+                  {rows.map(item => (
                       <tr key={`${item.kind}-${item.id}`} onClick={e => onRowClick(e, item)} style={{ cursor: 'pointer' }}>
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                            <Thumb kind={item.kind} />
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-                              <Text v="label" truncate>{item.title}</Text>
-                              <Text v="caption" tone="subtle" truncate>{item.subtitle}</Text>
-                            </div>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                          <Thumb kind={item.kind} />
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                            <Text v="label" truncate>{item.title}</Text>
+                            <Text v="caption" tone="subtle" truncate>{item.subtitle}</Text>
                           </div>
-                        </td>
-                        <td>{item.vendorName ?? <span aria-label="No vendor yet">—</span>}</td>
-                        <td><Text v="small" tone="muted">{item.submittedLabel}</Text></td>
-                        <td>
-                          <Text v={overdue ? 'label' : 'small'} tabular title={overdue ? 'Over the 24-hour target' : undefined}>{formatWaiting(item.waitingMinutes)}</Text>
-                        </td>
-                        <td>{item.resubmission ? <Text v="label">{item.typeLabel}</Text> : <Text v="small" tone="muted">{item.typeLabel}</Text>}</td>
-                        <td style={{ textAlign: 'right' }}>
-                          <Button size="sm" to={itemPath(item)} aria-label={`Review ${item.title}`}>Review</Button>
-                        </td>
+                        </div>
+                      </td>
+                      <td>{item.vendorName ?? <span aria-label="No vendor yet">—</span>}</td>
+                      {!compact && <td><Text v="small" tone="muted">{item.submittedLabel}</Text></td>}
+                      <td><Waiting minutes={item.waitingMinutes} /></td>
+                      <td>{item.resubmission ? <Text v="label">{item.typeLabel}</Text> : <Text v="small" tone="muted">{item.typeLabel}</Text>}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <Button size="sm" to={itemPath(item)} aria-label={`Review ${item.title}`}>Review</Button>
+                      </td>
                       </tr>
-                    )
-                  })}
+                  ))}
                 </tbody>
               </Table>
             </TableFrame>

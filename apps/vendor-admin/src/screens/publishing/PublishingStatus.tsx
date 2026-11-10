@@ -1,11 +1,12 @@
 // A-10 · Publishing status: the outbox (roadmap Phase 4) made visible. Approved content reaches the
 // central app only through here; failed events are out of retries (dead letter) and can be retried.
+import { styled } from '@mui/material/styles'
 import { useMemo, useState, type KeyboardEvent } from 'react'
-import { Button, Card, EmptyState, kit, PageHeader, Skeleton, StatCard, StatusBadge, Table, TableFrame, Tabs, Text } from '@shazlo/ui/components'
+import { Button, Card, EmptyState, focusRing, Icon, kit, PageHeader, Skeleton, StatCard, StatusBadge, Table, TableFrame, Tabs, Text } from '@shazlo/ui/components'
 import { useOutbox, useRetryEvents, type OutboxEvent, type OutboxStatus } from '../../api'
 import { useModuleTitle, useShell } from '../../app/shell'
 import { plural } from '../shared/format'
-import { ErrorCard, Screen, StatGrid } from '../shared/ui'
+import { CardLine, CardList, ErrorCard, Screen, StatGrid, useIsPhone } from '../shared/ui'
 
 type Tab = 'all' | OutboxStatus
 
@@ -39,7 +40,8 @@ function Field({ label, value, mono = true }: { label: string; value: string; mo
   )
 }
 
-function EventDetail({ event }: { event: OutboxEvent }) {
+/** Beside the table on wide frames; full width under its card on phones (`id` set). */
+function EventDetail({ event, id }: { event: OutboxEvent; id?: string }) {
   const { toast } = useShell()
   const retry = useRetryEvents()
   const payload = JSON.stringify(event.payload, null, 2)
@@ -55,8 +57,8 @@ function EventDetail({ event }: { event: OutboxEvent }) {
   }
 
   return (
-    <Card as="section" pad={20} gap={14} aria-label="Event detail" style={{ flex: '0 1 380px', minWidth: 300 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+    <Card as="section" id={id} pad={id ? 16 : 20} gap={14} aria-label="Event detail" style={id ? undefined : { flex: '0 1 380px', minWidth: 300 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
         <Text v="title" as="h2" style={{ minWidth: 0 }}>{event.item}</Text>
         <EventBadge status={event.status} />
       </div>
@@ -105,9 +107,58 @@ function EventDetail({ event }: { event: OutboxEvent }) {
   )
 }
 
+/** A card on phones: a button that opens the event's detail right under it. */
+const EventButton = styled('button')({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+  width: '100%',
+  padding: '13px 15px',
+  background: kit.surface,
+  border: `1px solid ${kit.line}`,
+  borderRadius: 8,
+  textAlign: 'left',
+  font: 'inherit',
+  color: kit.ink,
+  cursor: 'pointer',
+  '&:hover': { background: '#FFFBEC' },
+  '&[aria-expanded="true"]': { background: kit.canvas, borderColor: kit.field },
+  ...focusRing,
+})
+
+/** A-10 on phones: the events as cards; the open one shows its detail underneath. */
+function EventCards({ rows, openId, onToggle }: { rows: OutboxEvent[]; openId: string | undefined; onToggle: (id: string) => void }) {
+  return (
+    <CardList aria-label="Outbox events">
+      {rows.map(e => {
+        const open = e.id === openId
+        return (
+          <li key={e.id} style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+            <EventButton type="button" aria-expanded={open} aria-controls={open ? `event-${e.id}` : undefined} onClick={() => onToggle(e.id)}>
+              <span style={{ display: 'flex', alignItems: 'flex-start', gap: 8, width: '100%' }}>
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
+                  <Text v="label">{e.item}</Text>
+                  <Text v="mono" tone="muted" style={{ overflowWrap: 'anywhere' }}>{e.name}</Text>
+                </span>
+                <Icon name="chevronDown" size={16} color={kit.muted} style={{ flexShrink: 0, transform: open ? 'rotate(180deg)' : undefined }} />
+              </span>
+              <CardLine style={{ width: '100%' }}>
+                <EventBadge status={e.status} />
+                <Text v="caption" tone="muted" tabular>Tries {tries(e)} · {e.lastLabel ?? '—'}</Text>
+              </CardLine>
+            </EventButton>
+            {open && <EventDetail event={e} id={`event-${e.id}`} />}
+          </li>
+        )
+      })}
+    </CardList>
+  )
+}
+
 export function PublishingStatus() {
   useModuleTitle('Publishing to the app')
   const { toast } = useShell()
+  const phone = useIsPhone()
   const outbox = useOutbox()
   const retryAll = useRetryEvents()
   const [tab, setTab] = useState<Tab>('all')
@@ -117,6 +168,14 @@ export function PublishingStatus() {
   const counts = outbox.data?.counts
   const rows = tab === 'all' ? events : events.filter(e => e.status === tab)
   const selected = rows.find(e => e.id === selectedId) ?? rows[0]
+  // Phones open one card at a time, the first by default; tapping the open card closes it.
+  const [closed, setClosed] = useState(false)
+  const openId = closed ? undefined : selected?.id
+  const toggle = (id: string) => {
+    if (id === openId) { setClosed(true); return }
+    setClosed(false)
+    setSelectedId(id)
+  }
   const failed = events.filter(e => e.status === 'failed')
   const nextTry = events.find(e => e.status === 'retrying')?.nextTryLabel
   const older = counts ? counts.delivered - events.filter(e => e.status === 'delivered').length : 0
@@ -188,6 +247,13 @@ export function PublishingStatus() {
                   : 'Approving a product, brand page or vendor creates an event here.'}
               </EmptyState>
             </Card>
+          ) : phone ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <EventCards rows={rows} openId={openId} onToggle={toggle} />
+              {(tab === 'all' || tab === 'delivered') && older > 0 && (
+                <Text v="caption" tone="subtle">Showing the latest {plural(rows.length, 'event')}; {older.toLocaleString('en-IN')} older delivered events are not listed.</Text>
+              )}
+            </div>
           ) : (
             <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
               <div style={{ flex: '1 1 520px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>

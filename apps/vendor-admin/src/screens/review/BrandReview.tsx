@@ -39,13 +39,13 @@ const DIFF_FIELDS: Array<{ key: DiffKey; label: string; image?: boolean }> = [
 
 const valueOf = (f: BrandPageFields, key: DiffKey) => (key === 'location' ? `${f.location} · ${f.dispatch}` : f[key])
 
-/** The brand page as the app renders it, in a phone frame (290 × 560). */
+/** The brand page as the app renders it, in a phone frame (290 × 560, narrower to fit a phone frame). */
 function Phone({ page, live, draft }: { page: BrandPageFields; live: BrandPageFields | null; draft?: boolean }) {
   const coverChanged = draft && live !== null && live.cover !== page.cover
   return (
     <div
       style={{
-        width: 290, height: 560, flexShrink: 0, boxSizing: 'border-box', border: `5px solid ${draft ? kit.ink : kit.field}`, borderRadius: 30,
+        width: 290, maxWidth: '100%', height: 560, boxSizing: 'border-box', border: `5px solid ${draft ? kit.ink : kit.field}`, borderRadius: 30,
         padding: 5, background: kit.surface,
       }}
     >
@@ -62,8 +62,8 @@ function Phone({ page, live, draft }: { page: BrandPageFields; live: BrandPageFi
           <Text v="small" as="p">{page.story}</Text>
         </div>
         <div style={{ display: 'flex', gap: 8, padding: '0 14px 14px' }}>
-          <ImagePlaceholder width={117} height={140} />
-          <ImagePlaceholder width={117} height={140} />
+          <ImagePlaceholder width="100%" height={140} style={{ flex: '0 1 117px', minWidth: 0 }} />
+          <ImagePlaceholder width="100%" height={140} style={{ flex: '0 1 117px', minWidth: 0 }} />
         </div>
       </div>
     </div>
@@ -178,18 +178,18 @@ function Review({ brand }: { brand: BrandSubmission }) {
 
       <Split>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', flex: '0 1 596px', minWidth: 0 }}>
-          <section aria-label="Live now" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <section aria-label="Live now" style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: '0 1 290px', minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', minHeight: 19 }}>
               <Text v="overline" tone="subtle" as="h2">{compare.live ? 'Live now' : 'Not live yet'}</Text>
             </div>
             {compare.live ? <Phone page={compare.live} live={null} /> : (
-              <div style={{ width: 290, height: 560, borderRadius: 30, border: `1px dashed ${kit.field}`, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
+              <div style={{ width: 290, maxWidth: '100%', height: 560, boxSizing: 'border-box', borderRadius: 30, border: `1px dashed ${kit.field}`, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
                 <Text v="small" tone="muted">This vendor has no live brand page yet.</Text>
               </div>
             )}
           </section>
-          <section aria-label="Submitted draft" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 19 }}>
+          <section aria-label="Submitted draft" style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: '0 1 290px', minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 19, flexWrap: 'wrap' }}>
               <Text v="overline" as="h2">Submitted draft</Text>
               {compare.live && <StatusBadge tone="pending" icon="clock">{plural(changeCount, 'change')}</StatusBadge>}
             </div>
@@ -218,6 +218,7 @@ function Review({ brand }: { brand: BrandSubmission }) {
 
       {pending ? (
         <DecisionBar
+          sticky
           actions={
             <>
               <Button icon="x" onClick={() => { setError(null); setSendBackOpen(true) }} disabled={decide.isPending}>Send back</Button>
@@ -230,7 +231,7 @@ function Review({ brand }: { brand: BrandSubmission }) {
           Approving replaces the live page in the app. Sending back keeps the live page as it is.
         </DecisionBar>
       ) : (
-        <DecisionBar icon={brand.status === 'approved' ? 'check' : 'x'} actions={<Button to="/queue" icon="arrowLeft">Back to the queue</Button>}>
+        <DecisionBar icon={brand.status === 'approved' ? 'check' : 'x'} actions={<Button to="/queue" icon="arrowLeft" className="shz-btn">Back to the queue</Button>}>
           {brand.status === 'approved'
             ? `Approved by ${decided?.by ?? 'a reviewer'} · ${decided?.at ?? ''}. The new page replaces the live one once it reaches the app.`
             : `Sent back by ${decided?.by ?? 'a reviewer'} · ${decided?.at ?? ''}. The live page is unchanged.`}
