@@ -20,6 +20,8 @@ from vendor_api.api import (
     brand_profile,
     health,
     jwks,
+    product_import,
+    products,
     team,
     vendor,
 )
@@ -40,6 +42,8 @@ from vendor_api.services.auth import AuthService
 from vendor_api.services.brand_profiles import BrandProfileService
 from vendor_api.services.credentials import CredentialService
 from vendor_api.services.email import EmailService, build_sender
+from vendor_api.services.product_import import ProductImportService
+from vendor_api.services.products import ProductService
 from vendor_api.services.review_decisions import ReviewDecisionService
 from vendor_api.services.review_queue import ReviewQueueService
 from vendor_api.services.signup import SignupService
@@ -110,6 +114,8 @@ def create_app(
     # Phase 4 registers its outbox writer with `app.state.review_decisions.add_hook(...)`.
     app.state.review_decisions = ReviewDecisionService()
     app.state.brand_profiles = BrandProfileService()
+    app.state.products = ProductService()
+    app.state.product_import = ProductImportService(settings, app.state.products)
     app.state.refresh_tokens = RefreshTokenStore(app.state.redis, refresh_token_config(settings))
     app.state.sessions = AuthService(
         settings, app.state.passwords, app.state.vendor_tokens, app.state.refresh_tokens
@@ -140,6 +146,8 @@ def create_app(
     v1.include_router(vendor.router)
     v1.include_router(team.router)
     v1.include_router(brand_profile.router)
+    v1.include_router(products.router)
+    v1.include_router(product_import.router)
     if settings.identity_jwks_url:
         v1.include_router(admin.router)
         v1.include_router(admin_reviews.router)

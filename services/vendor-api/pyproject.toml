@@ -10,6 +10,10 @@ dependencies = [
     "redis>=5.2",
     "sqlalchemy[asyncio]>=2.0.36",
     "alembic>=1.14",
+    # Bulk product import (services/import_sheet.py). openpyxl uses defusedxml when it is
+    # installed, which refuses XML entity tricks in an uploaded workbook; a test checks it is on.
+    "openpyxl>=3.1",
+    "defusedxml>=0.7",
     # Shared packages from this repository (packages/py-auth, packages/py-security) are
     # deliberately never listed here: the names are not ours on PyPI, so a plain requirement could
     # install someone else's package. They come from the repository path through
@@ -44,6 +48,10 @@ plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 module = "asyncpg.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "openpyxl.*"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
