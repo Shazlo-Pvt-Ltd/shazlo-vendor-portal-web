@@ -474,3 +474,26 @@ def test_asset_sign_is_a_known_rate_limited_endpoint() -> None:
         60,
         3600,
     )
+
+
+# --- Bulk import -------------------------------------------------------------------------
+
+
+def test_the_import_limits_have_defaults_and_bounds() -> None:
+    s = make()
+    assert (s.import_max_bytes, s.import_max_rows) == (2 * 1024 * 1024, 1000)
+    rule = s.rate_limit_bulk_import_vendor
+    assert (rule.limit, rule.window_seconds) == (10, 3600)
+    bad_values: list[dict[str, int]] = [
+        {"import_max_bytes": 0},
+        {"import_max_bytes": 20 * 1024 * 1024 + 1},
+        {"import_max_rows": 0},
+        {"import_max_rows": 5001},
+    ]
+    for bad in bad_values:
+        with pytest.raises(ValidationError):
+            make(**bad)
+
+
+def test_bulk_import_is_a_known_rate_limited_endpoint() -> None:
+    assert make(rate_limit_fail_closed=["bulk_import"]).rate_limit_fail_closed == ["bulk_import"]

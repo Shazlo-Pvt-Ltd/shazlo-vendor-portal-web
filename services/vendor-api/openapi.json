@@ -840,6 +840,71 @@
         "title": "ImageOut",
         "type": "object"
       },
+      "ImportMode": {
+        "enum": [
+          "validate",
+          "import",
+          "all_or_nothing"
+        ],
+        "title": "ImportMode",
+        "type": "string"
+      },
+      "ImportReportOut": {
+        "properties": {
+          "committed": {
+            "title": "Committed",
+            "type": "boolean"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/RowErrorOut"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "errors_truncated": {
+            "title": "Errors Truncated",
+            "type": "boolean"
+          },
+          "file_format": {
+            "title": "File Format",
+            "type": "string"
+          },
+          "ignored_columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ignored Columns",
+            "type": "array"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "products": {
+            "items": {
+              "$ref": "#/components/schemas/ProductResultOut"
+            },
+            "title": "Products",
+            "type": "array"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/SummaryOut"
+          }
+        },
+        "required": [
+          "mode",
+          "file_format",
+          "committed",
+          "summary",
+          "ignored_columns",
+          "products",
+          "errors",
+          "errors_truncated"
+        ],
+        "title": "ImportReportOut",
+        "type": "object"
+      },
       "InviteRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1120,6 +1185,45 @@
         "title": "ProductPageOut",
         "type": "object"
       },
+      "ProductResultOut": {
+        "properties": {
+          "product_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          },
+          "rows": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "sku": {
+            "title": "Sku",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sku",
+          "rows",
+          "status",
+          "product_id"
+        ],
+        "title": "ProductResultOut",
+        "type": "object"
+      },
       "ProductSummaryOut": {
         "properties": {
           "category": {
@@ -1391,6 +1495,41 @@
         "title": "RevisionOut",
         "type": "object"
       },
+      "RowErrorOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "row": {
+            "title": "Row",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row",
+          "column",
+          "code",
+          "message"
+        ],
+        "title": "RowErrorOut",
+        "type": "object"
+      },
       "SessionResponse": {
         "description": "The refresh token is never in the body; it is only ever in the HttpOnly cookie.",
         "properties": {
@@ -1607,6 +1746,49 @@
           "terms_accepted"
         ],
         "title": "SignupRequest",
+        "type": "object"
+      },
+      "SummaryOut": {
+        "properties": {
+          "created": {
+            "title": "Created",
+            "type": "integer"
+          },
+          "products": {
+            "title": "Products",
+            "type": "integer"
+          },
+          "rejected": {
+            "title": "Rejected",
+            "type": "integer"
+          },
+          "rows_read": {
+            "title": "Rows Read",
+            "type": "integer"
+          },
+          "rows_with_errors": {
+            "title": "Rows With Errors",
+            "type": "integer"
+          },
+          "unchanged": {
+            "title": "Unchanged",
+            "type": "integer"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "products",
+          "created",
+          "unchanged",
+          "valid",
+          "rejected",
+          "rows_read",
+          "rows_with_errors"
+        ],
+        "title": "SummaryOut",
         "type": "object"
       },
       "UpdateUserRequest": {
@@ -2780,6 +2962,125 @@
         "summary": "Create Product",
         "tags": [
           "products"
+        ]
+      }
+    },
+    "/v1/vendor/products/import": {
+      "post": {
+        "description": "Imports products from a `.xlsx` or `.csv` sent as the request body. Always `200` with a\nreport listing every rejected row (row, column, reason); file-level problems are `413`, `415`\nor `422`. One row is one variant; rows with the same `sku` are one product. Download the\ntemplate for the columns. Imported products are drafts without images. Uploading the same\nfile again creates nothing new. Limited per vendor.",
+        "operationId": "import_products_v1_vendor_products_import_post",
+        "parameters": [
+          {
+            "description": "`validate` writes nothing; `import` creates every valid product and reports the rest; `all_or_nothing` creates nothing unless the whole file is valid.",
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ImportMode",
+              "default": "import",
+              "description": "`validate` writes nothing; `import` creates every valid product and reports the rest; `all_or_nothing` creates nothing unless the whole file is valid."
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "text/csv": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "description": "The file itself, as the request body (not a multipart form).",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportReportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Import Products",
+        "tags": [
+          "products-import"
+        ]
+      }
+    },
+    "/v1/vendor/products/import/template": {
+      "get": {
+        "description": "The sample file: the columns, three example rows (two products, three variants) and, in\nthe Excel version, an instructions sheet. Uploading it untouched with `mode=validate` shows what\na clean report looks like.",
+        "operationId": "import_template_v1_vendor_products_import_template_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "xlsx",
+              "enum": [
+                "xlsx",
+                "csv"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Import Template",
+        "tags": [
+          "products-import"
         ]
       }
     },

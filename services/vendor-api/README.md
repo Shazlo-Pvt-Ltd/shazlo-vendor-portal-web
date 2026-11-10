@@ -11,7 +11,7 @@ FastAPI service for vendors, brand profiles, products, assets, reviews and publi
 - **Its own tokens and keys:** vendor-api signs vendor tokens with its own key and serves its own JWKS.
 - **The schema** for vendors, users, tokens and (in the open Phase 2 PRs) brand profiles, products and reviews.
 
-Phase 3 adds the vendor brand profile, product catalog and signed media uploads.
+Phase 3 adds brand profiles, products, signed media uploads and bulk product imports.
 
 ## Quick start: from nothing to a signed-in vendor
 
@@ -56,7 +56,7 @@ The live reference is the OpenAPI document at <http://localhost:8002/docs> (dev;
 | Health | `GET /health`, `GET /ready` | anyone |
 | Keys | `GET /.well-known/jwks.json` | anyone |
 | Vendor auth | `POST /v1/auth/signup`, `verify-email`, `resend-verification`, `login`, `refresh`, `logout`, `change-password`, `forgot-password`, `set-password` | anyone, or a vendor token for `change-password` |
-| Vendor | `GET /v1/vendor/me`; `GET`/`PUT /v1/vendor/brand-profile`, `POST /v1/vendor/brand-profile/submit`, `GET /v1/vendor/brand-profile/published`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only); `GET`/`POST /v1/vendor/products`, `GET`/`PUT`/`DELETE /v1/vendor/products/{id}`, `POST /v1/vendor/products/{id}/submit`; `POST /v1/vendor/assets/sign`, `POST /v1/vendor/assets` | vendor-api tokens only |
+| Vendor | `GET /v1/vendor/me`; `GET`/`PUT /v1/vendor/brand-profile`, `POST /v1/vendor/brand-profile/submit`, `GET /v1/vendor/brand-profile/published`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only); `GET`/`POST /v1/vendor/products`, `GET`/`PUT`/`DELETE /v1/vendor/products/{id}`, `POST /v1/vendor/products/{id}/submit`; `POST /v1/vendor/assets/sign`, `POST /v1/vendor/assets`; `POST /v1/vendor/products/import`, `GET /v1/vendor/products/import/template` | vendor-api tokens only |
 | Admin | `GET /v1/admin/me` | identity-api tokens only (`vendor_reviewer` or `super_admin`) |
 
 The sections below describe each group.
@@ -251,6 +251,28 @@ Limits: the declared type and size are checked when signing (`422 validation_err
 
 A `ready` asset of the right kind and vendor is what the brand profile and products accept as an image. Assets that were signed but never registered stay `pending`; a cleanup job for them (and for the files at Cloudinary) is not part of this issue.
 
+## Bulk product import (`.xlsx` / `.csv`)
+
+A vendor can create many products from one spreadsheet. Any active user of the vendor (owner or staff) can use it.
+
+- **`GET /v1/vendor/products/import/template?format=xlsx|csv`** downloads a sample: the columns, three example rows (two products, three variants) and, in the Excel file, an instructions sheet.
+- **`POST /v1/vendor/products/import?mode=import|validate|all_or_nothing`** takes the file **as the request body** (not a multipart form), with `Content-Type: text/csv` or the `.xlsx` type (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`). The bytes decide the format (an `.xlsx` is a zip); the type only turns away things that are plainly something else (`415`). Limited per vendor (`bulk_import`).
+
+**The sheet.** The first row names the columns (case, spaces and dashes do not matter; unknown columns are ignored and listed). **One row is one variant**; rows that share a product `sku` (ignoring case) are one product with several variants. Columns: `sku`, `title`, `description`, `category`, `subcategory`, `gender` (`women`, `men`, `unisex`), `fabric`, `weight_grams`, `returnable`, `return_window_days`, `variant_sku`, `size`, `color`, `price`, `mrp`, `is_active`. Required: `sku`, `title`, `category`, `gender`, `variant_sku`, `price` (`sku`, `variant_sku` and `price` on every row; the product's details on its first row). The other rows of a product repeat the details (they must match, or `conflicting_value`) or leave them blank. Prices are in **rupees** (`1499`, `899.50`, no symbols or commas) and become exact paise; `mrp` defaults to `price`; `returnable` and `is_active` take yes/no; a returnable product needs `return_window_days`. **Images cannot be imported** (an image is an uploaded asset): imported products are `draft`s, and the vendor adds images in the portal and submits them.
+
+**The rules are the products API's.** Each product is validated with the same model as `POST /v1/vendor/products`, so a row that imports could have been created by hand and the limits never drift apart. On top of that, per row: duplicates in the file (variant SKUs, size and colour), SKUs already used in the database (`variant_sku_taken`), and what only a spreadsheet needs (numbers, yes/no, text).
+
+**The report.** The answer is always `200` with a report (file-level problems are `413`, `415` or `422`): `summary` (products, created, unchanged, valid, rejected, rows read, rows with errors), `products` (each SKU with its rows, `status` and `product_id`) and `errors`: **every rejected row with its row number (as in the spreadsheet: the header is row 1), column, code and a plain reason**. The report includes a reason for each row with a validation error. It caps extra details at 500 total entries unless more rows each need a reason (`errors_truncated`). A product is never half imported: if any of its rows has an error, the whole product is `rejected`. The report never echoes a rejected cell's content.
+
+**Modes** (decided here):
+- `import` (default): every product whose rows are all valid is created, the rest are reported. Products are created in one transaction, each inside a savepoint, so one that fails to save (a SKU taken a moment ago by another request) is reported as `sku_taken` and the others still import.
+- `validate`: reads and checks everything, writes nothing (the products are `valid`). Use it to preview.
+- `all_or_nothing`: creates nothing unless the whole file is valid (`committed: false` otherwise); if a product fails to save, everything is undone.
+
+**Importing the same file again creates nothing new.** A product whose SKU exists with the same details and variants is `unchanged`; one that exists with different details is `sku_exists` (an import never changes a product: edit it through the products API). So fixing the rejected rows and uploading the whole file again only creates what is missing.
+
+**A hostile file.** Limits are checked before anything is parsed: the size (`IMPORT_MAX_BYTES`, enforced while the body streams in, so a body that does not declare its length is cut off), the rows (`IMPORT_MAX_ROWS`; blank rows count toward a scan limit of five times that, so a file of empty rows cannot keep the server busy), at most 40 columns, and 5000 characters per cell. An `.xlsx` is a zip: it is refused if it unpacks to more than 50 MiB, has an entry that unpacks to over 100 times its size, has more than 200 parts, or contains macros, external links or embedded objects. It is read in streaming mode with `defusedxml` installed, so XML entity tricks are refused. Only the first sheet is read. **Formulas** (a cell that holds a formula) and **text that a spreadsheet would run as one** (starting with `=`, `+`, `-`, `@`, a tab or a carriage return) are rejected, so such text can never be stored and come back out in an export opened in a spreadsheet. (In a number column a leading `-` is a sign, and gets the "use an amount in rupees" message.)
+
 ## Team, invites and password reset
 
 Three cases end with "someone gets an email and sets a password": an owner inviting a staff member, a user who forgot their password, and (Phase 8) the owner of a vendor migrated from MongoDB. All use the same one-time token: 256-bit, only its SHA-256 stored, single use, and a newer token for the same purpose ends the older ones.
@@ -289,7 +311,7 @@ Keys are `vendor:rl:<endpoint>:<scope>:<hash>`: the prefix and the `RATE_LIMIT_H
 
 - **Nobody can lock a vendor out.** The checks run in order and stop at the first one that refuses, so a request the per-IP or per-pair counter already refuses never reaches the per-email counter: one attacking IP adds at most 5 per 15 minutes to it. And an email + IP pair that logged in successfully in the last 30 days skips the per-email counter, so a vendor on their usual network gets in even while someone guesses from elsewhere.
 - **Signup and resend are limited on the address as typed**, whether or not it is registered, so the limit looks the same either way and reveals nothing. Per address matters because those endpoints send email (verification, or "you already have an account"): without it they would mail-bomb an inbox.
-- **When Redis is down** the endpoints in `RATE_LIMIT_FAIL_CLOSED` answer `503 rate_limiter_unavailable`: the ones that check a password (`login`, `change_password`) so guessing stays limited, and the ones that send email (`signup`, `resend_verification`, `forgot_password`, `staff_invite`) so an outage cannot be used to flood an inbox. The others skip the limit and log a warning (fail open): `asset_sign` (add it to `RATE_LIMIT_FAIL_CLOSED` if upload cost matters more than availability), `refresh` (signed-in vendors keep working; refreshing needs Redis anyway), `verify_email` and `set_password` (they need a 256-bit token, which cannot be guessed at any rate).
+- **When Redis is down** the endpoints in `RATE_LIMIT_FAIL_CLOSED` answer `503 rate_limiter_unavailable`: the ones that check a password (`login`, `change_password`) so guessing stays limited, and the ones that send email (`signup`, `resend_verification`, `forgot_password`, `staff_invite`) so an outage cannot be used to flood an inbox. The others skip the limit and log a warning (fail open): `asset_sign` and `bulk_import` (add them to `RATE_LIMIT_FAIL_CLOSED` to enforce the limits during an outage), `refresh` (signed-in vendors keep working; refreshing needs Redis anyway), `verify_email` and `set_password` (they need a 256-bit token, which cannot be guessed at any rate).
 - **Behind a proxy**, set `TRUSTED_PROXIES`. Without it every client looks like the proxy and shares one set of per-IP counters.
 
 ## Email
