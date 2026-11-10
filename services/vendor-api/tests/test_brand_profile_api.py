@@ -12,6 +12,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vendor_api.db.models import (
+    Asset,
     AssetKind,
     AssetStatus,
     BrandProfile,
@@ -57,6 +58,8 @@ async def submit(tenants: Tenants, tenant: Tenant, token: str | None = None) -> 
 
 
 async def rows(session: AsyncSession, model: Any, vendor: Vendor, *order: Any) -> list[Any]:
+    # A request that fails rolls the shared test session back, which expires the loaded rows.
+    await session.refresh(vendor)
     result: Any = await session.scalars(
         select(model)
         .where(model.vendor_id == vendor.id)
@@ -67,6 +70,7 @@ async def rows(session: AsyncSession, model: Any, vendor: Vendor, *order: Any) -
 
 
 async def published(session: AsyncSession, vendor: Vendor, **changes: Any) -> BrandProfile:
+    await session.refresh(vendor)
     now = datetime.now(UTC)
     values: dict[str, Any] = {
         "state": "published",
@@ -75,7 +79,20 @@ async def published(session: AsyncSession, vendor: Vendor, **changes: Any) -> Br
         "submitted_at": now,
         "published_at": now,
     }
-    return await saved_profile(session, vendor, **{**values, **changes})
+    profile = await saved_profile(session, vendor, **{**values, **changes})
+    await session.commit()  # a request that fails rolls back anything that is only flushed
+    return profile
+
+
+async def asset(session: AsyncSession, tenant: Tenant, **changes: Any) -> Asset:
+    """A saved and committed asset of the tenant. Committed, because a request that is refused
+    rolls the shared test session back: an asset that was only flushed would vanish and the
+    refusal would be about a missing asset, not the one under test."""
+    await session.refresh(tenant.vendor)
+    await session.refresh(tenant.owner)
+    result = await saved_asset(session, tenant.vendor, tenant.owner, **changes)
+    await session.commit()
+    return result
 
 
 # --- The draft ---------------------------------------------------------------------------
@@ -210,11 +227,8 @@ async def test_a_suspended_vendor_cannot_use_it(tenants: Tenants, session: Async
 async def test_the_draft_can_use_the_vendors_own_logo_and_banner(
     tenants: Tenants, session: AsyncSession
 ) -> None:
-    vendor, user = tenants.a.vendor, tenants.a.owner
-    logo = await saved_asset(session, vendor, user, public_id="a/logo")
-    banner = await saved_asset(
-        session, vendor, user, public_id="a/banner", kind=AssetKind.BRAND_BANNER
-    )
+    logo = await asset(session, tenants.a, public_id="a/logo")
+    banner = await asset(session, tenants.a, public_id="a/banner", kind=AssetKind.BRAND_BANNER)
     body = (
         await put(
             tenants,
@@ -230,7 +244,7 @@ async def test_the_draft_can_use_the_vendors_own_logo_and_banner(
 async def test_another_vendors_image_is_the_same_422_as_one_that_does_not_exist(
     tenants: Tenants, session: AsyncSession
 ) -> None:
-    theirs = await saved_asset(session, tenants.b.vendor, tenants.b.owner, public_id="b/logo")
+    theirs = await asset(session, tenants.b, public_id="b/logo")
     foreign = await put(tenants, tenants.a, {**CONTENT, "logo_asset_id": str(theirs.id)})
     missing = await put(tenants, tenants.a, {**CONTENT, "logo_asset_id": str(uuid.uuid4())})
     assert foreign.status_code == missing.status_code == 422
@@ -255,8 +269,8 @@ async def test_another_vendors_image_is_the_same_422_as_one_that_does_not_exist(
 async def test_an_image_of_the_wrong_kind_or_state_is_refused(
     tenants: Tenants, session: AsyncSession, changes: dict[str, Any]
 ) -> None:
-    asset = await saved_asset(session, tenants.a.vendor, tenants.a.owner, **changes)
-    response = await put(tenants, tenants.a, {**CONTENT, "logo_asset_id": str(asset.id)})
+    bad = await asset(session, tenants.a, **changes)
+    response = await put(tenants, tenants.a, {**CONTENT, "logo_asset_id": str(bad.id)})
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "invalid_asset"
 
@@ -316,6 +330,7 @@ async def test_a_rejected_version_is_the_start_of_the_next_draft(
         categories=["kurtas"],
         submitted_at=datetime.now(UTC),
     )
+    await session.commit()
     body = (await get(tenants, tenants.a)).json()
     assert (body["version"], body["brand_name"]) == (2, "Needs work")
     assert (await submit(tenants, tenants.a)).status_code == 200
@@ -412,7 +427,7 @@ async def test_a_draft_without_a_category_cannot_be_submitted(
 async def test_an_image_deleted_since_saving_blocks_the_submission(
     tenants: Tenants, session: AsyncSession
 ) -> None:
-    logo = await saved_asset(session, tenants.a.vendor, tenants.a.owner, public_id="a/logo")
+    logo = await asset(session, tenants.a, public_id="a/logo")
     await put(tenants, tenants.a, {**CONTENT, "logo_asset_id": str(logo.id)})
     logo.status = AssetStatus.DELETED
     await session.commit()
@@ -434,8 +449,8 @@ async def test_a_pending_vendor_can_edit_and_submit(tenants: Tenants) -> None:
 async def test_each_vendor_has_its_own_draft_and_published_version(
     tenants: Tenants, session: AsyncSession
 ) -> None:
-    await put(tenants, tenants.a, {**CONTENT, "brand_name": "Only A knows this"})
-    await published(session, tenants.a.vendor, brand_name="A is live")
+    await published(session, tenants.a.vendor, brand_name="A is live")  # version 1
+    await put(tenants, tenants.a, {**CONTENT, "brand_name": "Only A knows this"})  # draft 2
 
     b_draft = await get(tenants, tenants.b)
     assert b_draft.status_code == 200
