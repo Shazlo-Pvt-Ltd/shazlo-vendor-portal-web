@@ -123,6 +123,35 @@ def test_the_hardening_migration_alone_can_be_undone_and_redone(
         engine.dispose()
 
 
+def _event_columns(engine: Engine) -> set[str]:
+    return {column["name"] for column in inspect(engine).get_columns("review_events")}
+
+
+def test_the_event_detail_migration_alone_can_be_undone_and_redone(
+    alembic_config: Config, migrated_db: str
+) -> None:
+    engine = create_engine(sync_url(migrated_db))
+    try:
+        assert "detail" in _event_columns(engine)
+        try:
+            command.downgrade(alembic_config, "0006")
+            assert "detail" not in _event_columns(engine)
+            assert _tables(migrated_db) >= TABLES  # only the column goes
+        finally:
+            command.upgrade(alembic_config, "head")
+        assert "detail" in _event_columns(engine)
+        with engine.connect() as connection:
+            kind = connection.scalar(
+                text(
+                    "SELECT data_type FROM information_schema.columns "
+                    "WHERE table_name = 'review_events' AND column_name = 'detail'"
+                )
+            )
+        assert kind == "jsonb"
+    finally:
+        engine.dispose()
+
+
 def test_the_review_migration_alone_can_be_undone_and_redone(
     alembic_config: Config, migrated_db: str
 ) -> None:

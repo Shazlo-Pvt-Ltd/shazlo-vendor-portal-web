@@ -1,8 +1,9 @@
-"""The review queue for reviewers: what is waiting, and what exactly changed.
+"""The review queue for reviewers: what is waiting, what exactly changed, and the decision.
 
 Part of the admin group (`/v1/admin/*`, identity-api tokens only, role `vendor_reviewer` or
 `super_admin`): the router-level dependency in `api/admin.py` protects every route here. Reviewers
-see every vendor's submissions, so there is no vendor scoping. These endpoints only read.
+see every vendor's submissions, so there is no vendor scoping. The reviewer who decides is
+always the token's `sub` (`Reviewer.id`), never anything in the request.
 """
 
 import uuid
@@ -10,13 +11,15 @@ from datetime import datetime
 from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from vendor_api.api.admin import reviewer_dependency
+from vendor_api.api.admin import AdminRequest, Reviewer, reviewer_dependency
 from vendor_api.api.auth import no_store
+from vendor_api.core.validation import DatabaseText
 from vendor_api.db.models import Review, ReviewEvent, ReviewStatus, ReviewSubject
 from vendor_api.db.session import get_session
+from vendor_api.services.review_decisions import ReviewDecisionService
 from vendor_api.services.review_queue import (
     MAX_PAGE_SIZE,
     ReviewDetail,
@@ -37,6 +40,30 @@ def get_review_queue(request: Request) -> ReviewQueueService:
 
 
 Queue = Annotated[ReviewQueueService, Depends(get_review_queue)]
+
+
+def get_review_decisions(request: Request) -> ReviewDecisionService:
+    return cast(ReviewDecisionService, request.app.state.review_decisions)
+
+
+Decisions = Annotated[ReviewDecisionService, Depends(get_review_decisions)]
+
+
+class ApproveRequest(AdminRequest):
+    # The version the reviewer looked at (`content.version` of the review). If the submission is
+    # no longer that version, the decision is refused with 409 instead of approving something
+    # the reviewer did not see.
+    version: int = Field(ge=1)
+
+
+class RejectRequest(ApproveRequest):
+    # Why. The vendor sees it. Required: a blank or whitespace-only reason is a 422.
+    reason: DatabaseText = Field(min_length=1, max_length=2000)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def _trim(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
 
 
 class VendorOut(BaseModel):
@@ -78,6 +105,8 @@ class EventOut(BaseModel):
     actor_type: str
     actor_id: uuid.UUID | None
     reason: str | None
+    # What a decision changed: the thing reviewed before and after (null for a submission).
+    detail: dict[str, Any] | None
     created_at: datetime
 
 
@@ -144,6 +173,7 @@ def _event(event: ReviewEvent) -> EventOut:
         actor_type=event.actor_type,
         actor_id=event.actor_id,
         reason=event.reason,
+        detail=event.detail,
         created_at=event.created_at,
     )
 
@@ -198,4 +228,42 @@ async def get_review(
     """One review with the version under review, the version it is compared with, **the fields
     that changed**, and its audit trail."""
     no_store(response)
+    return detail_out(await queue.get_review(db, review_id))
+
+
+@router.post("/{review_id}/approve")
+async def approve_review(
+    review_id: uuid.UUID,
+    body: ApproveRequest,
+    response: Response,
+    db: Db,
+    queue: Queue,
+    decisions: Decisions,
+    admin: Reviewer,
+) -> ReviewDetailOut:
+    """Approves a pending review: a brand profile version becomes the published one (the old one
+    is superseded), a product revision becomes the live revision. All in one transaction, with one
+    audit event naming the reviewer from the token and what changed. `409 stale_review` if the
+    submission is not the `version` the reviewer saw (or is no longer waiting, or a newer profile
+    version is already live); `409 review_already_decided` if it was decided first."""
+    no_store(response)
+    await decisions.approve(db, review_id, admin.id, body.version)
+    return detail_out(await queue.get_review(db, review_id))
+
+
+@router.post("/{review_id}/reject")
+async def reject_review(
+    review_id: uuid.UUID,
+    body: RejectRequest,
+    response: Response,
+    db: Db,
+    queue: Queue,
+    decisions: Decisions,
+    admin: Reviewer,
+) -> ReviewDetailOut:
+    """Rejects a pending review. A reason is required (`422` without one) and the vendor sees it.
+    Same `409`s as approving. A live product stays live: only the rejected revision is turned
+    down."""
+    no_store(response)
+    await decisions.reject(db, review_id, admin.id, body.version, body.reason)
     return detail_out(await queue.get_review(db, review_id))

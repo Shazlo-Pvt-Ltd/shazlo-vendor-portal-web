@@ -47,6 +47,7 @@ from vendor_api.services.credentials import CredentialService
 from vendor_api.services.email import EmailService, build_sender
 from vendor_api.services.product_import import ProductImportService
 from vendor_api.services.products import ProductService
+from vendor_api.services.review_decisions import ReviewDecisionService
 from vendor_api.services.review_queue import ReviewQueueService
 from vendor_api.services.signup import SignupService
 from vendor_api.services.team import TeamService
@@ -134,6 +135,8 @@ def create_app(
     app.state.assets = AssetService(settings, image_host)
     app.state.product_import = ProductImportService(settings, app.state.products)
     app.state.review_queue = ReviewQueueService()
+    # Phase 4 registers its outbox writer with `app.state.review_decisions.add_hook(...)`.
+    app.state.review_decisions = ReviewDecisionService()
     app.state.refresh_tokens = RefreshTokenStore(app.state.redis, refresh_token_config(settings))
     app.state.sessions = AuthService(
         settings, app.state.passwords, app.state.vendor_tokens, app.state.refresh_tokens

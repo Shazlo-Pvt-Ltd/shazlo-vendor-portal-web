@@ -11,7 +11,7 @@ FastAPI service for vendors, brand profiles, products, assets, reviews and publi
 - **Its own tokens and keys:** vendor-api signs vendor tokens with its own key and serves its own JWKS.
 - **The schema** for vendors, users, tokens and (in the open Phase 2 PRs) brand profiles, products and reviews.
 
-Phase 3 adds brand profiles, products, media uploads, bulk imports and the reviewer queue.
+Phase 3 adds brand profiles, products, media uploads, bulk imports and review decisions.
 
 ## Quick start: from nothing to a signed-in vendor
 
@@ -57,7 +57,7 @@ The live reference is the OpenAPI document at <http://localhost:8002/docs> (dev;
 | Keys | `GET /.well-known/jwks.json` | anyone |
 | Vendor auth | `POST /v1/auth/signup`, `verify-email`, `resend-verification`, `login`, `refresh`, `logout`, `change-password`, `forgot-password`, `set-password` | anyone, or a vendor token for `change-password` |
 | Vendor | `GET /v1/vendor/me`; `GET`/`PUT /v1/vendor/brand-profile`, `POST /v1/vendor/brand-profile/submit`, `GET /v1/vendor/brand-profile/published`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only); `GET`/`POST /v1/vendor/products`, `GET`/`PUT`/`DELETE /v1/vendor/products/{id}`, `POST /v1/vendor/products/{id}/submit`; `POST /v1/vendor/assets/sign`, `POST /v1/vendor/assets`; `POST /v1/vendor/products/import`, `GET /v1/vendor/products/import/template` | vendor-api tokens only |
-| Admin | `GET /v1/admin/me`, `GET /v1/admin/reviews`, `GET /v1/admin/reviews/{id}` | identity-api tokens only (`vendor_reviewer` or `super_admin`) |
+| Admin | `GET /v1/admin/me`, `GET /v1/admin/reviews`, `GET /v1/admin/reviews/{id}`, `POST /v1/admin/reviews/{id}/approve`, `POST /v1/admin/reviews/{id}/reject` | identity-api tokens only (`vendor_reviewer` or `super_admin`) |
 
 The sections below describe each group.
 
@@ -275,7 +275,7 @@ A vendor can create many products from one spreadsheet. Any active user of the v
 
 ## Review queue (reviewers)
 
-What vendors have submitted, and exactly what changed. Part of the admin group: identity-api tokens only, role `vendor_reviewer` (or `super_admin`), enforced once for the whole `/v1/admin` router. A vendor token, no token and a token for another audience are `401`; an admin without the role is `403 forbidden`. Reviewers see **every vendor's** submissions (nothing is scoped to a vendor). These two endpoints only read: approving and rejecting are separate.
+What vendors have submitted, and exactly what changed. Part of the admin group: identity-api tokens only, role `vendor_reviewer` (or `super_admin`), enforced once for the whole `/v1/admin` router. A vendor token, no token and a token for another audience are `401`; an admin without the role is `403 forbidden`. Reviewers see **every vendor's** submissions (nothing is scoped to a vendor). The two `GET`s only read; deciding is below.
 
 | Endpoint | What it does |
 | --- | --- |
@@ -292,6 +292,32 @@ With no `base` (a first submission) every field that has a value is listed as ad
 - brand profile fields: `brand_name`, `tagline`, `about`, `logo`, `banner` (the asset id and its URL), `website_url`, `instagram_handle`, `categories` (a list that differs in content or order), `price_min_paise`, `price_max_paise`;
 - product fields: `title`, `description`, `category`, `subcategory`, `gender`, `fabric`, `weight_grams`, `returnable`, `return_window_days`; then **variants** by SKU (a whole variant added or removed is `variants[<sku>]` with `null` on one side; a variant that changed is one entry per changed field, `variants[<sku>].price_paise`), then **images** by position (`images[<position>]`, the asset and caption on each side; the same picture with the same caption is not a change, and a changed URL for the same asset is not either).
 - `null` and an empty list count as the same "nothing"; empty text is not nothing; `false` and `0` are values.
+
+### Deciding a review
+
+| Endpoint | What it does |
+| --- | --- |
+| `POST /v1/admin/reviews/{id}/approve` | Body `{"version": N}`. Approves a pending review (below). The answer is the review as it now stands (the same as `GET /v1/admin/reviews/{id}`), with the new audit event |
+| `POST /v1/admin/reviews/{id}/reject` | Body `{"version": N, "reason": "..."}`. **A reason is required**: a missing, empty or whitespace-only one is `422` (it is trimmed, at most 2000 characters), and the database refuses a rejection without one too. The vendor sees it |
+
+**The reviewer is the token, never the request.** The reviewer recorded on the review and on the audit event is the verified token's `sub`. Bodies refuse unknown fields (a `reviewer_id` in a body is `422`); one in the query or a header is never read.
+
+**`version` is what the reviewer looked at** (`content.version` in `GET /v1/admin/reviews/{id}`). A submitted version never changes, so this is how "the submission changed since you opened it" is caught: any difference is `409 stale_review`.
+
+**Approving** is one transaction: the review is decided, the thing reviewed moves along, one audit event is written and the hooks run (below). If anything fails, none of it happened.
+- A **brand profile version**: the published version becomes `superseded`, then the reviewed one becomes `published` (two updates in this order: the database allows one published version per vendor and checks it per statement).
+- A **product revision** becomes the product's live revision and the pending slot is emptied; the product is `approved`. Its `version` (what the central app uses to drop stale events) is raised when the live content *changes*, so the first time a product goes live it stays at 1 and each later approval adds 1.
+
+**Rejecting.** A brand profile version becomes `rejected`. A product that never went live becomes `rejected`; a product that is live **stays `approved` and keeps its live revision**. The rejected revision stays in the pending slot, so the vendor sees the reason and edits a new revision.
+
+**What is refused (`409`)**, always with nothing changed:
+- `review_already_decided`: someone decided it first. A double click, or two reviewers on one review, cannot decide twice, so **every decision has exactly one audit event**.
+- `stale_review`: `version` is not the version under review; the version or product is no longer waiting for a decision (a profile version that is not `pending_review`, a product that was archived or whose pending slot moved on); or, for an **approval**, a newer version of the profile is already live (approving would put an older page over it; rejecting it is still fine).
+`404 review_not_found` for an unknown id. All decisions of one vendor are serialised (its row is locked), so two reviewers cannot interleave the two updates of an approval.
+
+**The audit trail.** Each decision writes one `review_events` row: who (`actor_type` `admin` and the token's id), what (`approved` or `rejected`), when, the `reason`, and `detail`, a JSON object saying what changed: the thing reviewed before and after. For a brand profile: the version, its state before and after, the published version before and the one it superseded. For a product: the product, its SKU, the revision, and its status, `product_version` and live revision before and after. Events are append-only (a trigger refuses any change), and a submission has no `detail`.
+
+**The hook for Phase 4.** `app.state.review_decisions.add_hook(hook)` registers `async def hook(db, decision)`. It runs **inside the decision's transaction**, after the changes and the audit event and before the commit, with the `Decision` that was made (the review, the action, the reviewer, `detail`, and the profile, the one it superseded, or the product and revision). That is where Phase 4 writes the central-app outbox row: it commits with the approval or not at all, and a hook that raises undoes the whole decision. Hooks also run for rejections (`decision.action`).
 
 ## Team, invites and password reset
 
@@ -345,7 +371,7 @@ Signup verification, staff invites and password reset send email (issue #80). Th
 
 ## Database
 
-Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (psycopg 3). Migration `0001` is an empty baseline; `0002` adds the vendor and vendor-user tables; `0003` adds assets and brand profiles; `0004` adds products; `0005` adds reviews; `0006` freezes submitted content and decided reviews (triggers), requires a pending revision for a product in review, and indexes the review foreign keys.
+Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (psycopg 3). Migration `0001` is an empty baseline; `0002` adds the vendor and vendor-user tables; `0003` adds assets and brand profiles; `0004` adds products; `0005` adds reviews; `0006` freezes submitted content and decided reviews (triggers), requires a pending revision for a product in review, and indexes the review foreign keys; `0007` adds `detail` to `review_events`.
 
 | Table | Notes |
 |---|---|
@@ -361,7 +387,7 @@ Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (ps
 | `product_revision_variants` | What a revision says about a variant: `price_paise` (> 0), `mrp_paise` (>= price), `is_active` |
 | `product_images` | An ordered image of a revision: `position` 1 to 10 (unique per revision, so at most 10), `alt_text` (200), `asset_id` |
 | `reviews` | An admin's review of one version of something a vendor submitted. `subject` (`brand_profile` or `product`) with exactly one of `brand_profile_id` / `product_revision_id`; `status` (`pending`, `approved`, `rejected`, `withdrawn`); `submitted_by`, `submitted_at`; `reviewer_id` (an identity-api admin id, no foreign key: another database), `decided_at`, `reason` |
-| `review_events` | **Append-only** audit trail of a review: `action` (`submitted`, `approved`, `rejected`, `withdrawn`, `reopened`), `actor_type` (`admin`, `system`, `vendor`), `actor_id` (required unless the actor is the system), `reason`. A trigger refuses UPDATE, DELETE and TRUNCATE, and a review with events cannot be deleted |
+| `review_events` | **Append-only** audit trail of a review: `action` (`submitted`, `approved`, `rejected`, `withdrawn`, `reopened`), `actor_type` (`admin`, `system`, `vendor`), `actor_id` (required unless the actor is the system), `reason`, `detail` (JSON: what a decision changed, before and after; null for a submission). A trigger refuses UPDATE, DELETE and TRUNCATE, and a review with events cannot be deleted |
 
 Role, status and purpose values are plain text columns with check constraints, so adding a value is a migration of that constraint. Vendors and users are never deleted (foreign keys are `RESTRICT`): suspend or disable them instead.
 
