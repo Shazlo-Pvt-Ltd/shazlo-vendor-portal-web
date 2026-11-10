@@ -7,7 +7,7 @@ FastAPI service for vendors, brand profiles, products, assets, reviews and publi
 - **Vendor accounts:** signup with email verification, login, refresh (rotating tokens with reuse detection), logout, change-password, forgot and set password.
 - **A team per vendor:** the owner invites staff, lists, disables and enables them; invites and resets go by email.
 - **Vendor-scoped data isolation**, with helpers and tests that fail when a route or table skips the rule.
-- **Admin API** (`/v1/admin/*`): accepts only identity-api tokens, verified through its JWKS. Phase 3 adds the review queue.
+- **Admin API** (`/v1/admin/*`): accepts only identity-api tokens, verified through its JWKS. The review queue is the first part of it.
 - **Its own tokens and keys:** vendor-api signs vendor tokens with its own key and serves its own JWKS.
 - **The schema** for vendors, users, tokens and (in the open Phase 2 PRs) brand profiles, products and reviews.
 
@@ -57,7 +57,7 @@ The live reference is the OpenAPI document at <http://localhost:8002/docs> (dev;
 | Keys | `GET /.well-known/jwks.json` | anyone |
 | Vendor auth | `POST /v1/auth/signup`, `verify-email`, `resend-verification`, `login`, `refresh`, `logout`, `change-password`, `forgot-password`, `set-password` | anyone, or a vendor token for `change-password` |
 | Vendor | `GET /v1/vendor/me`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only) | vendor-api tokens only |
-| Admin | `GET /v1/admin/me` | identity-api tokens only (`vendor_reviewer` or `super_admin`) |
+| Admin | `GET /v1/admin/me`, `GET /v1/admin/reviews`, `GET /v1/admin/reviews/{id}` | identity-api tokens only (`vendor_reviewer` or `super_admin`) |
 
 The sections below describe each group.
 
@@ -192,6 +192,26 @@ A vendor cannot read, change or learn about another vendor's data, and another v
 **What fails CI if it is forgotten**: `tests/test_isolation_structure.py` fails when a table of vendor data has no `vendor_id`, no foreign key to `vendors`, or no index on it, and when a route under `/v1/vendor` does not depend on `current_vendor_user`. It finds routers by walking `vendor_api/api`, so a new module is checked without anyone adding it to a list, and its last tests feed it bad samples to show it does fail.
 
 **What is covered today**: `/v1/vendor/me`, the staff list, disable and enable, and resend-invite: each vendor's lists hold only its own rows; B's user ids (the owner, a staff member, an invited user) and random ids are the same 404 (identical bodies), in both directions, with B's rows unchanged afterwards; a staff member gets the same 403 for their own, another vendor's and unknown ids; an invite always lands in the caller's vendor; a token whose vendor is not the user's vendor is refused; admin and vendor tokens are not interchangeable.
+
+## Review queue (reviewers)
+
+What vendors have submitted, and exactly what changed. Part of the admin group: identity-api tokens only, role `vendor_reviewer` (or `super_admin`), enforced once for the whole `/v1/admin` router. A vendor token, no token and a token for another audience are `401`; an admin without the role is `403 forbidden`. Reviewers see **every vendor's** submissions (nothing is scoped to a vendor). These two endpoints only read: approving and rejecting are separate.
+
+| Endpoint | What it does |
+| --- | --- |
+| `GET /v1/admin/reviews` | The queue, paged (`limit` 1 to 100, default 25, `offset`) with a `total`. Filters: `status` (`pending` by default, `approved`, `rejected`, `withdrawn` or `all`), `subject` (`brand_profile` or `product`), `vendor_id`. **Pending reviews come oldest first** (the one that has waited longest is on top); the others newest first. Each item: the review, the vendor (id, name, slug, status), who submitted it (id and email) and when, the version under review with its title (the brand name, or the product's title with its SKU and `product_id`), and, once decided, the reviewer, the time and the reason |
+| `GET /v1/admin/reviews/{id}` | The same summary plus `content` (the version under review, in full), `base` (the version it is compared with), **`changes`** and `events` (the audit trail, oldest first). `404 review_not_found` for an unknown id |
+
+**What the diff compares.** A review points at the exact version row a vendor submitted, and `base` is **the last version that went live before it**:
+- a brand profile: the newest version with a `published_at` and a lower version number. A pending version 3 is compared with the published 2; if version 2 was rejected it is skipped (it never went live), so version 3 is compared with 1; an approved version is still shown against what it replaced;
+- a product revision: the product's live revision if it is older, otherwise the newest older revision that was ever approved.
+
+With no `base` (a first submission) every field that has a value is listed as added (`before` is `null`).
+
+**`changes` lists exactly the fields that differ**, never one that is the same, in a stable order. Each entry is `{field, before, after}`:
+- brand profile fields: `brand_name`, `tagline`, `about`, `logo`, `banner` (the asset id and its URL), `website_url`, `instagram_handle`, `categories` (a list that differs in content or order), `price_min_paise`, `price_max_paise`;
+- product fields: `title`, `description`, `category`, `subcategory`, `gender`, `fabric`, `weight_grams`, `returnable`, `return_window_days`; then **variants** by SKU (a whole variant added or removed is `variants[<sku>]` with `null` on one side; a variant that changed is one entry per changed field, `variants[<sku>].price_paise`), then **images** by position (`images[<position>]`, the asset and caption on each side; the same picture with the same caption is not a change, and a changed URL for the same asset is not either).
+- `null` and an empty list count as the same "nothing"; empty text is not nothing; `false` and `0` are values.
 
 ## Team, invites and password reset
 
