@@ -22,6 +22,10 @@ dependencies = [
     # requirements-shared.txt (and the Dockerfile builds them from the path).
     # Sync driver for Alembic; the app itself uses asyncpg.
     "psycopg[binary]>=3.2",
+    # Events for the central app are validated against the ADR 0003 JSON Schemas before they are
+    # returned (services/central_contract.py); date-time and uri formats are checked too.
+    "jsonschema>=4.23",
+    "rfc3339-validator>=0.1.4",
 ]
 
 [project.optional-dependencies]
@@ -32,10 +36,7 @@ dev = [
     "pytest-asyncio>=0.24",
     "httpx>=0.28",
     "fakeredis[lua]>=2.26",
-    # Contract tests (tests/test_central_contract.py): JSON Schema validation of the ADR 0003
-    # examples, with date-time checking, and the OpenAPI file.
-    "jsonschema>=4.23",
-    "rfc3339-validator>=0.1.4",
+    # Contract tests (tests/test_central_contract.py) read the OpenAPI file.
     "pyyaml>=6",
     "types-jsonschema",
     "types-pyyaml",
