@@ -21,7 +21,7 @@ updates:
         update-types: [minor, patch]
 
   - package-ecosystem: pip
-    directories: ["/services/identity-api", "/services/vendor-api", "/packages/py-auth", "/packages/py-security"]
+    directories: ["/services/identity-api", "/services/vendor-api", "/services/central-stub", "/packages/py-auth", "/packages/py-security"]
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
