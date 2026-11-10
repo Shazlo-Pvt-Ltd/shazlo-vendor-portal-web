@@ -131,6 +131,8 @@ class Tenants:
     a: Tenant
     b: Tenant
     admin_token: str
+    # identity-api for the tests: mint a token with other roles (`identity.token(["super_admin"])`).
+    identity: Identity
 
 
 async def _tenant(session: AsyncSession, api: Api, hasher: PasswordService, key: str) -> Tenant:
@@ -203,5 +205,6 @@ async def tenants(
             a=await _tenant(session, api, hasher, "a"),
             b=await _tenant(session, api, hasher, "b"),
             admin_token=identity.token(["vendor_reviewer"]),
+            identity=identity,
         )
     await redis.aclose()

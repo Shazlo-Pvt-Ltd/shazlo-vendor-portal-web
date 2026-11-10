@@ -15,6 +15,7 @@ from shazlo_security.refresh_tokens import RefreshTokenStore
 from vendor_api import __version__
 from vendor_api.api import (
     admin,
+    admin_reviews,
     assets,
     auth,
     brand_profile,
@@ -46,6 +47,7 @@ from vendor_api.services.credentials import CredentialService
 from vendor_api.services.email import EmailService, build_sender
 from vendor_api.services.product_import import ProductImportService
 from vendor_api.services.products import ProductService
+from vendor_api.services.review_queue import ReviewQueueService
 from vendor_api.services.signup import SignupService
 from vendor_api.services.team import TeamService
 from vendor_api.services.tokens import VENDOR_AUDIENCE as SELF_AUDIENCE
@@ -131,6 +133,7 @@ def create_app(
         )
     app.state.assets = AssetService(settings, image_host)
     app.state.product_import = ProductImportService(settings, app.state.products)
+    app.state.review_queue = ReviewQueueService()
     app.state.refresh_tokens = RefreshTokenStore(app.state.redis, refresh_token_config(settings))
     app.state.sessions = AuthService(
         settings, app.state.passwords, app.state.vendor_tokens, app.state.refresh_tokens
@@ -165,5 +168,6 @@ def create_app(
     v1.include_router(products.router)
     if settings.identity_jwks_url:
         v1.include_router(admin.router)
+        v1.include_router(admin_reviews.router)
     app.include_router(v1)  # feature routers are added here
     return app
