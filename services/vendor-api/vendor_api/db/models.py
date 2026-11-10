@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -19,7 +20,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from vendor_api.db.base import Base
@@ -830,4 +831,7 @@ class ReviewEvent(Base):
     actor_type: Mapped[str] = mapped_column(String(16))
     actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     reason: Mapped[str | None] = mapped_column(Text)
+    # What the decision changed: the thing reviewed before and after, as JSON. None for events
+    # that need nothing more, such as a submission.
+    detail: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = _created_at()
