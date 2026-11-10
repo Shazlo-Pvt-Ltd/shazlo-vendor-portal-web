@@ -10,6 +10,10 @@ class EmailTemplate(StrEnum):
     STAFF_INVITE = "staff_invite"
     PASSWORD_RESET = "password_reset"  # noqa: S105  (a template name, not a password)
     ACCOUNT_EXISTS = "account_exists"
+    # Told to the vendor when an admin changes its account status (Phase 3).
+    VENDOR_APPROVED = "vendor_approved"
+    VENDOR_REJECTED = "vendor_rejected"
+    VENDOR_SUSPENDED = "vendor_suspended"
 
 
 class EmailContextError(ValueError):
@@ -33,6 +37,9 @@ _PATHS = {
     EmailTemplate.STAFF_INVITE: "/accept-invite",
     EmailTemplate.PASSWORD_RESET: "/reset-password",
     EmailTemplate.ACCOUNT_EXISTS: "/login",
+    EmailTemplate.VENDOR_APPROVED: "/login",
+    EmailTemplate.VENDOR_REJECTED: "/login",
+    EmailTemplate.VENDOR_SUSPENDED: "/login",
 }
 
 # The context each template takes: exactly these keys.
@@ -41,9 +48,13 @@ _KEYS: dict[EmailTemplate, frozenset[str]] = {
     EmailTemplate.STAFF_INVITE: frozenset({"token", "expires_in_minutes", "vendor_name"}),
     EmailTemplate.PASSWORD_RESET: frozenset({"token", "expires_in_minutes"}),
     EmailTemplate.ACCOUNT_EXISTS: frozenset(),
+    EmailTemplate.VENDOR_APPROVED: frozenset({"vendor_name"}),
+    EmailTemplate.VENDOR_REJECTED: frozenset({"vendor_name", "reason"}),
+    EmailTemplate.VENDOR_SUSPENDED: frozenset({"vendor_name", "reason"}),
 }
 
 MAX_NAME_LENGTH = 100
+MAX_REASON_LENGTH = 2000
 
 
 def _duration(minutes: int) -> str:
@@ -58,6 +69,12 @@ def _duration(minutes: int) -> str:
 def _one_line(value: object) -> str:
     """A name for a subject line: one line, trimmed, so a name cannot add mail headers."""
     return " ".join(str(value).split())[:MAX_NAME_LENGTH]
+
+
+def _reason(value: object) -> str:
+    """An admin's reason, as the paragraph of an email: trimmed and bounded. It is plain text in
+    the text part and escaped in the HTML part, and never goes into a subject or a header."""
+    return str(value).strip()[:MAX_REASON_LENGTH]
 
 
 def _link(base_url: str, template: EmailTemplate, context: Mapping[str, object]) -> str:
@@ -123,6 +140,34 @@ def render(
             "If it was not you, ignore this email: your password stays as it is.",
         ]
         action = "Choose a new password"
+    elif template is EmailTemplate.VENDOR_APPROVED:
+        vendor = _one_line(context["vendor_name"])
+        subject = "Your Shazlo vendor account is approved"
+        paragraphs = [
+            f"{vendor} has been approved on Shazlo.",
+            "You can sign in to the vendor portal and keep working on your brand page "
+            "and products.",
+        ]
+        action = "Sign in"
+    elif template is EmailTemplate.VENDOR_REJECTED:
+        vendor = _one_line(context["vendor_name"])
+        subject = "Your Shazlo vendor application was not approved"
+        paragraphs = [
+            f"We could not approve {vendor} on Shazlo.",
+            f"Reason: {_reason(context['reason'])}",
+            "If you think this is a mistake, please contact Shazlo support.",
+        ]
+        action = "Open the vendor portal"
+    elif template is EmailTemplate.VENDOR_SUSPENDED:
+        vendor = _one_line(context["vendor_name"])
+        subject = "Your Shazlo vendor account is suspended"
+        paragraphs = [
+            f"{vendor} has been suspended on Shazlo. You cannot sign in or publish "
+            "until it is reinstated.",
+            f"Reason: {_reason(context['reason'])}",
+            "If you think this is a mistake, please contact Shazlo support.",
+        ]
+        action = "Open the vendor portal"
     else:
         subject = "You already have a Shazlo account"
         paragraphs = [

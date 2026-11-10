@@ -12,7 +12,7 @@ from shazlo_security.rate_limit import RateLimitGuard, RedisRateLimiter
 from shazlo_security.refresh_tokens import RefreshTokenStore
 
 from vendor_api import __version__
-from vendor_api.api import admin, admin_reviews, auth, health, jwks, team, vendor
+from vendor_api.api import admin, admin_reviews, admin_vendors, auth, health, jwks, team, vendor
 from vendor_api.core.errors import register_exception_handlers
 from vendor_api.core.logging import configure_logging
 from vendor_api.core.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
@@ -34,6 +34,7 @@ from vendor_api.services.signup import SignupService
 from vendor_api.services.team import TeamService
 from vendor_api.services.tokens import VENDOR_AUDIENCE as SELF_AUDIENCE
 from vendor_api.services.tokens import VendorTokens
+from vendor_api.services.vendor_accounts import VendorAccountService
 
 
 @asynccontextmanager
@@ -98,6 +99,7 @@ def create_app(
     app.state.sessions = AuthService(
         settings, app.state.passwords, app.state.vendor_tokens, app.state.refresh_tokens
     )
+    app.state.vendor_accounts = VendorAccountService(app.state.sessions)
     app.state.readiness_checks = (
         readiness_checks
         if readiness_checks is not None
@@ -125,5 +127,6 @@ def create_app(
     if settings.identity_jwks_url:
         v1.include_router(admin.router)
         v1.include_router(admin_reviews.router)
+        v1.include_router(admin_vendors.router)
     app.include_router(v1)  # feature routers are added here
     return app
