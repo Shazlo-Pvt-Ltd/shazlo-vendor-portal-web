@@ -10,6 +10,8 @@ dependencies = [
     "redis>=5.2",
     "sqlalchemy[asyncio]>=2.0.36",
     "alembic>=1.14",
+    # Cloudinary Admin API calls (services/cloudinary.py).
+    "httpx>=0.28",
     # Bulk product import (services/import_sheet.py). openpyxl uses defusedxml when it is
     # installed, which refuses XML entity tricks in an uploaded workbook; a test checks it is on.
     "openpyxl>=3.1",

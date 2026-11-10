@@ -153,6 +153,11 @@ def test_a_file_of_blank_rows_stops_early_instead_of_scanning_forever() -> None:
     refused(csv_bytes([good_row()]) + b"\n" * 2000, "too_many_rows", max_rows=2)
 
 
+def test_a_wide_data_row_is_refused_even_with_a_valid_header() -> None:
+    data = csv_bytes([]) + (b"," * (import_sheet.MAX_COLUMNS + 1000)) + b"\n"
+    refused(data, "invalid_file")
+
+
 def test_a_file_with_too_many_columns_is_refused() -> None:
     columns = [*COLUMNS, *[f"extra{i}" for i in range(import_sheet.MAX_COLUMNS)]]
     refused(csv_bytes([good_row()], columns=columns), "invalid_file")

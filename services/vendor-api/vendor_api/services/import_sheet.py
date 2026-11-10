@@ -159,6 +159,8 @@ def _read_csv(data: bytes, max_rows: int) -> list[tuple[int, list[Cell]]]:
         for number, record in enumerate(reader, start=1):
             if number > scan_limit:
                 raise _too_many_rows(max_rows)
+            if len(record) > MAX_COLUMNS:
+                raise invalid_file(f"The file has more than {MAX_COLUMNS} columns")
             cells = [Cell(value[: MAX_CELL_CHARS + 1]) for value in record]
             if number > 1:
                 if is_blank(cells):
@@ -226,6 +228,8 @@ def _read_xlsx(data: bytes, max_rows: int) -> list[tuple[int, list[Cell]]]:
                 Cell(_limited(getattr(cell, "value", None)), getattr(cell, "data_type", "n") == "f")
                 for cell in row
             ]
+            if len(cells) > MAX_COLUMNS and not is_blank(cells[MAX_COLUMNS:]):
+                raise invalid_file(f"The file has more than {MAX_COLUMNS} columns")
             if number > 1:
                 if is_blank(cells):
                     continue
