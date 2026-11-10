@@ -122,8 +122,8 @@ async def test_the_probe_catches_a_nested_router_without_auth(app: FastAPI) -> N
         return {"secret": "yes"}
 
     outer = APIRouter()
-    outer.include_router(inner, prefix="/products")
+    outer.include_router(inner, prefix="/probe-widgets")
     app.include_router(outer, prefix="/v1/vendor")
     app.openapi_schema = None  # rebuild the cached document
     answers = {op: (await call(app, *op, None)).status_code for op in protected(app)}
-    assert answers[("GET", "/v1/vendor/products/leak")] == 200
+    assert answers[("GET", "/v1/vendor/probe-widgets/leak")] == 200

@@ -11,7 +11,7 @@ FastAPI service for vendors, brand profiles, products, assets, reviews and publi
 - **Its own tokens and keys:** vendor-api signs vendor tokens with its own key and serves its own JWKS.
 - **The schema** for vendors, users, tokens and (in the open Phase 2 PRs) brand profiles, products and reviews.
 
-Brand profiles, products, assets, imports and the review flow are Phase 3.
+Phase 3 so far: the vendor's products (below). Brand profiles, assets, imports and the review flow are still to come.
 
 ## Quick start: from nothing to a signed-in vendor
 
@@ -56,7 +56,7 @@ The live reference is the OpenAPI document at <http://localhost:8002/docs> (dev;
 | Health | `GET /health`, `GET /ready` | anyone |
 | Keys | `GET /.well-known/jwks.json` | anyone |
 | Vendor auth | `POST /v1/auth/signup`, `verify-email`, `resend-verification`, `login`, `refresh`, `logout`, `change-password`, `forgot-password`, `set-password` | anyone, or a vendor token for `change-password` |
-| Vendor | `GET /v1/vendor/me`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only) | vendor-api tokens only |
+| Vendor | `GET /v1/vendor/me`; `GET`/`POST /v1/vendor/products`, `GET`/`PUT`/`DELETE /v1/vendor/products/{id}`, `POST /v1/vendor/products/{id}/submit`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only) | vendor-api tokens only |
 | Admin | `GET /v1/admin/me` | identity-api tokens only (`vendor_reviewer` or `super_admin`) |
 
 The sections below describe each group.
@@ -192,6 +192,27 @@ A vendor cannot read, change or learn about another vendor's data, and another v
 **What fails CI if it is forgotten**: `tests/test_isolation_structure.py` fails when a table of vendor data has no `vendor_id`, no foreign key to `vendors`, or no index on it, and when a route under `/v1/vendor` does not depend on `current_vendor_user`. It finds routers by walking `vendor_api/api`, so a new module is checked without anyone adding it to a list, and its last tests feed it bad samples to show it does fail.
 
 **What is covered today**: `/v1/vendor/me`, the staff list, disable and enable, and resend-invite: each vendor's lists hold only its own rows; B's user ids (the owner, a staff member, an invited user) and random ids are the same 404 (identical bodies), in both directions, with B's rows unchanged afterwards; a staff member gets the same 403 for their own, another vendor's and unknown ids; an invite always lands in the caller's vendor; a token whose vendor is not the user's vendor is refused; admin and vendor tokens are not interchangeable.
+
+## Products (vendor side)
+
+A vendor's catalog. Any active user of the vendor (owner or staff) can do everything here; another vendor's product is `404 product_not_found`, the same as an id that does not exist. The vendor comes from the token, never the request.
+
+| Endpoint | What it does |
+| --- | --- |
+| `POST /v1/vendor/products` | Creates a `draft` product with revision 1 as its editable (`working`) revision. Body: `sku` (identity, cannot change later) plus the content below. `409 sku_taken` if the vendor already uses the SKU (case ignored; archived products keep theirs) or a variant SKU is used by another product of the vendor |
+| `GET /v1/vendor/products` | Paged list, most recently changed first: `limit` (1 to 100, default 25), `offset`, `status`, `category` (case ignored), `q` (part of the SKU or title). Returns `{items, total, limit, offset}`. Archived products show only with `status=archived`. Each item has the title of the latest revision and `has_pending_changes` |
+| `GET /v1/vendor/products/{id}` | `live` (the approved revision, what shoppers see; null until approved) and `working` (the revision being edited, in review, or the last rejected one, with its review and the admin's reason) |
+| `PUT /v1/vendor/products/{id}` | **Replaces** the content of the editable revision (a field or list left out is cleared). **Never changes `live`**: editing an approved product creates a new pending revision (next version number) and the status stays `approved`; further edits change that same revision. A rejected product gets a new revision and goes back to `draft`. `409 product_in_review` while a version is in review, `409 product_archived` |
+| `POST /v1/vendor/products/{id}/submit` | Sends the editable revision for review (it is frozen from then on) and writes a pending review plus its `submitted` audit event in one transaction; a never-approved product becomes `pending_review`. `422 product_incomplete` without an active variant or an image, `409 nothing_to_submit` when nothing is being edited |
+| `DELETE /v1/vendor/products/{id}` | A product that was **never submitted** is deleted for good (SKU free again). One that was ever submitted is **archived**: history and SKU kept, an approved one goes off sale and its `version` is raised (the Phase 4 `product.unpublished` hook). `409 product_in_review` while in review; deleting an archived product again is a no-op |
+
+**Content** (limits from the published contract, ADR 0003): `title` (200), `description` (4000), `category` (100), `subcategory`, `gender` (`women`, `men`, `unisex`), `fabric` (80), `weight_grams` (> 0), `returnable` and `return_window_days` (0 to 30, required when returnable; ignored otherwise), up to 100 `variants` and 10 `images`.
+- **Variants** are `{sku, size, color, price_paise, mrp_paise, is_active}`. The **SKU is the variant's identity**: listing the same SKU (any letter case) in a later edit is the same variant, so the central app keeps updating one `variant_id`. Its size and colour cannot change (`422 variant_identity_changed`; use a new SKU). SKUs are unique per vendor across all products; two variants of one product cannot share size and colour.
+- **Images** are `{asset_id, alt_text}` in display order. Each must be the vendor's own **ready `product_image`** asset; another vendor's id and a missing id give the same `422 invalid_asset`. An image can be used once per product.
+
+**Editing while a version is in review** (decided here): the submitted revision is frozen by the database and a product has room for one pending revision, so the product cannot be edited until the review is decided (`409 product_in_review`). There is no withdraw.
+
+Every write first locks the product row, so two requests on one product run one after the other.
 
 ## Team, invites and password reset
 
