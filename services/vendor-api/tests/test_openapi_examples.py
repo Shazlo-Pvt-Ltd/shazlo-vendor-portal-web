@@ -86,3 +86,11 @@ def test_the_schemas_have_plain_names(document: dict[str, Any]) -> None:
     every client's generated code."""
     qualified = [name for name in document["components"]["schemas"] if "__" in name]
     assert qualified == []
+
+
+def test_the_example_upload_signature_is_a_sha256_like_the_real_one(
+    document: dict[str, Any],
+) -> None:
+    """The signature is 64 hex characters (SHA-256), so a client author is not shown a SHA-1."""
+    example = document["components"]["schemas"]["SignResponse"]["examples"][0]
+    assert len(example["fields"]["signature"]) == 64

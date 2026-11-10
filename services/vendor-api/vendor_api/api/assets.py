@@ -64,7 +64,7 @@ class SignResponse(BaseModel):
                         "allowed_formats": "jpg,jpeg,png,webp",
                         "overwrite": "false",
                         "api_key": "123456789012345",
-                        "signature": "0123456789abcdef0123456789abcdef01234567",
+                        "signature": "0123456789abcdef" * 4,
                     },
                     "expires_at": "2026-11-11T10:00:00Z",
                     "max_bytes": 10485760,

@@ -19,8 +19,8 @@ from vendor_api.services.cloudinary import (
 SECRET = "abcd"
 
 
-def sha1(text: str) -> str:
-    return hashlib.sha1(text.encode()).hexdigest()  # noqa: S324
+def sha256(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
 
 
 # --- Signing -----------------------------------------------------------------------------
@@ -28,7 +28,7 @@ def sha1(text: str) -> str:
 
 def test_the_signature_is_the_sorted_parameters_with_the_secret_appended() -> None:
     params = {"timestamp": "1315060510", "public_id": "sample", "overwrite": "false"}
-    expected = sha1("overwrite=false&public_id=sample&timestamp=1315060510" + SECRET)
+    expected = sha256("overwrite=false&public_id=sample&timestamp=1315060510" + SECRET)
     assert sign_params(params, SECRET) == expected
 
 
@@ -49,7 +49,7 @@ def test_a_changed_value_name_or_secret_changes_the_signature() -> None:
 def test_the_secret_is_not_part_of_the_signature_text() -> None:
     signature = sign_params({"a": "1"}, SECRET)
     assert SECRET not in signature
-    assert len(signature) == 40
+    assert len(signature) == 64  # SHA-256, hex
 
 
 def test_the_urls() -> None:

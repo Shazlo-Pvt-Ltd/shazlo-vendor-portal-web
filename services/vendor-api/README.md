@@ -153,7 +153,7 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `SMTP_SECURITY` | `starttls` | `none` (local Mailpit only), `starttls` or `ssl` |
 | `EMAIL_SEND_ATTEMPTS` | `3` | tries before an email is given up |
 | `PORTAL_BASE_URL` | `http://localhost:5174` | the vendor portal: links in emails point here |
-| `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | unset | set all three or none; the secret has no default and is never logged or returned. Without them the asset endpoints answer `503 uploads_not_configured` and the rest of the service works |
+| `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | unset | set all three or none; the secret has no default and is never logged or returned. Without them the asset endpoints answer `503 uploads_not_configured` and the rest of the service works. Signatures are SHA-256: set the account's API signature algorithm to SHA-256 |
 | `CLOUDINARY_ROOT_FOLDER` | `shazlo` | every file lives under `<root>/vendors/<vendor id>/...`; give each environment its own root (lower-case letters, digits, `-`, `_`, `/`) |
 | `CLOUDINARY_UPLOAD_PRESET` | unset | an upload preset (made in Cloudinary) that is signed into every upload, so the provider enforces its own size and format limits as a second layer |
 | `UPLOAD_MAX_BYTES` | `10485760` | largest image accepted (10 MiB; at most 100 MiB) |
@@ -303,6 +303,7 @@ What the signature fixes, so the browser cannot change it:
 - **The folder and name.** `public_id` is signed, so a vendor can only upload to the one name it was given, inside its own folder. Registration only accepts a name this service issued to the calling vendor: another vendor's name and a name nobody issued are the same `404 asset_not_found`.
 - **No overwriting.** `overwrite=false`, so a signature is good for one upload; it also expires (Cloudinary refuses timestamps older than an hour).
 - **The format list.** `allowed_formats=jpg,jpeg,png,webp`, and `upload_preset` when `CLOUDINARY_UPLOAD_PRESET` is set.
+- **The algorithm: SHA-256.** The signature is the SHA-256 (64 hex characters) of the sorted parameters with the API secret appended. Cloudinary's default is SHA-1, so **the account's "API signature algorithm" must be set to SHA-256** in the Cloudinary console (Settings, Security), in every environment that uploads; otherwise every upload is refused as an invalid signature. (This was chosen over SHA-1 to satisfy CodeQL's weak-hash rule; try one real upload with a test account before relying on it.)
 
 Limits: the declared type and size are checked when signing (`422 validation_error` for a type that is not allowed, `422 image_too_large` over `UPLOAD_MAX_BYTES`), and **the real ones again when registering** (`422 image_too_large`, `422 unsupported_image_type`, `422 invalid_upload`). A file that breaks a rule is **deleted from Cloudinary** and its asset is marked `deleted` (it cannot be registered again; sign a new one). Errors: `409 upload_not_found` until the file has been uploaded (retry), `502 image_host_unavailable` if Cloudinary does not answer (the asset stays `pending`, retry), `503 uploads_not_configured` without credentials.
 

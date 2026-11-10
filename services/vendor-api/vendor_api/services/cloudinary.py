@@ -53,16 +53,17 @@ class ImageHost(Protocol):
 
 def sign_params(params: Mapping[str, str], api_secret: str) -> str:
     """Cloudinary's request signature: the parameters sorted by name and joined as `k=v&k=v`,
-    with the API secret appended, hashed with SHA-1 (the algorithm Cloudinary specifies).
+    with the API secret appended, hashed with SHA-256 (64 hex characters). Cloudinary's default
+    is SHA-1, but it also accepts SHA-256: the account's "API signature algorithm" must be set to
+    SHA-256 in the Cloudinary console (Settings, Security), or every upload is refused as an
+    invalid signature.
 
     Only parameters that are signed here may be sent by the browser, and Cloudinary rejects an
     upload whose parameters differ from the ones signed, so the browser cannot change the file's
     name, folder or format list.
     """
     to_sign = "&".join(f"{name}={value}" for name, value in sorted(params.items()))
-    return hashlib.sha1(  # noqa: S324  (Cloudinary's documented signature algorithm)
-        (to_sign + api_secret).encode()
-    ).hexdigest()
+    return hashlib.sha256((to_sign + api_secret).encode()).hexdigest()
 
 
 def upload_url(cloud_name: str) -> str:
