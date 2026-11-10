@@ -5,6 +5,7 @@ commits what it sets up, and reads results again from the database.
 """
 
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -13,8 +14,9 @@ import pytest
 from conftest import Tenants
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from support import ADMIN_ID, PASSWORD, RecordingSender, record_emails, token_of
+from support import ADMIN_ID, ORIGIN, PASSWORD, RecordingSender, record_emails, token_of
 
+from vendor_api.core.settings import Settings
 from vendor_api.db.models import Vendor, VendorStatusEvent
 from vendor_api.services.email import EmailTemplate
 
@@ -42,6 +44,15 @@ TEMPLATE = {
     "reject": EmailTemplate.VENDOR_REJECTED,
     "suspend": EmailTemplate.VENDOR_SUSPENDED,
 }
+
+
+@pytest.fixture(autouse=True)
+def portal_origin(tenants: Tenants, override: Callable[..., Settings]) -> None:
+    """The test client sends the portal's Origin; the refresh endpoint (cookie-authenticated)
+    refuses an origin that is not allowed, so allow it, as the session tests do."""
+    tenants.api.app.state.settings = override(
+        tenants.api.app.state.settings, cors_allowed_origins=[ORIGIN]
+    )
 
 
 def bearer(token: str) -> dict[str, str]:
