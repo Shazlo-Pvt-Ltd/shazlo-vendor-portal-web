@@ -18,6 +18,7 @@ TABLES = {
     "product_images",
     "reviews",
     "review_events",
+    "outbox_events",
 }
 # Helper functions the schema creates: a downgrade must remove them too.
 FUNCTIONS = (
@@ -31,6 +32,7 @@ FUNCTIONS = (
     "protect_submitted_product_revision",
     "protect_submitted_revision_content",
     "protect_review_record",
+    "protect_outbox_event",
 )
 
 
@@ -125,6 +127,27 @@ def test_the_hardening_migration_alone_can_be_undone_and_redone(
 
 def _event_columns(engine: Engine) -> set[str]:
     return {column["name"] for column in inspect(engine).get_columns("review_events")}
+
+
+def test_the_outbox_migration_alone_can_be_undone_and_redone(
+    alembic_config: Config, migrated_db: str
+) -> None:
+    engine = create_engine(sync_url(migrated_db))
+    try:
+        assert "outbox_events" in _tables(migrated_db)
+        assert _function_count(engine) == len(FUNCTIONS)
+        try:
+            command.downgrade(alembic_config, "0007")
+            assert "outbox_events" not in _tables(migrated_db)
+            # Its trigger function goes with it; everything earlier stays.
+            assert _function_count(engine) == len(FUNCTIONS) - 1
+            assert _tables(migrated_db) >= TABLES - {"outbox_events"}
+        finally:
+            command.upgrade(alembic_config, "head")
+        assert "outbox_events" in _tables(migrated_db)
+        assert _function_count(engine) == len(FUNCTIONS)
+    finally:
+        engine.dispose()
 
 
 def test_the_event_detail_migration_alone_can_be_undone_and_redone(
