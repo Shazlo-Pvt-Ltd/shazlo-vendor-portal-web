@@ -46,6 +46,7 @@ from vendor_api.services.brand_profiles import BrandProfileService
 from vendor_api.services.cloudinary import CloudinaryClient, ImageHost
 from vendor_api.services.credentials import CredentialService
 from vendor_api.services.email import EmailService, build_sender
+from vendor_api.services.outbox import OutboxWriter
 from vendor_api.services.product_import import ProductImportService
 from vendor_api.services.products import ProductService
 from vendor_api.services.review_decisions import ReviewDecisionService
@@ -137,8 +138,10 @@ def create_app(
     app.state.assets = AssetService(settings, image_host)
     app.state.product_import = ProductImportService(settings, app.state.products)
     app.state.review_queue = ReviewQueueService()
-    # Phase 4 registers its outbox writer with `app.state.review_decisions.add_hook(...)`.
     app.state.review_decisions = ReviewDecisionService()
+    # An approval writes its central-app event in the same transaction (ADR 0003, section 5).
+    app.state.outbox_writer = OutboxWriter(settings.outbox_events_enabled)
+    app.state.review_decisions.add_hook(app.state.outbox_writer.on_decision)
     app.state.refresh_tokens = RefreshTokenStore(app.state.redis, refresh_token_config(settings))
     app.state.sessions = AuthService(
         settings, app.state.passwords, app.state.vendor_tokens, app.state.refresh_tokens
