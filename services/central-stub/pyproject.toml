@@ -1,0 +1,37 @@
+[project]
+name = "central-stub"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "pydantic-settings>=2.7",
+    # Validates events against the contract's JSON Schemas (docs/adr/0003-contract/schemas).
+    "jsonschema>=4.23",
+    "rfc3339-validator>=0.1.4",
+    # shazlo-security (packages/py-security) is deliberately not listed: the name is not ours on
+    # PyPI. It comes from the repository path through requirements-shared.txt.
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "mypy",
+    "pytest",
+    "httpx>=0.28",
+    "types-jsonschema",
+]
+
+[tool.setuptools.packages.find]
+include = ["central_stub*"]
+
+[tool.ruff]
+extend = "../ruff.toml"
+
+[tool.mypy]
+strict = true
+files = ["central_stub", "tests"]
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

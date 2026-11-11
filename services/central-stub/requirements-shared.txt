@@ -1,0 +1,5 @@
+# Shared package from this repository. Install from services/central-stub, before the service:
+#   pip install -r requirements-shared.txt && pip install -e '.[dev]'
+# Not in pyproject.toml's dependencies on purpose (dependency confusion; see
+# services/vendor-api/requirements-shared.txt). Put `--config-settings` before `-e`.
+--config-settings editable_mode=compat -e ../../packages/py-security

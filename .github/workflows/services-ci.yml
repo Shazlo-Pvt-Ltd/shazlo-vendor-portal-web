@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [identity-api, vendor-api, py-auth, py-security]
+        service: [identity-api, vendor-api, central-stub, py-auth, py-security]
     defaults:
       run:
         working-directory: ${{ startsWith(matrix.service, 'py-') && format('packages/{0}', matrix.service) || format('services/{0}', matrix.service) }}
@@ -163,6 +163,16 @@ jobs:
           committed = json.load(open('services/vendor-api/openapi.json'))
           assert served == committed, 'openapi.json is stale: python -m vendor_api.cli export-openapi'
           "
+      # The stub central app (ADR 0003): the image builds from the repository root, finds the
+      # contract schemas, and rejects an unsigned request.
+      - run: docker compose --profile central build central-stub
+      - run: docker compose --profile central up -d --wait central-stub
+      - name: central-stub is up and enforces the signature
+        run: |
+          curl -fsS localhost:8003/health
+          curl -fsS localhost:8003/ | grep -q 'Central app stub'
+          status=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8003/internal/v1/events -d '{}')
+          test "$status" = 401
       - name: Logs
         if: failure()
         run: docker compose --profile full logs
