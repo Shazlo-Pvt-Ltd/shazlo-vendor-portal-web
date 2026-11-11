@@ -108,6 +108,37 @@ services:
     ports:
       - "${VENDOR_API_PORT:-8002}:8002"
 
+  # Delivers vendor-api's outbox to the central app (ADR 0003, section 5): the same image, one more
+  # process. Idle (and saying so in its log) until CENTRAL_PUBLISHING_ENABLED=true in .env; then
+  # start central-stub too (`--profile central`) to see the events arrive at http://localhost:8003.
+  vendor-worker:
+    profiles: ["vendor", "full"]
+    build:
+      context: .
+      dockerfile: services/vendor-api/Dockerfile
+    command: ["python", "-m", "vendor_api.worker"]
+    restart: unless-stopped
+    # It finishes the request in flight on SIGTERM; give it time to.
+    stop_grace_period: 30s
+    # The image's healthcheck asks the API's /health, which the worker does not serve.
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ENV: dev
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-shazlo}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/vendor
+      REDIS_URL: redis://redis:6379/1
+      JWT_ISSUER: http://localhost:${VENDOR_API_PORT:-8002}
+      IDENTITY_JWKS_URL: http://identity-api:8001/.well-known/jwks.json
+      IDENTITY_ISSUER: http://localhost:${IDENTITY_API_PORT:-8001}
+      CENTRAL_PUBLISHING_ENABLED: ${CENTRAL_PUBLISHING_ENABLED:-false}
+      CENTRAL_API_URL: ${CENTRAL_API_URL:-http://central-stub:8003}
+      # The pair central-stub knows by default (a development secret, never deployed).
+      CENTRAL_SIGNING_KEY_ID: ${CENTRAL_SIGNING_KEY_ID:-k1}
+      CENTRAL_SIGNING_SECRET: ${CENTRAL_SIGNING_SECRET:-central-stub-dev-secret-change-me-0123456789}
+
   # Stands in for the central app (ADR 0003): receives the signed events vendor-api publishes.
   # See http://localhost:8003 for what it holds. Localhost only: its /_stub endpoints have no auth.
   central-stub:
