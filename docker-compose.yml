@@ -120,6 +120,9 @@ services:
     restart: unless-stopped
     # It finishes the request in flight on SIGTERM; give it time to.
     stop_grace_period: 30s
+    # The image's healthcheck asks the API's /health, which the worker does not serve.
+    healthcheck:
+      disable: true
     depends_on:
       postgres:
         condition: service_healthy

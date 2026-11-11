@@ -616,7 +616,8 @@ async def test_the_loop_keeps_going_when_the_database_fails_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     row = await event(session, vendor_id)
-    publisher = build(session, Receiver(), clock)
+    receiver = Receiver()
+    publisher = build(session, receiver, clock)
     real = publisher.run_once
     calls: list[int] = []
 
@@ -630,12 +631,13 @@ async def test_the_loop_keeps_going_when_the_database_fails_once(
     monkeypatch.setattr(publisher_module, "POLL_SECONDS", 0.01)
     stop = asyncio.Event()
     task = asyncio.create_task(publisher.run(stop))
-    for _ in range(300):
-        if (await fresh(session, row)).status == "sent":
+    for _ in range(300):  # the session is the publisher's while it runs: watch the receiver
+        if receiver.requests:
             break
         await asyncio.sleep(0.01)
     stop.set()
     await asyncio.wait_for(task, 5)
+    assert len(calls) >= 2  # the failure did not end the loop
     assert (await fresh(session, row)).status == "sent"
 
 
