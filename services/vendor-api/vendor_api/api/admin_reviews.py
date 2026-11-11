@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vendor_api.api.admin import AdminRequest, Reviewer, reviewer_dependency
@@ -49,14 +49,24 @@ def get_review_decisions(request: Request) -> ReviewDecisionService:
 Decisions = Annotated[ReviewDecisionService, Depends(get_review_decisions)]
 
 
-class ApproveRequest(AdminRequest):
+class ApproveReviewRequest(AdminRequest):
+    model_config = ConfigDict(json_schema_extra={"examples": [{"version": 3}]})
+
     # The version the reviewer looked at (`content.version` of the review). If the submission is
     # no longer that version, the decision is refused with 409 instead of approving something
     # the reviewer did not see.
     version: int = Field(ge=1)
 
 
-class RejectRequest(ApproveRequest):
+class RejectReviewRequest(ApproveReviewRequest):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {"version": 3, "reason": "The logo is too small to read. Upload a larger one."}
+            ]
+        }
+    )
+
     # Why. The vendor sees it. Required: a blank or whitespace-only reason is a 422.
     reason: DatabaseText = Field(min_length=1, max_length=2000)
 
@@ -66,18 +76,18 @@ class RejectRequest(ApproveRequest):
         return value.strip() if isinstance(value, str) else value
 
 
-class VendorOut(BaseModel):
+class ReviewVendorOut(BaseModel):
     id: uuid.UUID
     name: str
     slug: str
     status: str
 
 
-class ReviewOut(BaseModel):
+class AdminReviewOut(BaseModel):
     id: uuid.UUID
     subject: str
     status: str
-    vendor: VendorOut
+    vendor: ReviewVendorOut
     submitted_by: uuid.UUID
     submitted_by_email: str
     submitted_at: datetime
@@ -94,7 +104,7 @@ class ReviewOut(BaseModel):
 
 
 class ReviewPageOut(BaseModel):
-    items: list[ReviewOut]
+    items: list[AdminReviewOut]
     total: int
     limit: int
     offset: int
@@ -125,7 +135,7 @@ class VersionOut(BaseModel):
     content: dict[str, Any]
 
 
-class ReviewDetailOut(ReviewOut):
+class ReviewDetailOut(AdminReviewOut):
     events: list[EventOut]
     # The version under review, in full.
     content: VersionOut
@@ -142,7 +152,7 @@ def review_out(row: ReviewRow) -> dict[str, Any]:
         "id": review.id,
         "subject": review.subject,
         "status": review.status,
-        "vendor": VendorOut(
+        "vendor": ReviewVendorOut(
             id=review.vendor_id,
             name=row.vendor_name,
             slug=row.vendor_slug,
@@ -214,7 +224,7 @@ async def list_reviews(
         offset=offset,
     )
     return ReviewPageOut(
-        items=[ReviewOut(**review_out(row)) for row in page.items],
+        items=[AdminReviewOut(**review_out(row)) for row in page.items],
         total=page.total,
         limit=page.limit,
         offset=page.offset,
@@ -234,7 +244,7 @@ async def get_review(
 @router.post("/{review_id}/approve")
 async def approve_review(
     review_id: uuid.UUID,
-    body: ApproveRequest,
+    body: ApproveReviewRequest,
     response: Response,
     db: Db,
     queue: Queue,
@@ -254,7 +264,7 @@ async def approve_review(
 @router.post("/{review_id}/reject")
 async def reject_review(
     review_id: uuid.UUID,
-    body: RejectRequest,
+    body: RejectReviewRequest,
     response: Response,
     db: Db,
     queue: Queue,

@@ -45,7 +45,25 @@ class BrandProfileBody(BaseModel):
     cleared; send the page as the editor shows it. The limits are the ones of the published
     contract (ADR 0003), so what is saved here can always be published."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "brand_name": "Atelier Rao",
+                    "tagline": "Block prints, made slowly",
+                    "about": "A small studio in Jaipur.",
+                    "logo_asset_id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
+                    "banner_asset_id": None,
+                    "website_url": "https://atelier.example",
+                    "instagram_handle": "atelier.rao",
+                    "categories": ["kurtas", "dupattas"],
+                    "price_min_paise": 99900,
+                    "price_max_paise": 999900,
+                }
+            ]
+        },
+    )
 
     brand_name: DatabaseText = Field(min_length=1, max_length=120)
     tagline: DatabaseText | None = Field(default=None, max_length=160)

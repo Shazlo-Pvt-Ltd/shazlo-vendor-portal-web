@@ -105,6 +105,15 @@ Delivered (as the issues #72 to #87 and #113 to #114), with these differences fr
 - Review queue, draft-vs-published diff, approve, and reject with a required reason. Every decision is recorded in an audit trail.
 - Approve, reject or suspend vendor accounts.
 
+Delivered (as the issues #163 to #170), with these differences from the list above:
+- Submitting is its own endpoint for the brand profile and for a product (`POST .../submit`): a revision has to reach the review queue somehow, and an edit stays editable until it is submitted.
+- While a version is in review it is frozen by the database, so a brand profile opens a new draft and a product refuses edits (`product_in_review`) until the decision.
+- Uploads are two calls (sign, then register after the browser uploaded): the server picks the file's name in the vendor's own folder, and what Cloudinary really stored (not what the browser says) decides.
+- The import has three modes (`validate`, `import`, `all_or_nothing`), never overwrites a product, and importing the same file again creates nothing.
+- Reviewers also get a list and a detail of vendors (`GET /v1/admin/vendors`), not only the three status changes; every decision carries the version the reviewer saw, so a review that changed under them is a `409`.
+- Migration 0007 adds `review_events.detail` (what a decision changed, before and after), and `ReviewDecisionService.add_hook` is where Phase 4 writes the outbox row, inside the approval's transaction.
+- A dev seed fills a demo catalog with every state, and an end-to-end test walks the whole flow against Postgres and Redis.
+
 ### Phase 4: Central-app publishing
 - Transactional outbox, written in the same transaction as the approval.
 - Publisher worker: HMAC-signed pushes to `CENTRAL_API_URL`, idempotency keys, retries with backoff, and a dead-letter status.
