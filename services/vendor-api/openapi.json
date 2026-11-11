@@ -23,21 +23,6 @@
         "title": "AdminMe",
         "type": "object"
       },
-      "ApproveRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "version": {
-            "minimum": 1.0,
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "version"
-        ],
-        "title": "ApproveRequest",
-        "type": "object"
-      },
       "AssetKind": {
         "enum": [
           "brand_logo",
@@ -1372,6 +1357,23 @@
         "title": "ProductSummaryOut",
         "type": "object"
       },
+      "ReasonRequest": {
+        "additionalProperties": false,
+        "description": "Rejecting and suspending need a reason, which the vendor is told: a missing, empty or\nwhitespace-only one is a 422.",
+        "properties": {
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "ReasonRequest",
+        "type": "object"
+      },
       "RegisterRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1546,7 +1548,7 @@
             "type": "string"
           },
           "vendor": {
-            "$ref": "#/components/schemas/VendorOut"
+            "$ref": "#/components/schemas/vendor_api__api__admin_reviews__VendorOut"
           },
           "version": {
             "title": "Version",
@@ -2018,6 +2020,67 @@
         "title": "SignupRequest",
         "type": "object"
       },
+      "StatusEventOut": {
+        "properties": {
+          "actor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "actor_type": {
+            "title": "Actor Type",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "from_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Status"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "to_status": {
+            "title": "To Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_status",
+          "to_status",
+          "actor_type",
+          "actor_id",
+          "reason",
+          "created_at"
+        ],
+        "title": "StatusEventOut",
+        "type": "object"
+      },
       "SummaryOut": {
         "properties": {
           "created": {
@@ -2293,8 +2356,28 @@
         "title": "VariantOut",
         "type": "object"
       },
-      "VendorOut": {
+      "VendorDetailOut": {
         "properties": {
+          "contact_name": {
+            "title": "Contact Name",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/StatusEventOut"
+            },
+            "title": "Events",
+            "type": "array"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -2304,6 +2387,22 @@
             "title": "Name",
             "type": "string"
           },
+          "phone": {
+            "title": "Phone",
+            "type": "string"
+          },
+          "price_max_paise": {
+            "title": "Price Max Paise",
+            "type": "integer"
+          },
+          "price_min_paise": {
+            "title": "Price Min Paise",
+            "type": "integer"
+          },
+          "product_type": {
+            "title": "Product Type",
+            "type": "string"
+          },
           "slug": {
             "title": "Slug",
             "type": "string"
@@ -2311,15 +2410,104 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "status_changed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Changed At"
+          },
+          "status_changed_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Changed By"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
+          },
+          "website_or_instagram": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Or Instagram"
           }
         },
         "required": [
           "id",
           "name",
           "slug",
-          "status"
+          "email",
+          "phone",
+          "contact_name",
+          "product_type",
+          "website_or_instagram",
+          "price_min_paise",
+          "price_max_paise",
+          "status",
+          "status_reason",
+          "status_changed_at",
+          "status_changed_by",
+          "created_at",
+          "events"
         ],
-        "title": "VendorOut",
+        "title": "VendorDetailOut",
+        "type": "object"
+      },
+      "VendorPageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/vendor_api__api__admin_vendors__VendorOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "VendorPageOut",
         "type": "object"
       },
       "VendorSummary": {
@@ -2397,6 +2585,21 @@
           "content"
         ],
         "title": "VersionOut",
+        "type": "object"
+      },
+      "vendor_api__api__admin_reviews__ApproveRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "ApproveRequest",
         "type": "object"
       },
       "vendor_api__api__admin_reviews__ReviewOut": {
@@ -2491,7 +2694,7 @@
             "type": "string"
           },
           "vendor": {
-            "$ref": "#/components/schemas/VendorOut"
+            "$ref": "#/components/schemas/vendor_api__api__admin_reviews__VendorOut"
           },
           "version": {
             "title": "Version",
@@ -2515,6 +2718,170 @@
           "reason"
         ],
         "title": "ReviewOut",
+        "type": "object"
+      },
+      "vendor_api__api__admin_reviews__VendorOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "status"
+        ],
+        "title": "VendorOut",
+        "type": "object"
+      },
+      "vendor_api__api__admin_vendors__ApproveRequest": {
+        "additionalProperties": false,
+        "description": "A reason is optional when approving (for example why a rejection was overturned).",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "ApproveRequest",
+        "type": "object"
+      },
+      "vendor_api__api__admin_vendors__VendorOut": {
+        "properties": {
+          "contact_name": {
+            "title": "Contact Name",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "phone": {
+            "title": "Phone",
+            "type": "string"
+          },
+          "price_max_paise": {
+            "title": "Price Max Paise",
+            "type": "integer"
+          },
+          "price_min_paise": {
+            "title": "Price Min Paise",
+            "type": "integer"
+          },
+          "product_type": {
+            "title": "Product Type",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_changed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Changed At"
+          },
+          "status_changed_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Changed By"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
+          },
+          "website_or_instagram": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Or Instagram"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "email",
+          "phone",
+          "contact_name",
+          "product_type",
+          "website_or_instagram",
+          "price_min_paise",
+          "price_max_paise",
+          "status",
+          "status_reason",
+          "status_changed_at",
+          "status_changed_by",
+          "created_at"
+        ],
+        "title": "VendorOut",
         "type": "object"
       },
       "vendor_api__api__products__ReviewOut": {
@@ -2846,7 +3213,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ApproveRequest"
+                "$ref": "#/components/schemas/vendor_api__api__admin_reviews__ApproveRequest"
               }
             }
           },
@@ -2941,6 +3308,333 @@
         "summary": "Reject Review",
         "tags": [
           "admin-reviews"
+        ]
+      }
+    },
+    "/v1/admin/vendors": {
+      "get": {
+        "description": "Vendors, paged. Pending applications come oldest first, so the one that has waited\nlongest is on top; other statuses come newest first.",
+        "operationId": "list_vendors_v1_admin_vendors_get",
+        "parameters": [
+          {
+            "description": "`pending` (default), `approved`, `rejected`, `suspended` or `all`",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "pending",
+              "description": "`pending` (default), `approved`, `rejected`, `suspended` or `all`",
+              "enum": [
+                "pending",
+                "approved",
+                "rejected",
+                "suspended",
+                "all"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Part of the name, slug or email",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Part of the name, slug or email",
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 100000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VendorPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Vendors",
+        "tags": [
+          "admin-vendors"
+        ]
+      }
+    },
+    "/v1/admin/vendors/{vendor_id}": {
+      "get": {
+        "description": "One vendor with its status history.",
+        "operationId": "get_vendor_v1_admin_vendors__vendor_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vendor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vendor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VendorDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Vendor",
+        "tags": [
+          "admin-vendors"
+        ]
+      }
+    },
+    "/v1/admin/vendors/{vendor_id}/approve": {
+      "post": {
+        "description": "Approves a pending, rejected or suspended vendor, and tells it by email. `409\ninvalid_status_transition` for one that is already approved.",
+        "operationId": "approve_vendor_v1_admin_vendors__vendor_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vendor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vendor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/vendor_api__api__admin_vendors__ApproveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VendorDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Approve Vendor",
+        "tags": [
+          "admin-vendors"
+        ]
+      }
+    },
+    "/v1/admin/vendors/{vendor_id}/reject": {
+      "post": {
+        "description": "Rejects a **pending** vendor (a reason is required, and the vendor is told it). Ends every\nsession of the vendor at once. `409 invalid_status_transition` otherwise: an approved vendor\nis suspended, not rejected.",
+        "operationId": "reject_vendor_v1_admin_vendors__vendor_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vendor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vendor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReasonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VendorDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reject Vendor",
+        "tags": [
+          "admin-vendors"
+        ]
+      }
+    },
+    "/v1/admin/vendors/{vendor_id}/suspend": {
+      "post": {
+        "description": "Suspends an **approved** vendor (a reason is required, and the vendor is told it). Ends\nevery session of the vendor at once: it cannot sign in or refresh, and its access tokens stop\nworking immediately. Approving it again reinstates it. `409 invalid_status_transition`\notherwise.",
+        "operationId": "suspend_vendor_v1_admin_vendors__vendor_id__suspend_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vendor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vendor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReasonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VendorDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Suspend Vendor",
+        "tags": [
+          "admin-vendors"
         ]
       }
     },

@@ -90,7 +90,7 @@ def _send_test_email(to: str, template: EmailTemplate) -> None:
         raise CommandError("send-test-email only runs with ENV=dev")
     sender = build_sender(settings)
     # A made-up token: the link is dead, it only shows what the email looks like.
-    context = {
+    contexts: dict[EmailTemplate, dict[str, object]] = {
         EmailTemplate.VERIFY_EMAIL: {"token": secrets.token_urlsafe(16), "expires_in_minutes": 60},
         EmailTemplate.STAFF_INVITE: {
             "token": secrets.token_urlsafe(16),
@@ -102,7 +102,11 @@ def _send_test_email(to: str, template: EmailTemplate) -> None:
             "expires_in_minutes": 30,
         },
         EmailTemplate.ACCOUNT_EXISTS: {},
-    }[template]
+        EmailTemplate.VENDOR_APPROVED: {"vendor_name": "Atelier"},
+        EmailTemplate.VENDOR_REJECTED: {"vendor_name": "Atelier", "reason": "Test message"},
+        EmailTemplate.VENDOR_SUSPENDED: {"vendor_name": "Atelier", "reason": "Test message"},
+    }
+    context = contexts[template]
     try:
         asyncio.run(sender.send(to, template, context))
     except Exception as error:
