@@ -382,7 +382,7 @@ Signup verification, staff invites and password reset send email (issue #80). Th
 
 ## Database
 
-Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (psycopg 3). Migration `0001` is an empty baseline; `0002` adds the vendor and vendor-user tables; `0003` adds assets and brand profiles; `0004` adds products; `0005` adds reviews; `0006` freezes submitted content and decided reviews (triggers), requires a pending revision for a product in review, and indexes the review foreign keys; `0007` adds `detail` to `review_events`.
+Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (psycopg 3). Migration `0001` is an empty baseline; `0002` adds the vendor and vendor-user tables; `0003` adds assets and brand profiles; `0004` adds products; `0005` adds reviews; `0006` freezes submitted content and decided reviews (triggers), requires a pending revision for a product in review, and indexes the review foreign keys; `0007` adds `detail` to `review_events`; `0008` adds the `outbox_events` table.
 
 | Table | Notes |
 |---|---|
@@ -427,6 +427,16 @@ An approved product keeps its live content while a new revision is edited and re
 - **A submitted revision is frozen** (migration 0006): once `submitted_at` is set, triggers refuse any UPDATE or DELETE of the revision (clearing `submitted_at` too) and any INSERT, UPDATE or DELETE of its `product_revision_variants` and `product_images`; the review and the live product point at it. The submitting UPDATE itself is allowed. Editing again means a new revision. A never-submitted draft revision can still be edited or deleted (its variants and images cascade). A revision's `product_id` and `vendor_id` never change. The child triggers lock the revision row (`FOR SHARE`), so a change racing a submit is either seen by the submit check or refused.
 - **A product in review has a revision in review**: `status = 'pending_review'` needs `pending_revision_id` (`ck_products_pending_review_has_pending`).
 - **Not constrained here**: that an image asset has kind `product_image`, and the other status transitions. Those are Phase 3 rules for the service.
+
+### The outbox (events for the central app)
+
+`outbox_events` is the transactional outbox of [ADR 0003](../../docs/adr/0003-central-app-publishing-contract.md): an event is written in the same transaction as what it announces, so an approval and its event are saved together or not at all. This is the table; writing and sending events are the next Phase 4 issues.
+
+- **One event per aggregate version**: `UNIQUE (aggregate_type, aggregate_id, version)`. `id` is the `event_id` the central app de-duplicates on, `payload` the whole event body (the full state of the aggregate), exactly as it will be signed and sent.
+- **Whose it is**: `vendor_id` (a foreign key, indexed) is on every event, because every event is about one vendor's page, product or account; a vendor with events cannot be deleted. The aggregate of a `vendor.*` event is the vendor itself (`aggregate_id = vendor_id`).
+- **Rules in the database**: `aggregate_type` (`brand_profile`, `product`, `vendor`) and `event_type` (the five of the contract) are checked, and an event must be about its own kind of aggregate (`vendor.status_changed` only for a vendor); `version >= 1`; `payload` is a JSON object of at most 256 KB; `last_error` is at most 1000 characters (a reason, not a copy of the response); a `dead` event has a reason; `sent_at` is set exactly when `sent`, and `locked_at` exactly when `sending`.
+- **Content never changes** (migration 0008's trigger): everything except the delivery state (`status`, `attempts`, `next_attempt_at`, `locked_at`, `last_error`, `sent_at`) is frozen, `sent` is final, and the status moves along the worker's path only: `pending` to `sending` (a claim), `sending` to `pending` (a retry or the sweeper), `sent` or `dead`, and `dead` back to `pending` (an admin's retry). Rows are deleted by the retention job 30 days after they were sent, so `DELETE` is allowed.
+- **Indexes**: `ix_outbox_events_due` (a partial index on `next_attempt_at` for `pending` rows) serves the worker's claim, and `(status, created_at)` serves the admins' view of what is stuck and the retention scan. A test runs the claim exactly as the ADR writes it: it takes only due events and never two versions of one aggregate at once.
 
 ### Reviews
 
