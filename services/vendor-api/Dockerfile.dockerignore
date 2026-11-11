@@ -5,6 +5,7 @@
 !services/vendor-api/pyproject.toml
 !services/vendor-api/vendor_api
 !services/vendor-api/alembic.ini
+!docs/adr/0003-contract/schemas
 
 **/__pycache__
 **/*.egg-info

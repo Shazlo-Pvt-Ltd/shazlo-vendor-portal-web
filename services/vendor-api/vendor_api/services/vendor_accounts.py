@@ -44,6 +44,7 @@ from vendor_api.core.errors import ApiError
 from vendor_api.db.models import ActorType, Vendor, VendorStatus, VendorStatusEvent
 from vendor_api.services.auth import AuthService
 from vendor_api.services.email import EmailTemplate, OutgoingEmail
+from vendor_api.services.outbox import OutboxWriter
 
 logger = logging.getLogger("vendor_api.vendor_accounts")
 
@@ -128,10 +129,14 @@ class VendorAccountService:
     """Lists vendors and changes their status. Commits its own changes."""
 
     def __init__(
-        self, sessions: AuthService, clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+        self,
+        sessions: AuthService,
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        events: OutboxWriter | None = None,
     ) -> None:
         self._sessions = sessions
         self._clock = clock
+        self._events = events  # tells the central app about the change, in the same transaction
 
     # --- Reading ---------------------------------------------------------------------------
 
@@ -227,17 +232,20 @@ class VendorAccountService:
             vendor.status_changed_at = now
             vendor.status_changed_by = admin_id
             await db.flush()
-            db.add(
-                VendorStatusEvent(
-                    vendor_id=vendor.id,
-                    from_status=previous,
-                    to_status=rule.target,
-                    actor_type=ActorType.ADMIN,
-                    actor_id=admin_id,
-                    reason=reason,
-                )
+            audit = VendorStatusEvent(
+                vendor_id=vendor.id,
+                from_status=previous,
+                to_status=rule.target,
+                actor_type=ActorType.ADMIN,
+                actor_id=admin_id,
+                reason=reason,
             )
+            db.add(audit)
             await db.flush()
+            if self._events is not None:
+                await self._tell_central_app(
+                    self._events, db, vendor, audit.id, action, reason, now
+                )
             if rule.ends_sessions:
                 # Before the commit: if Redis is down this raises and the change is rolled back.
                 await self._sessions.end_sessions_of_vendor(db, vendor.id)
@@ -257,3 +265,25 @@ class VendorAccountService:
                 # The change is committed and refreshing is refused for the new status anyway.
                 logger.warning("could not end the sessions of vendor %s again", vendor.id)
         return VendorChange(vendor, previous, email)
+
+    @staticmethod
+    async def _tell_central_app(
+        events: OutboxWriter,
+        db: AsyncSession,
+        vendor: Vendor,
+        audit_id: int,
+        action: VendorAction,
+        reason: str | None,
+        at: datetime,
+    ) -> None:
+        """Writes the outbox events of a status change, in the change's own transaction: the
+        status event first, then what the change does to what is shown. Suspending hides the
+        vendor's page and products; rejecting does the same for anything that was published;
+        approving again shows what the suspension hid, and only that."""
+        await events.vendor_status_changed(db, vendor, audit_id, vendor.status, reason, at)
+        if action is VendorAction.SUSPEND:
+            await events.unpublish_vendor(db, vendor.id, "vendor_suspended", at)
+        elif action is VendorAction.REJECT:
+            await events.unpublish_vendor(db, vendor.id, "rejected_after_publish", at)
+        else:
+            await events.republish_vendor(db, vendor.id, at)

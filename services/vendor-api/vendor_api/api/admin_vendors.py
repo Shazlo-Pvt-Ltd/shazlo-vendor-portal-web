@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vendor_api.api.admin import AdminRequest, Reviewer, reviewer_dependency
@@ -48,6 +48,10 @@ class ReasonRequest(AdminRequest):
     """Rejecting and suspending need a reason, which the vendor is told: a missing, empty or
     whitespace-only one is a 422."""
 
+    model_config = ConfigDict(
+        json_schema_extra={"examples": [{"reason": "Repeated chargebacks: contact support."}]}
+    )
+
     reason: str = Field(min_length=1, max_length=2000)
 
     @field_validator("reason", mode="before")
@@ -56,8 +60,12 @@ class ReasonRequest(AdminRequest):
         return _trim(value)
 
 
-class ApproveRequest(AdminRequest):
+class ApproveVendorRequest(AdminRequest):
     """A reason is optional when approving (for example why a rejection was overturned)."""
+
+    model_config = ConfigDict(
+        json_schema_extra={"examples": [{"reason": "Documents checked."}, {}]}
+    )
 
     reason: str | None = Field(default=None, max_length=2000)
 
@@ -208,7 +216,7 @@ async def _change(
 @router.post("/{vendor_id}/approve")
 async def approve_vendor(
     vendor_id: uuid.UUID,
-    body: ApproveRequest,
+    body: ApproveVendorRequest,
     response: Response,
     background: BackgroundTasks,
     db: Db,

@@ -2,16 +2,22 @@
 
 FastAPI service for vendors, brand profiles, products, assets, reviews and publishing to the central app. See the [roadmap](../../docs/ROADMAP.md) (Phases 2 to 4), [ADR 0009](../../docs/adr/0009-auth-model.md) for the auth model, [ADR 0010](../../docs/adr/0010-shared-security-package.md) for what it shares with identity-api, and the [key-rotation runbook](../../docs/runbooks/jwt-key-rotation.md).
 
-## What it does today (Phase 2)
+## What it does today (Phase 3, and Phase 4 under way)
 
 - **Vendor accounts:** signup with email verification, login, refresh (rotating tokens with reuse detection), logout, change-password, forgot and set password.
 - **A team per vendor:** the owner invites staff, lists, disables and enables them; invites and resets go by email.
 - **Vendor-scoped data isolation**, with helpers and tests that fail when a route or table skips the rule.
 - **Admin API** (`/v1/admin/*`): accepts only identity-api tokens, verified through its JWKS. The review queue is the first part of it.
 - **Its own tokens and keys:** vendor-api signs vendor tokens with its own key and serves its own JWKS.
-- **The schema** for vendors, users, tokens and (in the open Phase 2 PRs) brand profiles, products and reviews.
+- **The schema** for vendors, users, tokens, brand profiles, products (identity and revisions), assets, reviews and the outbox.
+- **A brand page per vendor:** edit a draft, submit it for review, read the published version.
+- **A catalog:** products with variants and images, where editing a live product makes a pending revision and never changes what is live; a bulk import from `.xlsx` or `.csv` with a report for every row.
+- **Image uploads** straight to Cloudinary with a signature made here, and a record of each image.
+- **Review:** a queue for reviewers with the exact fields that changed, approve and reject (a reason is required) with an audit trail.
+- **Vendor accounts:** approve, reject and suspend, with sessions ended at once and an email to the vendor.
+- **Central-app events (Phase 4):** every approval writes its contract-checked event to the outbox in the same transaction, and so do archiving a live product and suspending, rejecting or reinstating a vendor (what shoppers stop or start seeing again); requests to the central app are HMAC-signed. Sending the events is not built yet.
 
-Phase 3 adds brand profiles, products, media uploads, bulk imports and review decisions.
+Each part is described below. `tests/test_e2e_catalog.py` walks the whole flow against Postgres and Redis, and [Try the review flow](#try-the-review-flow-locally) does it by hand.
 
 ## Quick start: from nothing to a signed-in vendor
 
@@ -27,7 +33,7 @@ pip install -e '.[dev]'
 cp .env.example .env                       # put the same POSTGRES_PASSWORD into DATABASE_URL
 python -m vendor_api.cli generate-key      # writes ./.keys/<kid>.pem; JWT_KEYS_DIR in .env points there
 alembic upgrade head
-python -m vendor_api.cli seed-dev          # a demo vendor with an owner and a staff user
+python -m vendor_api.cli seed-dev          # a demo vendor, its catalog, and two more vendors
 uvicorn vendor_api.main:app --reload --port 8002
 ```
 
@@ -44,8 +50,40 @@ curl -s localhost:8002/v1/auth/login -H 'content-type: application/json' \
 **Or sign up as a new vendor:** `POST /v1/auth/signup` (try it at <http://localhost:8002/docs>), then open Mailpit at <http://localhost:8025>, copy the token from the link (`...#token=<token>`) and `POST /v1/auth/verify-email` with `{"token": "<token>"}`; now you can log in.
 
 - **`seed-dev`** creates one approved vendor `demo-brand` with a verified owner (`owner@demo-brand.test`) and a staff user (`staff@demo-brand.test`), both with one password: `demo-password-1234`, a **local-only** default (set your own with `--password` or `SEED_VENDOR_PASSWORD`). The command never prints a password, runs only with `ENV=dev`, and is safe to run twice: it never changes anything that exists.
+- **`seed-dev` also fills a demo catalog**, so every screen and admin endpoint has something to show:
+  - **Demo Brand** (approved): a published brand profile and a newer version in review, and four products: `KURTA-DEMO-01` (approved, with an edit in review), `TOTE-DEMO-03` (a first submission in review), `SCARF-DEMO-02` (a draft) and the images they use.
+  - **Demo Pending Brand** (`owner@demo-pending.test`, pending): a brand profile in review, the first submission of an application. A pending vendor can sign in.
+  - **Demo Suspended Brand** (`owner@demo-suspended.test`, suspended): its owner cannot sign in.
+  - That leaves **four pending reviews** in `GET /v1/admin/reviews` and one pending vendor in `GET /v1/admin/vendors`. The extra owners use the same seed password. Running it again changes nothing.
+  - **Central-app events:** the seed's two approvals (the published brand profile and the live kurta) have their `*.published` events in `outbox_events`, as an approval through the API would, so approving the pending reviews continues their versions. With `OUTBOX_EVENTS_ENABLED=false` it writes none, like the app.
+  - **A reviewer** is not created here: reviewers are identity-api admins. Seed identity-api (`python -m identity_api.cli seed`) and use the token of the `super_admin` it creates; a `super_admin` passes every reviewer check. A dedicated `vendor_reviewer` is made through identity-api's admin API.
 - If `generate-key` printed a `JWT_SIGNING_KID`, put it in `.env` (it is only needed with more than one key). The app refuses to start without a signing key.
 - To also run identity-api (admin tokens for `/v1/admin/*`) see the [root README](../../README.md), Local development. vendor-api starts without it.
+
+## Try the review flow locally
+
+With vendor-api and identity-api running (see the root README, Local development) and `seed-dev` done. `$VENDOR` is a vendor token (the `access_token` of a login), `$ADMIN` an identity-api token for the seeded admin with `aud` `vendor-api` (`POST /v1/auth/token` on identity-api).
+
+```sh
+# What is waiting, oldest first (four reviews after seed-dev):
+curl -s localhost:8002/v1/admin/reviews -H "authorization: Bearer $ADMIN"
+# One of them with the exact fields that changed (and `content.version`, which you send back):
+curl -s localhost:8002/v1/admin/reviews/<id> -H "authorization: Bearer $ADMIN"
+# Approve it, or reject it with a reason:
+curl -s -X POST localhost:8002/v1/admin/reviews/<id>/approve -H "authorization: Bearer $ADMIN" \
+  -H 'content-type: application/json' -d '{"version": 2}'
+curl -s -X POST localhost:8002/v1/admin/reviews/<id>/reject -H "authorization: Bearer $ADMIN" \
+  -H 'content-type: application/json' -d '{"version": 2, "reason": "The logo is too small to read."}'
+# As the vendor: the page shoppers see now, and the catalog:
+curl -s localhost:8002/v1/vendor/brand-profile/published -H "authorization: Bearer $VENDOR"
+curl -s localhost:8002/v1/vendor/products -H "authorization: Bearer $VENDOR"
+# Vendor accounts: the pending application, then approve or suspend it:
+curl -s localhost:8002/v1/admin/vendors -H "authorization: Bearer $ADMIN"
+curl -s -X POST localhost:8002/v1/admin/vendors/<id>/approve -H "authorization: Bearer $ADMIN" \
+  -H 'content-type: application/json' -d '{}'
+```
+
+Each approval also writes its central-app event to `outbox_events` in the same transaction (see "Writing events" below); a rejection writes none. Every request body has an example in the OpenAPI document at <http://localhost:8002/docs> ("Try it out"). Image uploads need Cloudinary credentials (`CLOUDINARY_*`, see Settings); without them the asset endpoints answer `503` and everything else works.
 
 ## Endpoints
 
@@ -120,6 +158,7 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | unset | set all three or none; the secret has no default and is never logged or returned. Without them the asset endpoints answer `503 uploads_not_configured` and the rest of the service works |
 | `CLOUDINARY_ROOT_FOLDER` | `shazlo` | every file lives under `<root>/vendors/<vendor id>/...`; give each environment its own root (lower-case letters, digits, `-`, `_`, `/`) |
 | `CLOUDINARY_UPLOAD_PRESET` | unset | an upload preset (made in Cloudinary) that is signed into every upload, so the provider enforces its own size and format limits as a second layer |
+| `OUTBOX_EVENTS_ENABLED` | `true` | write the central-app event when an admin approves something. Turn it off only for local work: approvals then write no event and the log says so. It cannot be off while `CENTRAL_PUBLISHING_ENABLED` is on |
 | `CENTRAL_PUBLISHING_ENABLED` | `false` | publish outbox events to the central app (ADR 0003); needs the next three |
 | `CENTRAL_API_URL` / `CENTRAL_SIGNING_KEY_ID` / `CENTRAL_SIGNING_SECRET` | unset | the central app's base URL (https outside dev), the id it knows our secret by, and the secret (at least 32 characters, never logged; see the key-rotation runbook). Every request is signed `HMAC_SHA256(secret, timestamp + "." + body)` by `shazlo_security.signing` |
 | `UPLOAD_MAX_BYTES` | `10485760` | largest image accepted (10 MiB; at most 100 MiB) |
@@ -235,6 +274,15 @@ A vendor's catalog. Any active user of the vendor (owner or staff) can do everyt
 
 Every write first locks the product row, so two requests on one product run one after the other.
 
+## Events for the central app (`services/central_events.py`)
+
+Pure builders turn the rows of an approved page, product or vendor status into the contract's full-state events (ADR 0003, [`docs/adr/0003-contract/`](../../docs/adr/0003-contract/README.md)): `brand_profile_published` / `brand_profile_unpublished`, `product_published` / `product_unpublished`, `vendor_status_changed`. Each returns a `BuiltEvent` whose fields are the outbox row's columns (`event_type`, `aggregate_type`, `aggregate_id`, `vendor_id`, `version`, `payload`) and whose `body()` is the exact bytes to sign and send.
+
+- **Validated before it is returned** against the schemas in `docs/adr/0003-contract/schemas/` (read from there; the image sets `CONTRACT_DIR`). The schemas refuse unknown fields, so stock and vendor contact data cannot be added by accident; an invalid event raises `InvalidEvent` (a bug, not an event). A body over 256 KB raises `EventTooLarge`.
+- **Full state, stable bytes.** Same rows, same `event_id` and time: same bytes. Variants are in the order the vendor created them, images by position, prices in integer paise, times UTC to the second. Empty optional fields are left out (the contract has no `null`).
+- **Versions** are the caller's: a brand page uses the published profile's `version` (its aggregate id is the vendor id), a product its `Product.version`, a vendor the number of the status change (`vendor_status_version`: the vendor's creation counts as the first). An `unpublished` event needs a version above the last published one and is refused for something that was never published (`last_published_version=None`).
+- `load_brand_snapshot` and `load_product_snapshot` read the rows; the builders never query.
+
 ## Image uploads (Cloudinary)
 
 Images go **straight from the browser to Cloudinary** (ADR 0005): this service signs the upload and later checks what was stored, and never handles file bytes. Any active user of the vendor (owner or staff) can use both endpoints.
@@ -319,7 +367,7 @@ With no `base` (a first submission) every field that has a value is listed as ad
 
 **The audit trail.** Each decision writes one `review_events` row: who (`actor_type` `admin` and the token's id), what (`approved` or `rejected`), when, the `reason`, and `detail`, a JSON object saying what changed: the thing reviewed before and after. For a brand profile: the version, its state before and after, the published version before and the one it superseded. For a product: the product, its SKU, the revision, and its status, `product_version` and live revision before and after. Events are append-only (a trigger refuses any change), and a submission has no `detail`.
 
-**The hook for Phase 4.** `app.state.review_decisions.add_hook(hook)` registers `async def hook(db, decision)`. It runs **inside the decision's transaction**, after the changes and the audit event and before the commit, with the `Decision` that was made (the review, the action, the reviewer, `detail`, and the profile, the one it superseded, or the product and revision). That is where Phase 4 writes the central-app outbox row: it commits with the approval or not at all, and a hook that raises undoes the whole decision. Hooks also run for rejections (`decision.action`).
+**Hooks.** `app.state.review_decisions.add_hook(hook)` registers `async def hook(db, decision)`. It runs **inside the decision's transaction**, after the changes and the audit event and before the commit, with the `Decision` that was made (the review, the action, the reviewer, `detail`, and the profile, the one it superseded, or the product and revision). A hook that raises undoes the whole decision. Hooks also run for rejections (`decision.action`). The outbox writer (see "Writing events", below) is registered at app start.
 
 ## Vendor accounts (admins)
 
@@ -453,13 +501,34 @@ An approved product keeps its live content while a new revision is edited and re
 
 ### The outbox (events for the central app)
 
-`outbox_events` is the transactional outbox of [ADR 0003](../../docs/adr/0003-central-app-publishing-contract.md): an event is written in the same transaction as what it announces, so an approval and its event are saved together or not at all. This is the table; writing and sending events are the next Phase 4 issues.
+`outbox_events` is the transactional outbox of [ADR 0003](../../docs/adr/0003-central-app-publishing-contract.md): an event is written in the same transaction as what it announces, so an approval and its event are saved together or not at all. The table is described here; "Writing events" below says who writes it, and sending is the publisher worker's issue.
 
 - **One event per aggregate version**: `UNIQUE (aggregate_type, aggregate_id, version)`. `id` is the `event_id` the central app de-duplicates on, `payload` the whole event body (the full state of the aggregate), exactly as it will be signed and sent.
 - **Whose it is**: `vendor_id` (a foreign key, indexed) is on every event, because every event is about one vendor's page, product or account; a vendor with events cannot be deleted. The aggregate of a `vendor.*` event is the vendor itself (`aggregate_id = vendor_id`).
 - **Rules in the database**: `aggregate_type` (`brand_profile`, `product`, `vendor`) and `event_type` (the five of the contract) are checked, and an event must be about its own kind of aggregate (`vendor.status_changed` only for a vendor); `version >= 1`; `payload` is a JSON object of at most 256 KB; `last_error` is at most 1000 characters (a reason, not a copy of the response); a `dead` event has a reason; `sent_at` is set exactly when `sent`, and `locked_at` exactly when `sending`.
 - **Content never changes** (migration 0008's trigger): everything except the delivery state (`status`, `attempts`, `next_attempt_at`, `locked_at`, `last_error`, `sent_at`) is frozen, `sent` is final, and the status moves along the worker's path only: `pending` to `sending` (a claim), `sending` to `pending` (a retry or the sweeper), `sent` or `dead`, and `dead` back to `pending` (an admin's retry). Rows are deleted by the retention job 30 days after they were sent, so `DELETE` is allowed.
 - **Indexes**: `ix_outbox_events_due` (a partial index on `next_attempt_at` for `pending` rows) serves the worker's claim, and `(status, created_at)` serves the admins' view of what is stuck and the retention scan. A test runs the claim exactly as the ADR writes it: it takes only due events and never two versions of one aggregate at once.
+
+### Writing events: an approval and its event commit together
+
+`OutboxWriter` (`services/outbox.py`) is the hook the review decisions run, registered in `create_app`. **On an approval** it builds the contract's event from the rows as they now stand and inserts one `outbox_events` row in the **same transaction** as the decision:
+
+- an approved **brand profile version** writes `brand_profile.published` (aggregate: the vendor's page; version: the profile's own `version`); an approved **product revision** writes `product.published` (aggregate: the product; version: `Product.version`, which the decision raises when the live content changes, so the first time a product goes live is version 1 and each approved edit is the next number);
+- a **rejection writes nothing**;
+- the payload is the builder's full state, validated against the contract before it is stored; the row's `id` is the event id, and its `created_at` is the decision's time (the event's `occurred_at`), so the sender can rebuild the exact envelope from the row;
+- **if writing the event fails, the approval does not happen**: the hook raises and the decision service rolls everything back. `409 outbox_conflict` when an event for that version already exists (the unique key), and `409 cannot_publish` when the state cannot be turned into a valid event (for example an image that is not ready). Both say "Nothing was saved". Two approvals of one product therefore give versions in order, and no approval can exist without its event while `OUTBOX_EVENTS_ENABLED` is on.
+
+`OUTBOX_EVENTS_ENABLED=false` is for local work without the central app: approvals then write no event, and the log says so at start and for every approval. Events queue in the outbox whether or not sending (`CENTRAL_PUBLISHING_ENABLED`) is configured, so nothing is lost while the central app is not ready.
+
+### Writing events: what stops being shown
+
+Three changes take things off the central app. Each writes its events **in the change's own transaction**, so the change and its events are saved together or not at all (a failure is `409 outbox_conflict` or `409 cannot_publish`, "Nothing was saved").
+
+- **Archiving a live product** (`DELETE /v1/vendor/products/{id}` on an approved one) writes `product.unpublished` with reason `archived`. Its version is the product's, raised by the archive and kept above its last event. A product that never had an event (never published, or events were off) writes nothing. "Sent back to review" does not take a product off sale (the live revision stays live until a new one is approved), so it writes nothing.
+- **Suspending a vendor** writes `vendor.status_changed` (version: the number of the change in the vendor's history) and then `brand_profile.unpublished` / `product.unpublished` with reason `vendor_suspended` for **every page or product whose latest event is a `published` one**. **Rejecting** does the same with reason `rejected_after_publish` (normally the vendor published nothing, so only the status event is written).
+- **Approving a vendor again** writes `vendor.status_changed`, then a `published` event, at the next version, for exactly the pages and products whose latest event is an unpublish with a vendor reason. What was archived stays archived, and what was never published is not published. Each is rebuilt from the current database state; one that cannot be built (for example an image that is not ready) refuses the reinstatement with `409 cannot_publish`.
+
+What the central app currently shows is read from the outbox itself (the latest event of each aggregate), so the fan-out is **idempotent**: an aggregate that is already unpublished gets nothing. A fan-out runs in the one transaction, in chunks of 200 aggregates (loaded, built and flushed 200 at a time, so memory stays bounded; a vendor with thousands of products still commits or rolls back as one). Versions only go up: a new event is one past the aggregate's last event, and a product's `version` is raised to match, so its next approval continues from it. A brand page's events are numbered the same way: approving a profile writes the profile's own version, or one past the page's last event if a suspension or reinstatement already used it (all of these hold the vendor lock), so a profile drafted before a suspension is still approved, after it, at a version the central app has not seen.
 
 ### Reviews
 
@@ -500,6 +569,8 @@ DATABASE_URL=postgresql://shazlo:<password>@localhost:5432/vendor_test pytest
 ```
 
 The suite drops and recreates the schema (`alembic downgrade base` then `upgrade head`) and refuses any database whose name is not `test` or `*_test`.
+
+The end-to-end tests (`test_e2e_auth.py` for sign-in and sessions, `test_e2e_catalog.py` for the brand page, the catalog, the review and the vendor account) also need a real Redis in `REDIS_URL`, on a database other than 0 because they empty it (CI sets one), and are skipped without it. Cloudinary is the one fake in them: nothing talks to the network.
 
 ## Docker
 
