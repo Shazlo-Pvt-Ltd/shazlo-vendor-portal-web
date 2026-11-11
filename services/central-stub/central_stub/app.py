@@ -23,6 +23,13 @@ from central_stub.store import Store
 
 PREFIX = "/internal/v1"
 MAX_PAGE = 500
+# The 401 message is chosen from the error's code, never taken from the exception itself.
+SIGNATURE_MESSAGES = {
+    "malformed_signature": "The signature headers are missing or malformed",
+    "unknown_key": "The key id is not known",
+    "stale_timestamp": "The timestamp is outside the allowed window",
+    "bad_signature": "The signature does not match",
+}
 
 
 def error(status: int, message: str, code: str, **extra: Any) -> JSONResponse:
@@ -86,7 +93,8 @@ def create_app(settings: Settings | None = None, clock: Callable[[], float] = ti
         try:
             verifier.verify(request.headers, raw)
         except SignatureError as exc:
-            return error(401, str(exc), exc.code), b""
+            message = SIGNATURE_MESSAGES.get(exc.code, "The signature was refused")
+            return error(401, message, exc.code), b""
         return None, raw
 
     @app.get("/health")
