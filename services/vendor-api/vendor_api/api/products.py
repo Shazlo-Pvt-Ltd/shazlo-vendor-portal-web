@@ -107,7 +107,40 @@ class ProductContentBody(BaseModel):
     """The whole content of one revision. A `PUT` replaces it, so a field or list left out is
     cleared. Limits are the ones of the published contract (ADR 0003)."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "title": "Block-print cotton kurta",
+                    "description": "Hand block printed on soft cotton.",
+                    "category": "kurtas",
+                    "subcategory": None,
+                    "gender": "women",
+                    "fabric": "cotton",
+                    "weight_grams": 350,
+                    "returnable": True,
+                    "return_window_days": 7,
+                    "variants": [
+                        {
+                            "sku": "KURTA-001-M",
+                            "size": "M",
+                            "color": "Indigo",
+                            "price_paise": 149900,
+                            "mrp_paise": 199900,
+                            "is_active": True,
+                        }
+                    ],
+                    "images": [
+                        {
+                            "asset_id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
+                            "alt_text": "Front view",
+                        }
+                    ],
+                }
+            ]
+        },
+    )
 
     title: DatabaseText = Field(min_length=1, max_length=200)
     description: DatabaseText | None = Field(default=None, max_length=4000)
@@ -167,6 +200,41 @@ class ProductContentBody(BaseModel):
 class CreateProductBody(ProductContentBody):
     """A new product. The `sku` is its identity and cannot be changed afterwards."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "sku": "KURTA-001",
+                    "title": "Block-print cotton kurta",
+                    "description": "Hand block printed on soft cotton.",
+                    "category": "kurtas",
+                    "subcategory": None,
+                    "gender": "women",
+                    "fabric": "cotton",
+                    "weight_grams": 350,
+                    "returnable": True,
+                    "return_window_days": 7,
+                    "variants": [
+                        {
+                            "sku": "KURTA-001-M",
+                            "size": "M",
+                            "color": "Indigo",
+                            "price_paise": 149900,
+                            "mrp_paise": 199900,
+                            "is_active": True,
+                        }
+                    ],
+                    "images": [
+                        {
+                            "asset_id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
+                            "alt_text": "Front view",
+                        }
+                    ],
+                }
+            ]
+        },
+    )
+
     sku: str = Field(min_length=1, max_length=64)
 
     @field_validator("sku", mode="before")
@@ -197,7 +265,7 @@ class ImageOut(BaseModel):
     alt_text: str | None
 
 
-class ReviewOut(BaseModel):
+class ProductReviewOut(BaseModel):
     status: str
     reason: str | None
     decided_at: datetime | None
@@ -220,7 +288,7 @@ class RevisionOut(BaseModel):
     variants: list[VariantOut]
     images: list[ImageOut]
     submitted_at: datetime | None
-    review: ReviewOut | None
+    review: ProductReviewOut | None
     updated_at: datetime
 
 
@@ -275,7 +343,9 @@ def _revision_out(view: RevisionView, state: str | None = None) -> RevisionOut:
         images=[ImageOut(**vars_of(i)) for i in view.images],
         submitted_at=revision.submitted_at,
         review=(
-            ReviewOut(status=review.status, reason=review.reason, decided_at=review.decided_at)
+            ProductReviewOut(
+                status=review.status, reason=review.reason, decided_at=review.decided_at
+            )
             if review is not None
             else None
         ),

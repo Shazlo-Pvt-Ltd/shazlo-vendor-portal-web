@@ -18,6 +18,7 @@ from vendor_api.services.seed import (
     SEED_OWNER_EMAIL,
     SEED_SLUG,
     SEED_STAFF_EMAIL,
+    CatalogSeed,
     seed_demo_vendor,
 )
 
@@ -213,7 +214,11 @@ def test_the_seed_command_never_prints_the_password(
         passwords.append(password)
         return next(results)
 
+    async def fake_catalog(password: str) -> CatalogSeed | None:
+        return None  # the catalog has its own tests (test_seed_catalog.py)
+
     monkeypatch.setattr(cli, "_seed_dev", fake_seed)
+    monkeypatch.setattr(cli, "_seed_catalog", fake_catalog)
     assert cli.main(["seed-dev", "--password", SEED_PASSWORD]) == 0
     first = capsys.readouterr().out
     assert SEED_OWNER_EMAIL in first

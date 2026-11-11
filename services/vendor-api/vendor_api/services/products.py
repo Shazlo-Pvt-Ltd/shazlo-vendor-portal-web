@@ -29,6 +29,7 @@ from vendor_api.db.models import (
     Vendor,
 )
 from vendor_api.db.scoped import scoped_select
+from vendor_api.services.outbox import OutboxWriter
 
 Clock = Callable[[], datetime]
 
@@ -172,8 +173,11 @@ class ProductService:
     Commits its own changes.
     """
 
-    def __init__(self, clock: Clock = lambda: datetime.now(UTC)) -> None:
+    def __init__(
+        self, clock: Clock = lambda: datetime.now(UTC), events: OutboxWriter | None = None
+    ) -> None:
         self._clock = clock
+        self._events = events  # tells the central app when a live product is archived
 
     # --- Reading ---------------------------------------------------------------------------
 
@@ -413,6 +417,8 @@ class ProductService:
                 product.status = ProductStatus.ARCHIVED
                 if was_live:
                     product.version += 1  # the live product changed: it is no longer on sale
+                    if self._events is not None:
+                        await self._events.product_archived(db, product, self._clock())
             await db.flush()
             await db.commit()
         except BaseException:
