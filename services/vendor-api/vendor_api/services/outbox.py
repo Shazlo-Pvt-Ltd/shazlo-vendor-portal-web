@@ -361,7 +361,7 @@ class OutboxWriter:
             if decision.brand_profile is not None:
                 brand = await load_brand_snapshot(db, decision.brand_profile.vendor_id)
                 last = await self.last_version(db, "brand_profile", brand.vendor.id)
-                if last is not None and brand.profile.version <= last:
+                if last is not None and brand.profile.version < last:
                     raise ApiError(
                         409,
                         STALE_VERSION,

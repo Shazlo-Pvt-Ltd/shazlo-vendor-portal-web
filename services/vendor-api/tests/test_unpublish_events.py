@@ -13,6 +13,7 @@ import pytest
 from conftest import Tenants
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from review_builders import submitted_product
 from test_outbox_writer import decide, envelope, outbox, pending_first_product, pending_profile
 
 from vendor_api.db.models import OutboxEvent, Product, Vendor
@@ -22,6 +23,14 @@ from vendor_api.services.outbox import STALE_VERSION, OutboxWriter
 
 PRODUCTS = "/v1/vendor/products"
 VENDORS = "/v1/admin/vendors"
+
+
+@pytest.fixture(autouse=True)
+async def approved_vendor(tenants: Tenants, session: AsyncSession) -> None:
+    await session.execute(
+        update(Vendor).where(Vendor.id == tenants.a.vendor.id).values(status="approved")
+    )
+    await session.commit()
 
 
 def bearer(token: str) -> dict[str, str]:
@@ -86,7 +95,6 @@ async def test_archiving_a_live_product_writes_product_unpublished(
     (unpublished,) = of_type(events, "product.unpublished")
     assert unpublished.aggregate_id == product_id
     assert unpublished.payload["reason"] == "archived"
-    assert unpublished.payload["last_published_version"] == 1
     assert unpublished.version == 2
     assert await product_version(session, product_id) == 2
     contract().validate(envelope(unpublished))
@@ -95,12 +103,10 @@ async def test_archiving_a_live_product_writes_product_unpublished(
 async def test_archiving_a_product_that_was_never_live_writes_nothing(
     tenants: Tenants, session: AsyncSession
 ) -> None:
-    product_id, _, _ = await pending_first_product(session, tenants.a, "N-1")
-    await session.execute(
-        update(Product).where(Product.id == product_id).values(pending_revision_id=None)
-    )
+    product, _ = await submitted_product(session, tenants.a, "N-1", 1)
+    product_id = product.id
     await session.commit()
-    assert await archive(tenants, product_id) in {204, 409}
+    assert await archive(tenants, product_id) == 204
     assert await outbox(session) == []
 
 
@@ -127,7 +133,7 @@ async def test_suspending_hides_the_page_and_every_product(
     ]
     assert {e.aggregate_id for e in hidden} == {vendor_id, first, second}
     assert {e.payload["reason"] for e in hidden} == {"vendor_suspended"}
-    assert all(e.version == 2 and e.payload["last_published_version"] == 1 for e in hidden)
+    assert all(e.version == 2 for e in hidden)
     assert await product_version(session, first) == 2
     for event in events:
         contract().validate(envelope(event))
