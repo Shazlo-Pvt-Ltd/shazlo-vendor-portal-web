@@ -23,7 +23,7 @@ dependencies = [
     # Sync driver for Alembic; the app itself uses asyncpg.
     "psycopg[binary]>=3.2",
     # Events for the central app are validated against the ADR 0003 JSON Schemas before they are
-    # returned (services/central_contract.py); date-time and uri formats are checked too.
+    # returned (services/central_contract.py); date-time and uuid formats are checked too.
     "jsonschema>=4.23",
     "rfc3339-validator>=0.1.4",
 ]
