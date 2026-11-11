@@ -532,6 +532,13 @@ def test_blank_values_mean_not_set() -> None:
     )
 
 
+@pytest.mark.parametrize("key_id", ["k 1", "-k1", "k" * 65, "k1\r\nX-Injected: 1"])
+def test_a_bad_signing_key_id_is_refused_at_startup(key_id: str) -> None:
+    # It is sent as the X-Shazlo-Key-Id header, so it must fail here, not on the first publish.
+    with pytest.raises(ValidationError, match="CENTRAL_SIGNING_KEY_ID"):
+        make(**{**CENTRAL, "central_signing_key_id": key_id})
+
+
 def test_a_short_signing_secret_is_refused() -> None:
     with pytest.raises(ValidationError, match="at least 32 characters"):
         make(**{**CENTRAL, "central_signing_secret": "short"})
