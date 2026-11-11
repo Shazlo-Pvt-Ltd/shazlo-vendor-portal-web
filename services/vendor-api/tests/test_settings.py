@@ -497,3 +497,86 @@ def test_the_import_limits_have_defaults_and_bounds() -> None:
 
 def test_bulk_import_is_a_known_rate_limited_endpoint() -> None:
     assert make(rate_limit_fail_closed=["bulk_import"]).rate_limit_fail_closed == ["bulk_import"]
+
+
+# --- Central app signing -----------------------------------------------------------------
+
+SECRET = "s" * 40
+CENTRAL = {
+    "central_publishing_enabled": True,
+    "central_api_url": "https://central.shazlo.store/",
+    "central_signing_key_id": "k1",
+    "central_signing_secret": SECRET,
+}
+
+
+def test_publishing_is_off_by_default_and_needs_nothing() -> None:
+    s = make()
+    assert s.central_publishing_enabled is False
+    assert s.central_api_url is None
+
+
+def test_publishing_needs_url_key_id_and_secret() -> None:
+    assert make(**CENTRAL).central_api_url == "https://central.shazlo.store"
+    for missing in ("central_api_url", "central_signing_key_id", "central_signing_secret"):
+        with pytest.raises(ValidationError, match="CENTRAL_PUBLISHING_ENABLED needs"):
+            make(**{**CENTRAL, missing: ""})
+
+
+def test_blank_values_mean_not_set() -> None:
+    s = make(central_api_url="", central_signing_key_id=" ", central_signing_secret="")
+    assert (s.central_api_url, s.central_signing_key_id, s.central_signing_secret) == (
+        None,
+        None,
+        None,
+    )
+
+
+@pytest.mark.parametrize("key_id", ["k 1", "-k1", "k" * 65, "k1\r\nX-Injected: 1"])
+def test_a_bad_signing_key_id_is_refused_at_startup(key_id: str) -> None:
+    # It is sent as the X-Shazlo-Key-Id header, so it must fail here, not on the first publish.
+    with pytest.raises(ValidationError, match="CENTRAL_SIGNING_KEY_ID"):
+        make(**{**CENTRAL, "central_signing_key_id": key_id})
+
+
+def test_a_short_signing_secret_is_refused() -> None:
+    with pytest.raises(ValidationError, match="at least 32 characters"):
+        make(**{**CENTRAL, "central_signing_secret": "short"})
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "ftp://central.shazlo.store",
+        "https://",
+        "https://user:pw@central.shazlo.store",
+        "https://central.shazlo.store/?a=1",
+        "https://central.shazlo.store/#x",
+    ],
+)
+def test_a_bad_central_url_is_refused(url: str) -> None:
+    with pytest.raises(ValidationError):
+        make(**{**CENTRAL, "central_api_url": url})
+
+
+def test_the_central_url_is_https_outside_dev() -> None:
+    http = {**CENTRAL, "central_api_url": "http://central.internal"}
+    assert make(**http).central_api_url == "http://central.internal"
+    with pytest.raises(ValidationError, match="https outside dev"):
+        make(**{**http, "env": "test"})
+
+
+def test_the_signing_secret_is_not_printed() -> None:
+    assert SECRET not in repr(make(**CENTRAL))
+
+
+def test_the_signer_is_built_from_the_settings() -> None:
+    from vendor_api.core.security import central_request_signer
+
+    assert central_request_signer(make()) is None
+    signer = central_request_signer(make(**CENTRAL), lambda: 1792750800)
+    assert signer is not None
+    headers = signer.headers(b"{}")
+    assert headers["X-Shazlo-Key-Id"] == "k1"
+    assert headers["X-Shazlo-Timestamp"] == "1792750800"
+    assert headers["X-Shazlo-Signature"].startswith("v1=")

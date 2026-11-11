@@ -9,6 +9,7 @@ from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_v
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from shazlo_auth.jwks import check_jwks_url
 from shazlo_security.rate_limit import RateRule
+from shazlo_security.signing import check_key_id
 
 from vendor_api.db.session import POSTGRES_SCHEMES
 
@@ -207,6 +208,17 @@ class Settings(BaseSettings):
     import_max_bytes: int = Field(default=2 * 1024 * 1024, gt=0, le=20 * 1024 * 1024)
     import_max_rows: int = Field(default=1000, gt=0, le=5000)
 
+    # Publishing to the central app (ADR 0003): every request is HMAC-signed with a shared secret.
+    # Off by default, so the service runs (and events still queue in the outbox) without a central
+    # app. Turning it on needs the three settings below.
+    central_publishing_enabled: bool = False
+    # The central app's base URL, without a trailing slash (https outside dev).
+    central_api_url: str | None = None
+    # The id the central app knows our secret by (sent as X-Shazlo-Key-Id), and the secret itself:
+    # at least 32 characters, never in the repository (docs/runbooks/central-api-key-rotation.md).
+    central_signing_key_id: str | None = None
+    central_signing_secret: SecretStr | None = None
+
     @field_validator("cors_allowed_origins", mode="before")
     @classmethod
     def _split_origins(cls, value: object) -> object:
@@ -314,6 +326,40 @@ class Settings(BaseSettings):
                 "must be an http(s) address without a fragment, e.g. https://vendors.shazlo.store"
             )
         return value
+
+    @model_validator(mode="after")
+    def _check_central(self) -> Self:
+        # `CENTRAL_API_URL=` copied from .env.example means "not set".
+        url = (self.central_api_url or "").strip().rstrip("/") or None
+        key_id = (self.central_signing_key_id or "").strip() or None
+        secret = self.central_signing_secret
+        if secret is not None and not secret.get_secret_value().strip():
+            secret = None
+        self.central_api_url, self.central_signing_key_id = url, key_id
+        self.central_signing_secret = secret
+        if key_id is not None:
+            try:
+                check_key_id(key_id)
+            except ValueError as error:
+                raise ValueError(f"CENTRAL_SIGNING_KEY_ID: {error}") from None
+        if url is not None:
+            parts = urlsplit(url)
+            if parts.scheme not in {"http", "https"} or not parts.hostname:
+                raise ValueError("CENTRAL_API_URL must be an http(s) URL")
+            if parts.scheme != "https" and self.env != "dev":
+                raise ValueError("CENTRAL_API_URL must be https outside dev")
+            if parts.query or parts.fragment or parts.username or parts.password:
+                raise ValueError("CENTRAL_API_URL must not hold credentials, a query or a fragment")
+        if secret is not None and len(secret.get_secret_value()) < MIN_HMAC_KEY_LENGTH:
+            raise ValueError(
+                f"CENTRAL_SIGNING_SECRET must be at least {MIN_HMAC_KEY_LENGTH} characters"
+            )
+        if self.central_publishing_enabled and (url is None or key_id is None or secret is None):
+            raise ValueError(
+                "CENTRAL_PUBLISHING_ENABLED needs CENTRAL_API_URL, CENTRAL_SIGNING_KEY_ID and "
+                "CENTRAL_SIGNING_SECRET"
+            )
+        return self
 
     @model_validator(mode="after")
     def _check_cloudinary(self) -> Self:

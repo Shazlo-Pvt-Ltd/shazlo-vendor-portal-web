@@ -69,3 +69,7 @@ ruff check . && ruff format --check . && mypy && pytest
 ```
 
 No Redis is needed: the tests use `fakeredis`.
+
+## Request signing (`shazlo_security.signing`)
+
+HMAC signing for server-to-server requests (ADR 0003). `RequestSigner(SigningKey(key_id, secret)).headers(body)` returns `X-Shazlo-Key-Id`, `X-Shazlo-Timestamp` and `X-Shazlo-Signature: v1=<hex>` (`HMAC_SHA256(secret, timestamp + "." + body)`) for the exact bytes to send. `RequestVerifier(keys).verify(headers, raw_body)` checks the key id (several keys may be active during a rotation), a 60-second timestamp window and the signature in constant time, and raises a typed `SignatureError` (`unknown_key`, `stale_timestamp`, `malformed_signature`, `bad_signature`). Secrets must be at least 32 bytes and are never printed. The tests reproduce the contract's worked example.
