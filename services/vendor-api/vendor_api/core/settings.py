@@ -207,6 +207,12 @@ class Settings(BaseSettings):
     import_max_bytes: int = Field(default=2 * 1024 * 1024, gt=0, le=20 * 1024 * 1024)
     import_max_rows: int = Field(default=1000, gt=0, le=5000)
 
+    # Writing events to the outbox when an admin approves something (ADR 0003, section 5). On by
+    # default: the event commits with the approval, and the publisher sends it when the central app
+    # is configured. Turn it off only for local work: approvals then write no event and say so in
+    # the log. It cannot be off while sending is on.
+    outbox_events_enabled: bool = True
+
     # Publishing to the central app (ADR 0003): every request is HMAC-signed with a shared secret.
     # Off by default, so the service runs (and events still queue in the outbox) without a central
     # app. Turning it on needs the three settings below.
@@ -348,6 +354,8 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"CENTRAL_SIGNING_SECRET must be at least {MIN_HMAC_KEY_LENGTH} characters"
             )
+        if self.central_publishing_enabled and not self.outbox_events_enabled:
+            raise ValueError("CENTRAL_PUBLISHING_ENABLED needs OUTBOX_EVENTS_ENABLED")
         if self.central_publishing_enabled and (url is None or key_id is None or secret is None):
             raise ValueError(
                 "CENTRAL_PUBLISHING_ENABLED needs CENTRAL_API_URL, CENTRAL_SIGNING_KEY_ID and "

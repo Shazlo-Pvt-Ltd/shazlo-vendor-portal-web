@@ -120,6 +120,7 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | unset | set all three or none; the secret has no default and is never logged or returned. Without them the asset endpoints answer `503 uploads_not_configured` and the rest of the service works |
 | `CLOUDINARY_ROOT_FOLDER` | `shazlo` | every file lives under `<root>/vendors/<vendor id>/...`; give each environment its own root (lower-case letters, digits, `-`, `_`, `/`) |
 | `CLOUDINARY_UPLOAD_PRESET` | unset | an upload preset (made in Cloudinary) that is signed into every upload, so the provider enforces its own size and format limits as a second layer |
+| `OUTBOX_EVENTS_ENABLED` | `true` | write the central-app event when an admin approves something. Turn it off only for local work: approvals then write no event and the log says so. It cannot be off while `CENTRAL_PUBLISHING_ENABLED` is on |
 | `CENTRAL_PUBLISHING_ENABLED` | `false` | publish outbox events to the central app (ADR 0003); needs the next three |
 | `CENTRAL_API_URL` / `CENTRAL_SIGNING_KEY_ID` / `CENTRAL_SIGNING_SECRET` | unset | the central app's base URL (https outside dev), the id it knows our secret by, and the secret (at least 32 characters, never logged; see the key-rotation runbook). Every request is signed `HMAC_SHA256(secret, timestamp + "." + body)` by `shazlo_security.signing` |
 | `UPLOAD_MAX_BYTES` | `10485760` | largest image accepted (10 MiB; at most 100 MiB) |
@@ -328,7 +329,7 @@ With no `base` (a first submission) every field that has a value is listed as ad
 
 **The audit trail.** Each decision writes one `review_events` row: who (`actor_type` `admin` and the token's id), what (`approved` or `rejected`), when, the `reason`, and `detail`, a JSON object saying what changed: the thing reviewed before and after. For a brand profile: the version, its state before and after, the published version before and the one it superseded. For a product: the product, its SKU, the revision, and its status, `product_version` and live revision before and after. Events are append-only (a trigger refuses any change), and a submission has no `detail`.
 
-**The hook for Phase 4.** `app.state.review_decisions.add_hook(hook)` registers `async def hook(db, decision)`. It runs **inside the decision's transaction**, after the changes and the audit event and before the commit, with the `Decision` that was made (the review, the action, the reviewer, `detail`, and the profile, the one it superseded, or the product and revision). That is where Phase 4 writes the central-app outbox row: it commits with the approval or not at all, and a hook that raises undoes the whole decision. Hooks also run for rejections (`decision.action`).
+**Hooks.** `app.state.review_decisions.add_hook(hook)` registers `async def hook(db, decision)`. It runs **inside the decision's transaction**, after the changes and the audit event and before the commit, with the `Decision` that was made (the review, the action, the reviewer, `detail`, and the profile, the one it superseded, or the product and revision). A hook that raises undoes the whole decision. Hooks also run for rejections (`decision.action`). The outbox writer (see "Writing events", below) is registered at app start.
 
 ## Team, invites and password reset
 
@@ -430,13 +431,24 @@ An approved product keeps its live content while a new revision is edited and re
 
 ### The outbox (events for the central app)
 
-`outbox_events` is the transactional outbox of [ADR 0003](../../docs/adr/0003-central-app-publishing-contract.md): an event is written in the same transaction as what it announces, so an approval and its event are saved together or not at all. This is the table; writing and sending events are the next Phase 4 issues.
+`outbox_events` is the transactional outbox of [ADR 0003](../../docs/adr/0003-central-app-publishing-contract.md): an event is written in the same transaction as what it announces, so an approval and its event are saved together or not at all. The table is described here; "Writing events" below says who writes it, and sending is the publisher worker's issue.
 
 - **One event per aggregate version**: `UNIQUE (aggregate_type, aggregate_id, version)`. `id` is the `event_id` the central app de-duplicates on, `payload` the whole event body (the full state of the aggregate), exactly as it will be signed and sent.
 - **Whose it is**: `vendor_id` (a foreign key, indexed) is on every event, because every event is about one vendor's page, product or account; a vendor with events cannot be deleted. The aggregate of a `vendor.*` event is the vendor itself (`aggregate_id = vendor_id`).
 - **Rules in the database**: `aggregate_type` (`brand_profile`, `product`, `vendor`) and `event_type` (the five of the contract) are checked, and an event must be about its own kind of aggregate (`vendor.status_changed` only for a vendor); `version >= 1`; `payload` is a JSON object of at most 256 KB; `last_error` is at most 1000 characters (a reason, not a copy of the response); a `dead` event has a reason; `sent_at` is set exactly when `sent`, and `locked_at` exactly when `sending`.
 - **Content never changes** (migration 0008's trigger): everything except the delivery state (`status`, `attempts`, `next_attempt_at`, `locked_at`, `last_error`, `sent_at`) is frozen, `sent` is final, and the status moves along the worker's path only: `pending` to `sending` (a claim), `sending` to `pending` (a retry or the sweeper), `sent` or `dead`, and `dead` back to `pending` (an admin's retry). Rows are deleted by the retention job 30 days after they were sent, so `DELETE` is allowed.
 - **Indexes**: `ix_outbox_events_due` (a partial index on `next_attempt_at` for `pending` rows) serves the worker's claim, and `(status, created_at)` serves the admins' view of what is stuck and the retention scan. A test runs the claim exactly as the ADR writes it: it takes only due events and never two versions of one aggregate at once.
+
+### Writing events: an approval and its event commit together
+
+`OutboxWriter` (`services/outbox.py`) is the hook the review decisions run, registered in `create_app`. **On an approval** it builds the contract's event from the rows as they now stand and inserts one `outbox_events` row in the **same transaction** as the decision:
+
+- an approved **brand profile version** writes `brand_profile.published` (aggregate: the vendor's page; version: the profile's own `version`); an approved **product revision** writes `product.published` (aggregate: the product; version: `Product.version`, which the decision raises when the live content changes, so the first time a product goes live is version 1 and each approved edit is the next number);
+- a **rejection writes nothing**;
+- the payload is the builder's full state, validated against the contract before it is stored; the row's `id` is the event id, and its `created_at` is the decision's time (the event's `occurred_at`), so the sender can rebuild the exact envelope from the row;
+- **if writing the event fails, the approval does not happen**: the hook raises and the decision service rolls everything back. `409 outbox_conflict` when an event for that version already exists (the unique key), and `409 cannot_publish` when the state cannot be turned into a valid event (for example an image that is not ready). Both say "Nothing was saved". Two approvals of one product therefore give versions in order, and no approval can exist without its event while `OUTBOX_EVENTS_ENABLED` is on.
+
+`OUTBOX_EVENTS_ENABLED=false` is for local work without the central app: approvals then write no event, and the log says so at start and for every approval. Events queue in the outbox whether or not sending (`CENTRAL_PUBLISHING_ENABLED`) is configured, so nothing is lost while the central app is not ready.
 
 ### Reviews
 

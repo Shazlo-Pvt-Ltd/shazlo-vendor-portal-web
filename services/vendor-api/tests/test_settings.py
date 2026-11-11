@@ -573,3 +573,17 @@ def test_the_signer_is_built_from_the_settings() -> None:
     assert headers["X-Shazlo-Key-Id"] == "k1"
     assert headers["X-Shazlo-Timestamp"] == "1792750800"
     assert headers["X-Shazlo-Signature"].startswith("v1=")
+
+
+def test_outbox_events_are_on_by_default_and_cannot_be_off_while_sending_is_on() -> None:
+    assert make().outbox_events_enabled is True
+    assert make(outbox_events_enabled=False).outbox_events_enabled is False
+    sending = {
+        "central_publishing_enabled": True,
+        "central_api_url": "https://central.example",
+        "central_signing_key_id": "key-1",
+        "central_signing_secret": "s" * 32,
+    }
+    assert make(**sending).central_publishing_enabled is True
+    with pytest.raises(ValidationError, match="OUTBOX_EVENTS_ENABLED"):
+        make(outbox_events_enabled=False, **sending)
