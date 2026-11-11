@@ -291,6 +291,7 @@ async def test_a_duplicate_version_refuses_the_approval_and_saves_nothing(
     assert response.status_code == 409
     assert response.json()["error"]["code"] == OUTBOX_CONFLICT
     assert "version 1" in response.json()["error"]["message"]
+    assert response.json()["error"]["message"].endswith("Nothing was saved")
     review = await reload(session, Review, review_id)
     assert (review.status, review.reviewer_id, review.decided_at) == ("pending", None, None)
     assert (await reload(session, BrandProfile, profile_id)).state == "pending_review"

@@ -92,7 +92,7 @@ class OutboxWriter:
                 409,
                 OUTBOX_CONFLICT,
                 f"The central-app event for version {event.version} could not be recorded "
-                "(one already exists), so the approval was not saved",
+                "(one already exists), so the approval did not happen. Nothing was saved",
             ) from error
         logger.info(
             "outbox event written",
