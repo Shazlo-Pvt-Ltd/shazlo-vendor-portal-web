@@ -19,7 +19,7 @@ from test_outbox_writer import decide, envelope, outbox, pending_first_product, 
 from vendor_api.db.models import OutboxEvent, Product, Vendor
 from vendor_api.services import outbox as outbox_module
 from vendor_api.services.central_contract import contract
-from vendor_api.services.outbox import STALE_VERSION, OutboxWriter
+from vendor_api.services.outbox import OutboxWriter
 
 PRODUCTS = "/v1/vendor/products"
 VENDORS = "/v1/admin/vendors"
@@ -187,17 +187,49 @@ async def test_a_refused_change_writes_nothing(tenants: Tenants, session: AsyncS
     assert len(await outbox(session)) == before
 
 
-async def test_a_page_approved_below_the_central_version_is_refused(
+async def test_a_page_drafted_before_a_suspension_is_approved_above_the_central_version(
     tenants: Tenants, session: AsyncSession
 ) -> None:
     vendor_id = tenants.a.vendor.id
     await publish_brand(tenants, session)
+    # Version 2 is in review when the vendor is suspended (event 2) and reinstated (event 3).
+    _, review_id = await pending_profile(session, tenants.a, 2, tagline="Second")
     assert await act(tenants, vendor_id, "suspend") == 200
-    assert await act(tenants, vendor_id, "approve") == 200  # the page is shown again at version 3
-    _, review_id = await pending_profile(session, tenants.a, 2)
+    assert await act(tenants, vendor_id, "approve") == 200
+
     response = await decide(tenants, review_id, "approve", {"version": 2})
-    assert response.status_code == 409
-    assert STALE_VERSION in response.text
+
+    assert response.status_code == 200
+    brand = [e for e in await outbox(session) if e.aggregate_type == "brand_profile"]
+    assert [(e.event_type, e.version) for e in sorted(brand, key=lambda e: e.version)] == [
+        ("brand_profile.published", 1),
+        ("brand_profile.unpublished", 2),
+        ("brand_profile.published", 3),
+        ("brand_profile.published", 4),  # above everything the central app has seen
+    ]
+    latest = max(brand, key=lambda e: e.version)
+    assert latest.payload["tagline"] == "Second"
+    contract().validate(envelope(latest))
+    # And the next approval continues the same counter.
+    _, third = await pending_profile(session, tenants.a, 3)
+    assert (await decide(tenants, third, "approve", {"version": 3})).status_code == 200
+    brand = [e for e in await outbox(session) if e.aggregate_type == "brand_profile"]
+    assert max(e.version for e in brand) == 5
+
+
+async def test_a_page_approved_while_suspended_does_not_collide_with_the_unpublish(
+    tenants: Tenants, session: AsyncSession
+) -> None:
+    vendor_id = tenants.a.vendor.id
+    await publish_brand(tenants, session)
+    _, review_id = await pending_profile(session, tenants.a, 2)
+    assert await act(tenants, vendor_id, "suspend") == 200  # brand_profile.unpublished at 2
+
+    response = await decide(tenants, review_id, "approve", {"version": 2})
+
+    assert response.status_code == 200
+    brand = [e for e in await outbox(session) if e.aggregate_type == "brand_profile"]
+    assert sorted(e.version for e in brand) == [1, 2, 3]
 
 
 # --- The fan-out itself ----------------------------------------------------------------------

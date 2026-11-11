@@ -8,9 +8,10 @@ revision that just went live) and inserts one `outbox_events` row. So:
 - an approval and its event are saved together or not at all: if anything here fails, the hook
   raises, the decision service rolls the transaction back and the approval did not happen;
 - a rejection writes nothing (nothing was published or changed for the central app);
-- the event's `version` is the aggregate's version: the profile's own, or `Product.version` (which
-  the decision raises when the live content changes). Two approvals therefore give versions in
-  order, and the table's unique key refuses a second event for the same version.
+- the event's `version` is the aggregate's version: `Product.version` (which the decision raises
+  when the live content changes), or for a brand page the profile's own version, raised past the
+  page's last event when a suspension or reinstatement has already used it. Two approvals therefore
+  give versions in order, and the table's unique key refuses a second event for the same version.
 
 The row's `id` is the event id the central app de-duplicates on, and its `created_at` is the
 event's `occurred_at` (the moment of the decision), so the sender can rebuild the exact envelope
@@ -47,7 +48,6 @@ logger = logging.getLogger(__name__)
 
 CANNOT_PUBLISH = "cannot_publish"
 OUTBOX_CONFLICT = "outbox_conflict"
-STALE_VERSION = "stale_central_version"
 
 # How many aggregates one chunk of a fan-out loads, builds and inserts before it flushes and lets
 # go of them. The whole fan-out is still one transaction, so it is all or nothing.
@@ -55,6 +55,21 @@ FANOUT_CHUNK = 200
 # Why an aggregate was unpublished because of its vendor. A vendor that is approved again shows
 # again exactly the aggregates whose latest event is an unpublish for one of these reasons.
 VENDOR_REASONS = ("vendor_suspended", "rejected_after_publish")
+
+
+def outbox_row(event: BuiltEvent) -> OutboxEvent:
+    """The `outbox_events` row of a built event: its id is the event id and its `created_at` the
+    event's `occurred_at`, so the sender can rebuild the exact envelope from the row."""
+    return OutboxEvent(
+        id=event.event_id,
+        vendor_id=event.vendor_id,
+        aggregate_type=event.aggregate_type,
+        aggregate_id=event.aggregate_id,
+        event_type=event.event_type,
+        version=event.version,
+        payload=event.payload,
+        created_at=event.occurred_at,
+    )
 
 
 class OutboxWriter:
@@ -78,7 +93,8 @@ class OutboxWriter:
             )
             return
         event = await self._build(db, decision)
-        review_id = str(decision.review.id)  # read before the insert: see `_write`
+        # Read before the insert: after a failed flush the session cannot load anything.
+        review_id = str(decision.review.id)
         await self._write(db, [event], context={"review_id": review_id})
         logger.info(
             "outbox event written",
@@ -91,25 +107,12 @@ class OutboxWriter:
 
     # --- Writing -----------------------------------------------------------------------------
 
-    @staticmethod
-    def _row(event: BuiltEvent) -> OutboxEvent:
-        return OutboxEvent(
-            id=event.event_id,
-            vendor_id=event.vendor_id,
-            aggregate_type=event.aggregate_type,
-            aggregate_id=event.aggregate_id,
-            event_type=event.event_type,
-            version=event.version,
-            payload=event.payload,
-            created_at=event.occurred_at,
-        )
-
     async def _write(
         self, db: AsyncSession, events: Sequence[BuiltEvent], *, context: dict[str, str]
     ) -> None:
         """Adds the rows and flushes. A refusal (a version that already exists) raises a 409: the
         caller's transaction is then rolled back, so nothing it did stays."""
-        db.add_all([self._row(event) for event in events])
+        db.add_all([outbox_row(event) for event in events])
         try:
             await db.flush()
         except IntegrityError as error:
@@ -122,7 +125,7 @@ class OutboxWriter:
                 409,
                 OUTBOX_CONFLICT,
                 f"The central-app event for version {first.version} could not be recorded "
-                "(one already exists), so nothing was saved",
+                "(one already exists). Nothing was saved",
             ) from error
 
     async def last_version(
@@ -360,16 +363,13 @@ class OutboxWriter:
         try:
             if decision.brand_profile is not None:
                 brand = await load_brand_snapshot(db, decision.brand_profile.vendor_id)
+                # The page's event versions are a counter of their own: a suspension and a
+                # reinstatement write events past the profile's version, so a profile drafted
+                # before them goes out after them. The decision holds the vendor lock, like the
+                # fan-outs, so no other brand-page event can be written in between.
                 last = await self.last_version(db, "brand_profile", brand.vendor.id)
-                if last is not None and brand.profile.version < last:
-                    raise ApiError(
-                        409,
-                        STALE_VERSION,
-                        f"This brand page is version {brand.profile.version} but the central app "
-                        f"already has version {last}: edit it again and resubmit. "
-                        "Nothing was saved",
-                    )
-                return brand_profile_published(brand, occurred_at=decided_at)
+                version = max(brand.profile.version, (last or 0) + 1)
+                return brand_profile_published(brand, version=version, occurred_at=decided_at)
             if decision.product is not None and decided_at is not None:
                 product = await load_product_snapshot(db, decision.product.id)
                 return product_published(product, published_at=decided_at, occurred_at=decided_at)

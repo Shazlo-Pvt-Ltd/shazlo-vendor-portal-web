@@ -9,6 +9,7 @@ from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_v
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from shazlo_auth.jwks import check_jwks_url
 from shazlo_security.rate_limit import RateRule
+from shazlo_security.signing import check_key_id
 
 from vendor_api.db.session import POSTGRES_SCHEMES
 
@@ -342,6 +343,11 @@ class Settings(BaseSettings):
             secret = None
         self.central_api_url, self.central_signing_key_id = url, key_id
         self.central_signing_secret = secret
+        if key_id is not None:
+            try:
+                check_key_id(key_id)
+            except ValueError as error:
+                raise ValueError(f"CENTRAL_SIGNING_KEY_ID: {error}") from None
         if url is not None:
             parts = urlsplit(url)
             if parts.scheme not in {"http", "https"} or not parts.hostname:

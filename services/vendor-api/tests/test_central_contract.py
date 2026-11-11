@@ -103,10 +103,24 @@ def test_the_envelope_lists_the_same_types_as_the_schemas() -> None:
 # --- the schemas refuse what must never be sent ------------------------------------------
 
 
-def with_payload(event_type: str, **extra: Any) -> dict[str, Any]:
-    event = example(event_type)
-    event["payload"] = {**event["payload"], **extra}
-    return event
+def objects_in(value: Any) -> list[dict[str, Any]]:
+    """`value` and every object nested in it (a variant, an image, the price range...)."""
+    if isinstance(value, dict):
+        return [value, *(o for child in value.values() for o in objects_in(child))]
+    if isinstance(value, list):
+        return [o for child in value for o in objects_in(child)]
+    return []
+
+
+def property_names(schema: Any) -> set[str]:
+    """Every name declared under any `properties` anywhere in a schema."""
+    if isinstance(schema, dict):
+        declared = schema.get("properties")
+        names: set[str] = set(declared) if isinstance(declared, dict) else set()
+        return names.union(*(property_names(child) for child in schema.values()))
+    if isinstance(schema, list):
+        return set[str]().union(*(property_names(child) for child in schema))
+    return set[str]()
 
 
 FORBIDDEN_FIELDS = [
@@ -128,7 +142,22 @@ FORBIDDEN_FIELDS = [
 @pytest.mark.parametrize("event_type", EVENT_TYPES)
 @pytest.mark.parametrize("field", FORBIDDEN_FIELDS)
 def test_no_payload_accepts_stock_or_contact_data(event_type: str, field: str) -> None:
-    assert not validator(event_type).is_valid(with_payload(event_type, **{field: "x"}))
+    # In the payload and in every object nested in it (`stock` belongs on a variant if anywhere),
+    # with a number and a string, so a schema that declared the field with either type would fail
+    # here rather than be rejected only for the value's type.
+    check = validator(event_type)
+    count = len(objects_in(example(event_type)["payload"]))
+    for index in range(count):
+        for value in (1, "x"):
+            event = example(event_type)
+            objects_in(event["payload"])[index][field] = value
+            assert not check.is_valid(event), (index, value)
+
+
+@pytest.mark.parametrize("schema", sorted(p.name for p in SCHEMAS.glob("*.schema.json")))
+def test_no_schema_declares_stock_or_contact_data(schema: str) -> None:
+    # Also covers optional objects an example leaves out.
+    assert not property_names(load(SCHEMAS / schema)) & set(FORBIDDEN_FIELDS)
 
 
 @pytest.mark.parametrize("event_type", EVENT_TYPES)

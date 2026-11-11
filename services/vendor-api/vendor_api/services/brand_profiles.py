@@ -3,7 +3,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vendor_api.core.errors import ApiError
@@ -14,7 +14,6 @@ from vendor_api.db.models import (
     AssetStatus,
     BrandProfile,
     BrandProfileState,
-    OutboxEvent,
     Review,
     ReviewAction,
     ReviewEvent,
@@ -211,17 +210,9 @@ class BrandProfileService:
                 price_min_paise=vendor.price_min_paise,
                 price_max_paise=vendor.price_max_paise,
             )
-        # A suspension and reinstatement write events at versions past the live profile's own: the
-        # next draft starts after them so its approval is not older than what the central app has.
-        last_event = await db.scalar(
-            select(func.max(OutboxEvent.version)).where(
-                OutboxEvent.aggregate_type == "brand_profile",
-                OutboxEvent.aggregate_id == vendor.id,
-            )
-        )
         draft = BrandProfile(
             vendor_id=vendor.id,
-            version=max(latest.version if latest is not None else 0, last_event or 0) + 1,
+            version=latest.version + 1 if latest is not None else 1,
             state=BrandProfileState.DRAFT,
             updated_by=user_id,
             **_columns(content),
