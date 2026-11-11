@@ -62,6 +62,8 @@ class OutboxWriter:
             )
             return
         event = await self._build(db, decision)
+        # Read before the insert: after a failed flush the session cannot load anything.
+        review_id = str(decision.review.id)
         db.add(
             OutboxEvent(
                 id=event.event_id,
@@ -81,7 +83,7 @@ class OutboxWriter:
             logger.error(
                 "outbox event refused",
                 extra={
-                    "review_id": str(decision.review.id),
+                    "review_id": review_id,
                     "event_type": event.event_type,
                     "version": event.version,
                 },
@@ -95,7 +97,7 @@ class OutboxWriter:
         logger.info(
             "outbox event written",
             extra={
-                "review_id": str(decision.review.id),
+                "review_id": review_id,
                 "event_type": event.event_type,
                 "version": event.version,
             },

@@ -271,13 +271,14 @@ async def test_the_event_is_only_about_the_vendors_own_data(
 async def test_a_duplicate_version_refuses_the_approval_and_saves_nothing(
     tenants: Tenants, session: AsyncSession
 ) -> None:
+    vendor_a = tenants.a.vendor.id
     profile_id, review_id = await pending_profile(session, tenants.a)
     # Someone already wrote an event for version 1 of this page.
     session.add(
         OutboxEvent(
-            vendor_id=tenants.a.vendor.id,
+            vendor_id=vendor_a,
             aggregate_type="brand_profile",
-            aggregate_id=tenants.a.vendor.id,
+            aggregate_id=vendor_a,
             event_type="brand_profile.published",
             version=1,
             payload={"already": "there"},
@@ -349,12 +350,13 @@ async def test_a_failure_after_the_event_leaves_no_event_behind(
 async def test_the_events_of_a_decided_approval_survive_the_next_refused_one(
     tenants: Tenants, session: AsyncSession
 ) -> None:
+    vendor_a = tenants.a.vendor.id  # read now: a refused request rolls the session back
     _, good = await pending_profile(session, tenants.a)
     await decide(tenants, good, "approve", {"version": 1})
     _, stale = await pending_profile(session, tenants.b)
     await decide(tenants, stale, "approve", {"version": 9})  # refused: not the version reviewed
     events = await outbox(session)
-    assert [e.vendor_id for e in events] == [tenants.a.vendor.id]
+    assert [e.vendor_id for e in events] == [vendor_a]
 
 
 # --- The switch --------------------------------------------------------------------------
