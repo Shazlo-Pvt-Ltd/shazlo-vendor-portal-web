@@ -23,6 +23,13 @@ from central_stub.store import Store
 
 PREFIX = "/internal/v1"
 MAX_PAGE = 500
+# The 401 message is chosen from the error's code, never taken from the exception itself.
+SIGNATURE_MESSAGES = {
+    "malformed_signature": "The signature headers are missing or malformed",
+    "unknown_key": "The key id is not known",
+    "stale_timestamp": "The timestamp is outside the allowed window",
+    "bad_signature": "The signature does not match",
+}
 
 
 def error(status: int, message: str, code: str, **extra: Any) -> JSONResponse:
@@ -69,15 +76,25 @@ def create_app(settings: Settings | None = None, clock: Callable[[], float] = ti
         if bad is not None:
             return bad, b""
         declared = request.headers.get("content-length")
-        if declared is not None and declared.isdigit() and int(declared) > MAX_BODY_BYTES:
+        if (
+            declared
+            and declared.isascii()
+            and declared.isdigit()
+            and int(declared) > MAX_BODY_BYTES
+        ):
             return error(413, "The body is larger than 256 KB", "payload_too_large"), b""
-        raw = await request.body()
-        if len(raw) > MAX_BODY_BYTES:
-            return error(413, "The body is larger than 256 KB", "payload_too_large"), b""
+        # Read at most one chunk past the limit: a chunked body has no Content-Length to check.
+        buffer = bytearray()
+        async for chunk in request.stream():
+            buffer += chunk
+            if len(buffer) > MAX_BODY_BYTES:
+                return error(413, "The body is larger than 256 KB", "payload_too_large"), b""
+        raw = bytes(buffer)
         try:
             verifier.verify(request.headers, raw)
         except SignatureError as exc:
-            return error(401, str(exc), exc.code), b""
+            message = SIGNATURE_MESSAGES.get(exc.code, "The signature was refused")
+            return error(401, message, exc.code), b""
         return None, raw
 
     @app.get("/health")
