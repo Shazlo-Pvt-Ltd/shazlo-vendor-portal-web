@@ -226,7 +226,12 @@ export default function ProductForm({ onClose }) {
           sx={{ flexDirection: { xs: "column", md: "row" } }}
         >
           {/* Left Column - Product Image */}
-          <Grid item xs={12} md={4} lg={3}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 4,
+              lg: 3
+            }}>
             <Card sx={{ height: "fit-content", position: "sticky", top: 20 }}>
               <CardContent>
                 <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
@@ -317,7 +322,12 @@ export default function ProductForm({ onClose }) {
           </Grid>
 
           {/* Right Column - Form Fields */}
-          <Grid item xs={12} md={8} lg={9}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 8,
+              lg: 9
+            }}>
             <Box
               sx={{
                 display: "flex",
@@ -353,7 +363,7 @@ export default function ProductForm({ onClose }) {
                 </AccordionSummary>
                 <AccordionDetails>
                   <Grid container spacing={2}>
-                    <Grid item xs={12}>
+                    <Grid size={12}>
                       <TextField
                         fullWidth
                         label="Product Name"
@@ -362,7 +372,11 @@ export default function ProductForm({ onClose }) {
                       />
                     </Grid>
 
-                    <Grid item xs={12} sm={6}>
+                    <Grid
+                      size={{
+                        xs: 12,
+                        sm: 6
+                      }}>
                       <FormControl fullWidth>
                         <InputLabel>Product Type</InputLabel>
                         <Select
@@ -378,49 +392,67 @@ export default function ProductForm({ onClose }) {
                       </FormControl>
                     </Grid>
 
-                    <Grid item xs={12} sm={4}>
+                    <Grid
+                      size={{
+                        xs: 12,
+                        sm: 4
+                      }}>
                       <TextField
                         fullWidth
                         label="Price"
                         type="number"
                         value={formData.price}
                         onChange={handleInputChange("price")}
-                        InputProps={{
-                          startAdornment: (
-                            <InputAdornment position="start">₹</InputAdornment>
-                          ),
+                        slotProps={{
+                          input: {
+                            startAdornment: (
+                              <InputAdornment position="start">₹</InputAdornment>
+                            ),
+                          }
                         }}
                       />
                     </Grid>
 
-                    <Grid item xs={12} sm={4}>
+                    <Grid
+                      size={{
+                        xs: 12,
+                        sm: 4
+                      }}>
                       <TextField
                         fullWidth
                         label="Discount (Optional)"
                         type="number"
                         value={formData.discount}
                         onChange={handleInputChange("discount")}
-                        InputProps={{
-                          endAdornment: (
-                            <InputAdornment position="end">%</InputAdornment>
-                          ),
+                        slotProps={{
+                          input: {
+                            endAdornment: (
+                              <InputAdornment position="end">%</InputAdornment>
+                            ),
+                          }
                         }}
                       />
                     </Grid>
 
-                    <Grid item xs={12} sm={4}>
+                    <Grid
+                      size={{
+                        xs: 12,
+                        sm: 4
+                      }}>
                       <TextField
                         fullWidth
                         label="Discount Price"
                         type="number"
                         value={formData.discountPrice}
-                        InputProps={{
-                          startAdornment: (
-                            <InputAdornment position="start">₹</InputAdornment>
-                          ),
-                          readOnly: true,
-                        }}
                         sx={{ backgroundColor: "#f5f5f5" }}
+                        slotProps={{
+                          input: {
+                            startAdornment: (
+                              <InputAdornment position="start">₹</InputAdornment>
+                            ),
+                            readOnly: true,
+                          }
+                        }}
                       />
                     </Grid>
                   </Grid>
@@ -454,7 +486,11 @@ export default function ProductForm({ onClose }) {
                 </AccordionSummary>
                 <AccordionDetails>
                   <Grid container spacing={2}>
-                    <Grid item xs={12} sm={6}>
+                    <Grid
+                      size={{
+                        xs: 12,
+                        sm: 6
+                      }}>
                       <TextField
                         fullWidth
                         label="SKU"
@@ -463,7 +499,11 @@ export default function ProductForm({ onClose }) {
                         placeholder="Enter SKU"
                       />
                     </Grid>
-                    <Grid item xs={12} sm={6}>
+                    <Grid
+                      size={{
+                        xs: 12,
+                        sm: 6
+                      }}>
                       <TextField
                         fullWidth
                         label="Stock Quantity"

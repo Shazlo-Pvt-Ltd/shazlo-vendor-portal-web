@@ -194,11 +194,13 @@ const PreRegisterButton = () => {
         maxWidth="sm"
         fullWidth
         fullScreen={isMobile}
-        PaperProps={{
-          sx: {
-            borderRadius: isMobile ? 0 : "16px",
-            background: "linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)",
-          },
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: isMobile ? 0 : "16px",
+              background: "linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)",
+            },
+          }
         }}
       >
         <DialogTitle
@@ -221,11 +223,19 @@ const PreRegisterButton = () => {
 
         <DialogContent sx={{ p: 3 }}>
           {success ? (
-            <Box textAlign="center" py={2}>
-              <Typography variant="h6" gutterBottom color="success.main">
+            <Box
+              sx={{
+                textAlign: "center",
+                py: 2
+              }}>
+              <Typography variant="h6" gutterBottom sx={{
+                color: "success.main"
+              }}>
                 🎉 Welcome to Shazlo!
               </Typography>
-              <Typography variant="body1" color="text.secondary">
+              <Typography variant="body1" sx={{
+                color: "text.secondary"
+              }}>
                 Thank you for pre-registering! We'll notify you as soon as the
                 app is available for download.
               </Typography>
@@ -238,7 +248,9 @@ const PreRegisterButton = () => {
                 </Alert>
               )}
 
-              <Box mb={2}>
+              <Box sx={{
+                mb: 2
+              }}>
                 <TextField
                   fullWidth
                   label="Email Address"
@@ -251,7 +263,9 @@ const PreRegisterButton = () => {
                 />
               </Box>
 
-              <Box mb={2}>
+              <Box sx={{
+                mb: 2
+              }}>
                 <TextField
                   fullWidth
                   label="Full Name"
@@ -263,7 +277,9 @@ const PreRegisterButton = () => {
                 />
               </Box>
 
-              <Box mb={2}>
+              <Box sx={{
+                mb: 2
+              }}>
                 <TextField
                   fullWidth
                   label="Phone Number (Optional)"
@@ -277,7 +293,9 @@ const PreRegisterButton = () => {
                 />
               </Box>
 
-              <Box mb={2}>
+              <Box sx={{
+                mb: 2
+              }}>
                 <FormControl fullWidth>
                   <FormLabel
                     component="legend"
@@ -309,7 +327,9 @@ const PreRegisterButton = () => {
                 </FormControl>
               </Box>
 
-              <Box mb={2}>
+              <Box sx={{
+                mb: 2
+              }}>
                 <FormControl fullWidth>
                   <FormLabel sx={{ mb: 1, fontWeight: "bold" }}>
                     How did you hear about us?
@@ -329,7 +349,9 @@ const PreRegisterButton = () => {
                 </FormControl>
               </Box>
 
-              <Box mb={2}>
+              <Box sx={{
+                mb: 2
+              }}>
                 <FormControl component="fieldset">
                   <FormLabel component="legend" sx={{ fontWeight: "bold" }}>
                     Notification Preferences

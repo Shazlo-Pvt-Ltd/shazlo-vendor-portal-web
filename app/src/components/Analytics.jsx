@@ -11,12 +11,21 @@ import {
 export default function Analytics() {
   return (
     <Box>
-      <Typography variant="h5" fontWeight="bold" mb={3}>
+      <Typography
+        variant="h5"
+        sx={{
+          fontWeight: "bold",
+          mb: 3
+        }}>
         Analytics Dashboard
       </Typography>
 
       <Grid container spacing={3}>
-        <Grid item xs={12} md={3}>
+        <Grid
+          size={{
+            xs: 12,
+            md: 3
+          }}>
           <Card>
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
@@ -31,7 +40,11 @@ export default function Analytics() {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3}>
+        <Grid
+          size={{
+            xs: 12,
+            md: 3
+          }}>
           <Card>
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
@@ -46,7 +59,11 @@ export default function Analytics() {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3}>
+        <Grid
+          size={{
+            xs: 12,
+            md: 3
+          }}>
           <Card>
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
@@ -61,7 +78,11 @@ export default function Analytics() {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3}>
+        <Grid
+          size={{
+            xs: 12,
+            md: 3
+          }}>
           <Card>
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
@@ -78,8 +99,12 @@ export default function Analytics() {
         </Grid>
       </Grid>
 
-      <Box mt={4}>
-        <Typography variant="h6" mb={2}>
+      <Box sx={{
+        mt: 4
+      }}>
+        <Typography variant="h6" sx={{
+          mb: 2
+        }}>
           Sales Trend
         </Typography>
         <Card>

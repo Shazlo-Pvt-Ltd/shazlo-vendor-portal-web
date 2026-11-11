@@ -182,49 +182,81 @@ export default function AdminPortal() {
 
       {/* Stats Cards */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={3}>
+        <Grid
+          size={{
+            xs: 12,
+            md: 3
+          }}>
           <Card sx={{ bgcolor: "#fff3cd", border: "1px solid #ffeaa7" }}>
             <CardContent>
-              <Typography variant="h6" color="warning.main">
+              <Typography variant="h6" sx={{
+                color: "warning.main"
+              }}>
                 Pending Reviews
               </Typography>
-              <Typography variant="h4" color="warning.dark">
+              <Typography variant="h4" sx={{
+                color: "warning.dark"
+              }}>
                 {pendingCount}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3}>
+        <Grid
+          size={{
+            xs: 12,
+            md: 3
+          }}>
           <Card sx={{ bgcolor: "#d1ecf1", border: "1px solid #bee5eb" }}>
             <CardContent>
-              <Typography variant="h6" color="info.main">
+              <Typography variant="h6" sx={{
+                color: "info.main"
+              }}>
                 Approved
               </Typography>
-              <Typography variant="h4" color="info.dark">
+              <Typography variant="h4" sx={{
+                color: "info.dark"
+              }}>
                 {approvedCount}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3}>
+        <Grid
+          size={{
+            xs: 12,
+            md: 3
+          }}>
           <Card sx={{ bgcolor: "#f8d7da", border: "1px solid #f5c6cb" }}>
             <CardContent>
-              <Typography variant="h6" color="error.main">
+              <Typography variant="h6" sx={{
+                color: "error.main"
+              }}>
                 Rejected
               </Typography>
-              <Typography variant="h4" color="error.dark">
+              <Typography variant="h4" sx={{
+                color: "error.dark"
+              }}>
                 {rejectedCount}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={3}>
+        <Grid
+          size={{
+            xs: 12,
+            md: 3
+          }}>
           <Card sx={{ bgcolor: "#d4edda", border: "1px solid #c3e6cb" }}>
             <CardContent>
-              <Typography variant="h6" color="success.main">
+              <Typography variant="h6" sx={{
+                color: "success.main"
+              }}>
                 Total Products
               </Typography>
-              <Typography variant="h4" color="success.dark">
+              <Typography variant="h4" sx={{
+                color: "success.dark"
+              }}>
                 {products.length}
               </Typography>
             </CardContent>
@@ -234,7 +266,11 @@ export default function AdminPortal() {
 
       <Grid container spacing={3}>
         {/* Sellers Overview */}
-        <Grid item xs={12} md={3}>
+        <Grid
+          size={{
+            xs: 12,
+            md: 3
+          }}>
           <Card>
             <CardContent>
               <Typography variant="h6" sx={{ mb: 2 }}>
@@ -266,7 +302,11 @@ export default function AdminPortal() {
         </Grid>
 
         {/* Products Overview */}
-        <Grid item xs={12} md={9}>
+        <Grid
+          size={{
+            xs: 12,
+            md: 9
+          }}>
           <Card>
             <CardContent>
               <Box

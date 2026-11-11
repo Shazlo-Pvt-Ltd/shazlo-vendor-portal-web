@@ -97,8 +97,7 @@ export default function Hero() {
         <Stack
           direction="row"
           spacing={2}
-          mt={5}
-          flexWrap="wrap"
+          sx={{ mt: 5, flexWrap: "wrap" }}
         >
           <Button
             variant="outlined"

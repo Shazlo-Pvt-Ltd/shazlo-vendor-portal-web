@@ -3,7 +3,7 @@ import {
   Typography,
 } from "@mui/material";
 
-import StarOutlineIcon from "@mui/icons-material/StarOutline";
+import StarOutlineIcon from "@mui/icons-material/StarBorder";
 import CheckroomOutlinedIcon from "@mui/icons-material/CheckroomOutlined";
 import StorefrontOutlinedIcon from "@mui/icons-material/StorefrontOutlined";
 import PaidOutlinedIcon from "@mui/icons-material/PaidOutlined";

@@ -1,7 +1,7 @@
 import { Box, Typography } from "@mui/material";
 
 import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
-import PeopleOutlineIcon from "@mui/icons-material/PeopleOutline";
+import PeopleOutlineIcon from "@mui/icons-material/PeopleOutlined";
 import LocationOnOutlinedIcon from "@mui/icons-material/LocationOnOutlined";
 import CardGiftcardOutlinedIcon from "@mui/icons-material/CardGiftcardOutlined";
 
