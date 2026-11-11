@@ -524,9 +524,14 @@ async def test_products_from_import_to_live_and_through_a_revision(
     assert len(reviews) == 5  # kurta x3, scarf x2
     assert await session.scalar(select(Product.version).where(Product.sku == "KURTA-001")) == 2
 
-    # --- Three approvals, three events; the two rejections wrote none
+    # --- Three approvals, three events; the two rejections wrote none (the vendor's own
+    # approval at the start wrote its status event)
+    events = await outbox(session)
+    assert [
+        (e.event_type, e.payload["status"]) for e in events if e.aggregate_type == "vendor"
+    ] == [("vendor.status_changed", "approved")]
     versions: dict[str, list[int]] = {}
-    for event in await outbox(session):
+    for event in (e for e in events if e.aggregate_type != "vendor"):
         assert event.event_type == "product.published"
         versions.setdefault(event.payload["sku"], []).append(event.version)
     assert versions == {"KURTA-001": [1, 2], "SCARF-014": [1]}
