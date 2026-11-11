@@ -50,18 +50,22 @@ export default function BrandFilterDialog({
     <Dialog
       open={open}
       onClose={onClose}
-      TransitionComponent={Fade}
       transitionDuration={300}
-      PaperProps={{
-        sx: {
-          width: 420,
-          maxWidth: "92vw",
-          borderRadius: "22px",
-          background: "#fff",
-          overflow: "hidden",
-          boxShadow:
-            "0 30px 80px rgba(0,0,0,.28)",
-        },
+      slots={{
+        transition: Fade
+      }}
+      slotProps={{
+        paper: {
+          sx: {
+            width: 420,
+            maxWidth: "92vw",
+            borderRadius: "22px",
+            background: "#fff",
+            overflow: "hidden",
+            boxShadow:
+              "0 30px 80px rgba(0,0,0,.28)",
+          },
+        }
       }}
     >
       <DialogContent sx={{ p: 4 }}>

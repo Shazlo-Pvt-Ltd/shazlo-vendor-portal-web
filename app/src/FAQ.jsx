@@ -78,7 +78,11 @@ function FAQItem({ question, children }) {
         py: { xs: 8, md: 12 }
       }}
     >
-      <Box maxWidth={1100} mx="auto">
+      <Box
+        sx={{
+          maxWidth: 1100,
+          mx: "auto"
+        }}>
         {/* LOGO */}
         <Box
           sx={{

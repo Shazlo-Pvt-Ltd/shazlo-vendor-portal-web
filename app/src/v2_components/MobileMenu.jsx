@@ -43,7 +43,6 @@ export default function MobileMenu({ open, onClose }) {
   };
 
   return (
-
     <AnimatePresence>
 
       {open && (
@@ -152,13 +151,14 @@ rgba(255,248,232,0) 100%
               <Box
                 component={motion.div}
                 layout
-                display="flex"
-                flexDirection="column"
-                alignItems="stretch"
-                gap={1}
-                position="relative"
-                zIndex={2}
-              >
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "stretch",
+                  gap: 1,
+                  position: "relative",
+                  zIndex: 2
+                }}>
                                 {menuItems.map((item, index) => {
 
                   const active = selected === item.id;
@@ -254,7 +254,6 @@ rgba(255,248,232,0) 100%
       )}
 
     </AnimatePresence>
-
   );
 
 }

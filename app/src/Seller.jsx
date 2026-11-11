@@ -23,7 +23,7 @@ import {
   Store,
   Settings,
   Feedback,
-  HelpOutline,
+  HelpOutlineOutlined,
   Search,
   Notifications,
 } from "@mui/icons-material";
@@ -50,7 +50,7 @@ const sidebarItems = [
   // { icon: <Store />, text: 'Store' },
   { icon: <Settings />, text: "Store Setting" },
   // { icon: <Feedback />, text: 'Feedback' },
-  { icon: <HelpOutline />, text: "Help & Support" },
+  { icon: <HelpOutlineOutlined />, text: "Help & Support" },
 ];
 
 export default function NovanestDashboard() {

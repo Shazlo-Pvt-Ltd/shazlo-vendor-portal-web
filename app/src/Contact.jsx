@@ -74,14 +74,22 @@ function ContactPage() {
       {/* Contact Content */}
       <Container sx={{ py: 8 }}>
         <Grid container spacing={6}>
-          <Grid item xs={12} md={6}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 6
+            }}>
             <Paper elevation={3} className={classes.contactForm}>
               <Typography variant="h4" gutterBottom sx={{ fontWeight: "bold" }}>
                 Send Us a Message
               </Typography>
               <form>
                 <Grid container spacing={3}>
-                  <Grid item xs={12} sm={6}>
+                  <Grid
+                    size={{
+                      xs: 12,
+                      sm: 6
+                    }}>
                     <TextField
                       required
                       fullWidth
@@ -89,7 +97,11 @@ function ContactPage() {
                       variant="outlined"
                     />
                   </Grid>
-                  <Grid item xs={12} sm={6}>
+                  <Grid
+                    size={{
+                      xs: 12,
+                      sm: 6
+                    }}>
                     <TextField
                       required
                       fullWidth
@@ -97,7 +109,7 @@ function ContactPage() {
                       variant="outlined"
                     />
                   </Grid>
-                  <Grid item xs={12}>
+                  <Grid size={12}>
                     <TextField
                       required
                       fullWidth
@@ -106,7 +118,7 @@ function ContactPage() {
                       type="email"
                     />
                   </Grid>
-                  <Grid item xs={12}>
+                  <Grid size={12}>
                     <TextField
                       required
                       fullWidth
@@ -114,7 +126,7 @@ function ContactPage() {
                       variant="outlined"
                     />
                   </Grid>
-                  <Grid item xs={12}>
+                  <Grid size={12}>
                     <TextField
                       required
                       fullWidth
@@ -124,7 +136,7 @@ function ContactPage() {
                       rows={4}
                     />
                   </Grid>
-                  <Grid item xs={12}>
+                  <Grid size={12}>
                     <Button
                       type="submit"
                       variant="contained"
@@ -138,11 +150,17 @@ function ContactPage() {
               </form>
             </Paper>
           </Grid>
-          <Grid item xs={12} md={6}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 6
+            }}>
             <Typography variant="h4" gutterBottom sx={{ fontWeight: "bold" }}>
               Contact Information
             </Typography>
-            <Typography variant="body1" paragraph>
+            <Typography variant="body1" sx={{
+              marginBottom: "16px"
+            }}>
               Have questions about Shazlo? We're here to help!
             </Typography>
 

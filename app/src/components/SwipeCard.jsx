@@ -236,11 +236,14 @@ export default function SwipeCard({
         }}
       >
         <Box
-          display="flex"
-          justifyContent="space-between"
-          alignItems="center"
-        >
-          <Box flex={1}>
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center"
+          }}>
+          <Box sx={{
+            flex: 1
+          }}>
            <Typography
   sx={{
     fontWeight: 800,
@@ -302,10 +305,11 @@ export default function SwipeCard({
         <Stack
           direction="row"
           spacing={1}
-          mt={2}
-          flexWrap="wrap"
           useFlexGap
-        >
+          sx={{
+            mt: 2,
+            flexWrap: "wrap"
+          }}>
           {item.tags?.map((tag) => (
             <Chip
               key={tag}

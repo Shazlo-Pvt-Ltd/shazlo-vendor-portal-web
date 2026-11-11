@@ -52,17 +52,21 @@ export default function PriceFilterDialog({
     <Dialog
       open={open}
       onClose={onClose}
-      TransitionComponent={Fade}
       transitionDuration={300}
-      PaperProps={{
-        sx: {
-          width: 450,
-          maxWidth: "92vw",
-          borderRadius: "22px",
-          background: "#fff",
-          boxShadow:
-            "0 30px 70px rgba(0,0,0,.25)",
-        },
+      slots={{
+        transition: Fade
+      }}
+      slotProps={{
+        paper: {
+          sx: {
+            width: 450,
+            maxWidth: "92vw",
+            borderRadius: "22px",
+            background: "#fff",
+            boxShadow:
+              "0 30px 70px rgba(0,0,0,.25)",
+          },
+        }
       }}
     >
       <DialogContent sx={{ p: 4 }}>
@@ -112,9 +116,6 @@ export default function PriceFilterDialog({
               )
             }
             fullWidth
-            inputProps={{
-              inputMode: "numeric",
-            }}
             sx={{
               "& .MuiOutlinedInput-root": {
                 borderRadius: "14px",
@@ -131,6 +132,11 @@ export default function PriceFilterDialog({
                   borderColor: "#000",
                 },
               },
+            }}
+            slotProps={{
+              htmlInput: {
+                inputMode: "numeric",
+              }
             }}
           />
 
@@ -156,9 +162,6 @@ export default function PriceFilterDialog({
               )
             }
             fullWidth
-            inputProps={{
-              inputMode: "numeric",
-            }}
             sx={{
               "& .MuiOutlinedInput-root": {
                 borderRadius: "14px",
@@ -175,6 +178,11 @@ export default function PriceFilterDialog({
                   borderColor: "#000",
                 },
               },
+            }}
+            slotProps={{
+              htmlInput: {
+                inputMode: "numeric",
+              }
             }}
           />
         </Box>

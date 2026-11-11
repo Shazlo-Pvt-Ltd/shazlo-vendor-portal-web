@@ -109,7 +109,9 @@ export default function Products() {
             mb: 3,
           }}
         >
-          <Typography variant="h5" fontWeight="bold">
+          <Typography variant="h5" sx={{
+            fontWeight: "bold"
+          }}>
             Products Management (Test Mode - {testProducts.length} products)
           </Typography>
           <Box sx={{ display: "flex", gap: 1 }}>
@@ -126,7 +128,11 @@ export default function Products() {
 
         <Card>
           <CardContent>
-            <Typography fontWeight="bold" mb={2}>
+            <Typography
+              sx={{
+                fontWeight: "bold",
+                mb: 2
+              }}>
               Your Approved Products (Test Data)
             </Typography>
 
@@ -229,7 +235,9 @@ export default function Products() {
           mb: 3,
         }}
       >
-        <Typography variant="h5" fontWeight="bold">
+        <Typography variant="h5" sx={{
+          fontWeight: "bold"
+        }}>
           Products Management ({products.length} approved products)
         </Typography>
         <Box sx={{ display: "flex", gap: 1 }}>
@@ -246,7 +254,11 @@ export default function Products() {
 
       <Card>
         <CardContent>
-          <Typography fontWeight="bold" mb={2}>
+          <Typography
+            sx={{
+              fontWeight: "bold",
+              mb: 2
+            }}>
             Your Approved Products
           </Typography>
 

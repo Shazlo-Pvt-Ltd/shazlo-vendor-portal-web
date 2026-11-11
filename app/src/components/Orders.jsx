@@ -41,7 +41,12 @@ const sampleOrders = [
 export default function Orders() {
   return (
     <Box>
-      <Typography variant="h5" fontWeight="bold" mb={3}>
+      <Typography
+        variant="h5"
+        sx={{
+          fontWeight: "bold",
+          mb: 3
+        }}>
         Orders Management
       </Typography>
 

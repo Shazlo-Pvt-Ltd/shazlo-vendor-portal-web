@@ -160,34 +160,48 @@ export default function RegisterBrand() {
             <Box sx={{ flex: 1, width: "100%" }}>
               <Typography
                 variant="h3"
-                mb={1}
-                color="#FFFFFF"
-                sx={{ fontSize: { xs: "1.75rem", sm: "2.5rem", md: "3rem" } }}
-              >
+                sx={{
+                  mb: 1,
+                  color: "#FFFFFF",
+                  fontSize: { xs: "1.75rem", sm: "2.5rem", md: "3rem" }
+                }}>
                 Register your{" "}
-                <Box component="span" color="#FFD700">
+                <Box component="span" sx={{
+                  color: "#FFD700"
+                }}>
                   Brand
                 </Box>
               </Typography>
 
-              <Typography color="#FFD700" mb={4}>
+              <Typography
+                sx={{
+                  color: "#FFD700",
+                  mb: 4
+                }}>
                 Be part of the next wave of fashion brands making an impact.
               </Typography>
 
               {submitted && (
                 <Box
-                  mb={3}
-                  p={2}
-                  borderRadius="12px"
                   sx={{
+                    mb: 3,
+                    p: 2,
+                    borderRadius: "12px",
                     background: "rgba(255,215,0,0.1)",
-                    border: "1px solid rgba(255,215,0,0.4)",
-                  }}
-                >
-                  <Typography color="#FFD700" fontWeight={600}>
+                    border: "1px solid rgba(255,215,0,0.4)"
+                  }}>
+                  <Typography
+                    sx={{
+                      color: "#FFD700",
+                      fontWeight: 600
+                    }}>
                     Your brand has been registered successfully.
                   </Typography>
-                  <Typography color="#ccc" fontSize="0.9rem">
+                  <Typography
+                    sx={{
+                      color: "#ccc",
+                      fontSize: "0.9rem"
+                    }}>
                     Our team will review it and get back to you shortly.
                   </Typography>
                 </Box>
@@ -195,12 +209,21 @@ export default function RegisterBrand() {
 
               {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
 
-              <Box display="flex" flexDirection="column" gap={3}>
+              <Box
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 3
+                }}>
                 <TextField name="brandName" value={formData.brandName} onChange={handleInputChange} label="Brand name" variant="standard" fullWidth />
                 <TextField name="founder" value={formData.founder} onChange={handleInputChange} label="Founder's name or email ID" variant="standard" fullWidth />
 
                 <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}>
+                  <Grid
+                    size={{
+                      xs: 12,
+                      sm: 6
+                    }}>
                     <TextField name="website" value={formData.website} onChange={handleInputChange} label="Website / Instagram link" variant="standard" fullWidth />
                   </Grid>
                  
@@ -210,7 +233,12 @@ export default function RegisterBrand() {
                 <TextField name="email" value={formData.email} onChange={handleInputChange} label="Contact email" type="email" variant="standard" fullWidth />
 
                 <Box>
-                  <Typography fontWeight={600} mb={1} color="#FFD700">
+                  <Typography
+                    sx={{
+                      fontWeight: 600,
+                      mb: 1,
+                      color: "#FFD700"
+                    }}>
                     Select price range: {formatCurrency(priceRange[0])} - {formatCurrency(priceRange[1])}
                   </Typography>
                   <Slider value={priceRange} onChange={handlePriceChange} min={1000} max={10000} step={500} />
@@ -232,14 +260,17 @@ export default function RegisterBrand() {
                   {loading ? <CircularProgress size={24} sx={{ color: "#000" }} /> : "Submit"}
                 </Button>
 
-                <Box textAlign="center" mt={2}>
-                  <Typography 
-                    variant="body2" 
-                    color="#999999"
+                <Box
+                  sx={{
+                    textAlign: "center",
+                    mt: 2
+                  }}>
+                  <Typography
+                    variant="body2"
                     sx={{
+                      color: "#999999",
                       fontSize: { xs: "0.75rem", sm: "0.875rem" }
-                    }}
-                  >
+                    }}>
                     Need help?{" "}
                     <Box 
                       component="a" 
