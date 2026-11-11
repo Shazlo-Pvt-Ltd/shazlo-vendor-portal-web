@@ -70,7 +70,13 @@ const CRMPanel = () => {
     >
       <Card sx={{ width: 500, borderRadius: 3, boxShadow: 4 }}>
         <CardContent>
-          <Typography variant="h5" fontWeight="bold" gutterBottom textAlign="center">
+          <Typography
+            variant="h5"
+            gutterBottom
+            sx={{
+              fontWeight: "bold",
+              textAlign: "center"
+            }}>
             🚀 Send Push Notification
           </Typography>
 

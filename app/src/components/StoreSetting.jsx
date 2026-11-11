@@ -37,18 +37,31 @@ export default function StoreSetting() {
 
   return (
     <Box>
-      <Typography variant="h5" fontWeight="bold" mb={3}>
+      <Typography
+        variant="h5"
+        sx={{
+          fontWeight: "bold",
+          mb: 3
+        }}>
         Store Settings
       </Typography>
 
       <Card>
         <CardContent>
-          <Typography fontWeight="bold" mb={2}>
+          <Typography
+            sx={{
+              fontWeight: "bold",
+              mb: 2
+            }}>
             General Settings
           </Typography>
 
           <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
+            <Grid
+              size={{
+                xs: 12,
+                md: 6
+              }}>
               <TextField
                 fullWidth
                 label="Store Name"
@@ -56,7 +69,11 @@ export default function StoreSetting() {
                 onChange={handleChange("storeName")}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid
+              size={{
+                xs: 12,
+                md: 6
+              }}>
               <TextField
                 fullWidth
                 label="Email"
@@ -65,7 +82,11 @@ export default function StoreSetting() {
                 onChange={handleChange("email")}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid
+              size={{
+                xs: 12,
+                md: 6
+              }}>
               <TextField
                 fullWidth
                 label="Phone"
@@ -73,7 +94,11 @@ export default function StoreSetting() {
                 onChange={handleChange("phone")}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid
+              size={{
+                xs: 12,
+                md: 6
+              }}>
               <TextField
                 fullWidth
                 label="Address"
@@ -83,8 +108,14 @@ export default function StoreSetting() {
             </Grid>
           </Grid>
 
-          <Box mt={3}>
-            <Typography fontWeight="bold" mb={2}>
+          <Box sx={{
+            mt: 3
+          }}>
+            <Typography
+              sx={{
+                fontWeight: "bold",
+                mb: 2
+              }}>
               Preferences
             </Typography>
             <FormControlLabel

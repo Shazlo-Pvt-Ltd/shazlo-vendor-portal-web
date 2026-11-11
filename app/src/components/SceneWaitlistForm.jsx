@@ -108,19 +108,21 @@ const SceneWaitlistForm = () => {
             placeholder="your name"
             variant="standard"
             fullWidth
-            InputProps={{
-              disableUnderline: true,
-              sx: {
-                px: 1, py: 1.2,
-                border: "1px solid #00000040",
-                fontFamily: "Doto",
-                fontWeight: 700,
-                borderRadius: "6px",
-                background: "#fff",
-                "& input::placeholder": { color: "#222", opacity: 1, fontSize: 15 },
-              },
-            }}
             sx={{ mb: 3 }}
+            slotProps={{
+              input: {
+                disableUnderline: true,
+                sx: {
+                  px: 1, py: 1.2,
+                  border: "1px solid #00000040",
+                  fontFamily: "Doto",
+                  fontWeight: 700,
+                  borderRadius: "6px",
+                  background: "#fff",
+                  "& input::placeholder": { color: "#222", opacity: 1, fontSize: 15 },
+                },
+              }
+            }}
           />
 
           {/* email */}
@@ -130,63 +132,67 @@ const SceneWaitlistForm = () => {
             placeholder="your email"
             variant="standard"
             fullWidth
-            InputProps={{
-              disableUnderline: true,
-              sx: {
-                px: 1, py: 1.2,
-                border: "1px solid #00000040",
-                fontFamily: "Doto",
-                fontWeight: 700,
-                borderRadius: "6px",
-                background: "#fff",
-                "& input::placeholder": { color: "#222", opacity: 1, fontSize: 15 },
-              },
-            }}
             sx={{ mb: 3 }}
+            slotProps={{
+              input: {
+                disableUnderline: true,
+                sx: {
+                  px: 1, py: 1.2,
+                  border: "1px solid #00000040",
+                  fontFamily: "Doto",
+                  fontWeight: 700,
+                  borderRadius: "6px",
+                  background: "#fff",
+                  "& input::placeholder": { color: "#222", opacity: 1, fontSize: 15 },
+                },
+              }
+            }}
           />
 
           {/* gender dropdown */}
          <TextField
-  select
-  value={gender}
-  onChange={(e) => setGender(e.target.value)}
-  variant="standard"
-  fullWidth
-  SelectProps={{
-    displayEmpty: true,
-    renderValue: (selected) => {
-      if (selected === "") {
-        return (
-          <span
-            style={{
-              color: "#222",
-              opacity: 0.6,
-              fontFamily: "Doto",
-              fontWeight: 700,
-              fontSize: "15px",
-            }}
-          >
-            gender
-          </span>
-        );
-      }
-      return selected;
-    },
-  }}
-  InputProps={{
-    disableUnderline: true,
-    sx: {
-      px: 1,
-      py: 1.2,
-      border: "1px solid #00000040",
-      fontFamily: "Doto",
-      fontWeight: 700,
-      borderRadius: "6px",
-      background: "#fff",
-    },
-  }}
-  sx={{ mb: 3 }}
->
+           select
+           value={gender}
+           onChange={(e) => setGender(e.target.value)}
+           variant="standard"
+           fullWidth
+           sx={{ mb: 3 }}
+           slotProps={{
+             input: {
+               disableUnderline: true,
+               sx: {
+                 px: 1,
+                 py: 1.2,
+                 border: "1px solid #00000040",
+                 fontFamily: "Doto",
+                 fontWeight: 700,
+                 borderRadius: "6px",
+                 background: "#fff",
+               },
+             },
+
+             select: {
+               displayEmpty: true,
+               renderValue: (selected) => {
+                 if (selected === "") {
+                   return (
+                     <span
+                       style={{
+                         color: "#222",
+                         opacity: 0.6,
+                         fontFamily: "Doto",
+                         fontWeight: 700,
+                         fontSize: "15px",
+                       }}
+                     >
+                       gender
+                     </span>
+                   );
+                 }
+                 return selected;
+               },
+             }
+           }}>
   <MenuItem value="Male" sx={{ fontFamily: "Doto", fontWeight: 700 }}>
     Male
   </MenuItem>
@@ -210,19 +216,21 @@ const SceneWaitlistForm = () => {
             placeholder="your city"
             variant="standard"
             fullWidth
-            InputProps={{
-              disableUnderline: true,
-              sx: {
-                px: 1, py: 1.2,
-                border: "1px solid #00000040",
-                fontFamily: "Doto",
-                fontWeight: 700,
-                borderRadius: "6px",
-                background: "#fff",
-                "& input::placeholder": { color: "#222", opacity: 1, fontSize: 15 },
-              },
-            }}
             sx={{ mb: 3 }}
+            slotProps={{
+              input: {
+                disableUnderline: true,
+                sx: {
+                  px: 1, py: 1.2,
+                  border: "1px solid #00000040",
+                  fontFamily: "Doto",
+                  fontWeight: 700,
+                  borderRadius: "6px",
+                  background: "#fff",
+                  "& input::placeholder": { color: "#222", opacity: 1, fontSize: 15 },
+                },
+              }
+            }}
           />
 
           {/* join button */}
@@ -249,7 +257,7 @@ const SceneWaitlistForm = () => {
           </Typography>
         </Box>
       </motion.div>
-      
+
     </Box>
   );
 };

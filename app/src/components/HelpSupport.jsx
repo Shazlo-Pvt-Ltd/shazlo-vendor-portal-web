@@ -37,13 +37,22 @@ const faqs = [
 export default function HelpSupport() {
   return (
     <Box>
-      <Typography variant="h5" fontWeight="bold" mb={3}>
+      <Typography
+        variant="h5"
+        sx={{
+          fontWeight: "bold",
+          mb: 3
+        }}>
         Help & Support
       </Typography>
 
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Typography fontWeight="bold" mb={2}>
+          <Typography
+            sx={{
+              fontWeight: "bold",
+              mb: 2
+            }}>
             Frequently Asked Questions
           </Typography>
           {faqs.map((faq, index) => (
@@ -61,10 +70,16 @@ export default function HelpSupport() {
 
       <Card>
         <CardContent>
-          <Typography fontWeight="bold" mb={2}>
+          <Typography
+            sx={{
+              fontWeight: "bold",
+              mb: 2
+            }}>
             Contact Support
           </Typography>
-          <Typography mb={2}>
+          <Typography sx={{
+            mb: 2
+          }}>
             Need more help? Contact our support team.
           </Typography>
           <Button variant="contained" color="primary">

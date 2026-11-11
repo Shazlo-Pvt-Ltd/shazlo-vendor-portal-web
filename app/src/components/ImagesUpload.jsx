@@ -59,18 +59,27 @@ export default function ImagesUpload() {
 
   return (
     <Box>
-      <Typography variant="h5" fontWeight="bold" mb={3}>
+      <Typography
+        variant="h5"
+        sx={{
+          fontWeight: "bold",
+          mb: 3
+        }}>
         Images Upload
       </Typography>
 
       <Card>
         <CardContent>
-          <Typography fontWeight="bold" mb={2}>
+          <Typography
+            sx={{
+              fontWeight: "bold",
+              mb: 2
+            }}>
             Upload Product Images
           </Typography>
 
           <Grid container spacing={2}>
-            <Grid item xs={12}>
+            <Grid size={12}>
               <Button component="label" variant="outlined" fullWidth>
                 Select Images (Multiple)
                 <input
@@ -83,7 +92,11 @@ export default function ImagesUpload() {
               </Button>
 
               {imageFiles.length > 0 && (
-                <Typography fontSize={13} mt={1}>
+                <Typography
+                  sx={{
+                    fontSize: 13,
+                    mt: 1
+                  }}>
                   {imageFiles.length} images selected
                 </Typography>
               )}

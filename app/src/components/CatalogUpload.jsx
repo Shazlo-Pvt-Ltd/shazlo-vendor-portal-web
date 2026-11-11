@@ -328,7 +328,12 @@ export default function CatalogUpload() {
 
   return (
     <Box>
-      <Typography variant="h5" fontWeight="bold" mb={3}>
+      <Typography
+        variant="h5"
+        sx={{
+          fontWeight: "bold",
+          mb: 3
+        }}>
         Catalog Bulk Upload
       </Typography>
 
@@ -336,12 +341,18 @@ export default function CatalogUpload() {
 
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Typography fontWeight="bold" mb={2}>
+          <Typography
+            sx={{
+              fontWeight: "bold",
+              mb: 2
+            }}>
             Step 1: Select Category
           </Typography>
 
           <Grid container spacing={2}>
-            <Grid item width={150}>
+            <Grid sx={{
+              width: 150
+            }}>
               <FormControl fullWidth variant="outlined">
                 <InputLabel id="gender-label">Men / Women</InputLabel>
 
@@ -361,7 +372,9 @@ export default function CatalogUpload() {
               </FormControl>
             </Grid>
 
-            <Grid item width={150}>
+            <Grid sx={{
+              width: 150
+            }}>
               <FormControl fullWidth disabled={!gender}>
                 <InputLabel>Category</InputLabel>
                 <Select
@@ -395,12 +408,16 @@ export default function CatalogUpload() {
 
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Typography fontWeight="bold" mb={2}>
+          <Typography
+            sx={{
+              fontWeight: "bold",
+              mb: 2
+            }}>
             Step 2: Upload Filled Template & Images
           </Typography>
 
           <Grid container spacing={2}>
-            <Grid item xs={6}>
+            <Grid size={6}>
               <Button component="label" variant="outlined" fullWidth>
                 Upload Excel
                 <input
@@ -412,13 +429,17 @@ export default function CatalogUpload() {
               </Button>
 
               {excelFile && (
-                <Typography fontSize={13} mt={1}>
+                <Typography
+                  sx={{
+                    fontSize: 13,
+                    mt: 1
+                  }}>
                   {excelFile.name}
                 </Typography>
               )}
             </Grid>
 
-            <Grid item xs={6}>
+            <Grid size={6}>
               <Button component="label" variant="outlined" fullWidth>
                 Upload Images (Multiple)
                 <input
@@ -431,7 +452,11 @@ export default function CatalogUpload() {
               </Button>
 
               {imageFiles.length > 0 && (
-                <Typography fontSize={13} mt={1}>
+                <Typography
+                  sx={{
+                    fontSize: 13,
+                    mt: 1
+                  }}>
                   {imageFiles.length} images selected
                 </Typography>
               )}
@@ -456,15 +481,23 @@ export default function CatalogUpload() {
       {jobId && (
         <Card>
           <CardContent>
-            <Typography fontWeight="bold">
+            <Typography sx={{
+              fontWeight: "bold"
+            }}>
               ✅ Upload Submitted Successfully
             </Typography>
 
-            <Typography fontSize={14} mt={1}>
+            <Typography
+              sx={{
+                fontSize: 14,
+                mt: 1
+              }}>
               Job ID: <strong>{jobId}</strong>
             </Typography>
 
-            <Typography fontSize={14}>
+            <Typography sx={{
+              fontSize: 14
+            }}>
               Status: SUBMITTED (Awaiting Review)
             </Typography>
           </CardContent>
