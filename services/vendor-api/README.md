@@ -482,6 +482,16 @@ An approved product keeps its live content while a new revision is edited and re
 
 `OUTBOX_EVENTS_ENABLED=false` is for local work without the central app: approvals then write no event, and the log says so at start and for every approval. Events queue in the outbox whether or not sending (`CENTRAL_PUBLISHING_ENABLED`) is configured, so nothing is lost while the central app is not ready.
 
+### Writing events: what stops being shown
+
+Three changes take things off the central app. Each writes its events **in the change's own transaction**, so the change and its events are saved together or not at all (a failure is `409 outbox_conflict` or `409 cannot_publish`, "Nothing was saved").
+
+- **Archiving a live product** (`DELETE /v1/vendor/products/{id}` on an approved one) writes `product.unpublished` with reason `archived`. Its version is the product's, raised by the archive and kept above its last event. A product that never had an event (never published, or events were off) writes nothing. "Sent back to review" does not take a product off sale (the live revision stays live until a new one is approved), so it writes nothing.
+- **Suspending a vendor** writes `vendor.status_changed` (version: the number of the change in the vendor's history) and then `brand_profile.unpublished` / `product.unpublished` with reason `vendor_suspended` for **every page or product whose latest event is a `published` one**. **Rejecting** does the same with reason `rejected_after_publish` (normally the vendor published nothing, so only the status event is written).
+- **Approving a vendor again** writes `vendor.status_changed`, then a `published` event, at the next version, for exactly the pages and products whose latest event is an unpublish with a vendor reason. What was archived stays archived, and what was never published is not published. Each is rebuilt from the current database state; one that cannot be built (for example an image that is not ready) refuses the reinstatement with `409 cannot_publish`.
+
+What the central app currently shows is read from the outbox itself (the latest event of each aggregate), so the fan-out is **idempotent**: an aggregate that is already unpublished gets nothing. A fan-out runs in the one transaction, in chunks of 200 aggregates (loaded, built and flushed 200 at a time, so memory stays bounded; a vendor with thousands of products still commits or rolls back as one). Versions only go up: a new event is one past the aggregate's last event, and a product's `version` is raised to match, so its next approval continues from it. A brand profile version cannot be changed after it is saved, so after a suspension its next draft starts past the last event, and approving a page whose version is not past the last event is `409 stale_central_version` (edit it again and resubmit).
+
 ### Reviews
 
 Everything a vendor submits (a brand profile version, a product revision) stays pending until an admin reviews it.

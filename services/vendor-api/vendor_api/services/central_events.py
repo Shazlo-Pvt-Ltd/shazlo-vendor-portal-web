@@ -149,10 +149,12 @@ class BrandSnapshot:
 def brand_profile_published(
     snapshot: BrandSnapshot,
     *,
+    version: int | None = None,
     event_id: uuid.UUID | None = None,
     occurred_at: datetime | None = None,
 ) -> BuiltEvent:
-    """The vendor's published brand page, in full. Its version is the profile's own."""
+    """The vendor's published brand page, in full. Its version is the profile's own, unless the
+    page is shown again after being unpublished: then the caller gives the next event version."""
     vendor, profile = snapshot.vendor, snapshot.profile
     if profile.vendor_id != vendor.id:
         raise EventBuildError("the profile belongs to another vendor")
@@ -182,7 +184,7 @@ def brand_profile_published(
         aggregate_type="brand_profile",
         aggregate_id=vendor.id,
         vendor_id=vendor.id,
-        version=profile.version,
+        version=profile.version if version is None else version,
         payload=payload,
         event_id=event_id,
         occurred_at=occurred_at,
@@ -237,6 +239,7 @@ def product_published(
     snapshot: ProductSnapshot,
     *,
     published_at: datetime,
+    version: int | None = None,
     event_id: uuid.UUID | None = None,
     occurred_at: datetime | None = None,
 ) -> BuiltEvent:
@@ -296,7 +299,7 @@ def product_published(
         aggregate_type="product",
         aggregate_id=product.id,
         vendor_id=product.vendor_id,
-        version=product.version,
+        version=product.version if version is None else version,
         payload=payload,
         event_id=event_id,
         occurred_at=occurred_at,
