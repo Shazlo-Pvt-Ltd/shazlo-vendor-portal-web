@@ -1,5 +1,6 @@
 """The receiver's rules (ADR 0003), one test each, and every example of the contract."""
 
+import asyncio
 import copy
 import uuid
 from collections.abc import Callable
@@ -8,6 +9,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 from shazlo_security.signing import SigningKey
+from starlette.types import Message, Scope
 from support import NOW, OTHER_SECRET, Sender
 
 from central_stub.app import create_app
@@ -154,6 +156,41 @@ def test_a_body_over_256_kb_is_refused(sender: Sender) -> None:
     response = sender.post(b'{"x":"' + b"a" * (256 * 1024) + b'"}')
     assert response.status_code == 413
     assert response.json()["extra"]["code"] == "payload_too_large"
+
+
+def test_a_chunked_body_is_cut_off_at_256_kb(settings: Settings) -> None:
+    """Without a Content-Length, the stub stops reading once the limit is passed."""
+    app = create_app(settings, lambda: NOW)
+    chunk = b"a" * (64 * 1024)
+    total_chunks = 64  # 4 MB offered
+    sent = 0
+    messages: list[Message] = []
+
+    async def receive() -> Message:
+        nonlocal sent
+        sent += 1
+        return {"type": "http.request", "body": chunk, "more_body": sent < total_chunks}
+
+    async def send(message: Message) -> None:
+        messages.append(message)
+
+    scope: Scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/internal/v1/events",
+        "raw_path": b"/internal/v1/events",
+        "root_path": "",
+        "query_string": b"",
+        "headers": [(b"transfer-encoding", b"chunked"), (b"content-type", b"application/json")],
+        "client": ("127.0.0.1", 1),
+        "server": ("127.0.0.1", 8003),
+    }
+    asyncio.run(app(scope, receive, send))
+    assert messages[0]["status"] == 413
+    assert sent == 5  # 256 KB is four chunks; the fifth passes the limit, the rest are never read
 
 
 def test_a_body_of_exactly_256_kb_is_not_too_large(sender: Sender) -> None:
