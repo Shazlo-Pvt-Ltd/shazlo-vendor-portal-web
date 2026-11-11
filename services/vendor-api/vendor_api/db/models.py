@@ -835,3 +835,113 @@ class ReviewEvent(Base):
     # that need nothing more, such as a submission.
     detail: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = _created_at()
+
+
+class OutboxAggregate(StrEnum):
+    BRAND_PROFILE = "brand_profile"
+    PRODUCT = "product"
+    VENDOR = "vendor"
+
+
+class OutboxEventType(StrEnum):
+    BRAND_PROFILE_PUBLISHED = "brand_profile.published"
+    BRAND_PROFILE_UNPUBLISHED = "brand_profile.unpublished"
+    PRODUCT_PUBLISHED = "product.published"
+    PRODUCT_UNPUBLISHED = "product.unpublished"
+    VENDOR_STATUS_CHANGED = "vendor.status_changed"
+
+
+class OutboxStatus(StrEnum):
+    PENDING = "pending"
+    SENDING = "sending"
+    SENT = "sent"
+    DEAD = "dead"
+
+
+# The central app refuses a body over 256 KB (413); the database is a backstop for the builders.
+MAX_OUTBOX_PAYLOAD_BYTES = 262_144
+
+
+class OutboxEvent(Base):
+    """An event for the central app, written in the same transaction as what it announces
+    (ADR 0003, section 5), so an approval and its event are saved together or not at all.
+
+    `id` is the `event_id` the central app de-duplicates on. `version` is the aggregate's
+    version: the central app applies an event only if it is higher than the one it holds, and the
+    worker sends one aggregate's events one at a time in version order. `payload` is the whole
+    event body (the full state of the aggregate), exactly as it will be signed and sent.
+
+    A trigger keeps the content of a row (everything but its delivery state) from ever changing,
+    makes `sent` final, and allows only the worker's path between statuses: pending to sending,
+    sending to pending, sent or dead, and dead back to pending (an admin's retry).
+    """
+
+    __tablename__ = "outbox_events"
+    __table_args__ = (
+        CheckConstraint(_one_of("aggregate_type", OutboxAggregate), name="aggregate_type_values"),
+        CheckConstraint(_one_of("event_type", OutboxEventType), name="event_type_values"),
+        CheckConstraint(_one_of("status", OutboxStatus), name="status_values"),
+        # An event is about its own kind of aggregate.
+        CheckConstraint(
+            "(aggregate_type = 'brand_profile' AND event_type IN "
+            "('brand_profile.published', 'brand_profile.unpublished')) "
+            "OR (aggregate_type = 'product' AND event_type IN "
+            "('product.published', 'product.unpublished')) "
+            "OR (aggregate_type = 'vendor' AND event_type = 'vendor.status_changed')",
+            name="event_type_matches_aggregate",
+        ),
+        # The aggregate of a vendor event is the vendor itself.
+        CheckConstraint(
+            "aggregate_type <> 'vendor' OR aggregate_id = vendor_id",
+            name="vendor_event_is_about_the_vendor",
+        ),
+        CheckConstraint("version >= 1", name="version_positive"),
+        CheckConstraint("attempts >= 0", name="attempts_not_negative"),
+        CheckConstraint("jsonb_typeof(payload) = 'object'", name="payload_is_object"),
+        CheckConstraint(
+            f"octet_length(payload::text) <= {MAX_OUTBOX_PAYLOAD_BYTES}", name="payload_size"
+        ),
+        # What a failure says is kept short: it is a reason, not a copy of the response.
+        CheckConstraint(
+            "last_error IS NULL OR length(last_error) <= 1000", name="last_error_bounded"
+        ),
+        CheckConstraint("status <> 'dead' OR last_error IS NOT NULL", name="dead_has_reason"),
+        CheckConstraint("(status = 'sent') = (sent_at IS NOT NULL)", name="sent_at_matches_status"),
+        CheckConstraint(
+            "(status = 'sending') = (locked_at IS NOT NULL)", name="locked_at_matches_status"
+        ),
+        UniqueConstraint("aggregate_type", "aggregate_id", "version"),
+        # The worker's claim: the rows that are due, oldest first.
+        Index(
+            "ix_outbox_events_due", "next_attempt_at", postgresql_where=text("status = 'pending'")
+        ),
+        # One vendor's events (the admins' filter, and the fan-out when a vendor is suspended).
+        Index("ix_outbox_events_vendor_id_status", "vendor_id", "status"),
+        # The admins' view of what is stuck (`dead` first) and the retention job's scan.
+        Index("ix_outbox_events_status_created_at", "status", "created_at"),
+    )
+    __mapper_args__ = {"eager_defaults": True}
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    # Whose event it is: every event is about one vendor's page, product or account.
+    vendor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("vendors.id", ondelete="RESTRICT")
+    )
+    aggregate_type: Mapped[str] = mapped_column(String(16))
+    aggregate_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    event_type: Mapped[str] = mapped_column(String(32))
+    version: Mapped[int] = mapped_column(Integer)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(
+        String(16), server_default=text(f"'{OutboxStatus.PENDING}'")
+    )
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
