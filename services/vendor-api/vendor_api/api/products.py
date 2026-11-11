@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from vendor_api.api.auth import no_store
 from vendor_api.api.deps import CurrentVendorUser, current_vendor_user
+from vendor_api.core.validation import DatabaseText
 from vendor_api.db.models import Gender, ProductStatus
 from vendor_api.db.session import get_session
 from vendor_api.services.products import (
@@ -62,8 +63,8 @@ class VariantBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     sku: str = Field(min_length=1, max_length=64)
-    size: str = Field(default="", max_length=32)
-    color: str = Field(default="", max_length=32)
+    size: DatabaseText = Field(default="", max_length=32)
+    color: DatabaseText = Field(default="", max_length=32)
     price_paise: int = Field(gt=0, le=MAX_PAISE)
     mrp_paise: int = Field(gt=0, le=MAX_PAISE)
     is_active: bool = True
@@ -94,7 +95,7 @@ class ImageBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     asset_id: uuid.UUID
-    alt_text: str | None = Field(default=None, max_length=200)
+    alt_text: DatabaseText | None = Field(default=None, max_length=200)
 
     @field_validator("alt_text", mode="before")
     @classmethod
@@ -141,12 +142,12 @@ class ProductContentBody(BaseModel):
         },
     )
 
-    title: str = Field(min_length=1, max_length=200)
-    description: str | None = Field(default=None, max_length=4000)
-    category: str = Field(min_length=1, max_length=100)
-    subcategory: str | None = Field(default=None, max_length=100)
+    title: DatabaseText = Field(min_length=1, max_length=200)
+    description: DatabaseText | None = Field(default=None, max_length=4000)
+    category: DatabaseText = Field(min_length=1, max_length=100)
+    subcategory: DatabaseText | None = Field(default=None, max_length=100)
     gender: Gender
-    fabric: str | None = Field(default=None, max_length=80)
+    fabric: DatabaseText | None = Field(default=None, max_length=80)
     weight_grams: int | None = Field(default=None, gt=0, le=1_000_000)
     returnable: bool = False
     return_window_days: int | None = Field(default=None, ge=0, le=30)
@@ -394,8 +395,10 @@ async def list_products(
         Literal["draft", "pending_review", "approved", "rejected", "archived"] | None,
         Query(description="Only products in this status. Archived ones show only when asked."),
     ] = None,
-    category: Annotated[str | None, Query(max_length=100)] = None,
-    q: Annotated[str | None, Query(max_length=100, description="Part of the SKU or title")] = None,
+    category: Annotated[DatabaseText | None, Query(max_length=100)] = None,
+    q: Annotated[
+        DatabaseText | None, Query(max_length=100, description="Part of the SKU or title")
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 25,
     offset: Annotated[int, Query(ge=0, le=100_000)] = 0,
 ) -> ProductPageOut:

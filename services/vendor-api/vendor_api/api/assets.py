@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from vendor_api.api.auth import no_store
 from vendor_api.api.deps import CurrentVendorUser, Limits, current_vendor_user
 from vendor_api.core.settings import Settings
+from vendor_api.core.validation import DatabaseText
 from vendor_api.db.models import Asset, AssetKind
 from vendor_api.db.session import get_session
 from vendor_api.services.assets import AssetService
@@ -91,7 +92,7 @@ class RegisterRequest(BaseModel):
         json_schema_extra={"examples": [{"public_id": EXAMPLE_PUBLIC_ID}]},
     )
 
-    public_id: str = Field(min_length=1, max_length=255)
+    public_id: DatabaseText = Field(min_length=1, max_length=255)
 
 
 class AssetOut(BaseModel):

@@ -37,6 +37,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from vendor_api.api.products import CreateProductBody
 from vendor_api.core.errors import ApiError
@@ -312,8 +313,12 @@ class ProductImportService:
         data: bytes,
         mode: ImportMode,
     ) -> ImportReport:
-        sheet = read_sheet(
-            data, max_rows=self._settings.import_max_rows, known=COLUMNS, required=REQUIRED
+        sheet = await run_in_threadpool(
+            read_sheet,
+            data,
+            max_rows=self._settings.import_max_rows,
+            known=COLUMNS,
+            required=REQUIRED,
         )
         groups = self._group(sheet.rows)
         for group in groups:
@@ -689,9 +694,23 @@ class ProductImportService:
             (error for group in groups for error in group.errors),
             key=lambda e: (e.row, e.column or ""),
         )
-        report.rows_with_errors = len({error.row for error in errors})
-        report.errors_truncated = len(errors) > MAX_REPORTED_ERRORS
-        report.errors = errors[:MAX_REPORTED_ERRORS]
+        first_by_row: dict[int, RowError] = {}
+        additional: list[RowError] = []
+        for error in errors:
+            if error.row in first_by_row:
+                additional.append(error)
+            else:
+                first_by_row[error.row] = error
+        report.rows_with_errors = len(first_by_row)
+        if len(errors) > MAX_REPORTED_ERRORS:
+            extra_slots = max(0, MAX_REPORTED_ERRORS - report.rows_with_errors)
+            report.errors = sorted(
+                [*first_by_row.values(), *additional[:extra_slots]],
+                key=lambda e: (e.row, e.column or ""),
+            )
+        else:
+            report.errors = errors
+        report.errors_truncated = len(report.errors) < len(errors)
         report.products = [
             ProductResult(group.sku, group.numbers, group.status, group.product_id)
             for group in groups

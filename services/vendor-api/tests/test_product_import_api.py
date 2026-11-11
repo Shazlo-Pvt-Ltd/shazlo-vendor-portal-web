@@ -617,7 +617,8 @@ async def test_a_long_error_list_is_cut_and_says_so(tenants: Tenants) -> None:
     response = await upload(tenants, tenants.a, csv_bytes(rows), mode="validate")
     body = response.json()
     assert len(body["errors"]) == 500 and body["errors_truncated"] is True
-    assert body["summary"]["rows_with_errors"] == 300  # counted over all errors, not the 500 shown
+    assert {e["row"] for e in body["errors"]} == set(range(2, 302))
+    assert body["summary"]["rows_with_errors"] == 300
     assert body["summary"]["rejected"] == 300
 
 

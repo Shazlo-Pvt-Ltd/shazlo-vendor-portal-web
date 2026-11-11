@@ -463,6 +463,28 @@ async def test_a_reinstated_vendor_can_sign_in_but_does_not_get_old_sessions_bac
     assert (await tenants.api.refresh(refresh)).status_code == 200
 
 
+async def test_a_sign_in_that_read_the_old_status_does_not_outlive_a_suspension(
+    tenants: Tenants,
+) -> None:
+    """The vendor is suspended (committed, sessions ended) after a sign-in read it as approved
+    but before it read the session generation: the sign-in is refused, and no session is left
+    to come back when the vendor is approved again."""
+    a_id = tenants.a.vendor.id
+    await act(tenants, a_id, "approve", None)
+    refresh_tokens = tenants.api.app.state.sessions._refresh_tokens
+    real_generation = refresh_tokens.generation
+
+    async def suspended_meanwhile(subject_id: uuid.UUID) -> int:
+        refresh_tokens.generation = real_generation
+        assert (await act(tenants, a_id, "suspend", "Paused")).status_code == 200
+        result: int = await real_generation(subject_id)
+        return result
+
+    refresh_tokens.generation = suspended_meanwhile
+    login = await tenants.api.login("owner@a.test", PASSWORD)
+    assert (login.status_code, login.json()["error"]["code"]) == (403, "vendor_not_allowed")
+
+
 async def test_rejecting_a_pending_vendor_ends_its_sessions(tenants: Tenants) -> None:
     a_id = tenants.a.vendor.id
     access, refresh = await sign_in(tenants, "owner@a.test")  # pending vendors can sign in

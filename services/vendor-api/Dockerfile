@@ -16,6 +16,10 @@ RUN useradd --system --uid 10001 --no-create-home app
 COPY --from=builder /wheels /wheels
 RUN pip install --no-cache-dir /wheels/*.whl && rm -rf /wheels
 WORKDIR /app
+# The event schemas are read from docs/adr/0003-contract (the one definition), not copied into
+# the repository twice.
+ENV CONTRACT_DIR=/app/contract
+COPY docs/adr/0003-contract/schemas /app/contract/schemas
 # Lets `alembic upgrade head` run in the container; migrations ship inside the package.
 COPY services/vendor-api/alembic.ini ./
 USER app

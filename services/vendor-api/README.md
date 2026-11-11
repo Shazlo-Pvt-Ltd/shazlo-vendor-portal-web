@@ -2,19 +2,20 @@
 
 FastAPI service for vendors, brand profiles, products, assets, reviews and publishing to the central app. See the [roadmap](../../docs/ROADMAP.md) (Phases 2 to 4), [ADR 0009](../../docs/adr/0009-auth-model.md) for the auth model, [ADR 0010](../../docs/adr/0010-shared-security-package.md) for what it shares with identity-api, and the [key-rotation runbook](../../docs/runbooks/jwt-key-rotation.md).
 
-## What it does today (Phase 3)
+## What it does today (Phase 3, and Phase 4 under way)
 
 - **Vendor accounts:** signup with email verification, login, refresh (rotating tokens with reuse detection), logout, change-password, forgot and set password.
 - **A team per vendor:** the owner invites staff, lists, disables and enables them; invites and resets go by email.
 - **Vendor-scoped data isolation**, with helpers and tests that fail when a route or table skips the rule.
 - **Admin API** (`/v1/admin/*`): accepts only identity-api tokens, verified through its JWKS. The review queue is the first part of it.
 - **Its own tokens and keys:** vendor-api signs vendor tokens with its own key and serves its own JWKS.
-- **The schema** for vendors, users, tokens, brand profiles, products (identity and revisions), assets and reviews.
+- **The schema** for vendors, users, tokens, brand profiles, products (identity and revisions), assets, reviews and the outbox.
 - **A brand page per vendor:** edit a draft, submit it for review, read the published version.
 - **A catalog:** products with variants and images, where editing a live product makes a pending revision and never changes what is live; a bulk import from `.xlsx` or `.csv` with a report for every row.
 - **Image uploads** straight to Cloudinary with a signature made here, and a record of each image.
-- **Review:** a queue for reviewers with the exact fields that changed, approve and reject (a reason is required) with an audit trail, and a hook point for Phase 4's outbox.
+- **Review:** a queue for reviewers with the exact fields that changed, approve and reject (a reason is required) with an audit trail.
 - **Vendor accounts:** approve, reject and suspend, with sessions ended at once and an email to the vendor.
+- **Central-app events (Phase 4):** every approval writes its contract-checked event to the outbox in the same transaction; requests to the central app are HMAC-signed. Sending the events is not built yet.
 
 Each part is described below. `tests/test_e2e_catalog.py` walks the whole flow against Postgres and Redis, and [Try the review flow](#try-the-review-flow-locally) does it by hand.
 
@@ -48,13 +49,14 @@ curl -s localhost:8002/v1/auth/login -H 'content-type: application/json' \
 
 **Or sign up as a new vendor:** `POST /v1/auth/signup` (try it at <http://localhost:8002/docs>), then open Mailpit at <http://localhost:8025>, copy the token from the link (`...#token=<token>`) and `POST /v1/auth/verify-email` with `{"token": "<token>"}`; now you can log in.
 
+- **`seed-dev`** creates one approved vendor `demo-brand` with a verified owner (`owner@demo-brand.test`) and a staff user (`staff@demo-brand.test`), both with one password: `demo-password-1234`, a **local-only** default (set your own with `--password` or `SEED_VENDOR_PASSWORD`). The command never prints a password, runs only with `ENV=dev`, and is safe to run twice: it never changes anything that exists.
 - **`seed-dev` also fills a demo catalog**, so every screen and admin endpoint has something to show:
   - **Demo Brand** (approved): a published brand profile and a newer version in review, and four products: `KURTA-DEMO-01` (approved, with an edit in review), `TOTE-DEMO-03` (a first submission in review), `SCARF-DEMO-02` (a draft) and the images they use.
   - **Demo Pending Brand** (`owner@demo-pending.test`, pending): a brand profile in review, the first submission of an application. A pending vendor can sign in.
   - **Demo Suspended Brand** (`owner@demo-suspended.test`, suspended): its owner cannot sign in.
   - That leaves **four pending reviews** in `GET /v1/admin/reviews` and one pending vendor in `GET /v1/admin/vendors`. The extra owners use the same seed password. Running it again changes nothing.
+  - **Central-app events:** the seed's two approvals (the published brand profile and the live kurta) have their `*.published` events in `outbox_events`, as an approval through the API would, so approving the pending reviews continues their versions. With `OUTBOX_EVENTS_ENABLED=false` it writes none, like the app.
   - **A reviewer** is not created here: reviewers are identity-api admins. Seed identity-api (`python -m identity_api.cli seed`) and use the token of the `super_admin` it creates; a `super_admin` passes every reviewer check. A dedicated `vendor_reviewer` is made through identity-api's admin API.
-- **`seed-dev`** creates one approved vendor `demo-brand` with a verified owner (`owner@demo-brand.test`) and a staff user (`staff@demo-brand.test`), both with one password: `demo-password-1234`, a **local-only** default (set your own with `--password` or `SEED_VENDOR_PASSWORD`). The command never prints a password, runs only with `ENV=dev`, and is safe to run twice: it never changes anything that exists.
 - If `generate-key` printed a `JWT_SIGNING_KID`, put it in `.env` (it is only needed with more than one key). The app refuses to start without a signing key.
 - To also run identity-api (admin tokens for `/v1/admin/*`) see the [root README](../../README.md), Local development. vendor-api starts without it.
 
@@ -81,7 +83,7 @@ curl -s -X POST localhost:8002/v1/admin/vendors/<id>/approve -H "authorization: 
   -H 'content-type: application/json' -d '{}'
 ```
 
-Every request body has an example in the OpenAPI document at <http://localhost:8002/docs> ("Try it out"). Image uploads need Cloudinary credentials (`CLOUDINARY_*`, see Settings); without them the asset endpoints answer `503` and everything else works.
+Each approval also writes its central-app event to `outbox_events` in the same transaction (see "Writing events" below); a rejection writes none. Every request body has an example in the OpenAPI document at <http://localhost:8002/docs> ("Try it out"). Image uploads need Cloudinary credentials (`CLOUDINARY_*`, see Settings); without them the asset endpoints answer `503` and everything else works.
 
 ## Endpoints
 
@@ -92,7 +94,7 @@ The live reference is the OpenAPI document at <http://localhost:8002/docs> (dev;
 | Health | `GET /health`, `GET /ready` | anyone |
 | Keys | `GET /.well-known/jwks.json` | anyone |
 | Vendor auth | `POST /v1/auth/signup`, `verify-email`, `resend-verification`, `login`, `refresh`, `logout`, `change-password`, `forgot-password`, `set-password` | anyone, or a vendor token for `change-password` |
-| Vendor | `GET /v1/vendor/me`; `GET`/`PUT /v1/vendor/brand-profile`, `POST /v1/vendor/brand-profile/submit`, `GET /v1/vendor/brand-profile/published`; `POST /v1/vendor/products/import`, `GET /v1/vendor/products/import/template`; `GET`/`POST /v1/vendor/products`, `GET`/`PUT`/`DELETE /v1/vendor/products/{id}`, `POST /v1/vendor/products/{id}/submit`; `POST /v1/vendor/assets/sign`, `POST /v1/vendor/assets`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only) | vendor-api tokens only |
+| Vendor | `GET /v1/vendor/me`; `GET`/`PUT /v1/vendor/brand-profile`, `POST /v1/vendor/brand-profile/submit`, `GET /v1/vendor/brand-profile/published`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only); `GET`/`POST /v1/vendor/products`, `GET`/`PUT`/`DELETE /v1/vendor/products/{id}`, `POST /v1/vendor/products/{id}/submit`; `POST /v1/vendor/assets/sign`, `POST /v1/vendor/assets`; `POST /v1/vendor/products/import`, `GET /v1/vendor/products/import/template` | vendor-api tokens only |
 | Admin | `GET /v1/admin/me`, `GET /v1/admin/reviews`, `GET /v1/admin/reviews/{id}`, `GET /v1/admin/vendors`, `GET /v1/admin/vendors/{id}`, `POST /v1/admin/vendors/{id}/approve`, `POST /v1/admin/vendors/{id}/reject`, `POST /v1/admin/vendors/{id}/suspend`, `POST /v1/admin/reviews/{id}/approve`, `POST /v1/admin/reviews/{id}/reject` | identity-api tokens only (`vendor_reviewer` or `super_admin`) |
 
 The sections below describe each group.
@@ -153,9 +155,12 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `SMTP_SECURITY` | `starttls` | `none` (local Mailpit only), `starttls` or `ssl` |
 | `EMAIL_SEND_ATTEMPTS` | `3` | tries before an email is given up |
 | `PORTAL_BASE_URL` | `http://localhost:5174` | the vendor portal: links in emails point here |
-| `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | unset | set all three or none; the secret has no default and is never logged or returned. Without them the asset endpoints answer `503 uploads_not_configured` and the rest of the service works. Signatures are SHA-256: set the account's API signature algorithm to SHA-256 |
+| `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | unset | set all three or none; the secret has no default and is never logged or returned. Without them the asset endpoints answer `503 uploads_not_configured` and the rest of the service works |
 | `CLOUDINARY_ROOT_FOLDER` | `shazlo` | every file lives under `<root>/vendors/<vendor id>/...`; give each environment its own root (lower-case letters, digits, `-`, `_`, `/`) |
 | `CLOUDINARY_UPLOAD_PRESET` | unset | an upload preset (made in Cloudinary) that is signed into every upload, so the provider enforces its own size and format limits as a second layer |
+| `OUTBOX_EVENTS_ENABLED` | `true` | write the central-app event when an admin approves something. Turn it off only for local work: approvals then write no event and the log says so. It cannot be off while `CENTRAL_PUBLISHING_ENABLED` is on |
+| `CENTRAL_PUBLISHING_ENABLED` | `false` | publish outbox events to the central app (ADR 0003); needs the next three |
+| `CENTRAL_API_URL` / `CENTRAL_SIGNING_KEY_ID` / `CENTRAL_SIGNING_SECRET` | unset | the central app's base URL (https outside dev), the id it knows our secret by, and the secret (at least 32 characters, never logged; see the key-rotation runbook). Every request is signed `HMAC_SHA256(secret, timestamp + "." + body)` by `shazlo_security.signing` |
 | `UPLOAD_MAX_BYTES` | `10485760` | largest image accepted (10 MiB; at most 100 MiB) |
 
 `ENV=prod` refuses the `console` backend (it sends nothing), `SMTP_SECURITY=none` and an `http://` portal address.
@@ -269,27 +274,14 @@ A vendor's catalog. Any active user of the vendor (owner or staff) can do everyt
 
 Every write first locks the product row, so two requests on one product run one after the other.
 
-## Bulk product import (`.xlsx` / `.csv`)
+## Events for the central app (`services/central_events.py`)
 
-A vendor can create many products from one spreadsheet. Any active user of the vendor (owner or staff) can use it.
+Pure builders turn the rows of an approved page, product or vendor status into the contract's full-state events (ADR 0003, [`docs/adr/0003-contract/`](../../docs/adr/0003-contract/README.md)): `brand_profile_published` / `brand_profile_unpublished`, `product_published` / `product_unpublished`, `vendor_status_changed`. Each returns a `BuiltEvent` whose fields are the outbox row's columns (`event_type`, `aggregate_type`, `aggregate_id`, `vendor_id`, `version`, `payload`) and whose `body()` is the exact bytes to sign and send.
 
-- **`GET /v1/vendor/products/import/template?format=xlsx|csv`** downloads a sample: the columns, three example rows (two products, three variants) and, in the Excel file, an instructions sheet.
-- **`POST /v1/vendor/products/import?mode=import|validate|all_or_nothing`** takes the file **as the request body** (not a multipart form), with `Content-Type: text/csv` or the `.xlsx` type (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`). The bytes decide the format (an `.xlsx` is a zip); the type only turns away things that are plainly something else (`415`). Limited per vendor (`bulk_import`).
-
-**The sheet.** The first row names the columns (case, spaces and dashes do not matter; unknown columns are ignored and listed). **One row is one variant**; rows that share a product `sku` (ignoring case) are one product with several variants. Columns: `sku`, `title`, `description`, `category`, `subcategory`, `gender` (`women`, `men`, `unisex`), `fabric`, `weight_grams`, `returnable`, `return_window_days`, `variant_sku`, `size`, `color`, `price`, `mrp`, `is_active`. Required: `sku`, `title`, `category`, `gender`, `variant_sku`, `price` (`sku`, `variant_sku` and `price` on every row; the product's details on its first row). The other rows of a product repeat the details (they must match, or `conflicting_value`) or leave them blank. Prices are in **rupees** (`1499`, `899.50`, no symbols or commas) and become exact paise; `mrp` defaults to `price`; `returnable` and `is_active` take yes/no; a returnable product needs `return_window_days`. **Images cannot be imported** (an image is an uploaded asset): imported products are `draft`s, and the vendor adds images in the portal and submits them.
-
-**The rules are the products API's.** Each product is validated with the same model as `POST /v1/vendor/products`, so a row that imports could have been created by hand and the limits never drift apart. On top of that, per row: duplicates in the file (variant SKUs, size and colour), SKUs already used in the database (`variant_sku_taken`), and what only a spreadsheet needs (numbers, yes/no, text).
-
-**The report.** The answer is always `200` with a report (file-level problems are `413`, `415` or `422`): `summary` (products, created, unchanged, valid, rejected, rows read, rows with errors), `products` (each SKU with its rows, `status` and `product_id`) and `errors`: **every rejected row with its row number (as in the spreadsheet: the header is row 1), column, code and a plain reason**. At most 500 errors are listed (`errors_truncated`). A product is never half imported: if any of its rows has an error, the whole product is `rejected`. The report never echoes a rejected cell's content.
-
-**Modes** (decided here):
-- `import` (default): every product whose rows are all valid is created, the rest are reported. Products are created in one transaction, each inside a savepoint, so one that fails to save (a SKU taken a moment ago by another request) is reported as `sku_taken` and the others still import.
-- `validate`: reads and checks everything, writes nothing (the products are `valid`). Use it to preview.
-- `all_or_nothing`: creates nothing unless the whole file is valid (`committed: false` otherwise); if a product fails to save, everything is undone.
-
-**Importing the same file again creates nothing new.** A product whose SKU exists with the same details and variants is `unchanged`; one that exists with different details is `sku_exists` (an import never changes a product: edit it through the products API). So fixing the rejected rows and uploading the whole file again only creates what is missing.
-
-**A hostile file.** Limits are checked before anything is parsed: the size (`IMPORT_MAX_BYTES`, enforced while the body streams in, so a body that does not declare its length is cut off), the rows (`IMPORT_MAX_ROWS`; blank rows count toward a scan limit of five times that, so a file of empty rows cannot keep the server busy), at most 40 columns, and 5000 characters per cell. An `.xlsx` is a zip: it is refused if it unpacks to more than 50 MiB, has an entry that unpacks to over 100 times its size, has more than 200 parts, or contains macros, external links or embedded objects. It is read in streaming mode with `defusedxml` installed, so XML entity tricks are refused. Only the first sheet is read. **Formulas** (a cell that holds a formula) and **text that a spreadsheet would run as one** (starting with `=`, `+`, `-`, `@`, a tab or a carriage return) are rejected, so such text can never be stored and come back out in an export opened in a spreadsheet. (In a number column a leading `-` is a sign, and gets the "use an amount in rupees" message.)
+- **Validated before it is returned** against the schemas in `docs/adr/0003-contract/schemas/` (read from there; the image sets `CONTRACT_DIR`). The schemas refuse unknown fields, so stock and vendor contact data cannot be added by accident; an invalid event raises `InvalidEvent` (a bug, not an event). A body over 256 KB raises `EventTooLarge`.
+- **Full state, stable bytes.** Same rows, same `event_id` and time: same bytes. Variants are in the order the vendor created them, images by position, prices in integer paise, times UTC to the second. Empty optional fields are left out (the contract has no `null`).
+- **Versions** are the caller's: a brand page uses the published profile's `version` (its aggregate id is the vendor id), a product its `Product.version`, a vendor the number of the status change (`vendor_status_version`: the vendor's creation counts as the first). An `unpublished` event needs a version above the last published one and is refused for something that was never published (`last_published_version=None`).
+- `load_brand_snapshot` and `load_product_snapshot` read the rows; the builders never query.
 
 ## Image uploads (Cloudinary)
 
@@ -303,11 +295,33 @@ What the signature fixes, so the browser cannot change it:
 - **The folder and name.** `public_id` is signed, so a vendor can only upload to the one name it was given, inside its own folder. Registration only accepts a name this service issued to the calling vendor: another vendor's name and a name nobody issued are the same `404 asset_not_found`.
 - **No overwriting.** `overwrite=false`, so a signature is good for one upload; it also expires (Cloudinary refuses timestamps older than an hour).
 - **The format list.** `allowed_formats=jpg,jpeg,png,webp`, and `upload_preset` when `CLOUDINARY_UPLOAD_PRESET` is set.
-- **The algorithm: SHA-256.** The signature is the SHA-256 (64 hex characters) of the sorted parameters with the API secret appended. Cloudinary's default is SHA-1, so **the account's "API signature algorithm" must be set to SHA-256** in the Cloudinary console (Settings, Security), in every environment that uploads; otherwise every upload is refused as an invalid signature. (This was chosen over SHA-1 to satisfy CodeQL's weak-hash rule; try one real upload with a test account before relying on it.)
+- **The signature algorithm.** The API signs uploads with SHA-256. A Cloudinary product environment that restricts signatures to one algorithm must accept SHA-256.
 
 Limits: the declared type and size are checked when signing (`422 validation_error` for a type that is not allowed, `422 image_too_large` over `UPLOAD_MAX_BYTES`), and **the real ones again when registering** (`422 image_too_large`, `422 unsupported_image_type`, `422 invalid_upload`). A file that breaks a rule is **deleted from Cloudinary** and its asset is marked `deleted` (it cannot be registered again; sign a new one). Errors: `409 upload_not_found` until the file has been uploaded (retry), `502 image_host_unavailable` if Cloudinary does not answer (the asset stays `pending`, retry), `503 uploads_not_configured` without credentials.
 
 A `ready` asset of the right kind and vendor is what the brand profile and products accept as an image. Assets that were signed but never registered stay `pending`; a cleanup job for them (and for the files at Cloudinary) is not part of this issue.
+
+## Bulk product import (`.xlsx` / `.csv`)
+
+A vendor can create many products from one spreadsheet. Any active user of the vendor (owner or staff) can use it.
+
+- **`GET /v1/vendor/products/import/template?format=xlsx|csv`** downloads a sample: the columns, three example rows (two products, three variants) and, in the Excel file, an instructions sheet.
+- **`POST /v1/vendor/products/import?mode=import|validate|all_or_nothing`** takes the file **as the request body** (not a multipart form), with `Content-Type: text/csv` or the `.xlsx` type (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`). The bytes decide the format (an `.xlsx` is a zip); the type only turns away things that are plainly something else (`415`). Limited per vendor (`bulk_import`).
+
+**The sheet.** The first row names the columns (case, spaces and dashes do not matter; unknown columns are ignored and listed). **One row is one variant**; rows that share a product `sku` (ignoring case) are one product with several variants. Columns: `sku`, `title`, `description`, `category`, `subcategory`, `gender` (`women`, `men`, `unisex`), `fabric`, `weight_grams`, `returnable`, `return_window_days`, `variant_sku`, `size`, `color`, `price`, `mrp`, `is_active`. Required: `sku`, `title`, `category`, `gender`, `variant_sku`, `price` (`sku`, `variant_sku` and `price` on every row; the product's details on its first row). The other rows of a product repeat the details (they must match, or `conflicting_value`) or leave them blank. Prices are in **rupees** (`1499`, `899.50`, no symbols or commas) and become exact paise; `mrp` defaults to `price`; `returnable` and `is_active` take yes/no; a returnable product needs `return_window_days`. **Images cannot be imported** (an image is an uploaded asset): imported products are `draft`s, and the vendor adds images in the portal and submits them.
+
+**The rules are the products API's.** Each product is validated with the same model as `POST /v1/vendor/products`, so a row that imports could have been created by hand and the limits never drift apart. On top of that, per row: duplicates in the file (variant SKUs, size and colour), SKUs already used in the database (`variant_sku_taken`), and what only a spreadsheet needs (numbers, yes/no, text).
+
+**The report.** The answer is always `200` with a report (file-level problems are `413`, `415` or `422`): `summary` (products, created, unchanged, valid, rejected, rows read, rows with errors), `products` (each SKU with its rows, `status` and `product_id`) and `errors`: **every rejected row with its row number (as in the spreadsheet: the header is row 1), column, code and a plain reason**. The report includes a reason for each row with a validation error. It caps extra details at 500 total entries unless more rows each need a reason (`errors_truncated`). A product is never half imported: if any of its rows has an error, the whole product is `rejected`. The report never echoes a rejected cell's content.
+
+**Modes** (decided here):
+- `import` (default): every product whose rows are all valid is created, the rest are reported. Products are created in one transaction, each inside a savepoint, so one that fails to save (a SKU taken a moment ago by another request) is reported as `sku_taken` and the others still import.
+- `validate`: reads and checks everything, writes nothing (the products are `valid`). Use it to preview.
+- `all_or_nothing`: creates nothing unless the whole file is valid (`committed: false` otherwise); if a product fails to save, everything is undone.
+
+**Importing the same file again creates nothing new.** A product whose SKU exists with the same details and variants is `unchanged`; one that exists with different details is `sku_exists` (an import never changes a product: edit it through the products API). So fixing the rejected rows and uploading the whole file again only creates what is missing.
+
+**A hostile file.** Limits are checked before anything is parsed: the size (`IMPORT_MAX_BYTES`, enforced while the body streams in, so a body that does not declare its length is cut off), the rows (`IMPORT_MAX_ROWS`; blank rows count toward a scan limit of five times that, so a file of empty rows cannot keep the server busy), at most 40 columns, and 5000 characters per cell. An `.xlsx` is a zip: it is refused if it unpacks to more than 50 MiB, has an entry that unpacks to over 100 times its size, has more than 200 parts, or contains macros, external links or embedded objects. It is read in streaming mode with `defusedxml` installed, so XML entity tricks are refused. Only the first sheet is read. **Formulas** (a cell that holds a formula) and **text that a spreadsheet would run as one** (starting with `=`, `+`, `-`, `@`, a tab or a carriage return) are rejected, so such text can never be stored and come back out in an export opened in a spreadsheet. (In a number column a leading `-` is a sign, and gets the "use an amount in rupees" message.)
 
 ## Review queue (reviewers)
 
@@ -353,7 +367,7 @@ With no `base` (a first submission) every field that has a value is listed as ad
 
 **The audit trail.** Each decision writes one `review_events` row: who (`actor_type` `admin` and the token's id), what (`approved` or `rejected`), when, the `reason`, and `detail`, a JSON object saying what changed: the thing reviewed before and after. For a brand profile: the version, its state before and after, the published version before and the one it superseded. For a product: the product, its SKU, the revision, and its status, `product_version` and live revision before and after. Events are append-only (a trigger refuses any change), and a submission has no `detail`.
 
-**The hook for Phase 4.** `app.state.review_decisions.add_hook(hook)` registers `async def hook(db, decision)`. It runs **inside the decision's transaction**, after the changes and the audit event and before the commit, with the `Decision` that was made (the review, the action, the reviewer, `detail`, and the profile, the one it superseded, or the product and revision). That is where Phase 4 writes the central-app outbox row: it commits with the approval or not at all, and a hook that raises undoes the whole decision. Hooks also run for rejections (`decision.action`).
+**Hooks.** `app.state.review_decisions.add_hook(hook)` registers `async def hook(db, decision)`. It runs **inside the decision's transaction**, after the changes and the audit event and before the commit, with the `Decision` that was made (the review, the action, the reviewer, `detail`, and the profile, the one it superseded, or the product and revision). A hook that raises undoes the whole decision. Hooks also run for rejections (`decision.action`). The outbox writer (see "Writing events", below) is registered at app start.
 
 ## Vendor accounts (admins)
 
@@ -425,7 +439,7 @@ Keys are `vendor:rl:<endpoint>:<scope>:<hash>`: the prefix and the `RATE_LIMIT_H
 
 - **Nobody can lock a vendor out.** The checks run in order and stop at the first one that refuses, so a request the per-IP or per-pair counter already refuses never reaches the per-email counter: one attacking IP adds at most 5 per 15 minutes to it. And an email + IP pair that logged in successfully in the last 30 days skips the per-email counter, so a vendor on their usual network gets in even while someone guesses from elsewhere.
 - **Signup and resend are limited on the address as typed**, whether or not it is registered, so the limit looks the same either way and reveals nothing. Per address matters because those endpoints send email (verification, or "you already have an account"): without it they would mail-bomb an inbox.
-- **When Redis is down** the endpoints in `RATE_LIMIT_FAIL_CLOSED` answer `503 rate_limiter_unavailable`: the ones that check a password (`login`, `change_password`) so guessing stays limited, and the ones that send email (`signup`, `resend_verification`, `forgot_password`, `staff_invite`) so an outage cannot be used to flood an inbox. The others skip the limit and log a warning (fail open): `asset_sign` (add it to `RATE_LIMIT_FAIL_CLOSED` if upload cost matters more than availability), `bulk_import` (add it to `RATE_LIMIT_FAIL_CLOSED` if you prefer an outage to unlimited imports), `refresh` (signed-in vendors keep working; refreshing needs Redis anyway), `verify_email` and `set_password` (they need a 256-bit token, which cannot be guessed at any rate).
+- **When Redis is down** the endpoints in `RATE_LIMIT_FAIL_CLOSED` answer `503 rate_limiter_unavailable`: the ones that check a password (`login`, `change_password`) so guessing stays limited, and the ones that send email (`signup`, `resend_verification`, `forgot_password`, `staff_invite`) so an outage cannot be used to flood an inbox. The others skip the limit and log a warning (fail open): `asset_sign` and `bulk_import` (add them to `RATE_LIMIT_FAIL_CLOSED` to enforce the limits during an outage), `refresh` (signed-in vendors keep working; refreshing needs Redis anyway), `verify_email` and `set_password` (they need a 256-bit token, which cannot be guessed at any rate).
 - **Behind a proxy**, set `TRUSTED_PROXIES`. Without it every client looks like the proxy and shares one set of per-IP counters.
 
 ## Email
@@ -439,7 +453,7 @@ Signup verification, staff invites and password reset send email (issue #80). Th
 
 ## Database
 
-Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (psycopg 3). Migration `0001` is an empty baseline; `0002` adds the vendor and vendor-user tables; `0003` adds assets and brand profiles; `0004` adds products; `0005` adds reviews; `0006` freezes submitted content and decided reviews (triggers), requires a pending revision for a product in review, and indexes the review foreign keys; `0007` adds `detail` to `review_events`.
+Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (psycopg 3). Migration `0001` is an empty baseline; `0002` adds the vendor and vendor-user tables; `0003` adds assets and brand profiles; `0004` adds products; `0005` adds reviews; `0006` freezes submitted content and decided reviews (triggers), requires a pending revision for a product in review, and indexes the review foreign keys; `0007` adds `detail` to `review_events`; `0008` adds the `outbox_events` table.
 
 | Table | Notes |
 |---|---|
@@ -484,6 +498,27 @@ An approved product keeps its live content while a new revision is edited and re
 - **A submitted revision is frozen** (migration 0006): once `submitted_at` is set, triggers refuse any UPDATE or DELETE of the revision (clearing `submitted_at` too) and any INSERT, UPDATE or DELETE of its `product_revision_variants` and `product_images`; the review and the live product point at it. The submitting UPDATE itself is allowed. Editing again means a new revision. A never-submitted draft revision can still be edited or deleted (its variants and images cascade). A revision's `product_id` and `vendor_id` never change. The child triggers lock the revision row (`FOR SHARE`), so a change racing a submit is either seen by the submit check or refused.
 - **A product in review has a revision in review**: `status = 'pending_review'` needs `pending_revision_id` (`ck_products_pending_review_has_pending`).
 - **Not constrained here**: that an image asset has kind `product_image`, and the other status transitions. Those are Phase 3 rules for the service.
+
+### The outbox (events for the central app)
+
+`outbox_events` is the transactional outbox of [ADR 0003](../../docs/adr/0003-central-app-publishing-contract.md): an event is written in the same transaction as what it announces, so an approval and its event are saved together or not at all. The table is described here; "Writing events" below says who writes it, and sending is the publisher worker's issue.
+
+- **One event per aggregate version**: `UNIQUE (aggregate_type, aggregate_id, version)`. `id` is the `event_id` the central app de-duplicates on, `payload` the whole event body (the full state of the aggregate), exactly as it will be signed and sent.
+- **Whose it is**: `vendor_id` (a foreign key, indexed) is on every event, because every event is about one vendor's page, product or account; a vendor with events cannot be deleted. The aggregate of a `vendor.*` event is the vendor itself (`aggregate_id = vendor_id`).
+- **Rules in the database**: `aggregate_type` (`brand_profile`, `product`, `vendor`) and `event_type` (the five of the contract) are checked, and an event must be about its own kind of aggregate (`vendor.status_changed` only for a vendor); `version >= 1`; `payload` is a JSON object of at most 256 KB; `last_error` is at most 1000 characters (a reason, not a copy of the response); a `dead` event has a reason; `sent_at` is set exactly when `sent`, and `locked_at` exactly when `sending`.
+- **Content never changes** (migration 0008's trigger): everything except the delivery state (`status`, `attempts`, `next_attempt_at`, `locked_at`, `last_error`, `sent_at`) is frozen, `sent` is final, and the status moves along the worker's path only: `pending` to `sending` (a claim), `sending` to `pending` (a retry or the sweeper), `sent` or `dead`, and `dead` back to `pending` (an admin's retry). Rows are deleted by the retention job 30 days after they were sent, so `DELETE` is allowed.
+- **Indexes**: `ix_outbox_events_due` (a partial index on `next_attempt_at` for `pending` rows) serves the worker's claim, and `(status, created_at)` serves the admins' view of what is stuck and the retention scan. A test runs the claim exactly as the ADR writes it: it takes only due events and never two versions of one aggregate at once.
+
+### Writing events: an approval and its event commit together
+
+`OutboxWriter` (`services/outbox.py`) is the hook the review decisions run, registered in `create_app`. **On an approval** it builds the contract's event from the rows as they now stand and inserts one `outbox_events` row in the **same transaction** as the decision:
+
+- an approved **brand profile version** writes `brand_profile.published` (aggregate: the vendor's page; version: the profile's own `version`); an approved **product revision** writes `product.published` (aggregate: the product; version: `Product.version`, which the decision raises when the live content changes, so the first time a product goes live is version 1 and each approved edit is the next number);
+- a **rejection writes nothing**;
+- the payload is the builder's full state, validated against the contract before it is stored; the row's `id` is the event id, and its `created_at` is the decision's time (the event's `occurred_at`), so the sender can rebuild the exact envelope from the row;
+- **if writing the event fails, the approval does not happen**: the hook raises and the decision service rolls everything back. `409 outbox_conflict` when an event for that version already exists (the unique key), and `409 cannot_publish` when the state cannot be turned into a valid event (for example an image that is not ready). Both say "Nothing was saved". Two approvals of one product therefore give versions in order, and no approval can exist without its event while `OUTBOX_EVENTS_ENABLED` is on.
+
+`OUTBOX_EVENTS_ENABLED=false` is for local work without the central app: approvals then write no event, and the log says so at start and for every approval. Events queue in the outbox whether or not sending (`CENTRAL_PUBLISHING_ENABLED`) is configured, so nothing is lost while the central app is not ready.
 
 ### Reviews
 

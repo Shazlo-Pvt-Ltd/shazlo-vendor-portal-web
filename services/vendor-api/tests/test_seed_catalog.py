@@ -14,18 +14,21 @@ from shazlo_security.passwords import PasswordService
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from support import IDENTITY_ISSUER, JWKS_URL, Api, Identity, make_api
+from test_outbox_writer import envelope
 
 from vendor_api import cli
 from vendor_api.core.security import password_config
 from vendor_api.core.settings import Settings
 from vendor_api.db.models import (
     BrandProfile,
+    OutboxEvent,
     Product,
     Review,
     ReviewEvent,
     Vendor,
     VendorStatusEvent,
 )
+from vendor_api.services.central_contract import contract
 from vendor_api.services.seed import (
     DEV_SEED_PASSWORD,
     SEED_OWNER_EMAIL,
@@ -93,6 +96,16 @@ async def count(session: AsyncSession, model: Any, *where: Any) -> int:
     return await session.scalar(select(func.count()).select_from(model).where(*where)) or 0
 
 
+async def event_versions(session: AsyncSession) -> dict[str, list[int]]:
+    """The outbox: the versions of each brand page (by slug) and product (by SKU), in order."""
+    rows = await session.scalars(select(OutboxEvent).order_by(OutboxEvent.version))
+    result: dict[str, list[int]] = {}
+    for event in rows:
+        name = event.payload["sku"] if event.aggregate_type == "product" else event.payload["slug"]
+        result.setdefault(name, []).append(event.version)
+    return result
+
+
 # --- What it makes -----------------------------------------------------------------------
 
 
@@ -154,21 +167,46 @@ async def test_four_reviews_wait_and_two_were_decided_by_the_seed_reviewer(
     assert await count(session, ReviewEvent, ReviewEvent.action == "approved") == 2
 
 
+async def test_the_seeded_approvals_have_their_central_app_events(
+    session: AsyncSession, seeded: CatalogSeed
+) -> None:
+    """Like an approval through the API: one valid `*.published` event per approval, pending."""
+    events = (await session.scalars(select(OutboxEvent))).all()
+    assert seeded.outbox_events == len(events) == 2
+    assert {(e.event_type, e.version, e.status) for e in events} == {
+        ("brand_profile.published", 1, "pending"),
+        ("product.published", 1, "pending"),
+    }
+    for event in events:
+        contract().validate(envelope(event))  # what the sender will put on the wire
+    brand = next(e for e in events if e.aggregate_type == "brand_profile")
+    assert brand.payload["slug"] == SEED_SLUG and "Jaipur" in brand.payload["about"]
+    product = next(e for e in events if e.aggregate_type == "product")
+    assert product.payload["sku"] == "KURTA-DEMO-01"
+    assert product.payload["title"] == "Block-print cotton kurta"  # the live one, not the edit
+
+
+async def test_with_the_outbox_off_the_seed_writes_no_event(
+    session: AsyncSession, hasher: PasswordService
+) -> None:
+    assert await seed_demo_vendor(session, hasher, PASSWORD) is True
+    catalog = await seed_demo_catalog(session, hasher, PASSWORD, outbox_events=False)
+    assert catalog is not None and catalog.outbox_events == 0
+    assert await count(session, OutboxEvent) == 0
+    assert await count(session, Review, Review.status == "approved") == 2  # the rest is the same
+
+
 # --- Running it again and without a demo vendor ------------------------------------------
+
+MODELS = (Vendor, Product, BrandProfile, Review, ReviewEvent, VendorStatusEvent, OutboxEvent)
 
 
 async def test_a_second_run_changes_nothing(
     session: AsyncSession, hasher: PasswordService, seeded: CatalogSeed
 ) -> None:
-    before = [
-        await count(session, model)
-        for model in (Vendor, Product, BrandProfile, Review, ReviewEvent, VendorStatusEvent)
-    ]
+    before = [await count(session, model) for model in MODELS]
     assert await seed_demo_catalog(session, hasher, PASSWORD) is None
-    after = [
-        await count(session, model)
-        for model in (Vendor, Product, BrandProfile, Review, ReviewEvent, VendorStatusEvent)
-    ]
+    after = [await count(session, model) for model in MODELS]
     assert after == before
 
 
@@ -258,17 +296,28 @@ async def test_a_reviewer_can_work_through_the_seeded_queue(
     kurta = await session.scalar(select(Product).where(Product.sku == "KURTA-DEMO-01"))
     assert kurta is not None and kurta.pending_revision_id is None
     assert kurta.version == 2  # the live content changed once
+    # Every approval wrote its event, after the seed's own (so no version was taken twice).
+    assert await event_versions(session) == {
+        SEED_SLUG: [1, 2],
+        SEED_PENDING_SLUG: [1],
+        "KURTA-DEMO-01": [1, 2],
+        "TOTE-DEMO-03": [1],
+    }
 
 
 def test_the_command_prints_what_it_made_and_never_the_password(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     catalog = CatalogSeed(
-        vendors=["Demo Brand (approved)"], products=["KURTA-DEMO-01 (approved)"], pending_reviews=4
+        vendors=["Demo Brand (approved)"],
+        products=["KURTA-DEMO-01 (approved)"],
+        pending_reviews=4,
+        outbox_events=2,
     )
     cli._print_catalog(catalog)
     out = capsys.readouterr().out
     assert "Demo Brand (approved)" in out and "KURTA-DEMO-01" in out
     assert "4 reviews are waiting" in out
+    assert "2 central-app events" in out
     assert "super_admin" in out  # how to review
     assert PASSWORD not in out and "password-" not in out

@@ -46,6 +46,7 @@ from vendor_api.services.brand_profiles import BrandProfileService
 from vendor_api.services.cloudinary import CloudinaryClient, ImageHost
 from vendor_api.services.credentials import CredentialService
 from vendor_api.services.email import EmailService, build_sender
+from vendor_api.services.outbox import OutboxWriter
 from vendor_api.services.product_import import ProductImportService
 from vendor_api.services.products import ProductService
 from vendor_api.services.review_decisions import ReviewDecisionService
@@ -116,12 +117,8 @@ def create_app(
     app.state.signup = SignupService(settings, app.state.passwords)
     app.state.credentials = CredentialService(settings, app.state.passwords)
     app.state.team = TeamService(settings)
-    app.state.review_queue = ReviewQueueService()
-    # Phase 4 registers its outbox writer with `app.state.review_decisions.add_hook(...)`.
-    app.state.review_decisions = ReviewDecisionService()
     app.state.brand_profiles = BrandProfileService()
     app.state.products = ProductService()
-    app.state.product_import = ProductImportService(settings, app.state.products)
     # One HTTP client per process for the image host's Admin API: short timeouts, so a slow
     # Cloudinary cannot hold requests open.
     app.state.http = httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0))
@@ -139,6 +136,12 @@ def create_app(
             app.state.http,
         )
     app.state.assets = AssetService(settings, image_host)
+    app.state.product_import = ProductImportService(settings, app.state.products)
+    app.state.review_queue = ReviewQueueService()
+    app.state.review_decisions = ReviewDecisionService()
+    # An approval writes its central-app event in the same transaction (ADR 0003, section 5).
+    app.state.outbox_writer = OutboxWriter(settings.outbox_events_enabled)
+    app.state.review_decisions.add_hook(app.state.outbox_writer.on_decision)
     app.state.refresh_tokens = RefreshTokenStore(app.state.redis, refresh_token_config(settings))
     app.state.sessions = AuthService(
         settings, app.state.passwords, app.state.vendor_tokens, app.state.refresh_tokens
@@ -155,7 +158,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=settings.cors_allowed_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["Authorization", "Content-Type", REQUEST_ID_HEADER],
         expose_headers=[REQUEST_ID_HEADER],
     )
@@ -169,9 +172,9 @@ def create_app(
     v1.include_router(vendor.router)
     v1.include_router(team.router)
     v1.include_router(brand_profile.router)
-    v1.include_router(products.router)
-    v1.include_router(product_import.router)
     v1.include_router(assets.router)
+    v1.include_router(product_import.router)
+    v1.include_router(products.router)
     if settings.identity_jwks_url:
         v1.include_router(admin.router)
         v1.include_router(admin_reviews.router)

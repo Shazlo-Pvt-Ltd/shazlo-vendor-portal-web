@@ -9,6 +9,7 @@ from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_v
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from shazlo_auth.jwks import check_jwks_url
 from shazlo_security.rate_limit import RateRule
+from shazlo_security.signing import check_key_id
 
 from vendor_api.db.session import POSTGRES_SCHEMES
 
@@ -24,8 +25,8 @@ RATE_LIMITED_ENDPOINTS = frozenset(
         "refresh",
         "change_password",
         "staff_invite",
-        "bulk_import",
         "asset_sign",
+        "bulk_import",
     }
 )
 # HMAC-SHA256 keys shorter than this are guessable enough to reverse the hashed emails in Redis.
@@ -123,14 +124,13 @@ class Settings(BaseSettings):
     rate_limit_refresh_ip: Rule = RateRule(limit=60, window_seconds=60)
     rate_limit_refresh_session: Rule = RateRule(limit=20, window_seconds=60)
     rate_limit_change_password_user: Rule = RateRule(limit=5, window_seconds=900)
-    # A bulk import (or a validation run of one) parses a whole file, so it is limited per vendor.
-    # Not fail-closed by default; add `bulk_import` to RATE_LIMIT_FAIL_CLOSED to make it so.
-    rate_limit_bulk_import_vendor: Rule = RateRule(limit=10, window_seconds=3600)
-
     # Signing an upload lets a user store a file at the provider, so it is limited per user.
     # Not fail-closed by default (a Redis outage should not stop uploads); add `asset_sign` to
     # RATE_LIMIT_FAIL_CLOSED to make it so.
     rate_limit_asset_sign_user: Rule = RateRule(limit=60, window_seconds=3600)
+    # A bulk import (or a validation run of one) parses a whole file, so it is limited per vendor.
+    # Not fail-closed by default; add `bulk_import` to RATE_LIMIT_FAIL_CLOSED to make it so.
+    rate_limit_bulk_import_vendor: Rule = RateRule(limit=10, window_seconds=3600)
     # What happens when Redis is down. Endpoints listed here answer 503 (fail closed): the ones
     # that check a password (login, change_password) so guessing stays limited, and the ones that
     # send email (signup, resend_verification, forgot_password, staff_invite) so an outage cannot
@@ -188,11 +188,6 @@ class Settings(BaseSettings):
     # The vendor portal's address, without a trailing slash: the links in emails point here.
     portal_base_url: str = "http://localhost:5174"
 
-    # Bulk product import (.xlsx / .csv): the largest file in bytes, and the most data rows (blank
-    # rows do not count). Both are checked before anything is parsed or written.
-    import_max_bytes: int = Field(default=2 * 1024 * 1024, gt=0, le=20 * 1024 * 1024)
-    import_max_rows: int = Field(default=1000, gt=0, le=5000)
-
     # Cloudinary (ADR 0005): images upload straight from the browser with a signature made here,
     # so the API never handles file bytes. The three credentials go together; without them the
     # asset endpoints answer 503 `uploads_not_configured` and everything else works.
@@ -208,6 +203,27 @@ class Settings(BaseSettings):
     # Largest image accepted, in bytes. Checked when signing (the size the client declares) and
     # again when registering (the size Cloudinary reports, which is the one that counts).
     upload_max_bytes: int = Field(default=10 * 1024 * 1024, gt=0, le=100 * 1024 * 1024)
+    # Bulk product import (.xlsx / .csv): the largest file in bytes, and the most data rows (blank
+    # rows do not count). Both are checked before anything is parsed or written.
+    import_max_bytes: int = Field(default=2 * 1024 * 1024, gt=0, le=20 * 1024 * 1024)
+    import_max_rows: int = Field(default=1000, gt=0, le=5000)
+
+    # Writing events to the outbox when an admin approves something (ADR 0003, section 5). On by
+    # default: the event commits with the approval, and the publisher sends it when the central app
+    # is configured. Turn it off only for local work: approvals then write no event and say so in
+    # the log. It cannot be off while sending is on.
+    outbox_events_enabled: bool = True
+
+    # Publishing to the central app (ADR 0003): every request is HMAC-signed with a shared secret.
+    # Off by default, so the service runs (and events still queue in the outbox) without a central
+    # app. Turning it on needs the three settings below.
+    central_publishing_enabled: bool = False
+    # The central app's base URL, without a trailing slash (https outside dev).
+    central_api_url: str | None = None
+    # The id the central app knows our secret by (sent as X-Shazlo-Key-Id), and the secret itself:
+    # at least 32 characters, never in the repository (docs/runbooks/central-api-key-rotation.md).
+    central_signing_key_id: str | None = None
+    central_signing_secret: SecretStr | None = None
 
     @field_validator("cors_allowed_origins", mode="before")
     @classmethod
@@ -316,6 +332,42 @@ class Settings(BaseSettings):
                 "must be an http(s) address without a fragment, e.g. https://vendors.shazlo.store"
             )
         return value
+
+    @model_validator(mode="after")
+    def _check_central(self) -> Self:
+        # `CENTRAL_API_URL=` copied from .env.example means "not set".
+        url = (self.central_api_url or "").strip().rstrip("/") or None
+        key_id = (self.central_signing_key_id or "").strip() or None
+        secret = self.central_signing_secret
+        if secret is not None and not secret.get_secret_value().strip():
+            secret = None
+        self.central_api_url, self.central_signing_key_id = url, key_id
+        self.central_signing_secret = secret
+        if key_id is not None:
+            try:
+                check_key_id(key_id)
+            except ValueError as error:
+                raise ValueError(f"CENTRAL_SIGNING_KEY_ID: {error}") from None
+        if url is not None:
+            parts = urlsplit(url)
+            if parts.scheme not in {"http", "https"} or not parts.hostname:
+                raise ValueError("CENTRAL_API_URL must be an http(s) URL")
+            if parts.scheme != "https" and self.env != "dev":
+                raise ValueError("CENTRAL_API_URL must be https outside dev")
+            if parts.query or parts.fragment or parts.username or parts.password:
+                raise ValueError("CENTRAL_API_URL must not hold credentials, a query or a fragment")
+        if secret is not None and len(secret.get_secret_value()) < MIN_HMAC_KEY_LENGTH:
+            raise ValueError(
+                f"CENTRAL_SIGNING_SECRET must be at least {MIN_HMAC_KEY_LENGTH} characters"
+            )
+        if self.central_publishing_enabled and not self.outbox_events_enabled:
+            raise ValueError("CENTRAL_PUBLISHING_ENABLED needs OUTBOX_EVENTS_ENABLED")
+        if self.central_publishing_enabled and (url is None or key_id is None or secret is None):
+            raise ValueError(
+                "CENTRAL_PUBLISHING_ENABLED needs CENTRAL_API_URL, CENTRAL_SIGNING_KEY_ID and "
+                "CENTRAL_SIGNING_SECRET"
+            )
+        return self
 
     @model_validator(mode="after")
     def _check_cloudinary(self) -> Self:

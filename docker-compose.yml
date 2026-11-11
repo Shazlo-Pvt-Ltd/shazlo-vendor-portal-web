@@ -108,6 +108,21 @@ services:
     ports:
       - "${VENDOR_API_PORT:-8002}:8002"
 
+  # Stands in for the central app (ADR 0003): receives the signed events vendor-api publishes.
+  # See http://localhost:8003 for what it holds. Localhost only: its /_stub endpoints have no auth.
+  central-stub:
+    profiles: ["central", "full"]
+    build:
+      context: .
+      dockerfile: services/central-stub/Dockerfile
+    restart: unless-stopped
+    environment:
+      # `key-id:secret`; vendor-api uses the same pair (CENTRAL_SIGNING_KEY_ID / _SECRET). A
+      # development secret: this service is never deployed.
+      STUB_SIGNING_KEYS: ${CENTRAL_STUB_SIGNING_KEYS:-k1:central-stub-dev-secret-change-me-0123456789}
+    ports:
+      - "127.0.0.1:${CENTRAL_STUB_PORT:-8003}:8003"
+
   # Catches every email the services send, so signup and invite links can be read locally.
   # Nothing leaves the machine. Services in compose send to mailpit:1025.
   mailpit:

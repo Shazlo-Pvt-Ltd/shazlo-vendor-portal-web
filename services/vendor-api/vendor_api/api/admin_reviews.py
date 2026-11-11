@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from vendor_api.api.admin import AdminRequest, Reviewer, reviewer_dependency
 from vendor_api.api.auth import no_store
+from vendor_api.core.validation import DatabaseText
 from vendor_api.db.models import Review, ReviewEvent, ReviewStatus, ReviewSubject
 from vendor_api.db.session import get_session
 from vendor_api.services.review_decisions import ReviewDecisionService
@@ -67,7 +68,7 @@ class RejectReviewRequest(ApproveReviewRequest):
     )
 
     # Why. The vendor sees it. Required: a blank or whitespace-only reason is a 422.
-    reason: str = Field(min_length=1, max_length=2000)
+    reason: DatabaseText = Field(min_length=1, max_length=2000)
 
     @field_validator("reason", mode="before")
     @classmethod

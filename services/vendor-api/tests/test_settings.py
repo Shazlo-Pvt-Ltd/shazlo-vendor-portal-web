@@ -400,29 +400,6 @@ def test_smtp_credentials_are_never_sent_without_tls() -> None:
     assert make(email_backend="smtp", smtp_host="mailpit", smtp_security="none").smtp_user is None
 
 
-# --- Bulk import -------------------------------------------------------------------------
-
-
-def test_the_import_limits_have_defaults_and_bounds() -> None:
-    s = make()
-    assert (s.import_max_bytes, s.import_max_rows) == (2 * 1024 * 1024, 1000)
-    rule = s.rate_limit_bulk_import_vendor
-    assert (rule.limit, rule.window_seconds) == (10, 3600)
-    bad_values: list[dict[str, int]] = [
-        {"import_max_bytes": 0},
-        {"import_max_bytes": 20 * 1024 * 1024 + 1},
-        {"import_max_rows": 0},
-        {"import_max_rows": 5001},
-    ]
-    for bad in bad_values:
-        with pytest.raises(ValidationError):
-            make(**bad)
-
-
-def test_bulk_import_is_a_known_rate_limited_endpoint() -> None:
-    assert make(rate_limit_fail_closed=["bulk_import"]).rate_limit_fail_closed == ["bulk_import"]
-
-
 # --- Cloudinary --------------------------------------------------------------------------
 
 CLOUDINARY = {
@@ -497,3 +474,123 @@ def test_asset_sign_is_a_known_rate_limited_endpoint() -> None:
         60,
         3600,
     )
+
+
+# --- Bulk import -------------------------------------------------------------------------
+
+
+def test_the_import_limits_have_defaults_and_bounds() -> None:
+    s = make()
+    assert (s.import_max_bytes, s.import_max_rows) == (2 * 1024 * 1024, 1000)
+    rule = s.rate_limit_bulk_import_vendor
+    assert (rule.limit, rule.window_seconds) == (10, 3600)
+    bad_values: list[dict[str, int]] = [
+        {"import_max_bytes": 0},
+        {"import_max_bytes": 20 * 1024 * 1024 + 1},
+        {"import_max_rows": 0},
+        {"import_max_rows": 5001},
+    ]
+    for bad in bad_values:
+        with pytest.raises(ValidationError):
+            make(**bad)
+
+
+def test_bulk_import_is_a_known_rate_limited_endpoint() -> None:
+    assert make(rate_limit_fail_closed=["bulk_import"]).rate_limit_fail_closed == ["bulk_import"]
+
+
+# --- Central app signing -----------------------------------------------------------------
+
+SECRET = "s" * 40
+CENTRAL = {
+    "central_publishing_enabled": True,
+    "central_api_url": "https://central.shazlo.store/",
+    "central_signing_key_id": "k1",
+    "central_signing_secret": SECRET,
+}
+
+
+def test_publishing_is_off_by_default_and_needs_nothing() -> None:
+    s = make()
+    assert s.central_publishing_enabled is False
+    assert s.central_api_url is None
+
+
+def test_publishing_needs_url_key_id_and_secret() -> None:
+    assert make(**CENTRAL).central_api_url == "https://central.shazlo.store"
+    for missing in ("central_api_url", "central_signing_key_id", "central_signing_secret"):
+        with pytest.raises(ValidationError, match="CENTRAL_PUBLISHING_ENABLED needs"):
+            make(**{**CENTRAL, missing: ""})
+
+
+def test_blank_values_mean_not_set() -> None:
+    s = make(central_api_url="", central_signing_key_id=" ", central_signing_secret="")
+    assert (s.central_api_url, s.central_signing_key_id, s.central_signing_secret) == (
+        None,
+        None,
+        None,
+    )
+
+
+@pytest.mark.parametrize("key_id", ["k 1", "-k1", "k" * 65, "k1\r\nX-Injected: 1"])
+def test_a_bad_signing_key_id_is_refused_at_startup(key_id: str) -> None:
+    # It is sent as the X-Shazlo-Key-Id header, so it must fail here, not on the first publish.
+    with pytest.raises(ValidationError, match="CENTRAL_SIGNING_KEY_ID"):
+        make(**{**CENTRAL, "central_signing_key_id": key_id})
+
+
+def test_a_short_signing_secret_is_refused() -> None:
+    with pytest.raises(ValidationError, match="at least 32 characters"):
+        make(**{**CENTRAL, "central_signing_secret": "short"})
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "ftp://central.shazlo.store",
+        "https://",
+        "https://user:pw@central.shazlo.store",
+        "https://central.shazlo.store/?a=1",
+        "https://central.shazlo.store/#x",
+    ],
+)
+def test_a_bad_central_url_is_refused(url: str) -> None:
+    with pytest.raises(ValidationError):
+        make(**{**CENTRAL, "central_api_url": url})
+
+
+def test_the_central_url_is_https_outside_dev() -> None:
+    http = {**CENTRAL, "central_api_url": "http://central.internal"}
+    assert make(**http).central_api_url == "http://central.internal"
+    with pytest.raises(ValidationError, match="https outside dev"):
+        make(**{**http, "env": "test"})
+
+
+def test_the_signing_secret_is_not_printed() -> None:
+    assert SECRET not in repr(make(**CENTRAL))
+
+
+def test_the_signer_is_built_from_the_settings() -> None:
+    from vendor_api.core.security import central_request_signer
+
+    assert central_request_signer(make()) is None
+    signer = central_request_signer(make(**CENTRAL), lambda: 1792750800)
+    assert signer is not None
+    headers = signer.headers(b"{}")
+    assert headers["X-Shazlo-Key-Id"] == "k1"
+    assert headers["X-Shazlo-Timestamp"] == "1792750800"
+    assert headers["X-Shazlo-Signature"].startswith("v1=")
+
+
+def test_outbox_events_are_on_by_default_and_cannot_be_off_while_sending_is_on() -> None:
+    assert make().outbox_events_enabled is True
+    assert make(outbox_events_enabled=False).outbox_events_enabled is False
+    sending = {
+        "central_publishing_enabled": True,
+        "central_api_url": "https://central.example",
+        "central_signing_key_id": "key-1",
+        "central_signing_secret": "s" * 32,
+    }
+    assert make(**sending).central_publishing_enabled is True
+    with pytest.raises(ValidationError, match="OUTBOX_EVENTS_ENABLED"):
+        make(outbox_events_enabled=False, **sending)

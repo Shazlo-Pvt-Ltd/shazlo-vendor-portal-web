@@ -5,7 +5,9 @@ emails' tokens, and a fake image host standing in for Cloudinary.
 A vendor signs up and builds its brand page and catalog, and a reviewer works the queue, all
 through the HTTP API: brand profile (edit, submit, approve, reject, revise), image uploads, bulk
 import, product review and the revision of a live product, and a vendor account being approved,
-suspended and reinstated. Each part starts from a fresh signup.
+suspended and reinstated. Each part starts from a fresh signup. Every approval also writes its
+central-app event to the outbox (the writer runs in the decision's transaction), so the flow checks
+those too: one valid event per approval, none per rejection, versions in order.
 
 It needs `DATABASE_URL` and `REDIS_URL` (CI sets both) and skips without them.
 """
@@ -40,10 +42,12 @@ from test_e2e_auth import (  # noqa: F401  (pytest fixtures, used by name)
     refresh,
     stack_settings,
 )
+from test_outbox_writer import envelope
 
 from vendor_api.core.settings import Settings
-from vendor_api.db.models import BrandProfile, Product, Review
+from vendor_api.db.models import BrandProfile, OutboxEvent, Product, Review
 from vendor_api.services.assets import AssetService
+from vendor_api.services.central_contract import contract
 from vendor_api.services.email import EmailTemplate
 
 OWNER = SIGNUP["email"]
@@ -147,6 +151,19 @@ async def decide(
 
 def fields_of(detail: dict[str, Any]) -> list[str]:
     return [change["field"] for change in detail["changes"]]
+
+
+async def outbox(session: AsyncSession) -> list[OutboxEvent]:
+    """Every event the approvals wrote, each checked against the contract as the receiver will."""
+    events = list(
+        await session.scalars(
+            select(OutboxEvent).order_by(OutboxEvent.aggregate_id, OutboxEvent.version)
+        )
+    )
+    for event in events:
+        assert event.status == "pending"
+        contract().validate(envelope(event))
+    return events
 
 
 # --- The brand page ----------------------------------------------------------------------
@@ -273,6 +290,15 @@ async def test_the_brand_page_from_first_draft_to_a_revised_live_version(
     final = await review_detail(w, decided[0]["id"])
     assert [e["action"] for e in final["events"]] == ["submitted", "approved"]
     assert final["events"][1]["detail"]["after"] == {"state": "published", "superseded_version": 1}
+
+    # --- Each approval wrote the page's event, the rejection none: versions 1 and 3
+    events = await outbox(session)
+    assert [(e.event_type, e.version) for e in events] == [
+        ("brand_profile.published", 1),
+        ("brand_profile.published", 3),
+    ]
+    assert events[-1].payload["tagline"] == "Hand block prints, Jaipur"
+    assert events[-1].payload["logo_url"].startswith("https://")
 
 
 # --- Products ----------------------------------------------------------------------------
@@ -489,7 +515,7 @@ async def test_products_from_import_to_live_and_through_a_revision(
     assert {v["sku"]: v["price_paise"] for v in final["live"]["variants"]}["KURTA-001-M"] == 139_900
     assert final["working"] is None
 
-    # --- The audit trail of the product: three reviews, in the order they happened
+    # --- The audit trail of the products: five reviews, in the order they happened
     reviews = (
         await session.scalars(
             select(Review).where(Review.subject == "product").order_by(Review.submitted_at)
@@ -497,6 +523,13 @@ async def test_products_from_import_to_live_and_through_a_revision(
     ).all()
     assert len(reviews) == 5  # kurta x3, scarf x2
     assert await session.scalar(select(Product.version).where(Product.sku == "KURTA-001")) == 2
+
+    # --- Three approvals, three events; the two rejections wrote none
+    versions: dict[str, list[int]] = {}
+    for event in await outbox(session):
+        assert event.event_type == "product.published"
+        versions.setdefault(event.payload["sku"], []).append(event.version)
+    assert versions == {"KURTA-001": [1, 2], "SCARF-014": [1]}
 
 
 # --- A vendor account --------------------------------------------------------------------
@@ -552,7 +585,8 @@ async def test_a_vendor_is_approved_suspended_and_reinstated(world: World) -> No
     me = await w.http.get("/v1/vendor/me", headers=bearer(access))
     assert (me.status_code, me.json()["error"]["code"]) == (403, "vendor_not_allowed")
     assert (await refresh(w.api, old_refresh)).status_code == 401
-    assert (await w.api.login(OWNER, PASSWORD)).status_code == 403
+    login = await w.api.login(OWNER, PASSWORD)
+    assert (login.status_code, login.json()["error"]["code"]) == (403, "vendor_not_allowed")
     # ...and the catalog endpoints are closed to it.
     assert (await w.http.get("/v1/vendor/products", headers=bearer(access))).status_code == 403
 

@@ -32,6 +32,14 @@ from vendor_api.db.models import (
     VendorUserRole,
     VendorUserStatus,
 )
+from vendor_api.services.central_events import (
+    BuiltEvent,
+    brand_profile_published,
+    load_brand_snapshot,
+    load_product_snapshot,
+    product_published,
+)
+from vendor_api.services.outbox import outbox_row
 
 SEED_SLUG = "demo-brand"
 SEED_OWNER_EMAIL = "owner@demo-brand.test"
@@ -124,6 +132,8 @@ class CatalogSeed:
     vendors: list[str]
     products: list[str]
     pending_reviews: int
+    # The central-app events of the seed's approvals, written to the outbox (0 when it is off).
+    outbox_events: int = 0
 
 
 async def _owner(
@@ -333,8 +343,13 @@ async def _product(
     return product, variants
 
 
+async def _write_event(db: AsyncSession, event: BuiltEvent) -> None:
+    db.add(outbox_row(event))
+    await db.flush()
+
+
 async def seed_demo_catalog(
-    db: AsyncSession, passwords: PasswordService, password: str
+    db: AsyncSession, passwords: PasswordService, password: str, *, outbox_events: bool = True
 ) -> CatalogSeed | None:
     """Fills the demo vendor's catalog, and adds a pending and a suspended vendor, so every
     screen and every admin endpoint has something to show. Returns None if there is no demo
@@ -349,6 +364,13 @@ async def seed_demo_catalog(
 
     That leaves four pending reviews in `GET /v1/admin/reviews` and one pending vendor in
     `GET /v1/admin/vendors`. The owners use the seed password.
+
+    The seed writes rows directly instead of deciding reviews through `ReviewDecisionService`,
+    so it also does what the outbox writer would have done for its two approvals: with
+    `outbox_events` (the caller passes `OUTBOX_EVENTS_ENABLED`) the published brand profile and
+    the live kurta each get their `*.published` event (version 1) in the outbox, built and checked
+    against the contract by the same builders. So the seeded database keeps the rule that every
+    approval has its event, and the reviews it leaves pending can be approved without a conflict.
     """
     demo = await db.scalar(select(Vendor).where(Vendor.slug == SEED_SLUG))
     owner = await db.scalar(select(VendorUser).where(VendorUser.email == SEED_OWNER_EMAIL))
@@ -381,6 +403,11 @@ async def seed_demo_catalog(
         website_url="https://demo-brand.example",
     )
     await _review(db, demo, owner, profile=live, submitted=now - 6 * day, decided=now - 5 * day)
+    events = 0
+    if outbox_events:
+        brand = await load_brand_snapshot(db, demo.id)
+        await _write_event(db, brand_profile_published(brand, occurred_at=now - 5 * day))
+        events += 1
     edit = await _profile(
         db,
         demo,
@@ -429,6 +456,13 @@ async def seed_demo_catalog(
     kurta.pending_revision_id = kurta_edit.id
     kurta.status = ProductStatus.APPROVED
     await db.flush()
+    if outbox_events:
+        snapshot = await load_product_snapshot(db, kurta.id)
+        approved_at = now - 4 * day
+        await _write_event(
+            db, product_published(snapshot, published_at=approved_at, occurred_at=approved_at)
+        )
+        events += 1
 
     tote, tote_variants = await _product(db, demo, "TOTE-DEMO-03", ["OS"])
     tote_first = await _revision(
@@ -524,4 +558,5 @@ async def seed_demo_catalog(
             "SCARF-DEMO-02 (draft)",
         ],
         pending_reviews=4,
+        outbox_events=events,
     )

@@ -121,6 +121,13 @@ class AuthService:
         if user.password_hash != stored_hash or not user_may_sign_in(user):
             await db.rollback()
             raise INVALID_CREDENTIALS
+        # The vendor's status too, read after the generation for the same reason: an admin who
+        # rejects or suspends the vendor commits before ending its sessions (bumping the
+        # generation), so either this sees the new status or `start_family` refuses the session.
+        await db.refresh(vendor, ["status"])
+        if not vendor_may_sign_in(vendor):
+            await db.rollback()
+            raise VENDOR_NOT_ALLOWED
         if check.new_hash:
             user.password_hash = check.new_hash
         user.last_login_at = datetime.now(UTC)
