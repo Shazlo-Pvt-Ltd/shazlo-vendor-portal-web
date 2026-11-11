@@ -17,12 +17,18 @@ CONTEXTS: dict[EmailTemplate, dict[str, object]] = {
     },
     EmailTemplate.PASSWORD_RESET: {"token": TOKEN, "expires_in_minutes": 30},
     EmailTemplate.ACCOUNT_EXISTS: {},
+    EmailTemplate.VENDOR_APPROVED: {"vendor_name": "Atelier Rao"},
+    EmailTemplate.VENDOR_REJECTED: {"vendor_name": "Atelier Rao", "reason": "Photos are blurry"},
+    EmailTemplate.VENDOR_SUSPENDED: {"vendor_name": "Atelier Rao", "reason": "Chargebacks"},
 }
 PATHS = {
     EmailTemplate.VERIFY_EMAIL: "/verify-email",
     EmailTemplate.STAFF_INVITE: "/accept-invite",
     EmailTemplate.PASSWORD_RESET: "/reset-password",
     EmailTemplate.ACCOUNT_EXISTS: "/login",
+    EmailTemplate.VENDOR_APPROVED: "/login",
+    EmailTemplate.VENDOR_REJECTED: "/login",
+    EmailTemplate.VENDOR_SUSPENDED: "/login",
 }
 
 
@@ -148,3 +154,70 @@ def test_a_context_that_does_not_match_is_refused_without_echoing_values(
 def test_an_unknown_template_is_refused() -> None:
     with pytest.raises(ValueError, match="nope"):
         render("nope", {}, base_url=BASE)  # type: ignore[arg-type]
+
+
+# --- Vendor status emails ----------------------------------------------------------------
+
+STATUS_TEMPLATES = [
+    EmailTemplate.VENDOR_APPROVED,
+    EmailTemplate.VENDOR_REJECTED,
+    EmailTemplate.VENDOR_SUSPENDED,
+]
+
+
+@pytest.mark.parametrize(
+    "template", [EmailTemplate.VENDOR_REJECTED, EmailTemplate.VENDOR_SUSPENDED]
+)
+def test_a_rejection_and_a_suspension_say_why(template: EmailTemplate) -> None:
+    mail = render(template, CONTEXTS[template], base_url=BASE)
+    reason = str(CONTEXTS[template]["reason"])
+    assert reason in mail.text and reason in mail.html
+    assert reason not in mail.subject  # never in a subject line
+
+
+def test_an_approval_has_no_reason() -> None:
+    mail = render(
+        EmailTemplate.VENDOR_APPROVED, CONTEXTS[EmailTemplate.VENDOR_APPROVED], base_url=BASE
+    )
+    assert "Atelier Rao" in mail.text and "approved" in mail.subject
+    with pytest.raises(EmailContextError):
+        render(EmailTemplate.VENDOR_APPROVED, {"vendor_name": "A", "reason": "x"}, base_url=BASE)
+
+
+@pytest.mark.parametrize("template", STATUS_TEMPLATES)
+def test_status_emails_need_exactly_their_keys(template: EmailTemplate) -> None:
+    context = dict(CONTEXTS[template])
+    for key in context:
+        partial = {k: v for k, v in context.items() if k != key}
+        with pytest.raises(EmailContextError):
+            render(template, partial, base_url=BASE)
+    with pytest.raises(EmailContextError):
+        render(template, {**context, "extra": "x"}, base_url=BASE)
+
+
+@pytest.mark.parametrize("template", STATUS_TEMPLATES)
+def test_status_emails_link_to_the_portal_without_a_token(template: EmailTemplate) -> None:
+    mail = render(template, CONTEXTS[template], base_url=BASE)
+    assert mail.link == f"{BASE}/login" and "token" not in mail.link
+
+
+def test_an_admins_reason_cannot_inject_html_or_headers() -> None:
+    reason = '<script>alert(1)</script> & "quotes"\r\nBcc: attacker@example.test'
+    mail = render(
+        EmailTemplate.VENDOR_REJECTED,
+        {"vendor_name": "Atelier\r\nBcc: x@example.test", "reason": reason},
+        base_url=BASE,
+    )
+    assert "<script>" not in mail.html and "&lt;script&gt;" in mail.html
+    assert "\n" not in mail.subject and "\r" not in mail.subject
+    assert "Bcc:" not in mail.subject
+    assert "Atelier Bcc: x@example.test" in mail.text  # the name is one line, wherever it goes
+
+
+def test_a_very_long_reason_is_cut() -> None:
+    mail = render(
+        EmailTemplate.VENDOR_SUSPENDED,
+        {"vendor_name": "A", "reason": "x" * 50_000},
+        base_url=BASE,
+    )
+    assert len(mail.text) < 5_000 and "x" * 2_000 in mail.text and "x" * 2_001 not in mail.text

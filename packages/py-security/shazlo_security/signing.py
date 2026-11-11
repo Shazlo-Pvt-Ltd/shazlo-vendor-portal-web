@@ -59,6 +59,16 @@ class BadSignatureError(SignatureError):
     code = "bad_signature"
 
 
+def check_key_id(key_id: str) -> None:
+    """Raises `ValueError` unless `key_id` can be sent as `X-Shazlo-Key-Id` (settings call it at
+    startup, so a bad id fails there rather than on the first publish)."""
+    if not _KEY_ID.fullmatch(key_id):
+        raise ValueError(
+            "a key id is 1 to 64 letters, digits, dots, dashes or underscores, starting with "
+            "a letter or digit"
+        )
+
+
 @dataclass(frozen=True)
 class SigningKey:
     """A shared secret and the id it is known by (so two can be active during a rotation)."""
@@ -67,11 +77,7 @@ class SigningKey:
     secret: bytes
 
     def __post_init__(self) -> None:
-        if not _KEY_ID.fullmatch(self.key_id):
-            raise ValueError(
-                "a key id is 1 to 64 letters, digits, dots, dashes or underscores, starting with "
-                "a letter or digit"
-            )
+        check_key_id(self.key_id)
         if len(self.secret) < MIN_SECRET_BYTES:
             raise ValueError(f"a signing secret must be at least {MIN_SECRET_BYTES} bytes")
 
@@ -116,7 +122,13 @@ class RequestVerifier:
         clock: Callable[[], float] = time.time,
         tolerance_seconds: int = DEFAULT_TOLERANCE_SECONDS,
     ) -> None:
-        self._keys = {key.key_id: key for key in keys}
+        self._keys: dict[str, SigningKey] = {}
+        for key in keys:
+            # Two secrets under one id would silently drop one, and every request signed with it
+            # would then fail as `bad_signature` in the middle of a rotation.
+            if key.key_id in self._keys:
+                raise ValueError(f"the key id {key.key_id!r} is configured twice")
+            self._keys[key.key_id] = key
         if not self._keys:
             raise ValueError("a verifier needs at least one key")
         self._clock = clock

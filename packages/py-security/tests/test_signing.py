@@ -169,6 +169,11 @@ def test_a_bad_key_id_is_refused(key_id: str) -> None:
         SigningKey(key_id, SECRET)
 
 
+def test_a_key_id_configured_twice_is_refused() -> None:
+    with pytest.raises(ValueError, match="configured twice"):
+        RequestVerifier([K1, SigningKey("k1", b"y" * 40)])
+
+
 def test_a_verifier_needs_a_key() -> None:
     with pytest.raises(ValueError, match="at least one key"):
         RequestVerifier([])
