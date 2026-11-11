@@ -524,9 +524,14 @@ async def test_products_from_import_to_live_and_through_a_revision(
     assert len(reviews) == 5  # kurta x3, scarf x2
     assert await session.scalar(select(Product.version).where(Product.sku == "KURTA-001")) == 2
 
-    # --- Three approvals, three events; the two rejections wrote none
+    # --- Three approvals, three events; the two rejections wrote none (the vendor's own
+    # approval at the start wrote its status event)
+    events = await outbox(session)
+    assert [
+        (e.event_type, e.payload["status"]) for e in events if e.aggregate_type == "vendor"
+    ] == [("vendor.status_changed", "approved")]
     versions: dict[str, list[int]] = {}
-    for event in await outbox(session):
+    for event in (e for e in events if e.aggregate_type != "vendor"):
         assert event.event_type == "product.published"
         versions.setdefault(event.payload["sku"], []).append(event.version)
     assert versions == {"KURTA-001": [1, 2], "SCARF-014": [1]}
@@ -535,7 +540,9 @@ async def test_products_from_import_to_live_and_through_a_revision(
 # --- A vendor account --------------------------------------------------------------------
 
 
-async def test_a_vendor_is_approved_suspended_and_reinstated(world: World) -> None:
+async def test_a_vendor_is_approved_suspended_and_reinstated(
+    world: World, session: AsyncSession
+) -> None:
     w = world
     vendor = await onboard(w)
     me = (await w.http.get("/v1/vendor/me", headers=vendor)).json()
@@ -614,3 +621,12 @@ async def test_a_vendor_is_approved_suspended_and_reinstated(world: World) -> No
         ADMIN_ID
     )
     assert uuid.UUID(history[2]["actor_id"]) == ADMIN_ID
+
+    # Each change told the central app in its own transaction. The vendor published nothing, so
+    # there is nothing to hide or show again: only the status events, numbered by the history.
+    events = await outbox(session)
+    assert [(e.event_type, e.payload["status"], e.version) for e in events] == [
+        ("vendor.status_changed", "approved", 2),
+        ("vendor.status_changed", "suspended", 3),
+        ("vendor.status_changed", "approved", 4),
+    ]

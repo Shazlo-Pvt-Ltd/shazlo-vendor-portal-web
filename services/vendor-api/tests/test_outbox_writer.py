@@ -272,14 +272,14 @@ async def test_a_duplicate_version_refuses_the_approval_and_saves_nothing(
     tenants: Tenants, session: AsyncSession
 ) -> None:
     vendor_a = tenants.a.vendor.id
-    profile_id, review_id = await pending_profile(session, tenants.a)
-    # Someone already wrote an event for version 1 of this page.
+    product_id, _, review_id = await pending_first_product(session, tenants.a)
+    # Someone already wrote an event for version 1 of this product.
     session.add(
         OutboxEvent(
             vendor_id=vendor_a,
-            aggregate_type="brand_profile",
-            aggregate_id=vendor_a,
-            event_type="brand_profile.published",
+            aggregate_type="product",
+            aggregate_id=product_id,
+            event_type="product.published",
             version=1,
             payload={"already": "there"},
         )
@@ -294,7 +294,7 @@ async def test_a_duplicate_version_refuses_the_approval_and_saves_nothing(
     assert response.json()["error"]["message"].endswith("Nothing was saved")
     review = await reload(session, Review, review_id)
     assert (review.status, review.reviewer_id, review.decided_at) == ("pending", None, None)
-    assert (await reload(session, BrandProfile, profile_id)).state == "pending_review"
+    assert (await reload(session, Product, product_id)).status == "pending_review"
     assert [e.payload for e in await outbox(session)] == [{"already": "there"}]  # still only that
     decisions = await session.scalar(
         select(func.count())

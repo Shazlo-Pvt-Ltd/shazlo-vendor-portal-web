@@ -10,7 +10,8 @@ added by accident); a payload that does not validate is a bug and raises `Invali
 Versions are monotonic per aggregate and are the caller's to assign:
 
 - `brand_profile`: the aggregate is the vendor's brand page (its id is the vendor id);
-  `published` carries the published profile's own `version`.
+  `published` carries the published profile's own `version`, unless the page's events have
+  already gone past it (a suspension and reinstatement): the caller then gives the next one.
 - `product`: `Product.version`, which the catalog service raises whenever the live product changes.
 - `vendor`: the number of the status change, counting the vendor's creation as the first (see
   `vendor_status_version`), so the first change an admin makes is version 2.
@@ -149,10 +150,12 @@ class BrandSnapshot:
 def brand_profile_published(
     snapshot: BrandSnapshot,
     *,
+    version: int | None = None,
     event_id: uuid.UUID | None = None,
     occurred_at: datetime | None = None,
 ) -> BuiltEvent:
-    """The vendor's published brand page, in full. Its version is the profile's own."""
+    """The vendor's published brand page, in full. Its version is the profile's own, unless the
+    page's events have gone past it: then the caller gives the next event version."""
     vendor, profile = snapshot.vendor, snapshot.profile
     if profile.vendor_id != vendor.id:
         raise EventBuildError("the profile belongs to another vendor")
@@ -182,7 +185,7 @@ def brand_profile_published(
         aggregate_type="brand_profile",
         aggregate_id=vendor.id,
         vendor_id=vendor.id,
-        version=profile.version,
+        version=profile.version if version is None else version,
         payload=payload,
         event_id=event_id,
         occurred_at=occurred_at,
@@ -237,6 +240,7 @@ def product_published(
     snapshot: ProductSnapshot,
     *,
     published_at: datetime,
+    version: int | None = None,
     event_id: uuid.UUID | None = None,
     occurred_at: datetime | None = None,
 ) -> BuiltEvent:
@@ -296,7 +300,7 @@ def product_published(
         aggregate_type="product",
         aggregate_id=product.id,
         vendor_id=product.vendor_id,
-        version=product.version,
+        version=product.version if version is None else version,
         payload=payload,
         event_id=event_id,
         occurred_at=occurred_at,

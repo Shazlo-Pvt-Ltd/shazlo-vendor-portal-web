@@ -117,8 +117,9 @@ def create_app(
     app.state.signup = SignupService(settings, app.state.passwords)
     app.state.credentials = CredentialService(settings, app.state.passwords)
     app.state.team = TeamService(settings)
+    app.state.outbox_writer = OutboxWriter(settings.outbox_events_enabled)
     app.state.brand_profiles = BrandProfileService()
-    app.state.products = ProductService()
+    app.state.products = ProductService(events=app.state.outbox_writer)
     # One HTTP client per process for the image host's Admin API: short timeouts, so a slow
     # Cloudinary cannot hold requests open.
     app.state.http = httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0))
@@ -140,13 +141,14 @@ def create_app(
     app.state.review_queue = ReviewQueueService()
     app.state.review_decisions = ReviewDecisionService()
     # An approval writes its central-app event in the same transaction (ADR 0003, section 5).
-    app.state.outbox_writer = OutboxWriter(settings.outbox_events_enabled)
     app.state.review_decisions.add_hook(app.state.outbox_writer.on_decision)
     app.state.refresh_tokens = RefreshTokenStore(app.state.redis, refresh_token_config(settings))
     app.state.sessions = AuthService(
         settings, app.state.passwords, app.state.vendor_tokens, app.state.refresh_tokens
     )
-    app.state.vendor_accounts = VendorAccountService(app.state.sessions)
+    app.state.vendor_accounts = VendorAccountService(
+        app.state.sessions, events=app.state.outbox_writer
+    )
     app.state.readiness_checks = (
         readiness_checks
         if readiness_checks is not None
