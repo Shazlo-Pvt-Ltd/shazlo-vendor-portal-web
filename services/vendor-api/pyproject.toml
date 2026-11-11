@@ -32,6 +32,13 @@ dev = [
     "pytest-asyncio>=0.24",
     "httpx>=0.28",
     "fakeredis[lua]>=2.26",
+    # Contract tests (tests/test_central_contract.py): JSON Schema validation of the ADR 0003
+    # examples, with date-time checking, and the OpenAPI file.
+    "jsonschema>=4.23",
+    "rfc3339-validator>=0.1.4",
+    "pyyaml>=6",
+    "types-jsonschema",
+    "types-pyyaml",
 ]
 
 [tool.setuptools.packages.find]

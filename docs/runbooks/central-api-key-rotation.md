@@ -11,6 +11,19 @@ The central app accepts **two keys at once**, each known by a key id (`X-Shazlo-
 
 Settings are read at startup; restart vendor-api (one instance at a time) after changing them.
 
+## Where the secrets live
+
+One secret (and key id) per environment, never shared across environments. The secrets themselves are never in the repository, an issue, a PR or chat.
+
+| Environment | vendor-api reads it from | Central app / receiver holds it in | Notes |
+|---|---|---|---|
+| Local development | `services/vendor-api/.env` (git-ignored), or unset: publishing is off | the stub receiver's own environment (`CENTRAL_SIGNING_SECRET` or its documented test secret) | The contract's test secret (`shazlo-contract-test-secret-not-for-production`) is for tests only; never use it outside them |
+| CI | generated per run inside the test, or the contract test vector | n/a | No real secret is stored as a CI secret |
+| Staging | the platform's secret manager, injected as `CENTRAL_SIGNING_SECRET` | the central app's secret manager for staging | Its own secret, not production's |
+| Production | the platform's secret manager, injected as `CENTRAL_SIGNING_SECRET` (`prod` also needs `CENTRAL_API_URL` over https) | the central app's secret manager for production | Exchanged secret-manager to secret-manager, or through a one-time-secret link; never by chat, email or git |
+
+The hosting platform and its secret manager are not chosen yet (see the roadmap); when they are, name the actual product and path in this table.
+
 ## Normal rotation (every 90 days)
 
 Call the current key `OLD` (id `k1`) and the new one `NEW` (id `k2`; use a new id every time).
