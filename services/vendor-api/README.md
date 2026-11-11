@@ -501,7 +501,7 @@ An approved product keeps its live content while a new revision is edited and re
 
 ### The outbox (events for the central app)
 
-`outbox_events` is the transactional outbox of [ADR 0003](../../docs/adr/0003-central-app-publishing-contract.md): an event is written in the same transaction as what it announces, so an approval and its event are saved together or not at all. The table is described here; "Writing events" below says who writes it, and sending is the publisher worker's issue.
+`outbox_events` is the transactional outbox of [ADR 0003](../../docs/adr/0003-central-app-publishing-contract.md): an event is written in the same transaction as what it announces, so an approval and its event are saved together or not at all. The table is described here; "Writing events" below says who writes it, and "The publisher worker" below says how it is sent.
 
 - **One event per aggregate version**: `UNIQUE (aggregate_type, aggregate_id, version)`. `id` is the `event_id` the central app de-duplicates on, `payload` the whole event body (the full state of the aggregate), exactly as it will be signed and sent.
 - **Whose it is**: `vendor_id` (a foreign key, indexed) is on every event, because every event is about one vendor's page, product or account; a vendor with events cannot be deleted. The aggregate of a `vendor.*` event is the vendor itself (`aggregate_id = vendor_id`).
@@ -529,6 +529,28 @@ Three changes take things off the central app. Each writes its events **in the c
 - **Approving a vendor again** writes `vendor.status_changed`, then a `published` event, at the next version, for exactly the pages and products whose latest event is an unpublish with a vendor reason. What was archived stays archived, and what was never published is not published. Each is rebuilt from the current database state; one that cannot be built (for example an image that is not ready) refuses the reinstatement with `409 cannot_publish`.
 
 What the central app currently shows is read from the outbox itself (the latest event of each aggregate), so the fan-out is **idempotent**: an aggregate that is already unpublished gets nothing. A fan-out runs in the one transaction, in chunks of 200 aggregates (loaded, built and flushed 200 at a time, so memory stays bounded; a vendor with thousands of products still commits or rolls back as one). Versions only go up: a new event is one past the aggregate's last event, and a product's `version` is raised to match, so its next approval continues from it. A brand page's events are numbered the same way: approving a profile writes the profile's own version, or one past the page's last event if a suspension or reinstatement already used it (all of these hold the vendor lock), so a profile drafted before a suspension is still approved, after it, at a version the central app has not seen.
+
+### The publisher worker: delivering the outbox
+
+`python -m vendor_api.worker` (the `vendor-worker` compose service, the same image as the API) delivers `outbox_events` to the central app: `POST {CENTRAL_API_URL}/internal/v1/events`, signed as [ADR 0003](../../docs/adr/0003-central-app-publishing-contract.md) section 2 says. It reads the same `CENTRAL_*` settings as the API. With `CENTRAL_PUBLISHING_ENABLED=false` it idles and says so in its log; events keep queueing. Several workers may run.
+
+- **Claim** (`services/publisher.py`, `CLAIM`): the ADR's query. Due rows become `sending` with `FOR UPDATE SKIP LOCKED`, up to 20 at a time, and a row is skipped while an earlier version of its aggregate is `pending` or `sending`: an aggregate's events go out **one at a time, in version order**, so a publish is never overtaken by its own withdrawal. A `dead` event does not block the newer ones. Nothing is held open while a request is out: the claim and each result are short transactions of their own.
+- **The request**: the envelope is rebuilt from the row and serialised **once** (sorted keys, compact, UTF-8); those exact bytes are signed and sent. `Idempotency-Key` is the `event_id`. The only credential is the signature (no cookies, no proxy or `.netrc` credentials). 10 second timeout, redirects are never followed.
+- **Results**:
+
+  | Answer | What happens |
+  | --- | --- |
+  | `200` (accepted, duplicate or stale) | `sent` (`sent_at` set) |
+  | `400`, `409`, `413`, `422` | `dead` at once; `last_error` holds `HTTP <status>` and the central app's error code |
+  | `401` | **not the event's fault** (the key is wrong): the event goes back to `pending` after a minute and keeps its attempts. Five in a row **pause publishing** and log an error with `alert: true` ("check CENTRAL_SIGNING_KEY_ID and CENTRAL_SIGNING_SECRET"); every 5 minutes one event is tried, and any other answer ends the pause |
+  | `408`, `429`, `5xx`, timeout, network error | retry with backoff |
+  | anything else (`403`, `404`, `3xx`...) | retry with backoff: a misconfigured URL or key is fixed by a person, and the events survive until then |
+
+- **Backoff** after the n-th failed attempt: 30 s, 2 min, 10 min, 1 h, 6 h, 12 h, 24 h, each plus or minus 20%. `Retry-After` (seconds or a date) is honoured when it is longer, up to 24 h. After the **8th failed attempt** the event is `dead` (about two days) and keeps its last error, so an admin can see why.
+- **Upkeep** (every minute): the sweeper puts a row stuck in `sending` for more than 2 minutes back to `pending` (a worker crashed with it; the central app de-duplicates a second send). If it was the 8th attempt it is `dead` instead, so an event that crashes its worker is not tried forever. Rows `sent` more than 30 days ago are removed.
+- **Shutdown** (SIGTERM or SIGINT): requests in flight finish and are recorded; claims not yet started are given back unused. A result is written only while the row is still `sending`, so a row the sweeper took is not overwritten.
+
+The log lines carry `event_id`, `event_type`, `version` and `attempt`, never the body or the secret.
 
 ### Reviews
 
