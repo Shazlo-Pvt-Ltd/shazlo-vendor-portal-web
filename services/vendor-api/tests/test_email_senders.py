@@ -129,10 +129,14 @@ async def test_the_console_backend_prints_the_link_in_dev(
 async def test_the_console_backend_logs_no_token_outside_dev(
     caplog: pytest.LogCaptureFixture, template: EmailTemplate
 ) -> None:
-    context = {
+    contexts: dict[EmailTemplate, dict[str, object]] = {
         EmailTemplate.ACCOUNT_EXISTS: {},
         EmailTemplate.STAFF_INVITE: {**VERIFY, "vendor_name": "Brand"},
-    }.get(template, VERIFY)
+        EmailTemplate.VENDOR_APPROVED: {"vendor_name": "Brand"},
+        EmailTemplate.VENDOR_REJECTED: {"vendor_name": "Brand", "reason": "A reason"},
+        EmailTemplate.VENDOR_SUSPENDED: {"vendor_name": "Brand", "reason": "A reason"},
+    }
+    context: dict[str, object] = contexts.get(template, dict(VERIFY))
     with caplog.at_level(logging.DEBUG):
         await ConsoleEmailSender(BASE, show_links=False).send("owner@brand.test", template, context)
     assert caplog.records

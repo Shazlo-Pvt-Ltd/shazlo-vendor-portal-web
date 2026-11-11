@@ -57,7 +57,7 @@ The live reference is the OpenAPI document at <http://localhost:8002/docs> (dev;
 | Keys | `GET /.well-known/jwks.json` | anyone |
 | Vendor auth | `POST /v1/auth/signup`, `verify-email`, `resend-verification`, `login`, `refresh`, `logout`, `change-password`, `forgot-password`, `set-password` | anyone, or a vendor token for `change-password` |
 | Vendor | `GET /v1/vendor/me`; `GET`/`PUT /v1/vendor/brand-profile`, `POST /v1/vendor/brand-profile/submit`, `GET /v1/vendor/brand-profile/published`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only); `GET`/`POST /v1/vendor/products`, `GET`/`PUT`/`DELETE /v1/vendor/products/{id}`, `POST /v1/vendor/products/{id}/submit`; `POST /v1/vendor/assets/sign`, `POST /v1/vendor/assets`; `POST /v1/vendor/products/import`, `GET /v1/vendor/products/import/template` | vendor-api tokens only |
-| Admin | `GET /v1/admin/me`, `GET /v1/admin/reviews`, `GET /v1/admin/reviews/{id}`, `POST /v1/admin/reviews/{id}/approve`, `POST /v1/admin/reviews/{id}/reject` | identity-api tokens only (`vendor_reviewer` or `super_admin`) |
+| Admin | `GET /v1/admin/me`, `GET /v1/admin/reviews`, `GET /v1/admin/reviews/{id}`, `GET /v1/admin/vendors`, `GET /v1/admin/vendors/{id}`, `POST /v1/admin/vendors/{id}/approve`, `POST /v1/admin/vendors/{id}/reject`, `POST /v1/admin/vendors/{id}/suspend`, `POST /v1/admin/reviews/{id}/approve`, `POST /v1/admin/reviews/{id}/reject` | identity-api tokens only (`vendor_reviewer` or `super_admin`) |
 
 The sections below describe each group.
 
@@ -319,6 +319,38 @@ With no `base` (a first submission) every field that has a value is listed as ad
 
 **The hook for Phase 4.** `app.state.review_decisions.add_hook(hook)` registers `async def hook(db, decision)`. It runs **inside the decision's transaction**, after the changes and the audit event and before the commit, with the `Decision` that was made (the review, the action, the reviewer, `detail`, and the profile, the one it superseded, or the product and revision). That is where Phase 4 writes the central-app outbox row: it commits with the approval or not at all, and a hook that raises undoes the whole decision. Hooks also run for rejections (`decision.action`).
 
+## Vendor accounts (admins)
+
+Approve, reject or suspend a vendor. Part of the admin group: identity-api tokens only, role `vendor_reviewer` (or `super_admin`), enforced once for the whole `/v1/admin` router; the admin who acts is always the token's `sub`, never the request (a `reviewer_id` in a body is `422`, one in the query or a header is never read).
+
+| Endpoint | What it does |
+| --- | --- |
+| `GET /v1/admin/vendors` | Vendors, paged (`limit` 1 to 100, `offset`, a `total`). Filters: `status` (`pending` by default, `approved`, `rejected`, `suspended` or `all`) and `q` (part of the name, slug or email; `%` and `_` are plain text). **Pending applications come oldest first**; the others newest first |
+| `GET /v1/admin/vendors/{id}` | One vendor with its status history (`events`, oldest first; the first is the vendor signing up). `404 vendor_not_found` |
+| `POST /v1/admin/vendors/{id}/approve` | Body `{"reason": "..."}`, the reason optional (for example why a rejection was overturned) |
+| `POST /v1/admin/vendors/{id}/reject` | Body `{"reason": "..."}`. **A reason is required** (missing, empty or whitespace-only is `422`; trimmed; at most 2000 characters) and the vendor is told it |
+| `POST /v1/admin/vendors/{id}/suspend` | Same body and rules as reject |
+
+**The transitions** (anything else is `409 invalid_status_transition`, naming the current status; nothing is changed, written or sent):
+
+| Action | From | To |
+| --- | --- | --- |
+| approve | `pending`, `rejected`, `suspended` | `approved` |
+| reject | `pending` | `rejected` |
+| suspend | `approved` | `suspended` |
+
+A pending vendor is an application: approved or rejected. An approved vendor that must stop is **suspended** (not rejected), and approving it again reinstates it. A rejected vendor can be approved on appeal. A vendor already in the target status is a `409` too, so a double click is refused instead of writing a second audit event.
+
+**One change is one transaction**: the vendor's `status`, `status_reason`, `status_changed_at` and `status_changed_by` (the admin's id), **one `vendor_status_events` row** (from, to, `admin`, the admin's id, the reason) and the end of the vendor's sessions. All decisions on one vendor are serialised (its row is locked). The answer is the vendor with its history.
+
+**Sessions.** Rejecting and suspending **end every session of every user of the vendor at once**, so a suspended vendor cannot refresh or sign in right after the change:
+- the refresh tokens are revoked (`AuthService.end_sessions_of_vendor`, the hook from the auth work), **before the commit** (if Redis is down the change is rolled back instead of being saved with every session alive) and **again after it** (for a login that read the old status and finished in between; a failure there is only logged, because the change is committed and refreshing is refused for the new status anyway);
+- access tokens already issued stop working immediately: `current_vendor_user` reads the vendor from the database on every request (`403 vendor_not_allowed`);
+- sign-in is `403 vendor_not_allowed`, refresh is `401`;
+- **approving ends nothing**, and a reinstated vendor does *not* get its old sessions back: the old refresh tokens stay revoked and it signs in again.
+
+**The email.** After the commit (so nothing is sent for a change that was rolled back) the vendor's contact address gets `vendor_approved`, `vendor_rejected` or `vendor_suspended`. Rejection and suspension include the reason (escaped in the HTML part, never in a subject or header) and say to contact support if it looks like a mistake.
+
 ## Team, invites and password reset
 
 Three cases end with "someone gets an email and sets a password": an owner inviting a staff member, a user who forgot their password, and (Phase 8) the owner of a vendor migrated from MongoDB. All use the same one-time token: 256-bit, only its SHA-256 stored, single use, and a newer token for the same purpose ends the older ones.
@@ -364,10 +396,10 @@ Keys are `vendor:rl:<endpoint>:<scope>:<hash>`: the prefix and the `RATE_LIMIT_H
 
 Signup verification, staff invites and password reset send email (issue #80). The code depends on a small interface (`EmailSender.send(to, template, context)`) and the provider is a setting: switching from Mailpit to a real provider changes `EMAIL_BACKEND` and `SMTP_*`, not code. Plain SMTP works with SES, Postmark, Resend and most others.
 
-- **Templates** (`services/email/templates.py`, plain text and HTML): `verify_email`, `staff_invite`, `password_reset` and `account_exists`. Each states how long the link lasts. The one-time token goes in the link's **fragment** (`https://<portal>/verify-email#token=...`), which browsers never send to a server, so it stays out of access logs and `Referer` headers. The portal reads it from `location.hash`. Paths: `/verify-email`, `/accept-invite`, `/reset-password`, `/login`.
+- **Templates** (`services/email/templates.py`, plain text and HTML): `verify_email`, `staff_invite`, `password_reset` and `account_exists`, and the three that tell a vendor its account status changed (`vendor_approved`, `vendor_rejected`, `vendor_suspended`; the last two carry the admin's reason, never in the subject). The first four state how long the link lasts. The one-time token goes in the link's **fragment** (`https://<portal>/verify-email#token=...`), which browsers never send to a server, so it stays out of access logs and `Referer` headers. The portal reads it from `location.hash`. Paths: `/verify-email`, `/accept-invite`, `/reset-password`, `/login`.
 - **Sending** is `EmailService.send_in_background(background_tasks, to, template, context)`, used through the `Emails` dependency (`api/deps.py`). It runs after the response, tries `EMAIL_SEND_ATTEMPTS` times with a doubling pause, then logs and drops the email. A broken mail server never fails or slows a request.
 - **Logs** carry the template name and the kind of error, never the token, the recipient or the provider's reply. Only `ENV=dev` with the console backend prints a link (and the recipient), so a developer can click it.
-- **Locally**, `docker compose up -d` runs Mailpit. See every email at <http://localhost:8025>. To see one: `python -m vendor_api.cli send-test-email [--to ADDRESS] [--template verify_email|staff_invite|password_reset|account_exists]` (`ENV=dev` only; the token is made up).
+- **Locally**, `docker compose up -d` runs Mailpit. See every email at <http://localhost:8025>. To see one: `python -m vendor_api.cli send-test-email [--to ADDRESS] [--template verify_email|staff_invite|password_reset|account_exists|vendor_approved|vendor_rejected|vendor_suspended]` (`ENV=dev` only; the token is made up).
 
 ## Database
 
