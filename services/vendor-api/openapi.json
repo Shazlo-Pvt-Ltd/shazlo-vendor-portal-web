@@ -23,6 +23,170 @@
         "title": "AdminMe",
         "type": "object"
       },
+      "AdminReviewOut": {
+        "properties": {
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "product_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "reviewer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Id"
+          },
+          "sku": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sku"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          },
+          "submitted_by": {
+            "format": "uuid",
+            "title": "Submitted By",
+            "type": "string"
+          },
+          "submitted_by_email": {
+            "title": "Submitted By Email",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "vendor": {
+            "$ref": "#/components/schemas/ReviewVendorOut"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "subject",
+          "status",
+          "vendor",
+          "submitted_by",
+          "submitted_by_email",
+          "submitted_at",
+          "version",
+          "title",
+          "product_id",
+          "sku",
+          "reviewer_id",
+          "decided_at",
+          "reason"
+        ],
+        "title": "AdminReviewOut",
+        "type": "object"
+      },
+      "ApproveReviewRequest": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "version": 3
+          }
+        ],
+        "properties": {
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "ApproveReviewRequest",
+        "type": "object"
+      },
+      "ApproveVendorRequest": {
+        "additionalProperties": false,
+        "description": "A reason is optional when approving (for example why a rejection was overturned).",
+        "examples": [
+          {
+            "reason": "Documents checked."
+          },
+          {}
+        ],
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "ApproveVendorRequest",
+        "type": "object"
+      },
       "AssetKind": {
         "enum": [
           "brand_logo",
@@ -33,6 +197,20 @@
         "type": "string"
       },
       "AssetOut": {
+        "examples": [
+          {
+            "bytes": 482113,
+            "created_at": "2026-11-10T09:30:00Z",
+            "format": "jpg",
+            "height": 1500,
+            "id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
+            "kind": "product_image",
+            "public_id": "shazlo/vendors/7a9d4e2b-1c3f-4b5a-8d6e-9f0a1b2c3d4e/products/9c1e2d3f4a5b6c7d8e9f0a1b2c3d4e5f",
+            "status": "ready",
+            "url": "https://res.cloudinary.com/democloud/image/upload/v1/shazlo/products/9c1e.jpg",
+            "width": 1200
+          }
+        ],
         "properties": {
           "bytes": {
             "anyOf": [
@@ -123,6 +301,22 @@
       "BrandProfileBody": {
         "additionalProperties": false,
         "description": "The whole editable content of the draft. A `PUT` replaces it, so a field left out is\ncleared; send the page as the editor shows it. The limits are the ones of the published\ncontract (ADR 0003), so what is saved here can always be published.",
+        "examples": [
+          {
+            "about": "A small studio in Jaipur.",
+            "brand_name": "Atelier Rao",
+            "categories": [
+              "kurtas",
+              "dupattas"
+            ],
+            "instagram_handle": "atelier.rao",
+            "logo_asset_id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
+            "price_max_paise": 999900,
+            "price_min_paise": 99900,
+            "tagline": "Block prints, made slowly",
+            "website_url": "https://atelier.example"
+          }
+        ],
         "properties": {
           "about": {
             "anyOf": [
@@ -455,6 +649,35 @@
       "CreateProductBody": {
         "additionalProperties": false,
         "description": "A new product. The `sku` is its identity and cannot be changed afterwards.",
+        "examples": [
+          {
+            "category": "kurtas",
+            "description": "Hand block printed on soft cotton.",
+            "fabric": "cotton",
+            "gender": "women",
+            "images": [
+              {
+                "alt_text": "Front view",
+                "asset_id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c"
+              }
+            ],
+            "return_window_days": 7,
+            "returnable": true,
+            "sku": "KURTA-001",
+            "title": "Block-print cotton kurta",
+            "variants": [
+              {
+                "color": "Indigo",
+                "is_active": true,
+                "mrp_paise": 199900,
+                "price_paise": 149900,
+                "size": "M",
+                "sku": "KURTA-001-M"
+              }
+            ],
+            "weight_grams": 350
+          }
+        ],
         "properties": {
           "category": {
             "maxLength": 100,
@@ -933,6 +1156,50 @@
         "type": "string"
       },
       "ImportReportOut": {
+        "examples": [
+          {
+            "committed": true,
+            "errors": [
+              {
+                "code": "invalid_number",
+                "column": "price",
+                "message": "Use an amount in rupees such as 999 or 999.50 (no symbols or commas)",
+                "row": 4
+              }
+            ],
+            "errors_truncated": false,
+            "file_format": "csv",
+            "ignored_columns": [],
+            "mode": "import",
+            "products": [
+              {
+                "product_id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
+                "rows": [
+                  2,
+                  3
+                ],
+                "sku": "KURTA-001",
+                "status": "created"
+              },
+              {
+                "rows": [
+                  4
+                ],
+                "sku": "BAD-002",
+                "status": "rejected"
+              }
+            ],
+            "summary": {
+              "created": 2,
+              "products": 3,
+              "rejected": 1,
+              "rows_read": 4,
+              "rows_with_errors": 1,
+              "unchanged": 0,
+              "valid": 0
+            }
+          }
+        ],
         "properties": {
           "committed": {
             "title": "Committed",
@@ -1066,6 +1333,34 @@
       "ProductContentBody": {
         "additionalProperties": false,
         "description": "The whole content of one revision. A `PUT` replaces it, so a field or list left out is\ncleared. Limits are the ones of the published contract (ADR 0003).",
+        "examples": [
+          {
+            "category": "kurtas",
+            "description": "Hand block printed on soft cotton.",
+            "fabric": "cotton",
+            "gender": "women",
+            "images": [
+              {
+                "alt_text": "Front view",
+                "asset_id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c"
+              }
+            ],
+            "return_window_days": 7,
+            "returnable": true,
+            "title": "Block-print cotton kurta",
+            "variants": [
+              {
+                "color": "Indigo",
+                "is_active": true,
+                "mrp_paise": 199900,
+                "price_paise": 149900,
+                "size": "M",
+                "sku": "KURTA-001-M"
+              }
+            ],
+            "weight_grams": 350
+          }
+        ],
         "properties": {
           "category": {
             "maxLength": 100,
@@ -1307,6 +1602,44 @@
         "title": "ProductResultOut",
         "type": "object"
       },
+      "ProductReviewOut": {
+        "properties": {
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "reason",
+          "decided_at"
+        ],
+        "title": "ProductReviewOut",
+        "type": "object"
+      },
       "ProductSummaryOut": {
         "properties": {
           "category": {
@@ -1360,6 +1693,11 @@
       "ReasonRequest": {
         "additionalProperties": false,
         "description": "Rejecting and suspending need a reason, which the vendor is told: a missing, empty or\nwhitespace-only one is a 422.",
+        "examples": [
+          {
+            "reason": "Repeated chargebacks: contact support."
+          }
+        ],
         "properties": {
           "reason": {
             "maxLength": 2000,
@@ -1376,6 +1714,11 @@
       },
       "RegisterRequest": {
         "additionalProperties": false,
+        "examples": [
+          {
+            "public_id": "shazlo/vendors/7a9d4e2b-1c3f-4b5a-8d6e-9f0a1b2c3d4e/products/9c1e2d3f4a5b6c7d8e9f0a1b2c3d4e5f"
+          }
+        ],
         "properties": {
           "public_id": {
             "maxLength": 255,
@@ -1390,8 +1733,14 @@
         "title": "RegisterRequest",
         "type": "object"
       },
-      "RejectRequest": {
+      "RejectReviewRequest": {
         "additionalProperties": false,
+        "examples": [
+          {
+            "reason": "The logo is too small to read. Upload a larger one.",
+            "version": 3
+          }
+        ],
         "properties": {
           "reason": {
             "maxLength": 2000,
@@ -1409,7 +1758,7 @@
           "version",
           "reason"
         ],
-        "title": "RejectRequest",
+        "title": "RejectReviewRequest",
         "type": "object"
       },
       "ResendRequest": {
@@ -1548,7 +1897,7 @@
             "type": "string"
           },
           "vendor": {
-            "$ref": "#/components/schemas/vendor_api__api__admin_reviews__VendorOut"
+            "$ref": "#/components/schemas/ReviewVendorOut"
           },
           "version": {
             "title": "Version",
@@ -1582,7 +1931,7 @@
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/vendor_api__api__admin_reviews__ReviewOut"
+              "$ref": "#/components/schemas/AdminReviewOut"
             },
             "title": "Items",
             "type": "array"
@@ -1616,6 +1965,35 @@
         ],
         "title": "ReviewSubject",
         "type": "string"
+      },
+      "ReviewVendorOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "status"
+        ],
+        "title": "ReviewVendorOut",
+        "type": "object"
       },
       "RevisionOut": {
         "properties": {
@@ -1679,7 +2057,7 @@
           "review": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/vendor_api__api__products__ReviewOut"
+                "$ref": "#/components/schemas/ProductReviewOut"
               },
               {
                 "type": "null"
@@ -1859,6 +2237,13 @@
       },
       "SignRequest": {
         "additionalProperties": false,
+        "examples": [
+          {
+            "content_type": "image/jpeg",
+            "kind": "product_image",
+            "size_bytes": 482113
+          }
+        ],
         "properties": {
           "content_type": {
             "enum": [
@@ -1888,6 +2273,28 @@
         "type": "object"
       },
       "SignResponse": {
+        "examples": [
+          {
+            "allowed_content_types": [
+              "image/jpeg",
+              "image/png",
+              "image/webp"
+            ],
+            "asset_id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
+            "expires_at": "2026-11-11T10:00:00Z",
+            "fields": {
+              "allowed_formats": "jpg,jpeg,png,webp",
+              "api_key": "123456789012345",
+              "overwrite": "false",
+              "public_id": "shazlo/vendors/7a9d4e2b-1c3f-4b5a-8d6e-9f0a1b2c3d4e/products/9c1e2d3f4a5b6c7d8e9f0a1b2c3d4e5f",
+              "signature": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+              "timestamp": "1762851600"
+            },
+            "max_bytes": 10485760,
+            "public_id": "shazlo/vendors/7a9d4e2b-1c3f-4b5a-8d6e-9f0a1b2c3d4e/products/9c1e2d3f4a5b6c7d8e9f0a1b2c3d4e5f",
+            "upload_url": "https://api.cloudinary.com/v1_1/democloud/image/upload"
+          }
+        ],
         "properties": {
           "allowed_content_types": {
             "items": {
@@ -2479,297 +2886,7 @@
         "title": "VendorDetailOut",
         "type": "object"
       },
-      "VendorPageOut": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/vendor_api__api__admin_vendors__VendorOut"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "limit": {
-            "title": "Limit",
-            "type": "integer"
-          },
-          "offset": {
-            "title": "Offset",
-            "type": "integer"
-          },
-          "total": {
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "items",
-          "total",
-          "limit",
-          "offset"
-        ],
-        "title": "VendorPageOut",
-        "type": "object"
-      },
-      "VendorSummary": {
-        "properties": {
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "slug": {
-            "title": "Slug",
-            "type": "string"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "slug",
-          "status"
-        ],
-        "title": "VendorSummary",
-        "type": "object"
-      },
-      "VerifyEmailRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "token": {
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Token",
-            "type": "string"
-          }
-        },
-        "required": [
-          "token"
-        ],
-        "title": "VerifyEmailRequest",
-        "type": "object"
-      },
-      "VersionOut": {
-        "properties": {
-          "content": {
-            "additionalProperties": true,
-            "title": "Content",
-            "type": "object"
-          },
-          "published_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Published At"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "version",
-          "published_at",
-          "content"
-        ],
-        "title": "VersionOut",
-        "type": "object"
-      },
-      "vendor_api__api__admin_reviews__ApproveRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "version": {
-            "minimum": 1.0,
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "version"
-        ],
-        "title": "ApproveRequest",
-        "type": "object"
-      },
-      "vendor_api__api__admin_reviews__ReviewOut": {
-        "properties": {
-          "decided_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Decided At"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "product_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Product Id"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          },
-          "reviewer_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reviewer Id"
-          },
-          "sku": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sku"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "subject": {
-            "title": "Subject",
-            "type": "string"
-          },
-          "submitted_at": {
-            "format": "date-time",
-            "title": "Submitted At",
-            "type": "string"
-          },
-          "submitted_by": {
-            "format": "uuid",
-            "title": "Submitted By",
-            "type": "string"
-          },
-          "submitted_by_email": {
-            "title": "Submitted By Email",
-            "type": "string"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          },
-          "vendor": {
-            "$ref": "#/components/schemas/vendor_api__api__admin_reviews__VendorOut"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "subject",
-          "status",
-          "vendor",
-          "submitted_by",
-          "submitted_by_email",
-          "submitted_at",
-          "version",
-          "title",
-          "product_id",
-          "sku",
-          "reviewer_id",
-          "decided_at",
-          "reason"
-        ],
-        "title": "ReviewOut",
-        "type": "object"
-      },
-      "vendor_api__api__admin_reviews__VendorOut": {
-        "properties": {
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "slug": {
-            "title": "Slug",
-            "type": "string"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "slug",
-          "status"
-        ],
-        "title": "VendorOut",
-        "type": "object"
-      },
-      "vendor_api__api__admin_vendors__ApproveRequest": {
-        "additionalProperties": false,
-        "description": "A reason is optional when approving (for example why a rejection was overturned).",
-        "properties": {
-          "reason": {
-            "anyOf": [
-              {
-                "maxLength": 2000,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          }
-        },
-        "title": "ApproveRequest",
-        "type": "object"
-      },
-      "vendor_api__api__admin_vendors__VendorOut": {
+      "VendorOut": {
         "properties": {
           "contact_name": {
             "title": "Contact Name",
@@ -2884,9 +3001,90 @@
         "title": "VendorOut",
         "type": "object"
       },
-      "vendor_api__api__products__ReviewOut": {
+      "VendorPageOut": {
         "properties": {
-          "decided_at": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/VendorOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "VendorPageOut",
+        "type": "object"
+      },
+      "VendorSummary": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "status"
+        ],
+        "title": "VendorSummary",
+        "type": "object"
+      },
+      "VerifyEmailRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "token": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "VerifyEmailRequest",
+        "type": "object"
+      },
+      "VersionOut": {
+        "properties": {
+          "content": {
+            "additionalProperties": true,
+            "title": "Content",
+            "type": "object"
+          },
+          "published_at": {
             "anyOf": [
               {
                 "format": "date-time",
@@ -2896,30 +3094,19 @@
                 "type": "null"
               }
             ],
-            "title": "Decided At"
+            "title": "Published At"
           },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
+          "version": {
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
-          "status",
-          "reason",
-          "decided_at"
+          "version",
+          "published_at",
+          "content"
         ],
-        "title": "ReviewOut",
+        "title": "VersionOut",
         "type": "object"
       }
     },
@@ -3213,7 +3400,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/vendor_api__api__admin_reviews__ApproveRequest"
+                "$ref": "#/components/schemas/ApproveReviewRequest"
               }
             }
           },
@@ -3272,7 +3459,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RejectRequest"
+                "$ref": "#/components/schemas/RejectReviewRequest"
               }
             }
           },
@@ -3481,7 +3668,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/vendor_api__api__admin_vendors__ApproveRequest"
+                "$ref": "#/components/schemas/ApproveVendorRequest"
               }
             }
           },

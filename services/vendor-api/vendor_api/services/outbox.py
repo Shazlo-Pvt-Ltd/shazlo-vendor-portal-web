@@ -41,6 +41,21 @@ CANNOT_PUBLISH = "cannot_publish"
 OUTBOX_CONFLICT = "outbox_conflict"
 
 
+def outbox_row(event: BuiltEvent) -> OutboxEvent:
+    """The `outbox_events` row of a built event: its id is the event id and its `created_at` the
+    event's `occurred_at`, so the sender can rebuild the exact envelope from the row."""
+    return OutboxEvent(
+        id=event.event_id,
+        vendor_id=event.vendor_id,
+        aggregate_type=event.aggregate_type,
+        aggregate_id=event.aggregate_id,
+        event_type=event.event_type,
+        version=event.version,
+        payload=event.payload,
+        created_at=event.occurred_at,
+    )
+
+
 class OutboxWriter:
     """The outbox hook of the review decisions. Build one and `add_hook(writer.on_decision)`."""
 
@@ -64,18 +79,7 @@ class OutboxWriter:
         event = await self._build(db, decision)
         # Read before the insert: after a failed flush the session cannot load anything.
         review_id = str(decision.review.id)
-        db.add(
-            OutboxEvent(
-                id=event.event_id,
-                vendor_id=event.vendor_id,
-                aggregate_type=event.aggregate_type,
-                aggregate_id=event.aggregate_id,
-                event_type=event.event_type,
-                version=event.version,
-                payload=event.payload,
-                created_at=event.occurred_at,
-            )
-        )
+        db.add(outbox_row(event))
         try:
             await db.flush()
         except IntegrityError as error:

@@ -18,6 +18,8 @@ from vendor_api.services.seed import (
     DEV_SEED_PASSWORD,
     SEED_OWNER_EMAIL,
     SEED_STAFF_EMAIL,
+    CatalogSeed,
+    seed_demo_catalog,
     seed_demo_vendor,
 )
 from vendor_api.services.team import TeamError, TeamService
@@ -68,6 +70,37 @@ async def _seed_dev(password: str) -> bool:
             return await seed_demo_vendor(db, PasswordService(password_config(settings)), password)
     finally:
         await engine.dispose()
+
+
+async def _seed_catalog(password: str) -> CatalogSeed | None:
+    settings = get_settings()
+    engine = create_engine(settings.database_url)
+    try:
+        async with create_sessionmaker(engine)() as db:
+            return await seed_demo_catalog(
+                db,
+                PasswordService(password_config(settings)),
+                password,
+                outbox_events=settings.outbox_events_enabled,
+            )
+    finally:
+        await engine.dispose()
+
+
+def _print_catalog(catalog: CatalogSeed) -> None:
+    print("Created the demo catalog:")
+    for vendor in catalog.vendors:
+        print(f"  vendor   {vendor}")
+    for product in catalog.products:
+        print(f"  product  {product}")
+    print(f"  {catalog.pending_reviews} reviews are waiting (GET /v1/admin/reviews).")
+    if catalog.outbox_events:
+        print(f"  {catalog.outbox_events} central-app events of the seeded approvals are queued.")
+    else:
+        print("  No central-app events were written (OUTBOX_EVENTS_ENABLED=false).")
+    print("  The owners of the pending and the suspended vendor use the seed password too.")
+    print("  To review, use a token from identity-api's seeded super_admin (it passes the")
+    print("  reviewer check): this service cannot create admins.")
 
 
 def _export_openapi(check: bool, path: Path) -> None:
@@ -179,7 +212,12 @@ def main(argv: list[str] | None = None) -> int:
                 # Never echoed: it is SEED_VENDOR_PASSWORD, --password or the default in the README.
                 print("  both use the seed password (local use only).")
             else:
-                print("The demo vendor already exists; nothing changed.")
+                print("The demo vendor already exists; it was left as it is.")
+            catalog = asyncio.run(_seed_catalog(chosen))
+            if catalog is not None:
+                _print_catalog(catalog)
+            else:
+                print("The demo catalog exists already (or has no demo vendor); nothing changed.")
         elif args.command == "invite-owner":
             try:
                 to = asyncio.run(_invite_owner(args.vendor, args.email, args.status))
