@@ -11,9 +11,9 @@ from datetime import UTC, datetime
 
 import pytest
 from conftest import Tenants
+from review_builders import submitted_product
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from review_builders import submitted_product
 from test_outbox_writer import decide, envelope, outbox, pending_first_product, pending_profile
 
 from vendor_api.db.models import OutboxEvent, Product, Vendor
