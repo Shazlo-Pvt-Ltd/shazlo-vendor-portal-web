@@ -70,6 +70,10 @@ jobs:
             pip install -r requirements-shared.txt
           fi
       - run: pip install -e '.[dev]'
+      # vendor-api's publishing end-to-end test talks to the real stub receiver, which is a sibling
+      # service (not a shared package): install it from its path so that test runs instead of skipping.
+      - if: ${{ matrix.service == 'vendor-api' }}
+        run: pip install --config-settings editable_mode=compat -e ../central-stub
       - run: ruff check .
       - run: ruff format --check .
       - run: mypy

@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
+from vendor_api.api.admin_outbox import OutboxEventDetailOut, OutboxPageOut, OutboxStatsOut
 from vendor_api.api.admin_reviews import ApproveReviewRequest, RejectReviewRequest
 from vendor_api.api.admin_vendors import ApproveVendorRequest, ReasonRequest
 from vendor_api.api.assets import AssetOut, RegisterRequest, SignRequest, SignResponse
@@ -29,7 +30,14 @@ REQUESTS: list[type[BaseModel]] = [
     ReasonRequest,
     ApproveVendorRequest,
 ]
-RESPONSES: list[type[BaseModel]] = [SignResponse, AssetOut, ImportReportOut]
+RESPONSES: list[type[BaseModel]] = [
+    SignResponse,
+    AssetOut,
+    ImportReportOut,
+    OutboxPageOut,
+    OutboxEventDetailOut,
+    OutboxStatsOut,
+]
 
 # The write endpoints of Phase 3 (the bulk import takes a file, not JSON).
 PHASE_3 = (

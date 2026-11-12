@@ -163,7 +163,7 @@ async def test_a_timeout_or_network_error_is_an_answer_without_a_status(
 
 
 async def test_the_reason_names_the_status_and_the_central_apps_error_code() -> None:
-    body = {"error": {"code": "schema_invalid", "message": "x" * 5000}}
+    body = {"message": "x" * 5000, "extra": {"code": "schema_invalid"}}
     client = client_for(Receiver((422, {}, body)))
     answer = await client.send(claimed())
     await client.close()
@@ -322,7 +322,7 @@ async def test_a_permanent_answer_marks_the_event_dead_at_once(
     session: AsyncSession, vendor_id: uuid.UUID, clock: Clock, status: int
 ) -> None:
     row = await event(session, vendor_id)
-    receiver = Receiver((status, {}, {"error": {"code": "bad_event"}}))
+    receiver = Receiver((status, {}, {"message": "no", "extra": {"code": "bad_event"}}))
     await build(session, receiver, clock).run_once()
     dead = await fresh(session, row)
     assert (dead.status, dead.attempts, dead.locked_at) == ("dead", 1, None)
