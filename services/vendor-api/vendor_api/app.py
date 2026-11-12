@@ -15,6 +15,7 @@ from shazlo_security.refresh_tokens import RefreshTokenStore
 from vendor_api import __version__
 from vendor_api.api import (
     admin,
+    admin_outbox,
     admin_reviews,
     admin_vendors,
     assets,
@@ -47,6 +48,7 @@ from vendor_api.services.cloudinary import CloudinaryClient, ImageHost
 from vendor_api.services.credentials import CredentialService
 from vendor_api.services.email import EmailService, build_sender
 from vendor_api.services.outbox import OutboxWriter
+from vendor_api.services.outbox_admin import OutboxAdminService
 from vendor_api.services.product_import import ProductImportService
 from vendor_api.services.products import ProductService
 from vendor_api.services.review_decisions import ReviewDecisionService
@@ -118,6 +120,7 @@ def create_app(
     app.state.credentials = CredentialService(settings, app.state.passwords)
     app.state.team = TeamService(settings)
     app.state.outbox_writer = OutboxWriter(settings.outbox_events_enabled)
+    app.state.outbox_admin = OutboxAdminService()
     app.state.brand_profiles = BrandProfileService()
     app.state.products = ProductService(events=app.state.outbox_writer)
     # One HTTP client per process for the image host's Admin API: short timeouts, so a slow
@@ -181,5 +184,6 @@ def create_app(
         v1.include_router(admin.router)
         v1.include_router(admin_reviews.router)
         v1.include_router(admin_vendors.router)
+        v1.include_router(admin_outbox.router)
     app.include_router(v1)  # feature routers are added here
     return app

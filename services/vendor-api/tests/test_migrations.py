@@ -19,10 +19,11 @@ TABLES = {
     "reviews",
     "review_events",
     "outbox_events",
+    "outbox_event_log",
 }
 # The tables that exist before the outbox migration (0008): what a rollback to an earlier
 # migration still leaves.
-BEFORE_OUTBOX = TABLES - {"outbox_events"}
+BEFORE_OUTBOX = TABLES - {"outbox_events", "outbox_event_log"}
 # Helper functions the schema creates: a downgrade must remove them too.
 FUNCTIONS = (
     "vendor_status_events_append_only",
@@ -151,6 +152,19 @@ def test_the_outbox_migration_alone_can_be_undone_and_redone(
         assert _function_count(engine) == len(FUNCTIONS)
     finally:
         engine.dispose()
+
+
+def test_the_outbox_log_migration_alone_can_be_undone_and_redone(
+    alembic_config: Config, migrated_db: str
+) -> None:
+    try:
+        assert "outbox_event_log" in _tables(migrated_db)
+        command.downgrade(alembic_config, "0008")
+        assert "outbox_event_log" not in _tables(migrated_db)
+        assert "outbox_events" in _tables(migrated_db)  # the table it belongs to stays
+    finally:
+        command.upgrade(alembic_config, "head")
+    assert "outbox_event_log" in _tables(migrated_db)
 
 
 def test_the_event_detail_migration_alone_can_be_undone_and_redone(

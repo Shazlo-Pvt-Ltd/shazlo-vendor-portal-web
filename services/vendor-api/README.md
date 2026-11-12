@@ -580,6 +580,23 @@ python -m vendor_api.cli resync --all                      # everything
 
 It writes a `published` event for what is published, an `unpublished` one for what was published and is not now, and nothing for what never was (so it is also the **first sync** of a catalog published before this phase). It prints how many events it wrote, and how many it left alone because one was already waiting. Each run writes new versions (it is a deliberate re-send); it does not pile on top of events still waiting. A status change after a repair continues above the repair's version, and a product's `version` follows its events.
 
+### The outbox for admins: find, inspect, retry
+
+Part of the admin group (identity-api tokens, role `vendor_reviewer` or `super_admin`; a vendor token is `401`). The admin who retries is always the token's `sub`: an `actor_id` in a query, a header or a body is never read.
+
+| Endpoint | What it does |
+| --- | --- |
+| `GET /v1/admin/outbox` | Events, paged (`limit` 1 to 100, `offset`, a `total`), **without their bodies**. Filters: `status` (`pending`, `sending`, `sent`, `dead`), `aggregate_type` (`brand_profile`, `product`, `vendor`) and `vendor_id`. Newest first; with no `status` filter the **`dead` ones come first**, since they need a person. Each item has the attempt count, `last_error` (a short reason, at most 1000 characters, never a copy of the response) and the times (`created_at`, `next_attempt_at`, `locked_at`, `sent_at`) |
+| `GET /v1/admin/outbox/{id}` | One event with its **payload** (the event body as it was sent) and its **history**, oldest first: every delivery attempt the worker made (what came of it) and every retry (with the admin's id). `404 outbox_event_not_found` |
+| `POST /v1/admin/outbox/{id}/retry` | Puts a `dead` event back to `pending`: attempts start from zero, it is due now, `last_error` stays (why it died is not lost), and the log records the admin. **`409 invalid_outbox_status`** for any other status (a `sent` event is final; a double click retries once). Nothing is sent by the request: the worker sends it in its turn |
+| `GET /v1/admin/outbox/stats` | `pending`, `sending` and `dead` counts and `oldest_due_age_seconds` (how long the oldest `pending` event whose time has come has waited; `null` when none is due) |
+
+**Retrying never skips an earlier version.** The worker's claim leaves an event alone while an earlier version of its aggregate is `pending` or `sending`, so a retried version waits behind one that is still queued. (A *later* version may already have been delivered, since a dead event does not block newer ones; the central app answers `200 stale` to the old one, so it cannot take the central app back in time.)
+
+**Monitoring.** `GET /ready` carries the same four numbers as `outbox` (null when they cannot be read). They never change the probe's verdict: alert on `dead > 0` and on `oldest_due_age_seconds` growing (the worker is down or stuck).
+
+**The log** is `outbox_event_log` (migration 0009), one row per step, written by the worker in the same transaction as the result (`sent (HTTP 200)`, `failed, will try again in 30 s: HTTP 503`, `failed for good: HTTP 422: schema_invalid`, a refused signature kept for later) and by the retry. It goes with its event when the retention job removes it (30 days after it was sent). Signatures are never stored, and no answer of these endpoints carries a signature, a key id or a secret (a test checks).
+
 ### Reviews
 
 Everything a vendor submits (a brand profile version, a product revision) stays pending until an admin reviews it.
