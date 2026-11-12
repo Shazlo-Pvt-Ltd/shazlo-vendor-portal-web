@@ -1272,6 +1272,47 @@
         "title": "InviteRequest",
         "type": "object"
       },
+      "LogEntryOut": {
+        "properties": {
+          "actor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "attempt",
+              "retry"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "created_at",
+          "kind",
+          "outcome",
+          "actor_id"
+        ],
+        "title": "LogEntryOut",
+        "type": "object"
+      },
       "LoginRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1328,6 +1369,288 @@
           "message"
         ],
         "title": "Message",
+        "type": "object"
+      },
+      "OutboxEventDetailOut": {
+        "properties": {
+          "aggregate_id": {
+            "format": "uuid",
+            "title": "Aggregate Id",
+            "type": "string"
+          },
+          "aggregate_type": {
+            "title": "Aggregate Type",
+            "type": "string"
+          },
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/LogEntryOut"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "locked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locked At"
+          },
+          "next_attempt_at": {
+            "format": "date-time",
+            "title": "Next Attempt At",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "vendor_id": {
+            "format": "uuid",
+            "title": "Vendor Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "vendor_id",
+          "aggregate_type",
+          "aggregate_id",
+          "event_type",
+          "version",
+          "status",
+          "attempts",
+          "next_attempt_at",
+          "locked_at",
+          "last_error",
+          "created_at",
+          "sent_at",
+          "payload",
+          "history"
+        ],
+        "title": "OutboxEventDetailOut",
+        "type": "object"
+      },
+      "OutboxEventOut": {
+        "properties": {
+          "aggregate_id": {
+            "format": "uuid",
+            "title": "Aggregate Id",
+            "type": "string"
+          },
+          "aggregate_type": {
+            "title": "Aggregate Type",
+            "type": "string"
+          },
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "locked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locked At"
+          },
+          "next_attempt_at": {
+            "format": "date-time",
+            "title": "Next Attempt At",
+            "type": "string"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "vendor_id": {
+            "format": "uuid",
+            "title": "Vendor Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "vendor_id",
+          "aggregate_type",
+          "aggregate_id",
+          "event_type",
+          "version",
+          "status",
+          "attempts",
+          "next_attempt_at",
+          "locked_at",
+          "last_error",
+          "created_at",
+          "sent_at"
+        ],
+        "title": "OutboxEventOut",
+        "type": "object"
+      },
+      "OutboxPageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OutboxEventOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OutboxPageOut",
+        "type": "object"
+      },
+      "OutboxStatsOut": {
+        "properties": {
+          "dead": {
+            "title": "Dead",
+            "type": "integer"
+          },
+          "oldest_due_age_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Due Age Seconds"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "sending": {
+            "title": "Sending",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pending",
+          "sending",
+          "dead",
+          "oldest_due_age_seconds"
+        ],
+        "title": "OutboxStatsOut",
         "type": "object"
       },
       "ProductContentBody": {
@@ -3213,6 +3536,256 @@
         "summary": "Me",
         "tags": [
           "admin"
+        ]
+      }
+    },
+    "/v1/admin/outbox": {
+      "get": {
+        "description": "Outbox events, paged, without their bodies. Newest first; with no `status` filter the\n`dead` ones come first, since they need a person.",
+        "operationId": "list_outbox_v1_admin_outbox_get",
+        "parameters": [
+          {
+            "description": "Only events in this status",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "pending",
+                    "sending",
+                    "sent",
+                    "dead"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only events in this status",
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "aggregate_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "brand_profile",
+                    "product",
+                    "vendor"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Aggregate Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "vendor_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Vendor Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 100000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboxPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Outbox",
+        "tags": [
+          "admin-outbox"
+        ]
+      }
+    },
+    "/v1/admin/outbox/stats": {
+      "get": {
+        "description": "How many events are `pending`, `sending` and `dead`, and how long the oldest due one has\nwaited (also on `/ready`, for monitoring).",
+        "operationId": "get_stats_v1_admin_outbox_stats_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboxStatsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Stats",
+        "tags": [
+          "admin-outbox"
+        ]
+      }
+    },
+    "/v1/admin/outbox/{event_id}": {
+      "get": {
+        "description": "One event with its body and what happened to it.",
+        "operationId": "get_event_v1_admin_outbox__event_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboxEventDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Event",
+        "tags": [
+          "admin-outbox"
+        ]
+      }
+    },
+    "/v1/admin/outbox/{event_id}/retry": {
+      "post": {
+        "description": "Puts a `dead` event back to `pending` (its attempts start again, and the log records the\nadmin). The worker sends it in its turn: it never overtakes an earlier version of the same\naggregate that is still waiting. `409 invalid_outbox_status` for any other status.",
+        "operationId": "retry_event_v1_admin_outbox__event_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboxEventDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retry Event",
+        "tags": [
+          "admin-outbox"
         ]
       }
     },

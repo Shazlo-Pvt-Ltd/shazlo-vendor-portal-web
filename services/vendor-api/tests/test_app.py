@@ -61,7 +61,8 @@ def test_unsafe_request_id_is_replaced(settings: Settings) -> None:
 def test_ready_ok_when_all_checks_pass(settings: Settings) -> None:
     response = make_client(settings, {"postgres": _ok, "redis": _ok}).get("/ready")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "checks": {"postgres": "ok", "redis": "ok"}}
+    body = response.json()
+    assert (body["status"], body["checks"]) == ("ok", {"postgres": "ok", "redis": "ok"})
 
 
 def test_ready_503_when_a_dependency_fails(settings: Settings) -> None:

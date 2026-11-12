@@ -945,3 +945,32 @@ class OutboxEvent(Base):
     last_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class OutboxLogKind(StrEnum):
+    ATTEMPT = "attempt"  # the worker tried to deliver the event
+    RETRY = "retry"  # an admin put a dead event back
+
+
+class OutboxEventLog(Base):
+    """What happened to an outbox event, one row per step: each delivery attempt (what came of
+    it) and each retry an admin asked for (with the admin's id). Gone with its event."""
+
+    __tablename__ = "outbox_event_log"
+    __table_args__ = (
+        CheckConstraint(_one_of("kind", OutboxLogKind), name="kind_values"),
+        # A retry is somebody's: the admin who asked for it.
+        CheckConstraint("kind <> 'retry' OR actor_id IS NOT NULL", name="retry_has_actor"),
+        # A reason, not a copy of the response.
+        CheckConstraint("length(outcome) <= 1000", name="outcome_bounded"),
+        Index("ix_outbox_event_log_event_id_id", "event_id", "id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    event_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("outbox_events.id", ondelete="CASCADE")
+    )
+    kind: Mapped[str] = mapped_column(String(16))
+    outcome: Mapped[str] = mapped_column(Text)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    created_at: Mapped[datetime] = _created_at()

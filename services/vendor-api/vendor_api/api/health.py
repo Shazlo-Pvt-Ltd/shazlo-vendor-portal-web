@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import cast
 
 import asyncpg
@@ -10,6 +11,7 @@ from redis.asyncio import Redis
 
 from vendor_api.core.settings import Settings
 from vendor_api.db.session import libpq_url
+from vendor_api.services.outbox_admin import outbox_stats
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +36,31 @@ async def ready(request: Request) -> JSONResponse:
     statuses = dict(results)
     ok = all(status == "ok" for status in statuses.values())
     return JSONResponse(
-        {"status": "ok" if ok else "unavailable", "checks": statuses},
+        {
+            "status": "ok" if ok else "unavailable",
+            "checks": statuses,
+            # For monitoring only: it never changes the status (an alert on `dead` or on the age of
+            # the oldest due event is the monitor's job). Null when it could not be read.
+            "outbox": await _outbox(request),
+        },
         status_code=200 if ok else 503,
     )
+
+
+async def _outbox(request: Request) -> dict[str, int | None] | None:
+    try:
+        async with asyncio.timeout(CHECK_TIMEOUT_SECONDS):
+            async with request.app.state.sessionmaker() as db:
+                stats = await outbox_stats(db, datetime.now(UTC))
+    except Exception as exc:
+        logger.warning("outbox stats unavailable", extra={"error": type(exc).__name__})
+        return None
+    return {
+        "pending": stats.pending,
+        "sending": stats.sending,
+        "dead": stats.dead,
+        "oldest_due_age_seconds": stats.oldest_due_age_seconds,
+    }
 
 
 async def _run(name: str, check: ReadinessCheck) -> tuple[str, str]:
