@@ -61,7 +61,9 @@ A replay inside the 60-second window is harmless because of the de-duplication. 
 | Result | Meaning | Action |
 | --- | --- | --- |
 | `200` | accepted, duplicate or stale | Mark `sent` |
-| `400`, `401`, `409`, `413`, `422` | Permanent | Mark `dead` at once and alert. Five consecutive `401` responses pause publishing |
+| `400`, `409`, `413`, `422` | Permanent | Mark `dead` at once and alert |
+| `401` | The key is refused, which is not the event's fault | Keep the event `pending`, without using up an attempt. Five consecutive `401` responses pause publishing and alert; one event is tried every 5 minutes until the answer changes |
+| anything else (`403`, `404`, `3xx`...) | Not in the contract; probably a configuration problem | Retry with backoff |
 | `408`, `429`, `5xx`, timeout, network error | Temporary | Retry |
 
 Backoff after each failure: 30 s, 2 min, 10 min, 1 h, 6 h, 12 h, 24 h, each with plus or minus 20% jitter. After the 8th failed attempt (about two days) the event becomes `dead`: it is listed in the admin review screen with a **Retry** button (Phase 7). A dead event does not block newer versions of the same aggregate, because those carry the full state.

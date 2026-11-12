@@ -580,6 +580,8 @@ python -m vendor_api.cli resync --all                      # everything
 
 It writes a `published` event for what is published, an `unpublished` one for what was published and is not now, and nothing for what never was (so it is also the **first sync** of a catalog published before this phase). It prints how many events it wrote, and how many it left alone because one was already waiting. Each run writes new versions (it is a deliberate re-send); it does not pile on top of events still waiting. A status change after a repair continues above the repair's version, and a product's `version` follows its events.
 
+Operating all of this (running and scaling the worker, reading and retrying a dead event, a refused key, resyncing a vendor, the central app being down for days) is in [docs/runbooks/central-publishing.md](../../docs/runbooks/central-publishing.md). `tests/test_e2e_publishing.py` runs the whole flow against Postgres, Redis and the real stub receiver (`services/central-stub`, installed by the CI job; the test skips without it): publish, withdraw on suspension, restore on reinstatement, the stub failing then recovering, a refused signature, one aggregate failing without blocking another, a worker that crashes mid-send (the sweeper recovers it and the repeat is a `duplicate`), and a dead event found and retried through the admin API.
+
 ### The outbox for admins: find, inspect, retry
 
 Part of the admin group (identity-api tokens, role `vendor_reviewer` or `super_admin`; a vendor token is `401`). The admin who retries is always the token's `sub`: an `actor_id` in a query, a header or a body is never read.

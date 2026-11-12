@@ -269,14 +269,15 @@ class CentralClient:
 
 
 def _reason(response: httpx.Response) -> str:
-    """`HTTP 422`, and the central app's error code when it sent one."""
+    """`HTTP 422`, and the central app's error code when it sent one. The contract's error is
+    `{"message": ..., "extra": {"code": "schema_invalid"}}`."""
     reason = f"HTTP {response.status_code}"
     try:
         body = response.json()
     except ValueError:
         return reason
-    error = body.get("error") if isinstance(body, dict) else None
-    code = error.get("code") if isinstance(error, dict) else None
+    extra = body.get("extra") if isinstance(body, dict) else None
+    code = extra.get("code") if isinstance(extra, dict) else None
     if isinstance(code, str) and code:
         reason += f": {code[:100]}"
     return reason

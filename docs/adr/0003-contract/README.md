@@ -165,7 +165,9 @@ The producer sends events of **one aggregate one at a time, in version order**. 
 | Status | Meaning | Producer action |
 | --- | --- | --- |
 | `200` | `accepted`, `duplicate` or `stale` | Mark sent |
-| `400`, `401`, `409`, `413`, `422` | Permanent problem | Mark `dead` immediately and alert. After 5 consecutive `401` responses the producer pauses publishing (probably a key problem) |
+| `400`, `409`, `413`, `422` | Permanent problem | Mark `dead` immediately and alert |
+| `401` | The producer's signature or key is refused: not the event's fault | Keep the event `pending` (it keeps its attempts) and retry in a minute. After 5 consecutive `401` responses the producer pauses publishing, alerts, and tries one event every 5 minutes until the answer changes |
+| anything else (`403`, `404`, `3xx`...) | Not in this contract, most likely a configuration problem | Retry with backoff, like a temporary failure |
 | `408`, `429`, `5xx`, network error or timeout | Temporary | Retry with backoff |
 
 `429` honours `Retry-After`. The producer's request timeout is 10 seconds.

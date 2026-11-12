@@ -228,7 +228,7 @@ async def test_the_versions_are_read_page_by_page_with_a_signed_empty_body() -> 
 @pytest.mark.parametrize(
     "answer",
     [
-        httpx.Response(401, json={"error": {"code": "bad_signature"}}),
+        httpx.Response(401, json={"message": "no", "extra": {"code": "bad_signature"}}),
         httpx.Response(503),
         httpx.Response(200, json={"oops": True}),
         httpx.Response(200, text="not json"),
