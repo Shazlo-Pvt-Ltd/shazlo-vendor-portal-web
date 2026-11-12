@@ -68,7 +68,8 @@ class Wire(httpx.AsyncBaseTransport):
             if event is not None and event["aggregate"]["id"] in self.fail_for:
                 return httpx.Response(500, json={"message": "down", "extra": {"code": "boom"}})
         response = await self._inner.handle_async_request(request)
-        if event is not None:
+        if event is not None and response.status_code == 200:
+            # What the stub took in (accepted, duplicate or stale): a refused try is not "sent".
             await response.aread()
             self.sent.append(
                 (event["type"], event["aggregate"]["id"], event["version"], event["event_id"])
@@ -198,10 +199,12 @@ async def events(session: AsyncSession) -> list[OutboxEvent]:
 def once_each_in_order(wire: Wire) -> None:
     """No event twice, and an aggregate's versions only ever go up."""
     assert len({event_id for *_, event_id in wire.sent}) == len(wire.sent)
-    latest: dict[str, int] = {}
-    for _, aggregate, version, _ in wire.sent:
-        assert version > latest.get(aggregate, 0), (aggregate, version)
-        latest[aggregate] = version
+    # A vendor's page and its status are two aggregates that share the vendor's id.
+    latest: dict[tuple[str, str], int] = {}
+    for kind, aggregate, version, _ in wire.sent:
+        key = (kind.split(".")[0], aggregate)
+        assert version > latest.get(key, 0), (key, version)
+        latest[key] = version
 
 
 # --- Publish, withdraw, recover ------------------------------------------------------------------
