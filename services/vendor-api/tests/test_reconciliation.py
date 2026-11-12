@@ -35,6 +35,7 @@ from vendor_api.services.outbox import OutboxWriter
 from vendor_api.services.publisher import CentralClient, CentralError
 from vendor_api.services.reconciliation import (
     AGGREGATE_TYPES,
+    LOCK_KEY,
     PUBLISHED,
     UNPUBLISHED,
     Facts,
@@ -781,7 +782,13 @@ async def test_a_status_change_after_a_reconciliation_continues_above_it(
 
 async def test_the_lock_is_released_after_a_run(world: Tenants, session: AsyncSession) -> None:
     await reconciler(session, FakeCentral()).reconcile()
+    # Only this job's key: the brand profile trigger holds a transaction lock of its own until the
+    # test ends.
     held = await session.scalar(
-        text("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND pid = pg_backend_pid()")
+        text(
+            "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND pid = pg_backend_pid() "
+            "AND classid::bigint = :high AND objid::bigint = :low"
+        ),
+        {"high": LOCK_KEY >> 32, "low": LOCK_KEY & 0xFFFFFFFF},
     )
     assert held == 0
