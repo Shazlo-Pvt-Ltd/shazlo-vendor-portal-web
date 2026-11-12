@@ -37,6 +37,7 @@ from test_e2e_catalog import (  # noqa: F401  (pytest fixtures, used by name)
     world,
 )
 from test_publisher import Clock, shared
+from test_reconciliation import shared as unlocked
 
 from vendor_api.db.models import OutboxEvent, OutboxEventLog
 from vendor_api.services.outbox import OutboxWriter
@@ -276,8 +277,9 @@ async def test_an_approval_reaches_the_central_app_is_withdrawn_and_comes_back(
     # --- Reconciliation, asking the real versions endpoint, finds nothing to repair
     rows = await events(session)
     assert {e.status for e in rows} == {"sent"}
+    # The reconciler holds one session for its lock and opens others: no one-at-a-time wrapper.
     reconciler = Reconciler(
-        shared(session), OutboxWriter(True), central.client, pause=0, clock=central.clock
+        unlocked(session), OutboxWriter(True), central.client, pause=0, clock=central.clock
     )
     report = await reconciler.reconcile()
     assert (report.total, report.in_flight) == (0, 0)
