@@ -1,19 +1,25 @@
 import argparse
 import asyncio
+import contextlib
 import os
 import secrets
 import sys
+import uuid
 from pathlib import Path
 
 from shazlo_security.keys import KeyConfigError, new_kid, write_new_key
 from shazlo_security.passwords import PasswordService
+from sqlalchemy import or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from vendor_api.core.security import password_config
 from vendor_api.core.settings import get_settings
-from vendor_api.db.models import VendorStatus
+from vendor_api.db.models import Product, Vendor, VendorStatus
 from vendor_api.db.session import create_engine, create_sessionmaker
 from vendor_api.openapi import OPENAPI_PATH, build_openapi
 from vendor_api.services.email import EmailTemplate, build_sender
+from vendor_api.services.outbox import OutboxWriter
+from vendor_api.services.reconciliation import Reconciler, Report, Scope
 from vendor_api.services.seed import (
     DEV_SEED_PASSWORD,
     SEED_OWNER_EMAIL,
@@ -60,6 +66,86 @@ async def _invite_owner(vendor: str, email: str | None, status: VendorStatus | N
             f"({type(error).__name__}); run the command again to send a new one"
         ) from error
     return outgoing.to
+
+
+async def _resync(vendor: str | None, product: str | None, everything: bool) -> Report:
+    """Writes the current state of a vendor, a product or everything to the outbox."""
+    settings = get_settings()
+    if not settings.outbox_events_enabled:
+        raise CommandError("OUTBOX_EVENTS_ENABLED is off: no event can be written")
+    engine = create_engine(settings.database_url)
+    try:
+        sessions = create_sessionmaker(engine)
+        async with sessions() as db:
+            scope = await _resync_scope(db, vendor, product, everything)
+        # A short pause between chunks: a whole catalog must not flood the outbox.
+        reconciler = Reconciler(
+            sessions,
+            OutboxWriter(True),
+            max_pending=settings.reconcile_max_pending,
+            pause=0.2,
+        )
+        return await reconciler.resync(scope)
+    finally:
+        await engine.dispose()
+
+
+async def _resync_scope(
+    db: AsyncSession, vendor: str | None, product: str | None, everything: bool
+) -> Scope:
+    if everything:
+        if vendor or product:
+            raise CommandError("--all stands alone")
+        return Scope(everything=True)
+    if not vendor and not product:
+        raise CommandError("say what to resync: --vendor SLUG, --product SKU or --all")
+    vendor_id: uuid.UUID | None = None
+    if vendor:
+        condition = Vendor.slug == vendor
+        with contextlib.suppress(ValueError):
+            condition = or_(condition, Vendor.id == uuid.UUID(vendor))
+        found = (await db.scalars(select(Vendor.id).where(condition))).first()
+        if found is None:
+            raise CommandError(f"there is no vendor {vendor!r}")
+        vendor_id = found
+    if not product:
+        return Scope(vendor_id=vendor_id)
+    if vendor_id is not None:  # a SKU is only unique inside its vendor
+        product_id = (
+            await db.scalars(
+                select(Product.id).where(
+                    Product.vendor_id == vendor_id, Product.sku_key == product.lower()
+                )
+            )
+        ).first()
+    else:
+        try:
+            product_id = (
+                await db.scalars(select(Product.id).where(Product.id == uuid.UUID(product)))
+            ).first()
+        except ValueError:
+            raise CommandError(
+                "a SKU is only unique inside its vendor: add --vendor, or give the product's id"
+            ) from None
+    if product_id is None:
+        raise CommandError(f"there is no product {product!r}")
+    return Scope(product_id=product_id)
+
+
+def _print_resync(report: Report) -> None:
+    kinds = {"vendor": "vendor status", "brand_profile": "brand page", "product": "product"}
+    detail = ", ".join(
+        f"{report.written[k]} {name}" for k, name in kinds.items() if report.written[k]
+    )
+    print(f"Wrote {report.total} event(s)" + (f" ({detail})." if detail else "."))
+    if report.in_flight:
+        print(f"{report.in_flight} already had an event waiting to be sent; they were left alone.")
+    if report.unbuildable:
+        print(f"{report.unbuildable} could not be made into a valid event (see the log).")
+    if report.conflicts:
+        print(f"{report.conflicts} lost a race with a change; run the command again.")
+    if report.stopped_for_backlog:
+        print("The outbox is full: stopped early. Run the command again once it has drained.")
 
 
 async def _seed_dev(password: str) -> bool:
@@ -187,6 +273,16 @@ def main(argv: list[str] | None = None) -> int:
         help="the password of both users; default: SEED_VENDOR_PASSWORD, else a documented "
         "local-only default",
     )
+    resync = commands.add_parser(
+        "resync",
+        help="write the current state of a vendor, a product or everything to the outbox, again "
+        "(also the first sync of a catalog published before the outbox existed)",
+    )
+    resync.add_argument("--vendor", help="a vendor's slug or id: its page, status and products")
+    resync.add_argument(
+        "--product", help="a product's id, or its SKU together with --vendor (SKUs repeat)"
+    )
+    resync.add_argument("--all", action="store_true", help="every vendor, page and product")
     export = commands.add_parser(
         "export-openapi", help="write openapi.json (or, with --check, fail if it is stale)"
     )
@@ -224,6 +320,8 @@ def main(argv: list[str] | None = None) -> int:
             except TeamError as error:
                 raise CommandError(str(error)) from error
             print(f"Invited the owner of {args.vendor} at {to}.")
+        elif args.command == "resync":
+            _print_resync(asyncio.run(_resync(args.vendor, args.product, args.all)))
         elif args.command == "send-test-email":
             _send_test_email(args.to, args.template)
         else:

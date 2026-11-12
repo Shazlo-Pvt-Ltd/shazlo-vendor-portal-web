@@ -8,13 +8,16 @@ import asyncio
 import logging
 import signal
 import sys
+from datetime import time
 
 from shazlo_security.signing import RequestSigner, SigningKey
 
 from vendor_api.core.logging import configure_logging
 from vendor_api.core.settings import Settings, get_settings
 from vendor_api.db.session import create_engine, create_sessionmaker
+from vendor_api.services.outbox import OutboxWriter
 from vendor_api.services.publisher import CentralClient, Publisher
+from vendor_api.services.reconciliation import Reconciler, run_nightly
 
 logger = logging.getLogger("vendor_api.worker")
 
@@ -38,7 +41,19 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
     client = CentralClient(settings.central_api_url, signer)
     try:
         logger.info("publisher started", extra={"key_id": signer.key_id})
-        await Publisher(create_sessionmaker(engine), client).run(stop)
+        sessions = create_sessionmaker(engine)
+        jobs = [Publisher(sessions, client).run(stop)]
+        if settings.reconcile_enabled:
+            # Once a day, at RECONCILE_AT (UTC): re-send what the central app is behind on.
+            reconciler = Reconciler(
+                sessions,
+                OutboxWriter(settings.outbox_events_enabled),
+                client,
+                max_pending=settings.reconcile_max_pending,
+            )
+            logger.info("reconciliation runs daily", extra={"at": settings.reconcile_at})
+            jobs.append(run_nightly(reconciler, time.fromisoformat(settings.reconcile_at), stop))
+        await asyncio.gather(*jobs)
     finally:
         await client.close()
         await engine.dispose()

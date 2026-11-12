@@ -552,6 +552,34 @@ What the central app currently shows is read from the outbox itself (the latest 
 
 The log lines carry `event_id`, `event_type`, `version` and `attempt`, never the body or the secret.
 
+### Reconciliation and resync: repairing the central app
+
+Retries cannot repair a restored database, a `dead` event or a catalog published before the outbox existed. Both jobs below write the **current state** of an aggregate as a new event, at a version above everything already written for it and above what the central app holds, so a repair is never mistaken for something stale (`services/reconciliation.py`).
+
+**Nightly reconciliation** runs inside the worker at `RECONCILE_AT` (UTC, `03:00`; `RECONCILE_ENABLED=false` turns it off). For each aggregate type (vendor status, brand page, product) it reads the central app's `GET /internal/v1/versions` (signed, paged, 500 at a time) and compares:
+
+| vendor-api says | the central app has | what is written |
+| --- | --- | --- |
+| published | nothing, an older version, or an unpublished one | a `published` event |
+| published | the same version or a newer one, published | nothing (a newer one is left alone) |
+| unpublished (withdrawn, archived, vendor suspended or rejected) | it published | an `unpublished` event |
+| unpublished | nothing, or it unpublished | nothing |
+
+"Published" means: a brand page when the vendor is approved and has a published profile; a product when its vendor is approved, it has a live revision and is not archived; a vendor when it is approved (a `pending` vendor is not reported). An aggregate with an event still `pending` or `sending` is skipped, since it is on its way. So **a second run writes nothing**: before the events are delivered they are in flight, and after, the central app is in step. If the central app cannot be asked, nothing is written and the run is tried again the next night. Only one worker reconciles at a time (a Postgres advisory lock).
+
+**Pacing.** It works in chunks of 200 aggregates (a transaction each, a second apart) and stops while more than `RECONCILE_MAX_PENDING` (1000) events wait in the outbox, so a big catalog cannot flood the publisher; what was not repaired is still behind, and the next run carries on. An aggregate that cannot be made into a valid event (for example an image that is not ready) is skipped and logged, the others go on. A chunk that loses a race with an approval is rolled back and repaired by the next run.
+
+**Resync on demand** needs no answer from the central app:
+
+```
+python -m vendor_api.cli resync --vendor <slug or id>      # its page, status and every product
+python -m vendor_api.cli resync --product <id>             # one product
+python -m vendor_api.cli resync --vendor <slug> --product <sku>   # a SKU is unique only per vendor
+python -m vendor_api.cli resync --all                      # everything
+```
+
+It writes a `published` event for what is published, an `unpublished` one for what was published and is not now, and nothing for what never was (so it is also the **first sync** of a catalog published before this phase). It prints how many events it wrote, and how many it left alone because one was already waiting. Each run writes new versions (it is a deliberate re-send); it does not pile on top of events still waiting. A status change after a repair continues above the repair's version, and a product's `version` follows its events.
+
 ### Reviews
 
 Everything a vendor submits (a brand profile version, a product revision) stays pending until an admin reviews it.

@@ -49,6 +49,9 @@ from vendor_api.services.central_events import PRODUCER, iso
 logger = logging.getLogger(__name__)
 
 EVENTS_PATH = "/internal/v1/events"
+VERSIONS_PATH = "/internal/v1/versions"
+VERSIONS_PAGE = 500
+MAX_VERSION_PAGES = 20_000
 
 # The central app answers within 10 seconds (ADR 0003): a request is not allowed to take longer.
 REQUEST_TIMEOUT = 10.0
@@ -108,6 +111,10 @@ CLAIM = text(
               o.created_at, o.attempts
     """
 ).bindparams(bindparam("now", type_=DateTime(timezone=True)), bindparam("limit", type_=Integer))
+
+
+class CentralError(Exception):
+    """The central app could not be asked (not an answer about an event). Safe to show."""
 
 
 @dataclass(frozen=True)
@@ -195,6 +202,7 @@ class CentralClient:
         clock: Clock = _now,
     ) -> None:
         self._url = base_url.rstrip("/") + EVENTS_PATH
+        self._versions_url = base_url.rstrip("/") + VERSIONS_PATH
         self._signer = signer
         self._clock = clock
         self._http = httpx.AsyncClient(
@@ -206,6 +214,39 @@ class CentralClient:
 
     async def close(self) -> None:
         await self._http.aclose()
+
+    async def versions(self, aggregate_type: str) -> dict[uuid.UUID, tuple[int, str]]:
+        """Every aggregate of the type the central app holds: id to (version, state), for
+        reconciliation. Follows the pages; raises `CentralError` if any of it fails."""
+        held: dict[uuid.UUID, tuple[int, str]] = {}
+        cursor: str | None = None
+        for _ in range(MAX_VERSION_PAGES):
+            params = {"aggregate_type": aggregate_type, "limit": str(VERSIONS_PAGE)}
+            if cursor is not None:
+                params["cursor"] = cursor
+            try:
+                response = await self._http.get(
+                    self._versions_url, params=params, headers=self._signer.headers(b"")
+                )
+            except httpx.HTTPError as error:
+                raise CentralError(
+                    f"the central app could not be asked ({type(error).__name__})"
+                ) from error
+            if response.status_code != 200:
+                raise CentralError(f"the central app answered {_reason(response)} to the versions")
+            try:
+                body = response.json()
+                for item in body["items"]:
+                    held[uuid.UUID(item["aggregate_id"])] = (
+                        int(item["version"]),
+                        str(item["state"]),
+                    )
+                cursor = body.get("next_cursor")
+            except (ValueError, KeyError, TypeError, AttributeError) as error:
+                raise CentralError("the central app's versions could not be read") from error
+            if not cursor:
+                return held
+        raise CentralError("the central app's versions have too many pages")
 
     async def send(self, event: Claimed) -> Answer:
         body = envelope_bytes(event)
