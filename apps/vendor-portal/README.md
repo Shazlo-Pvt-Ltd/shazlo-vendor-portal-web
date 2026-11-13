@@ -113,3 +113,31 @@ login.mutate({ body: { email, password } })
 The session code supplies the access token with `setAccessTokenProvider(() => token)`; the client
 always sends cookies, so the refresh cookie reaches `/v1/auth/*`. The bulk import and the template
 download are `importProducts(file)` and `downloadImportTemplate()`. Tests mock the network with MSW.
+
+## The session
+
+`src/session/` keeps the vendor signed in (ADR 0009). The access token (15 minutes) lives **in memory
+only**; the refresh cookie is `HttpOnly`, so scripts cannot read it. After a reload the portal
+calls `POST /v1/auth/refresh` to restore the session. Nothing is written to web storage.
+
+```tsx
+const { status, user, vendor, role, logout } = useSession()
+// status: 'loading' | 'signedIn' | 'signedOut' | 'blocked' | 'unavailable'
+```
+
+- **Renewal:** the token is renewed at 80% of its life, and once on a `401` from any call (the
+  request is then retried once). Concurrent calls share one refresh. A `409 refresh_conflict` (two
+  tabs refreshing together) waits a moment and retries once.
+- **Ending:** a `401` on refresh signs out and clears the query cache. `unavailable` (the server
+  cannot be reached) is not a sign-out; the user can try again.
+- **Tabs:** a `BroadcastChannel` carries only the words `login` and `logout`, never a token.
+- **Guards:** `RequireAuth` (to `/login?return-to=…`, validated by `safeReturnTo`: only a path to a
+  portal screen), `PublicOnly`, and `RequireRole role="owner"`. A route's access is set in
+  `src/app/portalRoutes.ts`.
+- **Blocked vendors** (`403 vendor_not_allowed`, rejected or suspended) get a page that explains and
+  offers support in place, never a redirect to login.
+- **Expiry mid-work:** the user is sent to login with `return-to` set to the same screen. A form can
+  keep its unsaved input with `saveDraft(key, data)` and restore it with `takeDraft(key)`
+  (`session/drafts.ts`); drafts are in memory, survive an expiry, and are dropped on sign-out.
+- **The login screen** (a later issue) calls `session.signIn(response)` with the answer of
+  `POST /v1/auth/login`, or `session.markBlocked()` on a `403 vendor_not_allowed`.

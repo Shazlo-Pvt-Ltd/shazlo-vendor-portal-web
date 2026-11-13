@@ -1,23 +1,39 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import { RouterProvider, createMemoryRouter } from 'react-router'
 import { describe, expect, it } from 'vitest'
+import { AuthProvider } from '../session/AuthProvider'
+import { apiError, makeStore, sessionBody } from '../session/testing'
 import { portalRoutes, routes } from './routes'
 
-function open(path: string) {
+/** Opens a path as a signed-in owner, or as a signed-out visitor for the public screens. */
+function open(path: string, signedIn = true) {
+  const store = makeStore({
+    refresh: async () => {
+      if (!signedIn) throw apiError(401, 'unauthorized')
+      return sessionBody()
+    },
+  }).store
   const router = createMemoryRouter(routes, { initialEntries: [path] })
-  render(<RouterProvider router={router} />)
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <AuthProvider store={store}>
+        <RouterProvider router={router} />
+      </AuthProvider>
+    </QueryClientProvider>,
+  )
 }
 
 describe('routes', () => {
-  it.each(portalRoutes)('$path shows "$title" and sets the page title', ({ path, title }) => {
-    open(path.replace(':productId', '123'))
-    expect(screen.getByRole('heading', { level: 1, name: title })).toBeTruthy()
+  it.each(portalRoutes)('$path shows "$title" and sets the page title', async ({ path, title, access }) => {
+    open(path.replace(':productId', '123'), access !== 'public')
+    expect(await screen.findByRole('heading', { level: 1, name: title })).toBeTruthy()
     expect(document.title).toBe(`${title} · Shazlo Vendor Portal`)
   })
 
-  it('shows the not-found page for an unknown address', () => {
+  it('shows the not-found page for an unknown address', async () => {
     open('/no/such/page')
-    expect(screen.getByRole('heading', { level: 1, name: 'Page not found' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Go to the dashboard' }).getAttribute('href')).toBe('/')
   })
 
@@ -26,8 +42,8 @@ describe('routes', () => {
     expect(access['/login']).toBe('public')
     expect(access['/signup']).toBe('public')
     expect(access['/']).toBe('authenticated')
-    expect(access['/team']).toBe('authenticated')
-    expect(portalRoutes.every((route) => route.access === 'public' || route.access === 'authenticated')).toBe(true)
+    expect(access['/team']).toBe('owner')
+    expect(portalRoutes.every((route) => ['public', 'authenticated', 'owner'].includes(route.access))).toBe(true)
   })
 
   it('has no duplicate paths', () => {
