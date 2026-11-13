@@ -4,5 +4,5 @@ export { ApiError, NetworkError, FORM_ERROR_KEY, fieldErrorsFrom } from './error
 export type { FieldErrors } from './errors'
 export { api, apiQueryKey, getApiClient } from './instance'
 export { downloadImportTemplate, importProducts, importContentType } from './endpoints'
-export { setAccessTokenProvider } from './session'
+export { registerSessionHooks, setAccessTokenProvider } from './session'
 export type { paths, components } from './schema'

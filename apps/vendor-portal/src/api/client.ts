@@ -14,6 +14,13 @@ export interface ApiClientOptions {
   baseUrl: string
   /** The current access token, if any. Read on every request, so a refreshed token is used at once. */
   getAccessToken?: () => string | null | undefined | Promise<string | null | undefined>
+  /**
+   * Called on a `401` from any endpoint except `/v1/auth/*`. Return true after renewing the session:
+   * the request is then sent once more with the new token. Concurrent calls should share one renewal.
+   */
+  onUnauthorized?: () => Promise<boolean>
+  /** Called with every {@link ApiError} before it is thrown (the session watches for blocked vendors). */
+  onApiError?: (error: ApiError) => void
   timeoutMs?: number
   longTimeoutMs?: number
   /** Replaces `fetch`; for tests. */
@@ -35,7 +42,7 @@ export function createApiClient(options: ApiClientOptions) {
   const shortMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const longMs = options.longTimeoutMs ?? LONG_TIMEOUT_MS
 
-  const apiFetch = async (input: Request): Promise<Response> => {
+  const attempt = async (input: Request): Promise<Response> => {
     const token = await options.getAccessToken?.()
     const headers = new Headers(input.headers)
     if (token) {
@@ -77,6 +84,28 @@ export function createApiClient(options: ApiClientOptions) {
     } finally {
       clearTimeout(timer)
       input.signal.removeEventListener('abort', onCallerAbort)
+    }
+  }
+
+  const apiFetch = async (input: Request): Promise<Response> => {
+    const isAuthCall = new URL(input.url).pathname.startsWith('/v1/auth/')
+    // A request body can be read once; keep a copy for the retry.
+    const retryCopy = options.onUnauthorized && !isAuthCall ? input.clone() : undefined
+    try {
+      return await attempt(input)
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401 && retryCopy && options.onUnauthorized) {
+        if (await options.onUnauthorized()) {
+          try {
+            return await attempt(retryCopy)
+          } catch (retryError) {
+            if (retryError instanceof ApiError) options.onApiError?.(retryError)
+            throw retryError
+          }
+        }
+      }
+      if (error instanceof ApiError) options.onApiError?.(error)
+      throw error
     }
   }
 

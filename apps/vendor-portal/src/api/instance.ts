@@ -1,7 +1,7 @@
 import createQueryClient from 'openapi-react-query'
 import { loadEnv } from '../config/env'
 import { createApiClient, type ApiClient } from './client'
-import { currentAccessToken } from './session'
+import { currentAccessToken, handleApiError, handleUnauthorized } from './session'
 
 let client: ApiClient | undefined
 
@@ -13,7 +13,12 @@ export function getApiClient(): ApiClient {
       // The app shows the misconfiguration screen before any screen can call the API.
       throw new Error('The portal is misconfigured: VITE_VENDOR_API_URL is not usable.')
     }
-    client = createApiClient({ baseUrl: env.env.apiUrl, getAccessToken: currentAccessToken })
+    client = createApiClient({
+      baseUrl: env.env.apiUrl,
+      getAccessToken: currentAccessToken,
+      onUnauthorized: handleUnauthorized,
+      onApiError: handleApiError,
+    })
   }
   return client
 }
