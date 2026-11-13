@@ -80,3 +80,36 @@ src/
 
 `vercel.json` rewrites every path to `index.html` so deep links work (static files are served first).
 Security headers are added by the security issue; the per-environment URLs and domains are Phase 8.
+
+## Calling vendor-api
+
+Every request goes through the typed client in `src/api/`; no screen builds a URL or reads a raw
+`Response`. Its types are generated from `services/vendor-api/openapi.json`:
+
+```sh
+npm run api:generate -w @shazlo/vendor-portal   # rewrites src/api/schema.d.ts after vendor-api changes
+npm run api:check -w @shazlo/vendor-portal      # CI: fails when the committed file is stale
+```
+
+Commit the regenerated `schema.d.ts` with the backend change that caused it. CI runs the web checks
+whenever `openapi.json` changes, so a backend change that breaks the portal fails the build.
+
+```ts
+import { api, ApiError, NetworkError } from './api'
+
+const me = api.useQuery('get', '/v1/vendor/me')                    // typed result, cached by key
+const login = api.useMutation('post', '/v1/auth/login')
+login.mutate({ body: { email, password } })
+```
+
+| Failure | Thrown as | Use |
+| --- | --- | --- |
+| Any non-2xx answer | `ApiError` | `status`, `code`, `message`, `requestId` (quote it to support) |
+| `422` | `ApiError` | `fieldErrors`: `{ email: 'message', 'variants.0.price': 'message' }`; `_form` for a problem with no field |
+| `429` | `ApiError` | `retryAfter`: seconds to wait |
+| No answer, or 15 s passed (2 min for the bulk import) | `NetworkError` | `kind` is `network` or `timeout` |
+| The caller cancelled (a component unmounted) | the browser's `AbortError` | nothing to show |
+
+The session code supplies the access token with `setAccessTokenProvider(() => token)`; the client
+always sends cookies, so the refresh cookie reaches `/v1/auth/*`. The bulk import and the template
+download are `importProducts(file)` and `downloadImportTemplate()`. Tests mock the network with MSW.
