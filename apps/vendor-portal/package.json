@@ -4,10 +4,28 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json && vite build",
+    "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
   "dependencies": {
-    "@shazlo/ui": "*"
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/material": "^9.5.0",
+    "@shazlo/ui": "*",
+    "@tanstack/react-query": "^5.107.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router": "^8.5.1"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/user-event": "^14.6.10",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^6.2.1",
+    "vite": "^8.3.6"
   }
 }
