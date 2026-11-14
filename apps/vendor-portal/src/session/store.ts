@@ -18,6 +18,8 @@ export interface SessionState {
   role: Role | null
   /** True when a signed-in session ended on its own (refresh failed), not by the user's choice. */
   expired: boolean
+  /** True when the user signed out (in this tab or another): do not send them "back" after login. */
+  signedOutByUser: boolean
 }
 
 export interface SessionDeps {
@@ -37,7 +39,14 @@ export interface SessionDeps {
   conflictWaitMs?: number
 }
 
-const SIGNED_OUT: SessionState = { status: 'signedOut', user: null, vendor: null, role: null, expired: false }
+const SIGNED_OUT: SessionState = {
+  status: 'signedOut',
+  user: null,
+  vendor: null,
+  role: null,
+  expired: false,
+  signedOutByUser: false,
+}
 const LOADING: SessionState = { ...SIGNED_OUT, status: 'loading' }
 
 export const SESSION_CHANNEL = 'shazlo-vendor-session'
@@ -143,7 +152,7 @@ export class SessionStore {
     } catch {
       // The cookie may already be gone or the network down; the local session ends regardless.
     }
-    this.end({ expired: false })
+    this.end({ expired: false, byUser: true })
     this.channel?.postMessage({ type: 'logout' })
   }
 
@@ -216,6 +225,7 @@ export class SessionStore {
       vendor: session.vendor,
       role: roleOf(session.user.role),
       expired: false,
+      signedOutByUser: false,
     })
     this.scheduleRenewal(session.expires_in * (this.deps.renewAt ?? 0.8))
   }
@@ -226,13 +236,13 @@ export class SessionStore {
     this.renewTimer = setTimeout(() => void this.renew(), Math.max(1, seconds) * 1000)
   }
 
-  private end(options: { expired: boolean }): void {
+  private end(options: { expired: boolean; byUser?: boolean }): void {
     this.clearToken()
     // A session that ran out keeps the unsaved forms for the next sign-in; a sign-out does not.
     if (!options.expired) clearDrafts()
     // Typed passwords and half-filled sensitive forms never survive the session, expired or not.
     clearSensitiveState()
-    this.set({ ...SIGNED_OUT, expired: options.expired })
+    this.set({ ...SIGNED_OUT, expired: options.expired, signedOutByUser: options.byUser === true })
     this.deps.onCleared()
   }
 
@@ -246,7 +256,7 @@ export class SessionStore {
   private onTabMessage(message: unknown): void {
     const type = typeof message === 'object' && message !== null ? (message as { type?: unknown }).type : undefined
     if (type === 'logout' && this.state.status !== 'signedOut') {
-      this.end({ expired: false })
+      this.end({ expired: false, byUser: true })
     } else if (type === 'login' && this.state.status !== 'signedIn') {
       void this.renew()
     }
