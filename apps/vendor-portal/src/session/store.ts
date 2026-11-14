@@ -1,5 +1,6 @@
 import type { components } from '../api/schema'
 import { ApiError, NetworkError } from '../api/errors'
+import { clearSensitiveState } from '../security/sensitiveState'
 import { clearDrafts } from './drafts'
 
 type SessionResponse = components['schemas']['SessionResponse']
@@ -130,6 +131,7 @@ export class SessionStore {
   markBlocked(): void {
     this.clearToken()
     clearDrafts()
+    clearSensitiveState()
     this.set({ ...SIGNED_OUT, status: 'blocked' })
     this.deps.onCleared()
   }
@@ -228,6 +230,8 @@ export class SessionStore {
     this.clearToken()
     // A session that ran out keeps the unsaved forms for the next sign-in; a sign-out does not.
     if (!options.expired) clearDrafts()
+    // Typed passwords and half-filled sensitive forms never survive the session, expired or not.
+    clearSensitiveState()
     this.set({ ...SIGNED_OUT, expired: options.expired })
     this.deps.onCleared()
   }
