@@ -27,7 +27,7 @@
     "jsdom": "31.0.0",
     "mongodb-memory-server-core": "11.3.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "typescript-eslint": "^8.72.1",
+    "typescript-eslint": "^8.72.2",
     "vitest": "5.1.0"
   },
   "overrides": {
