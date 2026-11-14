@@ -25,7 +25,10 @@ function open(path: string, signedIn = true) {
 }
 
 describe('routes', () => {
-  it.each(portalRoutes)('$path shows "$title" and sets the page title', async ({ path, title, access }) => {
+  // Screens that are built have their own tests (src/features/**).
+  const built = new Set(['/signup', '/verify-email'])
+
+  it.each(portalRoutes.filter((route) => !built.has(route.path)))('$path shows "$title" and sets the page title', async ({ path, title, access }) => {
     open(path.replace(':productId', '123'), access !== 'public')
     expect(await screen.findByRole('heading', { level: 1, name: title })).toBeTruthy()
     expect(document.title).toBe(`${title} · Shazlo Vendor Portal`)

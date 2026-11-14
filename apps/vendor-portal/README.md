@@ -189,3 +189,23 @@ regenerate `vercel.json` (the test tells you what it should contain).
 
 **Dependencies.** CI runs `npm audit` for any PR that changes a manifest, covering every workspace
 through the one lockfile; Dependabot watches the repository root, so it covers the portal.
+
+## Signup and email verification
+
+`src/features/signup/` holds the `/signup` and `/verify-email` screens.
+
+- **Prices** are typed in rupees and sent as whole paise, using integer arithmetic only
+  (`rupeesToPaise`: `99.90` becomes `9990`, `1,000` becomes `100000`; floating point gets `1.15 * 100`
+  wrong). Never multiply a price by 100 anywhere else.
+- **Validation** mirrors vendor-api's `SignupRequest` in `rules.ts`. `rules.test.ts` compares the email
+  and phone patterns, the length limits and the price ceiling with `openapi.json`, so a change to the
+  API fails the portal's tests. The password length (12) is a server setting that is not in the
+  OpenAPI file; the server has the last word, and its answer is shown next to the password field.
+- **No hint about existing accounts:** signup always answers `202`, and the confirmation page, the
+  resend answer and the expired-link page use the same wording whatever happened.
+- **Errors:** `422` field messages appear next to their inputs and focus moves to the first one;
+  `429` shows a countdown from `Retry-After` and blocks sending until it ends; network failures say
+  so in plain words. `friendlyError` (`features/errors.ts`) is the shared way to word these.
+- **The verify link** is spent exactly once (StrictMode runs effects twice) and the token is then
+  removed from the address bar. Resending has a 60-second cooldown.
+- **The terms and privacy links** are in `src/config/links.ts`, opened through `SafeLink`.
