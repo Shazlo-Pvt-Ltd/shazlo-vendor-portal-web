@@ -44,7 +44,8 @@ export function RequireAuth({ children }: { children?: ReactNode }) {
     case 'blocked':
       return <BlockedPage />
     case 'signedOut': {
-      const returnTo = safeReturnTo(`${location.pathname}${location.search}${location.hash}`)
+      // After a deliberate sign-out the next login starts fresh; otherwise it returns to this screen.
+      const returnTo = session.signedOutByUser ? '/' : safeReturnTo(`${location.pathname}${location.search}${location.hash}`)
       const search = returnTo === '/' ? '' : `?return-to=${encodeURIComponent(returnTo)}`
       return <Navigate to={`/login${search}`} replace state={{ expired: session.expired }} />
     }

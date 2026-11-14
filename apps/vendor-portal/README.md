@@ -209,3 +209,25 @@ through the one lockfile; Dependabot watches the repository root, so it covers t
 - **The verify link** is spent exactly once (StrictMode runs effects twice) and the token is then
   removed from the address bar. Resending has a 60-second cooldown.
 - **The terms and privacy links** are in `src/config/links.ts`, opened through `SafeLink`.
+
+## Signing in, signing out and passwords
+
+`src/features/auth/` holds `/login`, `/forgot-password` and `/set-password`; `src/app/AppBar.tsx` holds
+the signed-in frame (brand name, account menu, Sign out), which the dashboard shell grows into the
+full navigation.
+
+- **No screen tells a registered email from an unregistered one.** Every bad login (`401`) shows the
+  one message `BAD_LOGIN_MESSAGE`, whatever the server's text; forgot password shows the same
+  confirmation for every address and does not echo it.
+- **Login** sends the password and drops it from the form at once, success or not. `403
+  vendor_not_allowed` marks the session blocked and shows the explanation page (no loop); `429`
+  counts down; after login the `PublicOnly` guard sends the user to the checked `return-to`.
+- **`/set-password?token=…`** (invites and resets) keeps the token in memory only and removes it from
+  the address bar and the history at once. A bad token shows "expired or already used" with a way to
+  request a new link. It and `/verify-email` have access `open` in `portalRoutes.ts`: an emailed link
+  must work whether or not someone is signed in.
+- **Sign out** (app bar and account menu) ends the session, clears caches, drafts and sensitive
+  form state, and goes to a plain `/login`: after a deliberate sign-out the next login does not
+  "return" to the page the user left (`signedOutByUser`). An expired session does return.
+- **Password fields** (`PasswordField`) have a show/hide toggle, the right `autocomplete`, and never
+  block pasting.

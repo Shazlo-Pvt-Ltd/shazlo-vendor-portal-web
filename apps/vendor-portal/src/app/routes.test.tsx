@@ -26,10 +26,10 @@ function open(path: string, signedIn = true) {
 
 describe('routes', () => {
   // Screens that are built have their own tests (src/features/**).
-  const built = new Set(['/signup', '/verify-email'])
+  const built = new Set(['/signup', '/verify-email', '/login', '/forgot-password', '/set-password'])
 
   it.each(portalRoutes.filter((route) => !built.has(route.path)))('$path shows "$title" and sets the page title', async ({ path, title, access }) => {
-    open(path.replace(':productId', '123'), access !== 'public')
+    open(path.replace(':productId', '123'), access !== 'public' && access !== 'open')
     expect(await screen.findByRole('heading', { level: 1, name: title })).toBeTruthy()
     expect(document.title).toBe(`${title} · Shazlo Vendor Portal`)
   })
@@ -46,7 +46,9 @@ describe('routes', () => {
     expect(access['/signup']).toBe('public')
     expect(access['/']).toBe('authenticated')
     expect(access['/team']).toBe('owner')
-    expect(portalRoutes.every((route) => ['public', 'authenticated', 'owner'].includes(route.access))).toBe(true)
+    expect(access['/set-password']).toBe('open')
+    expect(access['/verify-email']).toBe('open')
+    expect(portalRoutes.every((route) => ['public', 'open', 'authenticated', 'owner'].includes(route.access))).toBe(true)
   })
 
   it('has no duplicate paths', () => {

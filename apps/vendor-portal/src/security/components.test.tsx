@@ -91,6 +91,17 @@ describe('PasswordField', () => {
     expect(next.getAttribute('spellcheck')).toBe('false')
   })
 
+  it('lets the user show and hide what they typed, announced as a toggle', async () => {
+    render(<PasswordField purpose="current" label="Password" />)
+    const input = screen.getByLabelText('Password') as HTMLInputElement
+    const toggle = screen.getByRole('button', { name: 'Show password' })
+    expect(toggle.getAttribute('aria-pressed')).toBe('false')
+    await userEvent.click(toggle)
+    expect(input.type).toBe('text')
+    expect(screen.getByRole('button', { name: 'Hide password' }).getAttribute('aria-pressed')).toBe('true')
+    expect(input.getAttribute('autocomplete')).toBe('current-password')
+  })
+
   it('is a password input the user can type into', async () => {
     render(<PasswordField purpose="current" label="Password" />)
     await userEvent.type(screen.getByLabelText('Password'), 'hunter2')

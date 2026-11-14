@@ -18,7 +18,7 @@ export function safeReturnTo(value: string | null | undefined): string {
   }
   if (url.origin !== 'https://portal.invalid') return '/'
   const known = portalRoutes.some((route) => {
-    if (route.access === 'public') return false
+    if (route.access === 'public' || route.access === 'open') return false
     const pattern = new RegExp(`^${route.path.replace(/:[^/]+/g, '[^/]+')}$`)
     return pattern.test(url.pathname)
   })
