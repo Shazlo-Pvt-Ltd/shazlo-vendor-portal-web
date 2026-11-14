@@ -141,3 +141,51 @@ const { status, user, vendor, role, logout } = useSession()
   (`session/drafts.ts`); drafts are in memory, survive an expiry, and are dropped on sign-out.
 - **The login screen** (a later issue) calls `session.signIn(response)` with the answer of
   `POST /v1/auth/login`, or `session.markBlocked()` on a `403 vendor_not_allowed`.
+## Security rules
+
+The portal is open to the internet, holds vendors' business data and shows content vendors typed.
+These rules are enforced by lint and by tests in `src/security/`; a change that breaks one fails CI.
+
+**Headers.** `src/security/headers.ts` is the one definition. It produces `vercel.json` (production),
+the Vite dev and preview headers, and the tests.
+
+| Header | Value |
+| --- | --- |
+| `Content-Security-Policy` | `default-src 'self'`; scripts from the app only (no inline script, no `eval`); `connect-src` only the API origin and `https://api.cloudinary.com`; `img-src` only the app and `https://res.cloudinary.com`; `frame-ancestors 'none'`, `frame-src 'none'`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`; `upgrade-insecure-requests` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `X-Content-Type-Options` | `nosniff` |
+| `Permissions-Policy` | camera, microphone, geolocation, payment, USB and the other listed features switched off |
+| `Strict-Transport-Security` | two years, with subdomains (production only; preview and dev run over http) |
+
+`style-src` allows `'unsafe-inline'` because MUI writes `<style>` tags; that cannot run script.
+Development also allows inline script (the React refresh preamble) and the hot-reload socket.
+`assetsInlineLimit` is 0, so no asset becomes a `data:` URI.
+
+The committed `vercel.json` names a placeholder API origin (`https://api.example.com`), which fails
+closed. On Vercel, `npm run build` first runs `scripts/write-vercel-headers.mjs`, which writes the
+real `VITE_VENDOR_API_URL` into `connect-src` and fails the build if it is not a plain https origin.
+Set `VITE_VENDOR_API_URL` in the Vercel project. If you change the policy, change `headers.ts` and
+regenerate `vercel.json` (the test tells you what it should contain).
+
+**Tokens and secrets.**
+- The access token lives in memory only; the refresh token is an `HttpOnly` cookie. Source files may
+  not use `localStorage`, `sessionStorage` or `indexedDB` (lint, plus a test of the sources).
+- No `console.log` (`console.error` only, for the error screens); never put a token, password or
+  e-mail in a URL, a log line or an error message.
+- Render a password input only with `PasswordField`, which sets `autocomplete` (`current-password`
+  or `new-password`) and turns off autocapitalisation and spell-check.
+- A form holding something sensitive registers a reset with `registerSensitiveReset`; signing out
+  calls `clearSensitiveState()`.
+
+**Rendering what vendors typed.**
+- `dangerouslySetInnerHTML`, `innerHTML`, `outerHTML` and `insertAdjacentHTML` are forbidden by lint.
+  React escapes text; keep it that way.
+- A vendor's website or an image address is shown only through `SafeLink` / `SafeImage`: plain
+  `https:` addresses only (no `javascript:`, `data:`, `http:` or embedded passwords), `rel="noopener
+  noreferrer"`, no referrer sent for images. Anything else is shown as plain text or a fallback.
+  Live previews must use them.
+- After login the `return-to` address is checked by `safeReturnTo` (the session), which accepts only
+  a path to a portal screen.
+
+**Dependencies.** CI runs `npm audit` for any PR that changes a manifest, covering every workspace
+through the one lockfile; Dependabot watches the repository root, so it covers the portal.
