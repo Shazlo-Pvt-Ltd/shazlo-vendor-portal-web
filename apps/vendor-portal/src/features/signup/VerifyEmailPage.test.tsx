@@ -1,5 +1,6 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { typeFast } from '../../test/typeFast'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -91,7 +92,7 @@ describe('asking for a new link', () => {
     let body: unknown
     server.use(http.post(`${BASE}/v1/auth/resend-verification`, async ({ request }) => { body = await request.json(); return HttpResponse.json({ status: 'accepted', message: 'ok' }, { status: 202 }) }))
     const user = await openExpired()
-    await user.type(screen.getByLabelText('Email address'), 'asha@kala.example')
+    await typeFast(user, screen.getByLabelText('Email address'), 'asha@kala.example')
     await user.click(screen.getByRole('button', { name: 'Send a new link' }))
     expect(await screen.findByText(/If that address needs a new link, it is on its way/)).toBeTruthy()
     expect(body).toEqual({ email: 'asha@kala.example' })
@@ -105,7 +106,7 @@ describe('asking for a new link', () => {
     let calls = 0
     server.use(http.post(`${BASE}/v1/auth/resend-verification`, async () => { calls += 1; await new Promise((r) => setTimeout(r, 30)); return HttpResponse.json({}, { status: 202 }) }))
     const user = await openExpired()
-    await user.type(screen.getByLabelText('Email address'), 'asha@kala.example')
+    await typeFast(user, screen.getByLabelText('Email address'), 'asha@kala.example')
     await user.dblClick(screen.getByRole('button', { name: 'Send a new link' }))
     await screen.findByText(/it is on its way/)
     expect((screen.getByRole('button', { name: /Send again in/ }) as HTMLButtonElement).disabled).toBe(true)
@@ -116,7 +117,7 @@ describe('asking for a new link', () => {
     const sent = vi.fn()
     server.use(http.post(`${BASE}/v1/auth/resend-verification`, () => { sent(); return HttpResponse.json({}, { status: 202 }) }))
     const user = await openExpired()
-    await user.type(screen.getByLabelText('Email address'), 'nope')
+    await typeFast(user, screen.getByLabelText('Email address'), 'nope')
     await user.click(screen.getByRole('button', { name: 'Send a new link' }))
     expect(await screen.findByText('Enter the email address you signed up with.')).toBeTruthy()
     expect(sent).not.toHaveBeenCalled()
@@ -125,7 +126,7 @@ describe('asking for a new link', () => {
   it('shows the wait from Retry-After on a 429', async () => {
     server.use(http.post(`${BASE}/v1/auth/resend-verification`, () => HttpResponse.json({ error: { code: 'rate_limited', message: 'x' } }, { status: 429, headers: { 'Retry-After': '90' } })))
     const user = await openExpired()
-    await user.type(screen.getByLabelText('Email address'), 'asha@kala.example')
+    await typeFast(user, screen.getByLabelText('Email address'), 'asha@kala.example')
     await user.click(screen.getByRole('button', { name: 'Send a new link' }))
     expect(await screen.findByText('Too many attempts.')).toBeTruthy()
     await waitFor(() => expect(screen.getByRole('button', { name: /Send again in (90|89) s/ })).toBeTruthy())
