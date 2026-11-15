@@ -41,8 +41,8 @@ describe('the production Content-Security-Policy', () => {
     expect(policy.get('connect-src')).toEqual([API, CLOUDINARY_UPLOAD_ORIGIN])
   })
 
-  it('loads images only from the app and the Cloudinary CDN', () => {
-    expect(policy.get('img-src')).toEqual(["'self'", CLOUDINARY_CDN_ORIGIN])
+  it('loads images only from the app, the Cloudinary CDN and blob: (the preview of a chosen file)', () => {
+    expect(policy.get('img-src')).toEqual(["'self'", 'blob:', CLOUDINARY_CDN_ORIGIN])
   })
 
   it('forbids framing, plugins, a new <base> and form posts elsewhere', () => {
@@ -56,7 +56,9 @@ describe('the production Content-Security-Policy', () => {
   it('upgrades insecure requests and allows no wildcard or data: source', () => {
     expect(policy.has('upgrade-insecure-requests')).toBe(true)
     const text = contentSecurityPolicy({ apiOrigin: API, mode: 'production' })
-    expect(text).not.toMatch(/\*|data:|blob:|http:/)
+    expect(text).not.toMatch(/\*|data:|http:/)
+    // blob: is allowed for images only, never for scripts, frames or connections.
+    expect(text.match(/blob:/g)).toHaveLength(1)
   })
 })
 

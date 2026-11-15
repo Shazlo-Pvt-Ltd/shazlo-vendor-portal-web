@@ -22,7 +22,8 @@ export interface HeaderOptions {
 
 /**
  * The Content-Security-Policy. Scripts only from the app itself, never inline and never `eval`;
- * network calls only to the API and the upload host; images only from the app and the Cloudinary CDN;
+ * network calls only to the API and the upload host; images only from the app, the Cloudinary CDN
+ * and `blob:` (the local preview of a file being uploaded, created by the page itself);
  * nothing may frame the portal, embed objects or change `<base>`.
  *
  * Styles allow `'unsafe-inline'` because MUI's runtime (emotion) writes `<style>` tags. That cannot
@@ -38,7 +39,8 @@ export function contentSecurityPolicy(options: HeaderOptions): string {
     ['default-src', ["'self'"]],
     ['script-src', dev ? ["'self'", "'unsafe-inline'"] : ["'self'"]],
     ['style-src', ["'self'", "'unsafe-inline'"]],
-    ['img-src', ["'self'", CLOUDINARY_CDN_ORIGIN]],
+    // blob: is for the preview of a file the vendor just chose, made by the page itself.
+    ['img-src', ["'self'", 'blob:', CLOUDINARY_CDN_ORIGIN]],
     ['font-src', ["'self'"]],
     [
       'connect-src',
