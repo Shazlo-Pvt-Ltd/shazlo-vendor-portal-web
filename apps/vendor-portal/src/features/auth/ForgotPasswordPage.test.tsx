@@ -1,5 +1,6 @@
-import { screen } from '@testing-library/react'
+import { cleanup, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { typeFast } from '../../test/typeFast'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { BASE, apiErrorResponse, useApiServer } from '../../test/msw'
@@ -15,7 +16,7 @@ async function open() {
 }
 
 async function send(user: ReturnType<typeof userEvent.setup>, email: string) {
-  await user.type(screen.getByLabelText(/^Email address/), email)
+  await typeFast(user, screen.getByLabelText(/^Email address/), email)
   await user.click(screen.getByRole('button', { name: 'Send the link' }))
 }
 
@@ -28,7 +29,7 @@ describe('forgot password', () => {
       await send(user, email)
       await screen.findByRole('heading', { level: 1, name: 'Check your email' })
       pages.push(document.querySelector('main')!.textContent ?? '')
-      document.body.innerHTML = ''
+      cleanup()
     }
     expect(pages[0]).toBe(pages[1])
     expect(pages[0]).toContain(FORGOT_CONFIRMATION)

@@ -1,5 +1,6 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { typeFast } from '../../test/typeFast'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { makeStore, sessionBody } from '../../session/testing'
@@ -15,8 +16,8 @@ async function open(path = '/set-password?token=tok-123', options: { strict?: bo
 }
 
 async function fill(user: ReturnType<typeof userEvent.setup>, password = 'a-long-enough-password', confirm = password) {
-  await user.type(await screen.findByLabelText(/^New password/), password)
-  await user.type(screen.getByLabelText(/^Confirm new password/), confirm)
+  await typeFast(user, await screen.findByLabelText(/^New password/), password)
+  await typeFast(user, screen.getByLabelText(/^Confirm new password/), confirm)
   await user.click(screen.getByRole('button', { name: 'Save password' }))
 }
 

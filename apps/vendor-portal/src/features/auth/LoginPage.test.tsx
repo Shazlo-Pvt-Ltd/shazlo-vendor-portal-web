@@ -1,5 +1,6 @@
-import { screen, waitFor } from '@testing-library/react'
+import { cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { typeFast } from '../../test/typeFast'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { apiError, makeStore, sessionBody } from '../../session/testing'
@@ -17,8 +18,8 @@ async function open(path = '/login', store = makeStore({ refresh: async () => { 
 }
 
 async function signIn(user: ReturnType<typeof userEvent.setup>, email = 'asha@kala.example', password = 'correct horse battery') {
-  await user.type(screen.getByLabelText(/^Email address/), email)
-  await user.type(screen.getByLabelText(/^Password/), password)
+  await typeFast(user, screen.getByLabelText(/^Email address/), email)
+  await typeFast(user, screen.getByLabelText(/^Password/), password)
   await user.click(screen.getByRole('button', { name: 'Sign in' }))
 }
 
@@ -57,7 +58,7 @@ describe('login', () => {
       const { user } = await open()
       await signIn(user, `someone${seen.length}@example.com`)
       seen.push((await screen.findByRole('alert')).textContent ?? '')
-      document.body.innerHTML = ''
+      cleanup()
     }
     expect(new Set(seen)).toEqual(new Set([BAD_LOGIN_MESSAGE]))
     expect(BAD_LOGIN_MESSAGE).not.toMatch(/not found|no such|unverified|disabled|exist|register/i)
@@ -103,7 +104,7 @@ describe('login', () => {
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
     expect(await screen.findByText('Enter your email address.')).toBeTruthy()
     expect(document.activeElement).toBe(screen.getByLabelText(/^Email address/))
-    await user.type(screen.getByLabelText(/^Email address/), 'asha@kala.example')
+    await typeFast(user, screen.getByLabelText(/^Email address/), 'asha@kala.example')
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
     expect(await screen.findByText('Enter your password.')).toBeTruthy()
     expect(document.activeElement).toBe(screen.getByLabelText(/^Password/))
@@ -163,7 +164,7 @@ describe('login', () => {
 
   it('clears a typed password when the session ends', async () => {
     const { user } = await open()
-    await user.type(screen.getByLabelText(/^Password/), 'half typed')
+    await typeFast(user, screen.getByLabelText(/^Password/), 'half typed')
     clearSensitiveState()
     await waitFor(() => expect((screen.getByLabelText(/^Password/) as HTMLInputElement).value).toBe(''))
   })

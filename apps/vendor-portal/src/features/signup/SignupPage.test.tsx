@@ -1,5 +1,6 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { typeFast } from '../../test/typeFast'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -37,7 +38,7 @@ async function fillValid(user: ReturnType<typeof userEvent.setup>, overrides: Re
     ...overrides,
   }
   for (const [label, value] of Object.entries(values)) {
-    await user.type(screen.getByLabelText(new RegExp(`^${label}`)), value)
+    await typeFast(user, screen.getByLabelText(new RegExp(`^${label}`)), value)
   }
   await user.click(screen.getByRole('checkbox'))
 }
@@ -84,7 +85,7 @@ describe('the signup form', () => {
       await screen.findByRole('heading', { level: 1, name: 'Check your email' })
       texts.push(document.body.textContent ?? '')
       void view
-      document.body.innerHTML = ''
+      cleanup()
     }
     expect(texts[0]).toBe(texts[1])
     expect(texts[0]).not.toMatch(/already|registered|exists|taken/i)
@@ -94,7 +95,7 @@ describe('the signup form', () => {
     const sent = vi.fn()
     server.use(http.post(`${BASE}/v1/auth/signup`, () => { sent(); return HttpResponse.json({}, { status: 202 }) }))
     const user = await open()
-    await user.type(screen.getByLabelText(/^Phone number/), '123')
+    await typeFast(user, screen.getByLabelText(/^Phone number/), '123')
     await submit(user)
     const brand = screen.getByLabelText(/^Brand name/)
     await waitFor(() => expect(document.activeElement).toBe(brand))
@@ -203,7 +204,7 @@ describe('the signup form', () => {
 
   it('clears the typed password when the session ends', async () => {
     const user = await open()
-    await user.type(screen.getByLabelText(/^Password/), 'a-long-enough-password')
+    await typeFast(user, screen.getByLabelText(/^Password/), 'a-long-enough-password')
     clearSensitiveState()
     await waitFor(() => expect((screen.getByLabelText(/^Password/) as HTMLInputElement).value).toBe(''))
   })
