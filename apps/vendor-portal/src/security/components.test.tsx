@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { typeFast } from '../test/typeFast'
 import { describe, expect, it, vi } from 'vitest'
 import { PasswordField } from './PasswordField'
 import { SafeImage } from './SafeImage'
@@ -104,7 +105,7 @@ describe('PasswordField', () => {
 
   it('is a password input the user can type into', async () => {
     render(<PasswordField purpose="current" label="Password" />)
-    await userEvent.type(screen.getByLabelText('Password'), 'hunter2')
+    await typeFast(userEvent, screen.getByLabelText('Password'), 'hunter2')
     expect((screen.getByLabelText('Password') as HTMLInputElement).value).toBe('hunter2')
   })
 })
