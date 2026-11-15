@@ -2,19 +2,26 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { RouterProvider, createMemoryRouter } from 'react-router'
-import { routes } from '../app/routes'
+import type { RouteObject } from 'react-router'
+import { routes as appRoutes } from '../app/routes'
 import { AuthProvider } from '../session/AuthProvider'
+import { ConfirmProvider } from '../ui/ConfirmDialog'
+import { ToastProvider } from '../ui/Toast'
 import type { SessionStore } from '../session/store'
 import { apiError, makeStore } from '../session/testing'
 
 /** Opens a route as a signed-out visitor, with the real routes, session guards and API client. */
-export function renderRoute(path: string, options: { strict?: boolean; store?: SessionStore } = {}) {
+export function renderRoute(path: string, options: { strict?: boolean; store?: SessionStore; routes?: RouteObject[] } = {}) {
   const store = options.store ?? makeStore({ refresh: async () => { throw apiError(401, 'unauthorized') } }).store
-  const router = createMemoryRouter(routes, { initialEntries: [path] })
+  const router = createMemoryRouter(options.routes ?? appRoutes, { initialEntries: [path] })
   const tree = (
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}>
       <AuthProvider store={store}>
-        <RouterProvider router={router} />
+        <ToastProvider>
+          <ConfirmProvider>
+            <RouterProvider router={router} />
+          </ConfirmProvider>
+        </ToastProvider>
       </AuthProvider>
     </QueryClientProvider>
   )

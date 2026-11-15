@@ -4,7 +4,7 @@ import { RouterProvider, createMemoryRouter } from 'react-router'
 import { describe, expect, it } from 'vitest'
 import { AuthProvider } from '../session/AuthProvider'
 import { apiError, makeStore, sessionBody } from '../session/testing'
-import { portalRoutes, routes } from './routes'
+import { portalRoutes, routes, screens } from './routes'
 
 /** Opens a path as a signed-in owner, or as a signed-out visitor for the public screens. */
 function open(path: string, signedIn = true) {
@@ -49,6 +49,10 @@ describe('routes', () => {
     expect(access['/set-password']).toBe('open')
     expect(access['/verify-email']).toBe('open')
     expect(portalRoutes.every((route) => ['public', 'open', 'authenticated', 'owner'].includes(route.access))).toBe(true)
+  })
+
+  it('has a screen for every route, so every section of the roadmap list is reachable from the nav', () => {
+    expect(Object.keys(screens).sort()).toEqual(portalRoutes.map((route) => route.path).sort())
   })
 
   it('has no duplicate paths', () => {

@@ -231,3 +231,47 @@ full navigation.
   "return" to the page the user left (`signedOutByUser`). An expired session does return.
 - **Password fields** (`PasswordField`) have a show/hide toggle, the right `autocomplete`, and never
   block pasting.
+
+## The dashboard shell
+
+`src/app/shell/` is the frame of every signed-in screen; `src/ui/` holds the patterns every screen
+shares. A screen added later should use these and nothing of its own for the same job.
+
+**Frame.** A skip link, an app bar (vendor name, account menu with Sign out), the section navigation
+and the page in `<main id="main-content">`. From the `md` breakpoint (900 px) the navigation is always
+visible; below it (phones and tablets in portrait) it sits in a drawer behind a menu button, which
+closes when a section is chosen or on Escape. Team is shown to owners only (`nav.ts`). A `pending`
+vendor sees the review banner (`StatusBanner`). An unknown address shows "Page not found" inside the
+frame, and each page is guarded by `SectionBoundary`, so a page that throws leaves the navigation
+standing and clears when another section is opened.
+
+**Adding a screen.** Put its path in `portalRoutes.ts` (with who may open it), its page in `src/pages/`
+as a default export, and lazy-load it in `routes.tsx` (`screens` must cover every route; a test checks).
+The shell shows a page skeleton while its code loads.
+
+**Shared patterns** (`import … from '../ui'`):
+
+| Component | Use |
+| --- | --- |
+| `PageHeader` | The page's one `h1` (also its title), description and actions. After a navigation it takes focus. |
+| `LoadingState`, `PageSkeleton` | Anything loading; announced politely. |
+| `EmptyState` | Nothing here yet: say so, and offer the next step. |
+| `ErrorState` | A failed call: a plain sentence, "Try again", the request id for support. Pass the error; never print `error.message` raw. |
+| `useToast()` | `success`, `error`, `info` messages for something that just happened. |
+| `useConfirm()` | `if (await confirm({ title, message, destructive: true })) …` before anything that cannot be undone. |
+
+**Accessibility baseline.** Skip link; one `h1` per page (a test visits every section); focus moves to
+the heading on navigation (but not on the first load); the page title is set per screen; every
+focusable element has a visible focus ring (`Providers`).
+
+### Manual responsive checklist
+
+Tests cover the navigation behaviour at 320, 768 and 1280 px (`test/viewport.ts` pretends the window
+width; jsdom has no layout), so check the look by hand before a release, in a real browser at each width:
+
+- [ ] **320 px:** no horizontal scrolling on any section; the menu button opens the drawer, a link closes it; the app bar shows the vendor name (truncated) and Account; cards are one column; buttons and links are at least 44 px tall.
+- [ ] **768 px:** the menu button is still used (the navigation is permanent from 900 px); cards in two columns.
+- [ ] **1280 px:** the navigation is always visible; cards in three columns; the page title is not obscured by the sticky app bar when navigating.
+- [ ] **Keyboard only** (no mouse), at each width: Tab reaches the skip link first and it works; every control can be reached and used; focus is always visible; after choosing a section focus is on its heading; Escape closes the drawer and the account menu.
+- [ ] **Zoom** to 200% and 400%: nothing is cut off or overlaps.
+- [ ] **A screen reader** announces the page title, the current section (`aria-current`), the loading states and the toasts.
