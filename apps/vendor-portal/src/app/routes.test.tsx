@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest'
 import { AuthProvider } from '../session/AuthProvider'
 import { apiError, makeStore, sessionBody } from '../session/testing'
 import { portalRoutes, routes, screens } from './routes'
+import { ConfirmProvider } from '../ui/ConfirmDialog'
+import { ToastProvider } from '../ui/Toast'
 
 /** Opens a path as a signed-in owner, or as a signed-out visitor for the public screens. */
 function open(path: string, signedIn = true) {
@@ -18,7 +20,11 @@ function open(path: string, signedIn = true) {
   render(
     <QueryClientProvider client={new QueryClient()}>
       <AuthProvider store={store}>
-        <RouterProvider router={router} />
+        <ToastProvider>
+          <ConfirmProvider>
+            <RouterProvider router={router} />
+          </ConfirmProvider>
+        </ToastProvider>
       </AuthProvider>
     </QueryClientProvider>,
   )
