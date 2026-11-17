@@ -719,6 +719,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/vendor/submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Submissions
+         * @description Everything the vendor submitted for review and what came of it, newest first. A rejected
+         *     version carries the admin's reason. Any active user of the vendor can read it.
+         */
+        get: operations["list_submissions_v1_vendor_submissions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/vendor/users": {
         parameters: {
             query?: never;
@@ -978,6 +999,7 @@ export interface components {
             price_min_paise: number;
             /** Published At */
             published_at: string | null;
+            review: components["schemas"]["BrandReviewOut"] | null;
             /** State */
             state: string;
             /** Submitted At */
@@ -993,6 +1015,23 @@ export interface components {
             version: number;
             /** Website Url */
             website_url: string | null;
+        };
+        /**
+         * BrandReviewOut
+         * @description What happened to this version when an admin looked at it. Never says who decided.
+         */
+        BrandReviewOut: {
+            /** Decided At */
+            decided_at: string | null;
+            /** Reason */
+            reason: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
         };
         /** ChangeOut */
         ChangeOut: {
@@ -1100,6 +1139,7 @@ export interface components {
             price_min_paise: number;
             /** Published At */
             published_at: string | null;
+            review: components["schemas"]["BrandReviewOut"] | null;
             /** State */
             state: string;
             /** Submitted At */
@@ -1708,6 +1748,81 @@ export interface components {
             reason: string | null;
             /** To Status */
             to_status: string;
+        };
+        /**
+         * SubmissionOut
+         * @description One review of something the vendor submitted. There is no reviewer in it: who decided
+         *     is private to the admins.
+         */
+        SubmissionOut: {
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Reason */
+            reason: string | null;
+            /** Sku */
+            sku: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "approved" | "rejected" | "withdrawn";
+            /**
+             * Subject
+             * @enum {string}
+             */
+            subject: "brand_profile" | "product";
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
+            /** Title */
+            title: string | null;
+            /** Version */
+            version: number;
+        };
+        /**
+         * SubmissionPageOut
+         * @example {
+         *       "items": [
+         *         {
+         *           "decided_at": "2026-11-11T12:00:00Z",
+         *           "id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
+         *           "reason": "The photos are too dark to see the print.",
+         *           "sku": "KRT-001",
+         *           "status": "rejected",
+         *           "subject": "product",
+         *           "submitted_at": "2026-11-10T09:30:00Z",
+         *           "title": "Indigo block-print kurta",
+         *           "version": 2
+         *         },
+         *         {
+         *           "id": "7a1c2d3e-4b5f-4a6b-8c7d-9e0f1a2b3c4d",
+         *           "status": "pending",
+         *           "subject": "brand_profile",
+         *           "submitted_at": "2026-11-09T08:00:00Z",
+         *           "version": 3
+         *         }
+         *       ],
+         *       "limit": 25,
+         *       "offset": 0,
+         *       "total": 2
+         *     }
+         */
+        SubmissionPageOut: {
+            /** Items */
+            items: components["schemas"]["SubmissionOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
         };
         /** SummaryOut */
         SummaryOut: {
@@ -3069,6 +3184,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProductOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_submissions_v1_vendor_submissions_get: {
+        parameters: {
+            query?: {
+                /** @description Only reviews in this status; `all` (the default) lists every one. */
+                status?: "pending" | "approved" | "rejected" | "withdrawn" | "all";
+                /** @description Only the brand page's reviews, or only the products'. */
+                subject?: ("brand_profile" | "product") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmissionPageOut"];
                 };
             };
             /** @description Validation Error */
