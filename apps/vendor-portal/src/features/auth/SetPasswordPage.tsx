@@ -1,12 +1,13 @@
 import { Alert, Box, Button, Link as MuiLink, Stack, Typography } from '@mui/material'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router'
+import { Link, useLocation, useNavigate } from 'react-router'
 import { api } from '../../api'
 import { ApiError } from '../../api/errors'
 import { usePageTitle } from '../../hooks/usePageTitle'
 import { PasswordField } from '../../security/PasswordField'
 import { registerSensitiveReset } from '../../security/sensitiveState'
 import { friendlyError } from '../errors'
+import { linkToken } from '../linkToken'
 import { LIMITS, PASSWORD_MIN_LENGTH } from '../signup/rules'
 import { useCountdown } from '../signup/useCountdown'
 import { CountdownNotice } from './CountdownNotice'
@@ -14,27 +15,29 @@ import { CountdownNotice } from './CountdownNotice'
 type Stage = 'form' | 'saved' | 'invalid'
 
 /**
- * `/set-password?token=…`: where an emailed invite or reset link lands. The token is read once into
+ * Where an emailed invite or reset link lands: `/accept-invite#token=…` or `/reset-password#token=…`
+ * (vendor-api's links, with the token in the fragment), or `/set-password`. The token is read once into
  * memory and removed from the address bar and the history at once; it is a credential until spent.
  */
 export function SetPasswordPage() {
   usePageTitle('Set your password')
-  const [params] = useSearchParams()
+  const location = useLocation()
   const navigate = useNavigate()
-  const [token] = useState(() => params.get('token')?.trim() ?? '')
+  const [token] = useState(() => linkToken(location))
   const [stage, setStage] = useState<Stage>(token === '' ? 'invalid' : 'form')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [errors, setErrors] = useState<{ password?: string; confirm?: string }>({})
   const [formError, setFormError] = useState<string | undefined>()
   const countdown = useCountdown()
-  const setPasswordCall = api.useMutation('post', '/v1/auth/set-password')
+  const setPasswordCall = api.useMutation('post', '/v1/auth/set-password', { gcTime: 0 })
   const passwordInput = useRef<HTMLInputElement>(null)
   const confirmInput = useRef<HTMLInputElement>(null)
   const heading = useRef<HTMLHeadingElement>(null)
 
   useEffect(() => {
-    if (token !== '') void navigate('/set-password', { replace: true })
+    // The same path, so this route (and the token held in its state) stays mounted.
+    if (token !== '') void navigate(location.pathname, { replace: true })
   }, []) // once per page load
 
   useEffect(
@@ -88,6 +91,9 @@ export function SetPasswordPage() {
       const friendly = friendlyError(caught)
       setFormError(friendly.message)
       if (friendly.retryAfter) countdown.start(friendly.retryAfter)
+    } finally {
+      // A finished call keeps no copy of the token and the password (the mutation's variables).
+      setPasswordCall.reset()
     }
   }
 

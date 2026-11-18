@@ -594,3 +594,32 @@ def test_outbox_events_are_on_by_default_and_cannot_be_off_while_sending_is_on()
     assert make(**sending).central_publishing_enabled is True
     with pytest.raises(ValidationError, match="OUTBOX_EVENTS_ENABLED"):
         make(outbox_events_enabled=False, **sending)
+
+
+# --- A refusal never repeats what it was given --------------------------------------------------
+
+
+def test_a_rejected_value_is_not_printed_so_a_password_does_not_reach_the_log() -> None:
+    password = "Sup3rSecretPassw0rd"
+    with pytest.raises(ValidationError) as exc:
+        # `postgres://` for `postgresql://`: a common slip, and the URL holds a password.
+        make(database_url=f"postgres://shazlo:{password}@db.internal:5432/vendor")
+    text = str(exc.value)
+    assert "database_url" in text and "must start with" in text  # the name and the reason
+    assert "Sup3rS" not in text and "db.internal" not in text
+
+
+def test_a_refusal_across_several_settings_does_not_print_any_of_them() -> None:
+    secret = "Hunter2-central-secret-0123456789abcdef"
+    with pytest.raises(ValidationError) as exc:
+        make(
+            central_publishing_enabled=True,
+            central_api_url="https://shazlo:UrlPassw0rd@central.example",
+            central_signing_key_id="k1",
+            central_signing_secret=secret,
+            database_url="postgresql://shazlo:DbPassw0rd@db.internal/vendor",
+        )
+    text = str(exc.value)
+    assert "CENTRAL_API_URL must not hold credentials" in text
+    for private in ("UrlPassw0rd", "DbPassw0rd", secret, "db.internal"):
+        assert private not in text

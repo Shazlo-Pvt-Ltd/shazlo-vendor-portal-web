@@ -20,6 +20,8 @@ const screens: Record<string, ReactNode> = {
   '/login': <LoginPage />,
   '/forgot-password': <ForgotPasswordPage />,
   '/set-password': <SetPasswordPage />,
+  '/reset-password': <SetPasswordPage />,
+  '/accept-invite': <SetPasswordPage />,
   '/signup': <SignupPage />,
   '/verify-email': <VerifyEmailPage />,
 }

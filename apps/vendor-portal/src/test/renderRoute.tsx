@@ -8,11 +8,16 @@ import type { SessionStore } from '../session/store'
 import { apiError, makeStore } from '../session/testing'
 
 /** Opens a route as a signed-out visitor, with the real routes, session guards and API client. */
-export function renderRoute(path: string, options: { strict?: boolean; store?: SessionStore } = {}) {
+export function renderRoute(
+  path: string,
+  options: { strict?: boolean; store?: SessionStore; queryClient?: QueryClient } = {},
+) {
   const store = options.store ?? makeStore({ refresh: async () => { throw apiError(401, 'unauthorized') } }).store
   const router = createMemoryRouter(routes, { initialEntries: [path] })
+  const queryClient =
+    options.queryClient ?? new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   const tree = (
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}>
+    <QueryClientProvider client={queryClient}>
       <AuthProvider store={store}>
         <RouterProvider router={router} />
       </AuthProvider>

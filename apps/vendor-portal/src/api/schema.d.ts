@@ -85,6 +85,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/outbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Outbox
+         * @description Outbox events, paged, without their bodies. Newest first; with no `status` filter the
+         *     `dead` ones come first, since they need a person.
+         */
+        get: operations["list_outbox_v1_admin_outbox_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/outbox/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Stats
+         * @description How many events are `pending`, `sending` and `dead`, and how long the oldest due one has
+         *     waited (also on `/ready`, for monitoring).
+         */
+        get: operations["get_stats_v1_admin_outbox_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/outbox/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Event
+         * @description One event with its body and what happened to it.
+         */
+        get: operations["get_event_v1_admin_outbox__event_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/outbox/{event_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Event
+         * @description Puts a `dead` event back to `pending` (its attempts start again, and the log records the
+         *     admin). The worker sends it in its turn: it never overtakes an earlier version of the same
+         *     aggregate that is still waiting. `409 invalid_outbox_status` for any other status.
+         */
+        post: operations["retry_event_v1_admin_outbox__event_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/reviews": {
         parameters: {
             query?: never;
@@ -719,6 +803,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/vendor/submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Submissions
+         * @description Everything the vendor submitted for review and what came of it, newest first. A rejected
+         *     version carries the admin's reason. Any active user of the vendor can read it.
+         */
+        get: operations["list_submissions_v1_vendor_submissions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/vendor/users": {
         parameters: {
             query?: never;
@@ -978,6 +1083,7 @@ export interface components {
             price_min_paise: number;
             /** Published At */
             published_at: string | null;
+            review: components["schemas"]["BrandReviewOut"] | null;
             /** State */
             state: string;
             /** Submitted At */
@@ -993,6 +1099,23 @@ export interface components {
             version: number;
             /** Website Url */
             website_url: string | null;
+        };
+        /**
+         * BrandReviewOut
+         * @description What happened to this version when an admin looked at it. Never says who decided.
+         */
+        BrandReviewOut: {
+            /** Decided At */
+            decided_at: string | null;
+            /** Reason */
+            reason: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
         };
         /** ChangeOut */
         ChangeOut: {
@@ -1100,6 +1223,7 @@ export interface components {
             price_min_paise: number;
             /** Published At */
             published_at: string | null;
+            review: components["schemas"]["BrandReviewOut"] | null;
             /** State */
             state: string;
             /** Submitted At */
@@ -1247,6 +1371,23 @@ export interface components {
             /** Email */
             email: string;
         };
+        /** LogEntryOut */
+        LogEntryOut: {
+            /** Actor Id */
+            actor_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "attempt" | "retry";
+            /** Outcome */
+            outcome: string;
+        };
         /** LoginRequest */
         LoginRequest: {
             /** Email */
@@ -1271,6 +1412,184 @@ export interface components {
              * @default accepted
              */
             status: string;
+        };
+        /**
+         * OutboxEventDetailOut
+         * @example {
+         *       "aggregate_id": "9b1c2d3e-4f50-4a61-8b72-c3d4e5f60718",
+         *       "aggregate_type": "product",
+         *       "attempts": 8,
+         *       "created_at": "2026-11-08T09:00:00Z",
+         *       "event_type": "product.published",
+         *       "history": [
+         *         {
+         *           "created_at": "2026-11-10T09:29:00Z",
+         *           "kind": "attempt",
+         *           "outcome": "failed for good: HTTP 503 (after 8 attempts)"
+         *         },
+         *         {
+         *           "actor_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+         *           "created_at": "2026-11-11T08:00:00Z",
+         *           "kind": "retry",
+         *           "outcome": "put back by an admin"
+         *         }
+         *       ],
+         *       "id": "d2c8a7b1-3e5f-4092-8b4c-6f9e1d8b2c35",
+         *       "last_error": "HTTP 503 (after 8 attempts)",
+         *       "next_attempt_at": "2026-11-10T09:30:00Z",
+         *       "payload": {
+         *         "sku": "KURTA-001",
+         *         "title": "Block-print cotton kurta"
+         *       },
+         *       "status": "dead",
+         *       "vendor_id": "3f0c8a52-6b0e-4a8b-9c1d-2a7d5e9b1c10",
+         *       "version": 2
+         *     }
+         */
+        OutboxEventDetailOut: {
+            /**
+             * Aggregate Id
+             * Format: uuid
+             */
+            aggregate_id: string;
+            /** Aggregate Type */
+            aggregate_type: string;
+            /** Attempts */
+            attempts: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Event Type */
+            event_type: string;
+            /** History */
+            history: components["schemas"]["LogEntryOut"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error: string | null;
+            /** Locked At */
+            locked_at: string | null;
+            /**
+             * Next Attempt At
+             * Format: date-time
+             */
+            next_attempt_at: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Sent At */
+            sent_at: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Vendor Id
+             * Format: uuid
+             */
+            vendor_id: string;
+            /** Version */
+            version: number;
+        };
+        /** OutboxEventOut */
+        OutboxEventOut: {
+            /**
+             * Aggregate Id
+             * Format: uuid
+             */
+            aggregate_id: string;
+            /** Aggregate Type */
+            aggregate_type: string;
+            /** Attempts */
+            attempts: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Event Type */
+            event_type: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error: string | null;
+            /** Locked At */
+            locked_at: string | null;
+            /**
+             * Next Attempt At
+             * Format: date-time
+             */
+            next_attempt_at: string;
+            /** Sent At */
+            sent_at: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Vendor Id
+             * Format: uuid
+             */
+            vendor_id: string;
+            /** Version */
+            version: number;
+        };
+        /**
+         * OutboxPageOut
+         * @example {
+         *       "items": [
+         *         {
+         *           "aggregate_id": "9b1c2d3e-4f50-4a61-8b72-c3d4e5f60718",
+         *           "aggregate_type": "product",
+         *           "attempts": 8,
+         *           "created_at": "2026-11-08T09:00:00Z",
+         *           "event_type": "product.published",
+         *           "id": "d2c8a7b1-3e5f-4092-8b4c-6f9e1d8b2c35",
+         *           "last_error": "HTTP 503 (after 8 attempts)",
+         *           "next_attempt_at": "2026-11-10T09:30:00Z",
+         *           "status": "dead",
+         *           "vendor_id": "3f0c8a52-6b0e-4a8b-9c1d-2a7d5e9b1c10",
+         *           "version": 2
+         *         }
+         *       ],
+         *       "limit": 25,
+         *       "offset": 0,
+         *       "total": 1
+         *     }
+         */
+        OutboxPageOut: {
+            /** Items */
+            items: components["schemas"]["OutboxEventOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * OutboxStatsOut
+         * @example {
+         *       "dead": 1,
+         *       "oldest_due_age_seconds": 42,
+         *       "pending": 3,
+         *       "sending": 0
+         *     }
+         */
+        OutboxStatsOut: {
+            /** Dead */
+            dead: number;
+            /** Oldest Due Age Seconds */
+            oldest_due_age_seconds: number | null;
+            /** Pending */
+            pending: number;
+            /** Sending */
+            sending: number;
         };
         /**
          * ProductContentBody
@@ -1709,6 +2028,81 @@ export interface components {
             /** To Status */
             to_status: string;
         };
+        /**
+         * SubmissionOut
+         * @description One review of something the vendor submitted. There is no reviewer in it: who decided
+         *     is private to the admins.
+         */
+        SubmissionOut: {
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Reason */
+            reason: string | null;
+            /** Sku */
+            sku: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "approved" | "rejected" | "withdrawn";
+            /**
+             * Subject
+             * @enum {string}
+             */
+            subject: "brand_profile" | "product";
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
+            /** Title */
+            title: string | null;
+            /** Version */
+            version: number;
+        };
+        /**
+         * SubmissionPageOut
+         * @example {
+         *       "items": [
+         *         {
+         *           "decided_at": "2026-11-11T12:00:00Z",
+         *           "id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
+         *           "reason": "The photos are too dark to see the print.",
+         *           "sku": "KRT-001",
+         *           "status": "rejected",
+         *           "subject": "product",
+         *           "submitted_at": "2026-11-10T09:30:00Z",
+         *           "title": "Indigo block-print kurta",
+         *           "version": 2
+         *         },
+         *         {
+         *           "id": "7a1c2d3e-4b5f-4a6b-8c7d-9e0f1a2b3c4d",
+         *           "status": "pending",
+         *           "subject": "brand_profile",
+         *           "submitted_at": "2026-11-09T08:00:00Z",
+         *           "version": 3
+         *         }
+         *       ],
+         *       "limit": 25,
+         *       "offset": 0,
+         *       "total": 2
+         *     }
+         */
+        SubmissionPageOut: {
+            /** Items */
+            items: components["schemas"]["SubmissionOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** SummaryOut */
         SummaryOut: {
             /** Created */
@@ -2038,6 +2432,124 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminMe"];
+                };
+            };
+        };
+    };
+    list_outbox_v1_admin_outbox_get: {
+        parameters: {
+            query?: {
+                /** @description Only events in this status */
+                status?: ("pending" | "sending" | "sent" | "dead") | null;
+                aggregate_type?: ("brand_profile" | "product" | "vendor") | null;
+                vendor_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboxPageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_stats_v1_admin_outbox_stats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboxStatsOut"];
+                };
+            };
+        };
+    };
+    get_event_v1_admin_outbox__event_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboxEventDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_event_v1_admin_outbox__event_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboxEventDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -3069,6 +3581,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProductOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_submissions_v1_vendor_submissions_get: {
+        parameters: {
+            query?: {
+                /** @description Only reviews in this status; `all` (the default) lists every one. */
+                status?: "pending" | "approved" | "rejected" | "withdrawn" | "all";
+                /** @description Only the brand page's reviews, or only the products'. */
+                subject?: ("brand_profile" | "product") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmissionPageOut"];
                 };
             };
             /** @description Validation Error */
