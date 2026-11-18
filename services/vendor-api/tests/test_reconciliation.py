@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from vendor_api import cli
 from vendor_api.core.settings import Settings
 from vendor_api.db.models import OutboxEvent, Product, Vendor, VendorStatusEvent
+from vendor_api.services import publisher
 from vendor_api.services.outbox import OutboxWriter
 from vendor_api.services.publisher import CentralClient, CentralError
 from vendor_api.services.reconciliation import (
@@ -182,7 +183,7 @@ def test_reconcile_at_refuses_anything_else(settings: Settings, value: str) -> N
 # --- Asking the central app (no database) --------------------------------------------------------
 
 
-def versions_client(handler: Callable[[httpx.Request], httpx.Response]) -> CentralClient:
+def versions_client(handler: Callable[[httpx.Request], Any]) -> CentralClient:
     return CentralClient(
         "https://central.test",
         RequestSigner(KEY, clock=lambda: 1_700_000_000),
@@ -238,6 +239,27 @@ async def test_the_versions_are_read_page_by_page_with_a_signed_empty_body() -> 
 async def test_an_unusable_answer_stops_the_run_with_a_clear_error(answer: httpx.Response) -> None:
     client = versions_client(lambda request: answer)
     with pytest.raises(CentralError):
+        await client.versions("vendor")
+    await client.close()
+
+
+async def test_a_versions_answer_that_is_too_large_or_too_slow_is_a_central_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(publisher, "MAX_VERSIONS_BYTES", 100)
+    client = versions_client(lambda request: httpx.Response(200, content=b"x" * 101))
+    with pytest.raises(CentralError, match="too large"):
+        await client.versions("vendor")
+    await client.close()
+
+    monkeypatch.setattr(publisher, "SEND_DEADLINE", 0.05)
+
+    async def slow(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(1)
+        return httpx.Response(200, json={"items": [], "next_cursor": None})
+
+    client = versions_client(slow)
+    with pytest.raises(CentralError, match="in time"):
         await client.versions("vendor")
     await client.close()
 
@@ -606,6 +628,66 @@ async def test_a_full_outbox_stops_the_run_and_the_next_one_carries_on(
     assert len(central.held["product"]) == 5
     done = await reconciler(session, central).reconcile()
     assert done.total == 0
+
+
+# --- A resync waits for a full outbox, a reconciliation does not ---------------------------------
+
+
+def no_sessions() -> Any:
+    raise AssertionError("these tests never open a session")
+
+
+class ScriptedOutbox(Reconciler):
+    """A reconciler whose outbox backlog is scripted (the last number repeats) and whose chunks
+    write nothing: only the pacing is under test, so no database is needed."""
+
+    def __init__(self, backlogs: list[int], **options: Any) -> None:
+        super().__init__(no_sessions, OutboxWriter(True), pause=0, chunk=2, **options)
+        self.backlogs = backlogs
+        self.looked = 0
+        self.chunks: list[list[uuid.UUID]] = []
+
+    async def _backlog(self) -> int:
+        self.looked += 1
+        return self.backlogs[min(self.looked, len(self.backlogs)) - 1]
+
+    async def _repair_chunk(
+        self,
+        kind: str,
+        ids: list[uuid.UUID],
+        held: dict[uuid.UUID, Held] | None,
+        report: Report,
+    ) -> None:
+        self.chunks.append(ids)
+
+
+async def test_a_resync_waits_for_the_outbox_to_drain_instead_of_stopping() -> None:
+    # A catalog bigger than the limit: stopping would send the next run back to the same first
+    # aggregates, since a resync re-sends whatever it is asked to.
+    run = ScriptedOutbox([5, 5, 4, 1], max_pending=3, wait_for_backlog=True, backlog_poll=0.001)
+    report = Report()
+    ids = [ident() for _ in range(3)]
+    assert await run._repair("product", ids, None, report)
+    assert not report.stopped_for_backlog
+    assert run.chunks == [ids[:2], ids[2:]]
+
+
+async def test_a_resync_gives_up_when_nothing_is_delivering() -> None:
+    run = ScriptedOutbox(
+        [5], max_pending=3, wait_for_backlog=True, backlog_poll=0.001, backlog_patience=0.003
+    )
+    report = Report()
+    assert not await run._repair("product", [ident()], None, report)
+    assert report.stopped_for_backlog
+    assert run.chunks == []
+    assert run.looked == 4  # the first look, then three polls without it shrinking
+
+
+async def test_a_reconciliation_stops_at_once_on_a_full_outbox() -> None:
+    run = ScriptedOutbox([5], max_pending=3)
+    report = Report()
+    assert not await run._repair("product", [ident()], None, report)
+    assert (report.stopped_for_backlog, run.looked, run.chunks) == (True, 1, [])
 
 
 # --- Resync --------------------------------------------------------------------------------------

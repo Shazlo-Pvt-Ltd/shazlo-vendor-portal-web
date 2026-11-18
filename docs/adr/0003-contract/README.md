@@ -165,10 +165,12 @@ The producer sends events of **one aggregate one at a time, in version order**. 
 | Status | Meaning | Producer action |
 | --- | --- | --- |
 | `200` | `accepted`, `duplicate` or `stale` | Mark sent |
-| `400`, `401`, `409`, `413`, `422` | Permanent problem | Mark `dead` immediately and alert. After 5 consecutive `401` responses the producer pauses publishing (probably a key problem) |
+| `400`, `409`, `413`, `422` | Permanent problem | Mark `dead` immediately and alert |
+| `401` | The key is wrong, which says nothing about the event | Keep the event (pending, no attempt used up). After 5 consecutive `401` responses the producer pauses publishing and alerts, and tries one event now and then |
 | `408`, `429`, `5xx`, network error or timeout | Temporary | Retry with backoff |
+| Anything else (`403`, `404`, a redirect...) | Misconfiguration | Retry with backoff |
 
-`429` honours `Retry-After`. The producer's request timeout is 10 seconds.
+`429` honours `Retry-After`. The producer's request timeout is 10 seconds for each step and 30 seconds for the whole request, and it follows no redirects.
 
 ### Retries and the dead letter
 Delays after a failed attempt: 30 seconds, 2 minutes, 10 minutes, 1 hour, 6 hours, 12 hours, 24 hours, each with plus or minus 20% random jitter. After the 8th failed attempt (about two days) the event becomes `dead`: it stops retrying, raises an alert, and appears in the admin review screen with a **Retry** button. A dead event does not block later versions of the same aggregate, because those carry the full state.

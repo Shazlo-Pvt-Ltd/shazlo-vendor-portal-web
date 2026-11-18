@@ -1,7 +1,7 @@
 """the log of an outbox event: its attempts and an admin's retries
 
-Revision ID: 0009
-Revises: 0008
+Revision ID: 0010
+Revises: 0009
 Create Date: 2026-11-12
 
 `outbox_events` keeps where an event stands (the attempt count, the last error). This keeps what
@@ -16,8 +16,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0009"
-down_revision: str | None = "0008"
+revision: str = "0010"
+down_revision: str | None = "0009"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
