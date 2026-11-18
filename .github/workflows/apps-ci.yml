@@ -40,9 +40,10 @@ jobs:
           fi
           files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename')
           printf '%s\n' "$files"
-          # Unlisted paths run the web jobs. The contract tests read docs/adr/0003-contract.
+          # Unlisted paths run the web jobs. The contract tests read docs/adr/0003-contract, and the
+          # portal's generated API types are checked against services/vendor-api/openapi.json.
           web=$( {
-            printf '%s\n' "$files" | grep -E '^docs/adr/0003-contract/'
+            printf '%s\n' "$files" | grep -E '^docs/adr/0003-contract/|^services/vendor-api/openapi\.json$'
             printf '%s\n' "$files" | grep -Ev '^(services/|packages/py-|docker/|docs/)|^docker-compose\.yml$|^\.env\.example$|^\.github/workflows/(services-ci|codeql|footer_removal)\.yml$'
           } || true)
           deps=$(printf '%s\n' "$files" | grep -E '(^|/)package(-lock)?\.json$' || true)
@@ -89,6 +90,8 @@ jobs:
       - run: npm ci --prefix app --prefer-offline --no-audit --no-fund
       - run: npm ci --prefix backend --prefer-offline --no-audit --no-fund
       - run: npm run lint
+      # Fails when services/vendor-api/openapi.json changed and the portal's types were not regenerated.
+      - run: npm run api:check --workspace @shazlo/vendor-portal
       - run: npm run typecheck
       - name: Record tested source and environment
         run: |

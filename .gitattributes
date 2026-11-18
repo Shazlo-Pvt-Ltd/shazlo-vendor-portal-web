@@ -1,3 +1,7 @@
 # Shell scripts run inside Linux containers (the Postgres init script among them): keep LF in
 # the working tree on every OS, or bash chokes on the carriage return after "set -euo pipefail".
 *.sh text eol=lf
+
+# openapi-typescript writes LF. With core.autocrlf on Windows a CRLF checkout of the generated file
+# makes `npm run api:check` report stale types that are not stale.
+apps/vendor-portal/src/api/schema.d.ts text eol=lf
