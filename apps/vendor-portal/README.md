@@ -298,6 +298,24 @@ width; jsdom has no layout), so check the look by hand before a release, in a re
 - [ ] **Zoom** to 200% and 400%: nothing is cut off or overlaps.
 - [ ] **A screen reader** announces the page title, the current section (`aria-current`), the loading states and the toasts.
 
+## The products list
+
+`src/features/products/` is `/products`.
+
+- **Table on a wide screen, cards on a phone** (the same breakpoint as the navigation, 900 px), with title,
+  SKU, category, status chip, a "Changes pending" badge for an approved product being edited, and the date.
+  Every status is a word, so colour is never the only signal.
+- **Filters live in the address** (`?status=approved&category=kurtas&q=silk&page=2`): shareable, they survive a
+  reload, and the back button steps through them. Typing in the search boxes is debounced (300 ms) and
+  replaces the address entry instead of adding one per pause. Changing a filter goes back to page 1; an
+  invalid or hand-edited value is ignored (`filters.ts`). Archived products show only when the status filter asks.
+- **Delete says what it will do before it does it.** The server removes a product that was never submitted and
+  archives one that was (a live one goes off sale). The list does not say which, so `deleteOutcome` works it out:
+  approved or rejected means archived, in review means blocked, and for a draft it looks at the product's detail
+  (a later version, a submitted one or a live one means it was submitted). When it cannot tell it explains both.
+  A `409 product_in_review` that arrives anyway is explained too.
+- **Prefetch:** hovering or focusing a product's title warms its page.
+
 ## Uploading images
 
 `src/features/uploads/` is the one way to upload a brand logo, a banner or a product image.

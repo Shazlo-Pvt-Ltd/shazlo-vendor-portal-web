@@ -7,6 +7,8 @@ import { AuthProvider } from './AuthProvider'
 import { apiError, makeStore, sessionBody } from './testing'
 import type { SessionStore } from './store'
 import { NetworkError } from '../api/errors'
+import { ConfirmProvider } from '../ui/ConfirmDialog'
+import { ToastProvider } from '../ui/Toast'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -15,7 +17,11 @@ async function open(path: string, store: SessionStore) {
   render(
     <QueryClientProvider client={new QueryClient()}>
       <AuthProvider store={store}>
-        <RouterProvider router={router} />
+        <ToastProvider>
+          <ConfirmProvider>
+            <RouterProvider router={router} />
+          </ConfirmProvider>
+        </ToastProvider>
       </AuthProvider>
     </QueryClientProvider>,
   )
