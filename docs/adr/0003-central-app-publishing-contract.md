@@ -61,8 +61,12 @@ A replay inside the 60-second window is harmless because of the de-duplication. 
 | Result | Meaning | Action |
 | --- | --- | --- |
 | `200` | accepted, duplicate or stale | Mark `sent` |
-| `400`, `401`, `409`, `413`, `422` | Permanent | Mark `dead` at once and alert. Five consecutive `401` responses pause publishing |
+| `400`, `409`, `413`, `422` | Permanent | Mark `dead` at once and alert |
+| `401` | The key is wrong, which says nothing about the event | Back to `pending` without using up an attempt. Five consecutive `401` responses pause publishing and alert; one event is then tried now and then, and any other answer ends the pause |
 | `408`, `429`, `5xx`, timeout, network error | Temporary | Retry |
+| Anything else (`403`, `404`, a redirect...) | A configuration problem a person can fix | Retry, so the event survives until they do |
+
+A request has one deadline of 30 seconds, answer included (a timeout on each step is not enough: an answer that keeps arriving a little at a time never runs out), and redirects are not followed.
 
 Backoff after each failure: 30 s, 2 min, 10 min, 1 h, 6 h, 12 h, 24 h, each with plus or minus 20% jitter. After the 8th failed attempt (about two days) the event becomes `dead`: it is listed in the admin review screen with a **Retry** button (Phase 7). A dead event does not block newer versions of the same aggregate, because those carry the full state.
 
@@ -82,6 +86,7 @@ CREATE TABLE outbox_events (
   attempts         integer     NOT NULL DEFAULT 0,
   next_attempt_at  timestamptz NOT NULL DEFAULT now(),
   locked_at        timestamptz,
+  claim_token      uuid,                             -- who holds a 'sending' row
   last_error       text,
   created_at       timestamptz NOT NULL DEFAULT now(),
   sent_at          timestamptz,
@@ -94,7 +99,8 @@ The publisher worker claims due rows with `FOR UPDATE SKIP LOCKED`, so several w
 
 ```sql
 UPDATE outbox_events o
-SET status = 'sending', locked_at = now(), attempts = attempts + 1
+SET status = 'sending', locked_at = now(), claim_token = gen_random_uuid(),
+    attempts = attempts + 1
 WHERE o.id IN (
   SELECT d.id
   FROM outbox_events d
@@ -114,7 +120,7 @@ WHERE o.id IN (
 RETURNING o.*;
 ```
 
-A row stuck in `sending` for more than 2 minutes (a crashed worker) is reset to `pending` by a sweeper. Rows with `status = 'sent'` are kept for 30 days for audit and then removed.
+A row stuck in `sending` for more than 2 minutes (a crashed worker) is reset to `pending` by a sweeper. A worker records the result of a request only while the row still carries the `claim_token` it claimed it with, so a worker that is late cannot overwrite a row the sweeper gave to another one. Rows with `status = 'sent'` are kept for 30 days for audit and then removed, **except the latest row of each aggregate**: the writer reads it to know what the central app holds (whether a withdrawal is due, what to hide or show again after a suspension, and which version comes next, which for a brand page exists only in the outbox), so it must outlive the retention period.
 
 ### 6. Reconciliation
 
