@@ -1,13 +1,13 @@
 # vendor-api
 
-FastAPI service for vendors, brand profiles, products, assets, reviews and publishing to the central app. See the [roadmap](../../docs/ROADMAP.md) (Phases 2 to 4), [ADR 0009](../../docs/adr/0009-auth-model.md) for the auth model, [ADR 0010](../../docs/adr/0010-shared-security-package.md) for what it shares with identity-api, and the [key-rotation runbook](../../docs/runbooks/jwt-key-rotation.md).
+FastAPI service for vendors, brand profiles, products, assets, reviews and publishing to the central app. See the [roadmap](../../docs/ROADMAP.md) (Phases 2 to 4, all delivered), [ADR 0009](../../docs/adr/0009-auth-model.md) for the auth model, [ADR 0010](../../docs/adr/0010-shared-security-package.md) for what it shares with identity-api, [ADR 0003](../../docs/adr/0003-central-app-publishing-contract.md) for publishing, and the runbooks: [rotate the JWT signing key](../../docs/runbooks/jwt-key-rotation.md), [rotate the central-app signing key](../../docs/runbooks/central-api-key-rotation.md) and [run and repair publishing](../../docs/runbooks/central-publishing.md).
 
-## What it does today (Phase 3, and Phase 4 under way)
+## What it does today (Phases 2 to 4)
 
 - **Vendor accounts:** signup with email verification, login, refresh (rotating tokens with reuse detection), logout, change-password, forgot and set password.
 - **A team per vendor:** the owner invites staff, lists, disables and enables them; invites and resets go by email.
 - **Vendor-scoped data isolation**, with helpers and tests that fail when a route or table skips the rule.
-- **Admin API** (`/v1/admin/*`): accepts only identity-api tokens, verified through its JWKS. The review queue is the first part of it.
+- **Admin API** (`/v1/admin/*`): accepts only identity-api tokens, verified through its JWKS. It serves the review queue and decisions, vendor accounts and the outbox.
 - **Its own tokens and keys:** vendor-api signs vendor tokens with its own key and serves its own JWKS.
 - **The schema** for vendors, users, tokens, brand profiles, products (identity and revisions), assets, reviews and the outbox.
 - **A brand page per vendor:** edit a draft, submit it for review, read the published version.
@@ -16,7 +16,7 @@ FastAPI service for vendors, brand profiles, products, assets, reviews and publi
 - **Review:** a queue for reviewers with the exact fields that changed, approve and reject (a reason is required) with an audit trail.
 - **What happened to what I submitted:** every brand page version carries its review (status, reason, times), and one call lists the vendor's reviews with the admin's reasons, never who decided.
 - **Vendor accounts:** approve, reject and suspend, with sessions ended at once and an email to the vendor.
-- **Central-app events (Phase 4):** every approval writes its contract-checked event to the outbox in the same transaction, and so do archiving a live product and suspending, rejecting or reinstating a vendor (what shoppers stop or start seeing again); requests to the central app are HMAC-signed. Sending the events is not built yet.
+- **Central-app publishing (Phase 4):** every approval writes its contract-checked event to the outbox in the same transaction, and so do archiving a live product and suspending, rejecting or reinstating a vendor (what shoppers stop or start seeing again). A worker (`python -m vendor_api.worker`, the `vendor-worker` compose service) sends the events with HMAC-signed requests, retries with backoff and marks an event `dead` after the 8th failed attempt; it also reconciles with the central app every night, and `python -m vendor_api.cli resync` re-sends the current state on demand. Admins can find, read and retry events through `/v1/admin/outbox`.
 
 Each part is described below. `tests/test_e2e_catalog.py` walks the whole flow against Postgres and Redis, and [Try the review flow](#try-the-review-flow-locally) does it by hand.
 
@@ -96,7 +96,7 @@ The live reference is the OpenAPI document at <http://localhost:8002/docs> (dev;
 | Keys | `GET /.well-known/jwks.json` | anyone |
 | Vendor auth | `POST /v1/auth/signup`, `verify-email`, `resend-verification`, `login`, `refresh`, `logout`, `change-password`, `forgot-password`, `set-password` | anyone, or a vendor token for `change-password` |
 | Vendor | `GET /v1/vendor/me`; `GET`/`PUT /v1/vendor/brand-profile`, `POST /v1/vendor/brand-profile/submit`, `GET /v1/vendor/brand-profile/published`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only); `GET`/`POST /v1/vendor/products`, `GET`/`PUT`/`DELETE /v1/vendor/products/{id}`, `POST /v1/vendor/products/{id}/submit`; `POST /v1/vendor/assets/sign`, `POST /v1/vendor/assets`; `POST /v1/vendor/products/import`, `GET /v1/vendor/products/import/template`; `GET /v1/vendor/submissions` | vendor-api tokens only |
-| Admin | `GET /v1/admin/me`, `GET /v1/admin/reviews`, `GET /v1/admin/reviews/{id}`, `GET /v1/admin/vendors`, `GET /v1/admin/vendors/{id}`, `POST /v1/admin/vendors/{id}/approve`, `POST /v1/admin/vendors/{id}/reject`, `POST /v1/admin/vendors/{id}/suspend`, `POST /v1/admin/reviews/{id}/approve`, `POST /v1/admin/reviews/{id}/reject` | identity-api tokens only (`vendor_reviewer` or `super_admin`) |
+| Admin | `GET /v1/admin/me`, `GET /v1/admin/reviews`, `GET /v1/admin/reviews/{id}`, `GET /v1/admin/vendors`, `GET /v1/admin/vendors/{id}`, `POST /v1/admin/vendors/{id}/approve`, `POST /v1/admin/vendors/{id}/reject`, `POST /v1/admin/vendors/{id}/suspend`, `POST /v1/admin/reviews/{id}/approve`, `POST /v1/admin/reviews/{id}/reject`; `GET /v1/admin/outbox`, `GET /v1/admin/outbox/stats`, `GET /v1/admin/outbox/{id}`, `POST /v1/admin/outbox/{id}/retry` | identity-api tokens only (`vendor_reviewer` or `super_admin`) |
 
 The sections below describe each group.
 
@@ -112,14 +112,22 @@ The sections below describe each group.
 vendor_api/
   app.py        create_app() factory (settings and readiness checks can be injected in tests)
   main.py       `app = create_app()` for uvicorn
-  api/          routers: health, jwks, auth, vendor (me), team (users), admin; dependencies in deps.py
-  core/         settings, JSON logging, request-ID middleware, error handlers
-  db/           models, declarative base (constraint naming convention), async engine and sessions
-  migrations/   Alembic env and versions (runs on a sync psycopg engine)
-  services/     business logic, free of HTTP concerns (signup, auth, credentials, team, email, seed)
+  worker.py     `python -m vendor_api.worker`: the publisher worker (delivery, upkeep, nightly reconciliation)
+  cli.py        generate-key, seed-dev, send-test-email, invite-owner, resync, export-openapi
+  openapi.py    the OpenAPI document and its examples (committed as ../openapi.json)
+  api/          routers: health, jwks, auth, vendor (me), team, brand_profile, products, product_import, assets,
+                submissions (vendor side); admin, admin_reviews, admin_vendors, admin_outbox (admin side);
+                dependencies in deps.py
+  core/         settings, JSON logging, request-ID middleware, error handlers, security wiring, validation helpers
+  db/           models, declarative base (constraint naming convention), async engine and sessions,
+                vendor-scoped queries (scoped.py)
+  migrations/   Alembic env and versions 0001 to 0010 (runs on a sync psycopg engine)
+  services/     business logic, free of HTTP concerns: signup, auth, credentials, team, email, brand profiles,
+                products, import, assets and Cloudinary, review queue, diff and decisions, vendor accounts,
+                submissions, central events, outbox, publisher, reconciliation, seed
 ```
 
-The logging, request-ID middleware and error handlers are copies of identity-api's (ADR 0010). The security code (keys, tokens and later sessions, rate limits, passwords) comes from `packages/py-security`, and token verification from `packages/py-auth`; both are installed from the repository path through `requirements-shared.txt`.
+The logging, request-ID middleware and error handlers are copies of identity-api's (ADR 0010). The security code (keys, tokens, sessions, rate limits, passwords, request signing) comes from `packages/py-security`, and token verification from `packages/py-auth`; both are installed from the repository path through `requirements-shared.txt`.
 
 ## Settings
 
@@ -163,6 +171,9 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `CENTRAL_PUBLISHING_ENABLED` | `false` | publish outbox events to the central app (ADR 0003); needs the next three |
 | `CENTRAL_API_URL` / `CENTRAL_SIGNING_KEY_ID` / `CENTRAL_SIGNING_SECRET` | unset | the central app's base URL (https outside dev), the id it knows our secret by, and the secret (at least 32 characters, never logged; see the key-rotation runbook). Every request is signed `HMAC_SHA256(secret, timestamp + "." + body)` by `shazlo_security.signing` |
 | `UPLOAD_MAX_BYTES` | `10485760` | largest image accepted (10 MiB; at most 100 MiB) |
+| `IMPORT_MAX_BYTES` / `IMPORT_MAX_ROWS` | `2097152` / `1000` | the largest bulk-import file (2 MiB; at most 20 MiB) and the most data rows (at most 5000) |
+| `RECONCILE_ENABLED` / `RECONCILE_AT` | `true` / `03:00` | the worker's nightly reconciliation with the central app, and its time of day (UTC, `HH:MM`) |
+| `RECONCILE_MAX_PENDING` | `1000` | the nightly reconciliation stops adding events, and `resync` waits, while more than this many events wait in the outbox (1 to 1,000,000) |
 
 `ENV=prod` refuses the `console` backend (it sends nothing), `SMTP_SECURITY=none` and an `http://` portal address.
 
@@ -219,7 +230,7 @@ vendor-api keeps two route groups (ADR 0009) and they never accept each other's 
 | `/v1/vendor/*`, `/v1/auth/*` | **only** vendor-api's own tokens | its own key ring (see Tokens and keys) |
 | `/v1/admin/*` | **only** identity-api tokens | `packages/py-auth`: `TokenVerifier(issuer=IDENTITY_ISSUER, audience="vendor-api")` fed by identity-api's JWKS |
 
-- **`GET /v1/admin/me`** returns the admin's id and roles **from the token**. It is the first admin endpoint and a check for Phase 3. The group requires the `vendor_reviewer` role (`super_admin` always passes); anything else is `403`, no token or a bad one `401`.
+- **`GET /v1/admin/me`** returns the admin's id and roles **from the token**. It was the first admin endpoint and is a check that the token works. The group requires the `vendor_reviewer` role (`super_admin` always passes); anything else is `403`, no token or a bad one `401`.
 - **The reviewer is the token's, never the client's.** A handler takes `admin: Reviewer` (`api/admin.py`) and uses `admin.id`, the token's `sub`. Admin request bodies derive from `AdminRequest`, which forbids unknown fields, so a `reviewer_id` in a body is a `422`; one in the query or a header is never read. A test proves it.
 - **identity-api being down does not stop vendor-api.** The `JwksClient` is created once at startup and fetches nothing until the first admin token. Keys are cached for 10 minutes, refetched at most once a minute, and the last good keys stay in use during an outage; an unknown `kid` cannot turn an outage into a request per token. Before the first successful fetch an admin request is `401`, not `500`.
 - **`/ready` does not report identity-api.** Readiness means "this service can do its own work": Postgres and Redis. Vendors keep signing in while identity-api is down, and only the admin group degrades (stale keys keep working for a while). Reporting it would take vendor-api out of rotation for a dependency most of its traffic does not use.
@@ -250,7 +261,7 @@ A vendor edits a draft, submits it, and reads what was approved. Any active user
 | `POST /v1/vendor/brand-profile/submit` | Sends the draft for review: it becomes `pending_review` (frozen from then on) and a pending `review` plus its `submitted` audit event (actor: the vendor user) are written in one transaction. `409 nothing_to_submit` without a draft, `422 profile_incomplete` without a category, `422 invalid_asset` if an image was deleted since saving, `409 review_pending` if a version is already in review |
 | `GET /v1/vendor/brand-profile/published` | The version shoppers see: the last one an admin approved. `404 no_published_profile` until there is one |
 
-**Editing while a version is in review** (decided here): the submitted version is frozen, so editing never changes it. The next `PUT` (or `GET`) opens a **new draft** (next version number, copied from the version in review) and the vendor can keep working; submitting it waits for the first review to be decided (`409 review_pending`). There is no withdraw: the database does not allow a submitted version to go back to `draft`, and a reviewer decides soon enough. Phase 3's review endpoints will make the decision and, on approval, publish the version.
+**Editing while a version is in review** (decided here): the submitted version is frozen, so editing never changes it. The next `PUT` (or `GET`) opens a **new draft** (next version number, copied from the version in review) and the vendor can keep working; submitting it waits for the first review to be decided (`409 review_pending`). There is no withdraw: the database does not allow a submitted version to go back to `draft`, and a reviewer decides soon enough. A reviewer decides it through the review endpoints (see "Review queue" below), and on approval the version becomes the published one.
 
 Every write first locks the vendor's row, so two tabs saving, or a save racing a submit, are handled one after the other for that vendor only.
 
@@ -277,7 +288,7 @@ A vendor's catalog. Any active user of the vendor (owner or staff) can do everyt
 | `GET /v1/vendor/products/{id}` | `live` (the approved revision, what shoppers see; null until approved) and `working` (the revision being edited, in review, or the last rejected one, with its review and the admin's reason) |
 | `PUT /v1/vendor/products/{id}` | **Replaces** the content of the editable revision (a field or list left out is cleared). **Never changes `live`**: editing an approved product creates a new pending revision (next version number) and the status stays `approved`; further edits change that same revision. A rejected product gets a new revision and goes back to `draft`. `409 product_in_review` while a version is in review, `409 product_archived` |
 | `POST /v1/vendor/products/{id}/submit` | Sends the editable revision for review (it is frozen from then on) and writes a pending review plus its `submitted` audit event in one transaction; a never-approved product becomes `pending_review`. `422 product_incomplete` without an active variant or an image, `409 nothing_to_submit` when nothing is being edited |
-| `DELETE /v1/vendor/products/{id}` | A product that was **never submitted** is deleted for good (SKU free again). One that was ever submitted is **archived**: history and SKU kept, an approved one goes off sale and its `version` is raised (the Phase 4 `product.unpublished` hook). `409 product_in_review` while in review; deleting an archived product again is a no-op |
+| `DELETE /v1/vendor/products/{id}` | A product that was **never submitted** is deleted for good (SKU free again). One that was ever submitted is **archived**: history and SKU kept, an approved one goes off sale, its `version` is raised and a `product.unpublished` event is written (see "Writing events: what stops being shown"). `409 product_in_review` while in review; deleting an archived product again is a no-op |
 
 **Content** (limits from the published contract, ADR 0003): `title` (200), `description` (4000), `category` (100), `subcategory`, `gender` (`women`, `men`, `unisex`), `fabric` (80), `weight_grams` (> 0), `returnable` and `return_window_days` (0 to 30, required when returnable; ignored otherwise), up to 100 `variants` and 10 `images`.
 - **Variants** are `{sku, size, color, price_paise, mrp_paise, is_active}`. The **SKU is the variant's identity**: listing the same SKU (any letter case) in a later edit is the same variant, so the central app keeps updating one `variant_id`. Its size and colour cannot change (`422 variant_identity_changed`; use a new SKU). SKUs are unique per vendor across all products; two variants of one product cannot share size and colour.
@@ -449,6 +460,7 @@ Keys are `vendor:rl:<endpoint>:<scope>:<hash>`: the prefix and the `RATE_LIMIT_H
 | `set_password` | IP | 20 per 15 minutes |
 | `staff_invite` (invite and resend-invite) | vendor | 20 per hour |
 | `asset_sign` (upload signatures) | user | 60 per hour |
+| `bulk_import` (product import and its validation runs) | vendor | 10 per hour |
 
 - **Nobody can lock a vendor out.** The checks run in order and stop at the first one that refuses, so a request the per-IP or per-pair counter already refuses never reaches the per-email counter: one attacking IP adds at most 5 per 15 minutes to it. And an email + IP pair that logged in successfully in the last 30 days skips the per-email counter, so a vendor on their usual network gets in even while someone guesses from elsewhere.
 - **Signup and resend are limited on the address as typed**, whether or not it is registered, so the limit looks the same either way and reveals nothing. Per address matters because those endpoints send email (verification, or "you already have an account"): without it they would mail-bomb an inbox.
@@ -634,7 +646,7 @@ alembic check                                    # fails if models and migration
 
 ## Behaviour worth knowing
 
-- `GET /health` is liveness only. `GET /ready` checks Postgres and Redis (2 second timeout each) and returns 503 if either fails.
+- `GET /health` is liveness only. `GET /ready` checks Postgres and Redis (2 second timeout each) and returns 503 if either fails; it also carries the outbox counts (`outbox`), which never change the verdict.
 - Every response has an `X-Request-ID` header. A sane incoming value is reused; it is also in every log line.
 - Logs are one JSON object per line on stdout.
 - Errors always look like `{"error": {"code", "message", "request_id", "details"?}}`. Unhandled errors return a generic message; details go to the log only.
@@ -653,7 +665,7 @@ DATABASE_URL=postgresql://shazlo:<password>@localhost:5432/vendor_test pytest
 
 The suite drops and recreates the schema (`alembic downgrade base` then `upgrade head`) and refuses any database whose name is not `test` or `*_test`.
 
-The end-to-end tests (`test_e2e_auth.py` for sign-in and sessions, `test_e2e_catalog.py` for the brand page, the catalog, the review and the vendor account) also need a real Redis in `REDIS_URL`, on a database other than 0 because they empty it (CI sets one), and are skipped without it. Cloudinary is the one fake in them: nothing talks to the network.
+The end-to-end tests (`test_e2e_auth.py` for sign-in and sessions, `test_e2e_catalog.py` for the brand page, the catalog, the review and the vendor account, `test_e2e_publishing.py` for the outbox, the worker and the central app) also need a real Redis in `REDIS_URL`, on a database other than 0 because they empty it (CI sets one), and are skipped without it. Cloudinary is the one fake in them: nothing talks to the network. `test_e2e_publishing.py` also needs the stub receiver, which CI installs from its path (`pip install -e ../central-stub`, once the shared packages are installed); without it that test is skipped. The contract tests (`test_central_contract.py`, `test_central_events.py`) read the schemas and examples in `docs/adr/0003-contract/`.
 
 ## Docker
 
@@ -661,4 +673,4 @@ The end-to-end tests (`test_e2e_auth.py` for sign-in and sessions, `test_e2e_cat
 docker build -f services/vendor-api/Dockerfile -t vendor-api .
 ```
 
-Run it from the repository root (shared packages will be copied from there). The image runs as a non-root user on port 8002 and has a healthcheck on `/health`.
+Run it from the repository root: the build context must include `packages/py-auth` and `packages/py-security`, and `docs/adr/0003-contract/schemas` (the image sets `CONTRACT_DIR` to its copy). The image runs as a non-root user on port 8002 and has a healthcheck on `/health`. The same image runs the publisher worker: `python -m vendor_api.worker` (compose service `vendor-worker`, which turns the healthcheck off because the worker serves no `/health`).

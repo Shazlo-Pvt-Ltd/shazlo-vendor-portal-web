@@ -1,6 +1,6 @@
 # shazlo-security
 
-Security code that identity-api and vendor-api share instead of copying (ADR 0010): password hashing, rate limiting and client-IP detection. Import name: `shazlo_security`. It imports nothing from a service (a test fails if it does): a service passes in its configuration and maps the exceptions raised here to its own HTTP errors.
+Security code that identity-api and vendor-api share instead of copying (ADR 0010): password hashing, rate limiting, client-IP detection, refresh-token sessions, the signing key ring and token issuer, and (for ADR 0003) request signing, which `central-stub` also uses. Import name: `shazlo_security`. It imports nothing from a service (a test fails if it does): a service passes in its configuration and maps the exceptions raised here to its own HTTP errors.
 
 ## Install (path dependency)
 
@@ -27,7 +27,7 @@ In Docker, build from the repository root, copy `packages/py-security` and add i
 
 ## Rate limiting (`shazlo_security.rate_limit`)
 
-- `RedisRateLimiter(redis, prefix)`: fixed-window counters. The key **prefix is required** (identity-api uses `identity:rl:`, vendor-api will use `vendor:rl:`), so two services on one Redis never see each other's counters.
+- `RedisRateLimiter(redis, prefix)`: fixed-window counters. The key **prefix is required** (identity-api uses `identity:rl:`, vendor-api `vendor:rl:`), so two services on one Redis never see each other's counters.
 - `RateLimitGuard(limiter, RateLimitConfig(hmac_key, fail_closed))`: `check(endpoint, [Check(scope, subject, RateRule(limit, window_seconds))])` hits every counter and raises `RateLimited(retry_after)` if any is over. Subjects are hashed with the HMAC key, so Redis holds no emails or IPs. If Redis is down, endpoints in `fail_closed` raise `RateLimiterUnavailable`; the others skip the limit and log a warning. `reset` never raises.
 - The service maps `RateLimited` to `429` with `Retry-After` and `RateLimiterUnavailable` to `503`.
 
@@ -49,7 +49,7 @@ Redis key layout, each key starting with the prefix (for example `identity:`):
 | `<prefix>rt:<hash>` | the family a token belongs to; lives as long as the token |
 | `<prefix>rtu:<hash>` | when the token was used (Unix seconds), written once by the rotation |
 
-Cookie names are the service's business, and must differ per service: identity-api uses `identity_refresh`, vendor-api will use `vendor_refresh`.
+Cookie names are the service's business, and must differ per service: identity-api uses `identity_refresh`, vendor-api `vendor_refresh`.
 
 ## Keys and tokens (`shazlo_security.keys`, `shazlo_security.tokens`)
 
