@@ -6,6 +6,8 @@
 | Date | 2026-10-20 |
 | Depends on | `04-database-design.md`, `architecture.md` |
 
+> **Status note (2026-11-19).** The services that exist use Redis, unlike the MVP described in section 5: identity-api and vendor-api keep refresh-token families and rate-limit counters there, under the prefixes `identity:` and `vendor:` (`<prefix>rf:`, `ra:`, `rg:`, `rt:`, `rtu:` and `<prefix>rl:`; see [py-security](../packages/py-security/README.md)), and vendor-api uses Redis database 1 in docker-compose, identity-api database 0. The vendor-admin database of this design is `vendor` in vendor-api, with the tables listed in the note at the top of [04-database-design.md](04-database-design.md).
+
 ## 1. Design rules
 
 1. **Two databases, two owners.** `shazlo_core` belongs to the **core service** (Django): identity, discovery, closets, **cart, stock, orders, payments, refunds, returns**, embeddings, and a read copy of the catalog. `shazlo_vendor` belongs to the **vendor-admin service** (FastAPI): vendors, vendor and admin logins, catalog authoring, a read copy of orders, commission history, payouts. Both live on one Postgres server with separate roles; **no service reads or writes the other's database**.

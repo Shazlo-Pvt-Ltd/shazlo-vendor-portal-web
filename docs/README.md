@@ -12,6 +12,20 @@ These documents describe who Shazlo is for, how users move through it, how the s
 
 **[architecture.md](architecture.md)** is the authoritative, production-grade architecture document (system design picture, technology map, service boundary, data, integration, flows, consistency, security, operations, deployment, scale, cost, testing, roadmap). The numbered documents below go deeper on one topic each and are aligned to it.
 
+## What is built, and what these documents are
+
+These design documents (`architecture.md` and `01` to `08`, written on 2026-10-19 and 2026-10-20) describe the whole target system, including the customer backend (Core) that lives in a separate repository. What is built in this repository, and in which phase, is in the **[roadmap](ROADMAP.md)**; it is the live plan, and its phase status is current. The dates and "MVP by Oct 30" in the design documents are the plan as written then.
+
+Where the code and the design documents use different names, the code is right:
+
+| In the design documents | In this repository |
+| --- | --- |
+| The Vendor-admin service (FastAPI, `vendor-api.shazlo.store`): vendors, catalog authoring, moderation, publishing | `services/vendor-api`, with admin sign-in in `services/identity-api`. Fulfilment screens, statements, payouts and commission are not built |
+| Core (Django), the customer backend and the receiver of published events | A separate repository (`shazlo-server`). Here `services/central-stub` stands in for it, and [ADR 0003](adr/0003-central-app-publishing-contract.md) is the contract |
+| `outbox_events` and `outbox_publish` (every minute, a cron job) | The `outbox_events` table in vendor-api and its publisher worker (`python -m vendor_api.worker`); see [the publishing runbook](runbooks/central-publishing.md) |
+| The portal React app (`frontend/` in a portal repo) and admin pages | `apps/vendor-portal` (Phase 5, in progress), `apps/shazlo-one` and `apps/vendor-admin` (Phases 6 and 7, not started) |
+| `apps/vendor-admin` (this name) | The React review module, not the FastAPI service the documents call "vendor-admin" |
+
 ## Read in this order
 
 | # | Document | What it answers |
@@ -29,6 +43,9 @@ These documents describe who Shazlo is for, how users move through it, how the s
 | - | [Core build and migration plan](core-build-plan.md) | The month-long plan to build Core in `shazlo-server`, migrate the old data, then migrate the app |
 | - | [Open questions](open-questions.md) | Decisions the team still has to make, each with a default |
 | - | [Decision records](adr/) | Why the big choices were made |
+| - | [Roadmap](ROADMAP.md) | The phases of this repository's rewrite and which are delivered |
+| - | [Runbooks](runbooks/) | Rotating the JWT signing keys and the central-app signing key; running and repairing publishing |
+| - | [Test strategy](testing.md) | What is tested, how to run it, and the evidence recorded when it was written |
 
 ## Decision records
 
@@ -37,7 +54,7 @@ These documents describe who Shazlo is for, how users move through it, how the s
 | [0001](adr/0001-modular-monolith.md) | Modular monolith with service and selector layers (now inside each service) | Accepted, amended by 0007 |
 | [0002](adr/0002-api-style.md) | GraphQL for the app, REST for the rest; MVP on REST | Proposed |
 | [0003](adr/0003-pgvector-over-pinecone.md) | pgvector in Postgres instead of Pinecone | Accepted |
-| [0004](adr/0004-authentication.md) | Own JWT with guest accounts | Accepted (target) |
+| [0004](adr/0004-authentication.md) | Own JWT with guest accounts | Accepted (target); partly superseded by 0009 |
 | [0005](adr/0005-images-and-cdn.md) | Cloudinary now, object storage and CDN later | Accepted (MVP) |
 | [0006](adr/0006-manual-order-flow-before-online-payments.md) | Order requests and manual settlement at launch; online payments built behind a switch | Accepted (MVP), amended |
 | [0007](adr/0007-core-and-vendor-admin-services.md) | Two services: Core (Django) and Vendor-admin (FastAPI) | Accepted (direction), amended by 0008 |
@@ -45,7 +62,7 @@ These documents describe who Shazlo is for, how users move through it, how the s
 | [0009](adr/0009-auth-model.md) | Auth model: RS256 JWTs, JWKS and roles for Shazlo-One (identity-api) and the vendor API, each with its own issuer | Accepted; partly supersedes 0004-authentication.md |
 | [0010](adr/0010-shared-security-package.md) | Share the security plumbing between identity-api and vendor-api (`packages/py-security`); copy the glue | Proposed |
 
-The Phase 0 ADRs [0001-iframe-postmessage-protocol.md](adr/0001-iframe-postmessage-protocol.md) and [0003-central-app-publishing-contract.md](adr/0003-central-app-publishing-contract.md) reuse numbers from this table; [adr/README.md](adr/README.md) lists the current ADRs.
+The Phase 0 ADRs [0001-iframe-postmessage-protocol.md](adr/0001-iframe-postmessage-protocol.md) (proposed) and [0003-central-app-publishing-contract.md](adr/0003-central-app-publishing-contract.md) (proposed, waiting for the central-app team) reuse numbers from this table; [adr/README.md](adr/README.md) lists all ADRs.
 
 ## Legend
 
@@ -100,3 +117,4 @@ These documents grew out of earlier working documents, which live outside this r
 | 2026-10-19 | v0.2: vendor and admin split into a FastAPI marketplace service (new `08`, ADR 0007; `03` to `06` carry pointers and corrections) |
 | 2026-10-19 | v0.3: team answers recorded (`open-questions.md`): two databases, outbox events, React portal, SQLAdmin, 15% commission, one-VM hosting, two repositories, online payments behind a switch |
 | 2026-10-20 | v1.0: **new master `architecture.md`**; the service boundary is corrected (commerce, stock and Razorpay in Core; the FastAPI service renamed vendor-admin and limited to the seller back-office; ADR 0008); docs 01 to 08 rewritten to match |
+| 2026-11-19 | Documentation brought up to date with the code: a note in this index (and in `architecture.md`, `03`, `04`, `04b`, `05`, `06`, `07` and `08`) on what is built and how names differ; the roadmap, runbooks, test strategy and ADR index linked here |

@@ -9,6 +9,8 @@
 
 **Legend:** `[As-is]` verified in today's code, `[Target]` the design (core grows into the `shazlo-server` scaffold), `[MVP]` what runs by Oct 30, `[Assumption]` needs a team decision.
 
+> **Status note (2026-11-19).** The vendor-admin service described here is built as `services/vendor-api` (with admin sign-in in `services/identity-api`), organised in layers (`api/`, `services/`, `db/`, `core/`) with one file per feature, not the per-module `routers.py`/`schemas.py`/`services.py`/`queries.py` files of section 4, and without import-linter. Its event delivery is the worker and outbox of [ADR 0003](adr/0003-central-app-publishing-contract.md), not an `outbox_publish` cron job, and it has no `events` inbox module. See [what is built and how the names differ](README.md#what-is-built-and-what-these-documents-are) and the [roadmap](ROADMAP.md).
+
 ## 1. The system in one page
 
 Shazlo has **four clients** and **two backend services**:

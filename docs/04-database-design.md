@@ -5,6 +5,8 @@
 | Status | Draft v1.1. The complete list of tables and indexes. Design rules, migration, Redis, personal data and the MVP delta are in `04b-database-notes.md` |
 | Date | 2026-10-20 |
 
+> **Status note (2026-11-19).** This is the full target design. What `services/vendor-api` actually has, in Alembic migrations `0001` to `0010`, is: `vendors`, `vendor_status_events`, `vendor_users`, `auth_tokens`, `assets`, `brand_profiles` (one row per version), `products`, `product_revisions`, `product_variants`, `product_revision_variants`, `product_images`, `reviews`, `review_events`, `outbox_events` and `outbox_event_log`. It differs from section 3 below in these ways: vendor status is `pending`, `approved`, `rejected` or `suspended` (no `applied` or `under_review`); vendor user roles are `owner` and `staff`; product content lives in revisions, so an approved product keeps its live content while an edit is reviewed; there are no `commission_rates`, orders, payouts, `inbox_events`, `idempotency_keys` or `audit_log` tables yet, and no refresh-token or admin tables (sessions are in Redis, admins are in identity-api's database). `outbox_events` has a UUID `id` (the `event_id`), `vendor_id`, a `claim_token` (migration `0009`), `UNIQUE (aggregate_type, aggregate_id, version)` and a partial index `ix_outbox_events_due` on `next_attempt_at` for `pending` rows; the attempt history is in `outbox_event_log` (`0010`). The columns are described in [the vendor-api README](../services/vendor-api/README.md#database). identity-api has `admins`, `roles` and `admin_roles`.
+
 ## 1. Overview
 
 - **Two PostgreSQL databases** on one server: `shazlo_core` (35 tables, used by the Core service) and `shazlo_vendor` (23 tables, used by the Vendor-admin service). 58 tables in total.
