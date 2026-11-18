@@ -264,6 +264,20 @@ async def test_delivery_state_may_change_without_a_status_change(session: AsyncS
     assert changed.next_attempt_at == later
 
 
+async def test_the_claim_token_is_delivery_state_and_can_change(session: AsyncSession) -> None:
+    event = await saved(session)
+    token = uuid.uuid4()
+    await update(
+        session,
+        event,
+        "status = 'sending', locked_at = now(), claim_token = :token",
+        token=token,
+    )
+    assert (await reload(session, event)).claim_token == token
+    await update(session, event, "status = 'pending', locked_at = NULL, claim_token = NULL")
+    assert (await reload(session, event)).claim_token is None
+
+
 # --- The worker's path through the statuses ----------------------------------------------
 
 
@@ -378,7 +392,8 @@ async def test_the_due_index_serves_the_workers_claim(session: AsyncSession) -> 
 CLAIM = text(
     """
     UPDATE outbox_events o
-    SET status = 'sending', locked_at = now(), attempts = attempts + 1
+    SET status = 'sending', locked_at = now(), claim_token = gen_random_uuid(),
+        attempts = attempts + 1
     WHERE o.id IN (
       SELECT d.id
       FROM outbox_events d

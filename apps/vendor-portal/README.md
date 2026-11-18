@@ -48,8 +48,10 @@ never prints the value), instead of a blank page. `src/config/env.ts` has the ru
 | `npm run typecheck -w @shazlo/vendor-portal` | `tsc` only |
 | `npx vitest run --project vendor-portal` | The portal's tests (jsdom, Testing Library) |
 | `npm run lint` | ESLint for the whole repository |
+| `npm run api:generate -w @shazlo/vendor-portal` | Rewrites `src/api/schema.d.ts` from `services/vendor-api/openapi.json` |
+| `npm run api:check -w @shazlo/vendor-portal` | Fails when `schema.d.ts` is stale |
 
-CI runs lint, typecheck, the tests and the build (`apps-ci.yml`).
+CI runs lint, `api:check`, typecheck, the tests and the build (`apps-ci.yml`).
 
 ## Layout and conventions
 
@@ -58,9 +60,13 @@ src/
   main.tsx            entry: fonts, then <App />
   App.tsx             checks the environment, then the router
   app/                providers (theme, error boundary, query client), the route table, the router
+  api/                the typed vendor-api client, its hooks and error model (generated types in schema.d.ts)
+  session/            the session store (token in memory), AuthProvider and useSession, the route guards, the blocked page
   config/             the typed environment
   components/         shared pieces (error boundary and screens, not found, misconfigured)
   pages/              one folder per screen as they arrive; today a placeholder for each route
+  security/           the headers (one definition for vercel.json, dev and preview), SafeLink,
+                      SafeImage, PasswordField, and the tests of the security rules
   test/               test setup
 ```
 
@@ -68,8 +74,8 @@ src/
   `components/`. No business rules in components: they live in plain functions that can be tested.
 - **The shared theme only.** Colours, spacing and fonts come from `@shazlo/ui` (a test fails on a
   hex colour, an `rgb()` or a font family in `src/`).
-- **Routes** are listed once, in `src/app/routes.tsx`, with who may open each (`public` or
-  `authenticated`); the session issue adds the guards that enforce it.
+- **Routes** are listed once, in `src/app/portalRoutes.ts`, with who may open each (`public`,
+  `authenticated` or `owner`); the guards in `src/session/guards.tsx` enforce it.
 - **Queries** do not retry a 4xx answer, retry network errors and 5xx twice, are fresh for 30
   seconds and refetch on window focus (`src/app/queryClient.ts`).
 - **Errors** never show a stack trace: a root error boundary and the router's error element render a
@@ -79,7 +85,7 @@ src/
 ## Deployment
 
 `vercel.json` rewrites every path to `index.html` so deep links work (static files are served first).
-Security headers are added by the security issue; the per-environment URLs and domains are Phase 8.
+`vercel.json` also carries the security headers (see "Security rules" below); the per-environment URLs and domains are Phase 8.
 
 ## Calling vendor-api
 
@@ -93,6 +99,7 @@ npm run api:check -w @shazlo/vendor-portal      # CI: fails when the committed f
 
 Commit the regenerated `schema.d.ts` with the backend change that caused it. CI runs the web checks
 whenever `openapi.json` changes, so a backend change that breaks the portal fails the build.
+(`.gitattributes` keeps `schema.d.ts` LF on every OS; with CRLF `api:check` would report it stale.)
 
 ```ts
 import { api, ApiError, NetworkError } from './api'
@@ -141,3 +148,52 @@ const { status, user, vendor, role, logout } = useSession()
   (`session/drafts.ts`); drafts are in memory, survive an expiry, and are dropped on sign-out.
 - **The login screen** (a later issue) calls `session.signIn(response)` with the answer of
   `POST /v1/auth/login`, or `session.markBlocked()` on a `403 vendor_not_allowed`.
+
+## Security rules
+
+The portal is open to the internet, holds vendors' business data and shows content vendors typed.
+These rules are enforced by lint and by tests in `src/security/`; a change that breaks one fails CI.
+
+**Headers.** `src/security/headers.ts` is the one definition. It produces `vercel.json` (production),
+the Vite dev and preview headers, and the tests.
+
+| Header | Value |
+| --- | --- |
+| `Content-Security-Policy` | `default-src 'self'`; scripts from the app only (no inline script, no `eval`); `connect-src` only the API origin and `https://api.cloudinary.com`; `img-src` only the app and `https://res.cloudinary.com`; `frame-ancestors 'none'`, `frame-src 'none'`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`; `upgrade-insecure-requests` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `X-Content-Type-Options` | `nosniff` |
+| `Permissions-Policy` | camera, microphone, geolocation, payment, USB and the other listed features switched off |
+| `Strict-Transport-Security` | two years, with subdomains (production only; preview and dev run over http) |
+
+`style-src` allows `'unsafe-inline'` because MUI writes `<style>` tags; that cannot run script.
+Development also allows inline script (the React refresh preamble) and the hot-reload socket.
+`assetsInlineLimit` is 0, so no asset becomes a `data:` URI.
+
+The committed `vercel.json` names a placeholder API origin (`https://api.example.com`), which fails
+closed. On Vercel, `npm run build` first runs `scripts/write-vercel-headers.mjs`, which writes the
+real `VITE_VENDOR_API_URL` into `connect-src` and fails the build if it is not a plain https origin.
+Set `VITE_VENDOR_API_URL` in the Vercel project. If you change the policy, change `headers.ts` and
+regenerate `vercel.json` (the test tells you what it should contain).
+
+**Tokens and secrets.**
+- The access token lives in memory only; the refresh token is an `HttpOnly` cookie. Source files may
+  not use `localStorage`, `sessionStorage` or `indexedDB` (lint, plus a test of the sources).
+- No `console.log` (`console.error` only, for the error screens); never put a token, password or
+  e-mail in a URL, a log line or an error message.
+- Render a password input only with `PasswordField`, which sets `autocomplete` (`current-password`
+  or `new-password`) and turns off autocapitalisation and spell-check.
+- A form holding something sensitive registers a reset with `registerSensitiveReset`; signing out
+  calls `clearSensitiveState()`.
+
+**Rendering what vendors typed.**
+- `dangerouslySetInnerHTML`, `innerHTML`, `outerHTML` and `insertAdjacentHTML` are forbidden by lint.
+  React escapes text; keep it that way.
+- A vendor's website or an image address is shown only through `SafeLink` / `SafeImage`: plain
+  `https:` addresses only (no `javascript:`, `data:`, `http:` or embedded passwords), `rel="noopener
+  noreferrer"`, no referrer sent for images. Anything else is shown as plain text or a fallback.
+  Live previews must use them.
+- After login the `return-to` address is checked by `safeReturnTo` (the session), which accepts only
+  a path to a portal screen.
+
+**Dependencies.** CI runs `npm audit` for any PR that changes a manifest, covering every workspace
+through the one lockfile; Dependabot watches the repository root, so it covers the portal.
