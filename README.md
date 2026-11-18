@@ -16,25 +16,30 @@ Plan, phases and decisions: [docs/ROADMAP.md](docs/ROADMAP.md). Architecture dec
               │                       │ (JWT via postMessage)
               └──► identity-api ◄─────┘ (JWKS)
                                   │
-                       outbox ──► central app (HMAC-signed push)
+         outbox ──► vendor-worker ──► central app (HMAC-signed push)
 ```
+
+`vendor-api` writes an event to its outbox in the same transaction as each approval, and `vendor-worker` (the same image, `python -m vendor_api.worker`) sends it to the central app. `central-stub` stands in for the central app locally. The web apps shown here are built phase by phase: see the [roadmap](docs/ROADMAP.md) for what exists.
 
 ## Repo layout
 
 | Path | What it is |
 |---|---|
 | `services/identity-api/` | FastAPI: admin users, roles, JWT (RS256) + JWKS |
-| `services/vendor-api/` | FastAPI: vendors, brand profiles, products, assets, reviews, publishing |
+| `services/vendor-api/` | FastAPI: vendors, brand profiles, products, assets, reviews, and the outbox and worker that publish approved content to the central app |
+| `services/central-stub/` | FastAPI: a stand-in for the central app's ingest API (ADR 0003), for local development and tests. Never deployed |
 | `apps/vendor-portal/` | React + TS: vendor-facing app |
 | `apps/shazlo-one/` | React + TS: admin shell (login, nav, iframe host) |
 | `apps/vendor-admin/` | React + TS: vendor review module, loaded in a Shazlo-One iframe |
 | `packages/ui/` | Shared MUI theme and tokens |
 | `packages/py-auth/` | Shared Python package: access-token verifier, JWKS client, FastAPI `require_role` |
-| `packages/py-security/` | Shared Python package: password hashing, rate limiter, client IP (ADR 0010) |
-| `docs/` | Roadmap and ADRs |
+| `packages/py-security/` | Shared Python package: password hashing, rate limiter, client IP, refresh-token store, signing keys and token issuer, request signing (ADR 0010, ADR 0003) |
+| `docs/` | [Roadmap](docs/ROADMAP.md), design documents, [ADRs](docs/adr), [runbooks](docs/runbooks), [test strategy](docs/testing.md) |
+| `docker-compose.yml`, `docker/` | Local Postgres, Redis, Mailpit and the services (see below); `docker/postgres/init` creates the databases |
+| `test/contracts/` | JavaScript contract tests for the ADR 0003 schemas and the shared-package install files |
 | `app/`, `backend/` | **Legacy** consumer landing/waitlist, Express + MongoDB. Untouched until Phase 8 |
 
-The new folders are placeholders until their phase starts; see the roadmap.
+The three Python services and the two Python packages are built. Of the web apps, `apps/shazlo-one/` and `apps/vendor-admin/` are placeholders until their phase starts, and `apps/vendor-portal/` is being built (Phase 5); see the roadmap.
 
 ## Local development
 
@@ -52,6 +57,8 @@ docker compose ps           # postgres, redis and mailpit should report "healthy
 | Redis | 6379 (127.0.0.1 only) | `docker compose exec redis redis-cli ping` prints `PONG` |
 | identity-api (profile `identity`) | 8001 | `curl localhost:8001/ready` |
 | vendor-api (profile `vendor`) | 8002 | `curl localhost:8002/ready` |
+| vendor-worker (profile `vendor`) | none | `docker compose --profile vendor logs vendor-worker` |
+| central-stub (profile `central`) | 8003 (127.0.0.1 only) | `curl localhost:8003/health`, or open <http://localhost:8003> |
 | Mailpit SMTP / web UI | 1025 / 8025 (127.0.0.1 only) | open <http://localhost:8025> |
 
 Mailpit shows every email the services send (signup, invite and reset links) and delivers none of them. vendor-api in compose sends to it; from the host, `python -m vendor_api.cli send-test-email` (in `services/vendor-api`) puts an example there. From another container the SMTP server is `mailpit:1025`; from the host it is `localhost:1025`. Ports are set in `.env`.
@@ -96,7 +103,9 @@ curl localhost:8002/ready   # {"status":"ok", ...}
 curl localhost:8002/.well-known/jwks.json   # the public key
 ```
 
-To run both APIs, add both keys as above and use `--profile full` (it includes both profiles): `docker compose --profile full up -d --build --wait`. Run each service's `alembic upgrade head` first, with `run --rm` as above.
+The `vendor` profile also starts `vendor-worker`, which sends vendor-api's outbox events to the central app. It stays idle (and says so in its log) until `CENTRAL_PUBLISHING_ENABLED=true` is set in `.env`. To see events arrive, uncomment that line and also start `central-stub` (profile `central`, a stand-in for the central app on port 8003, localhost only): `docker compose --profile vendor --profile central up -d`. The steps, and what to do when publishing goes wrong, are in [the publishing runbook](docs/runbooks/central-publishing.md).
+
+To run everything, add both keys as above and use `--profile full` (it includes the `identity`, `vendor` and `central` profiles): `docker compose --profile full up -d --build --wait`. Run each service's `alembic upgrade head` first, with `run --rm` as above.
 
 For the legacy apps, see `app/README.md` and `backend/README.md` and copy each `.env.example` to `.env`.
 
@@ -109,11 +118,18 @@ includes runtime files that have no tests; `npm run lint`, `npm run typecheck`, 
 
 The integration suite owns a disposable local MongoDB process and downloads its
 binary on the first run. It never connects to the configured application database.
-Python checks run inside each service. See [the test strategy](docs/testing.md)
-for the repository map, assertions, commands, limitations and CI evidence.
+Python checks (ruff, mypy, pytest) run inside each service and package, with Postgres and Redis from
+the compose file for the database tests; see the service READMEs and
+[the test strategy](docs/testing.md) for the repository map, assertions, commands, limitations and CI
+evidence.
 
-All test workflows run on every pull request and pushes to `main`, retaining
-results and coverage as GitHub Actions artifacts.
+The `apps-ci`, `services-ci` and CodeQL workflows run on every pull request and push to `main`.
+`apps-ci` skips its web jobs for a pull request that only touches the Python services and packages,
+`docker/`, `docs/` (except `docs/adr/0003-contract/`), the compose file, `.env.example` or the
+workflow files of the other workflows; it also runs weekly. `services-ci` tests `identity-api`,
+`vendor-api`, `central-stub`, `py-auth` and `py-security`, and its `compose` job follows the
+local-development steps above against the real compose file. Test results and coverage are kept as
+GitHub Actions artifacts for 14 days.
 
 ## Workflow
 

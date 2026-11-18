@@ -39,7 +39,7 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
-      # identity-api's end-to-end test needs a real Redis (the packages use fakeredis). It empties database 1, never 0.
+      # The end-to-end tests of identity-api and vendor-api need a real Redis (the packages use fakeredis). They empty database 1, never 0.
       redis:
         image: redis:7
         ports:
