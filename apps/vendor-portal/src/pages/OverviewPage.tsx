@@ -2,6 +2,7 @@ import { Box, Button, Card, CardActions, CardContent, Chip, Stack, Typography } 
 import { useId, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { api } from '../api'
+import { ApiError } from '../api/errors'
 import { useSession } from '../session/AuthProvider'
 import { ErrorState } from '../ui/ErrorState'
 import { LoadingState } from '../ui/LoadingState'
@@ -19,12 +20,6 @@ type ProductStatus = (typeof PRODUCT_STATUSES)[number]['status']
 /** How many products have this status: the list's `total` with `limit=1`, so no products are downloaded. */
 function useProductCount(status: ProductStatus) {
   return api.useQuery('get', '/v1/vendor/products', { params: { query: { status, limit: 1 } } })
-}
-
-const BRAND_STATE: Record<string, string> = {
-  draft: 'Draft in progress',
-  pending_review: 'In review',
-  rejected: 'Needs changes',
 }
 
 interface CardProps {
@@ -53,18 +48,26 @@ function SectionCard({ title, to, action, children }: CardProps) {
   )
 }
 
+/**
+ * Where the brand page stands. `GET /v1/vendor/brand-profile` always answers with the editable draft
+ * (its `state` is always `draft`); a version waiting for a decision shows as `in_review_version`, and
+ * what shoppers see is `GET .../published` (404 until the first approval).
+ */
 function BrandCard() {
-  const brand = api.useQuery('get', '/v1/vendor/brand-profile')
+  const draft = api.useQuery('get', '/v1/vendor/brand-profile')
+  const published = api.useQuery('get', '/v1/vendor/brand-profile/published')
+  const publishedError: unknown = published.error
+  const nothingLive = publishedError instanceof ApiError && publishedError.status === 404
+  const failed = draft.isError ? draft : published.isError && !nothingLive ? published : undefined
+  const pending = draft.isPending || (published.isPending && !failed)
   return (
     <SectionCard title="Brand page" to="/brand" action="Edit your brand page">
-      {brand.isPending ? <LoadingState label="Loading your brand page…" /> : null}
-      {brand.isError ? <ErrorState error={brand.error} title="We couldn't load your brand page" onRetry={() => void brand.refetch()} /> : null}
-      {brand.data ? (
+      {failed ? <ErrorState error={failed.error} title="We couldn't load your brand page" onRetry={() => void failed.refetch()} /> : null}
+      {!failed && pending ? <LoadingState label="Loading your brand page…" /> : null}
+      {!failed && !pending && draft.data ? (
         <Stack spacing={1} sx={{ alignItems: 'flex-start' }}>
-          <Chip label={BRAND_STATE[brand.data.state] ?? 'Draft in progress'} />
-          <Typography color="text.secondary">
-            {brand.data.published_at ? 'A version is live on Shazlo.' : 'Nothing is live on Shazlo yet.'}
-          </Typography>
+          <Chip label={draft.data.in_review_version === null ? 'Draft' : `Version ${draft.data.in_review_version} in review`} />
+          <Typography color="text.secondary">{published.data ? 'A version is live on Shazlo.' : 'Nothing is live on Shazlo yet.'}</Typography>
         </Stack>
       ) : null}
     </SectionCard>

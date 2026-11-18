@@ -32,6 +32,9 @@ describe('the products list', () => {
         product(1, { title: 'Silk kurta', sku: 'K-1', category: 'kurtas', status: 'approved', has_pending_changes: true }),
         product(2, { title: 'Cotton saree', sku: 'S-2', category: 'sarees', status: 'rejected' }),
         product(3, { title: 'Old shawl', sku: 'W-3', status: 'archived' }),
+        // The API sets has_pending_changes for every draft and every product in review, not only for an edited approved one.
+        product(4, { title: 'New tote', sku: 'T-4', status: 'draft', has_pending_changes: true }),
+        product(5, { title: 'Wool scarf', sku: 'F-5', status: 'pending_review', has_pending_changes: true }),
       ]),
     )
     await open('/products?status=')
@@ -44,6 +47,10 @@ describe('the products list', () => {
     expect(first.getByText('10 Nov 2026')).toBeTruthy()
     expect(within(table).getByText('Needs changes')).toBeTruthy()
     expect(within(table).queryByText('Old shawl')).toBeNull() // archived stays hidden unless asked for
+    // "Changes pending" is for an approved product being edited: not for a draft or one in review.
+    expect(within(table).getAllByText('Changes pending')).toHaveLength(1)
+    expect(within(within(table).getByRole('row', { name: /New tote/ })).queryByText('Changes pending')).toBeNull()
+    expect(within(within(table).getByRole('row', { name: /Wool scarf/ })).queryByText('Changes pending')).toBeNull()
   })
 
   it('shows archived products only when asked for, and offers View, not Delete', async () => {

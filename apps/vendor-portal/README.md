@@ -48,8 +48,10 @@ never prints the value), instead of a blank page. `src/config/env.ts` has the ru
 | `npm run typecheck -w @shazlo/vendor-portal` | `tsc` only |
 | `npx vitest run --project vendor-portal` | The portal's tests (jsdom, Testing Library) |
 | `npm run lint` | ESLint for the whole repository |
+| `npm run api:generate -w @shazlo/vendor-portal` | Rewrites `src/api/schema.d.ts` from `services/vendor-api/openapi.json` |
+| `npm run api:check -w @shazlo/vendor-portal` | Fails when `schema.d.ts` is stale |
 
-CI runs lint, typecheck, the tests and the build (`apps-ci.yml`).
+CI runs lint, `api:check`, typecheck, the tests and the build (`apps-ci.yml`).
 
 ## Layout and conventions
 
@@ -58,9 +60,16 @@ src/
   main.tsx            entry: fonts, then <App />
   App.tsx             checks the environment, then the router
   app/                providers (theme, error boundary, query client), the route table, the router
-  config/             the typed environment
+  app/shell/          the signed-in frame: app bar, navigation, status banner, section boundary
+  api/                the typed vendor-api client, its hooks and error model (generated types in schema.d.ts)
+  session/            the session store (token in memory), AuthProvider and useSession, the route guards, the blocked page
+  config/             the typed environment, the support address and the website links
+  features/           one folder per feature (signup and email verification, sign-in and passwords so far) and the helpers they share
   components/         shared pieces (error boundary and screens, not found, misconfigured)
-  pages/              one folder per screen as they arrive; today a placeholder for each route
+  ui/                 patterns every screen shares: page header, loading, empty, error, toast, confirm
+  pages/              one module per route (a placeholder until its feature arrives)
+  security/           the headers (one definition for vercel.json, dev and preview), SafeLink,
+                      SafeImage, PasswordField, and the tests of the security rules
   test/               test setup
 ```
 
@@ -68,8 +77,9 @@ src/
   `components/`. No business rules in components: they live in plain functions that can be tested.
 - **The shared theme only.** Colours, spacing and fonts come from `@shazlo/ui` (a test fails on a
   hex colour, an `rgb()` or a font family in `src/`).
-- **Routes** are listed once, in `src/app/routes.tsx`, with who may open each (`public` or
-  `authenticated`); the session issue adds the guards that enforce it.
+- **Routes** are listed once, in `src/app/portalRoutes.ts`, with who may open each (`public`, `open`,
+  `authenticated` or `owner`); the guards in `src/session/guards.tsx` enforce it and `src/app/routes.tsx`
+  attaches the screens.
 - **Queries** do not retry a 4xx answer, retry network errors and 5xx twice, are fresh for 30
   seconds and refetch on window focus (`src/app/queryClient.ts`).
 - **Errors** never show a stack trace: a root error boundary and the router's error element render a
@@ -79,7 +89,7 @@ src/
 ## Deployment
 
 `vercel.json` rewrites every path to `index.html` so deep links work (static files are served first).
-Security headers are added by the security issue; the per-environment URLs and domains are Phase 8.
+`vercel.json` also carries the security headers (see "Security rules" below); the per-environment URLs and domains are Phase 8.
 
 ## Calling vendor-api
 
@@ -93,6 +103,7 @@ npm run api:check -w @shazlo/vendor-portal      # CI: fails when the committed f
 
 Commit the regenerated `schema.d.ts` with the backend change that caused it. CI runs the web checks
 whenever `openapi.json` changes, so a backend change that breaks the portal fails the build.
+(`.gitattributes` keeps `schema.d.ts` LF on every OS; with CRLF `api:check` would report it stale.)
 
 ```ts
 import { api, ApiError, NetworkError } from './api'
@@ -139,8 +150,9 @@ const { status, user, vendor, role, logout } = useSession()
 - **Expiry mid-work:** the user is sent to login with `return-to` set to the same screen. A form can
   keep its unsaved input with `saveDraft(key, data)` and restore it with `takeDraft(key)`
   (`session/drafts.ts`); drafts are in memory, survive an expiry, and are dropped on sign-out.
-- **The login screen** (a later issue) calls `session.signIn(response)` with the answer of
+- **The login screen** (`features/auth/LoginPage.tsx`) calls `session.signIn(response)` with the answer of
   `POST /v1/auth/login`, or `session.markBlocked()` on a `403 vendor_not_allowed`.
+
 ## Security rules
 
 The portal is open to the internet, holds vendors' business data and shows content vendors typed.
@@ -151,7 +163,7 @@ the Vite dev and preview headers, and the tests.
 
 | Header | Value |
 | --- | --- |
-| `Content-Security-Policy` | `default-src 'self'`; scripts from the app only (no inline script, no `eval`); `connect-src` only the API origin and `https://api.cloudinary.com`; `img-src` only the app and `https://res.cloudinary.com`; `frame-ancestors 'none'`, `frame-src 'none'`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`; `upgrade-insecure-requests` |
+| `Content-Security-Policy` | `default-src 'self'`; scripts from the app only (no inline script, no `eval`); `connect-src` only the API origin and `https://api.cloudinary.com`; `img-src` only the app, `https://res.cloudinary.com` and `blob:` (the preview of a file the vendor just chose); `frame-ancestors 'none'`, `frame-src 'none'`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`; `upgrade-insecure-requests` |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
 | `X-Content-Type-Options` | `nosniff` |
 | `Permissions-Policy` | camera, microphone, geolocation, payment, USB and the other listed features switched off |
@@ -206,15 +218,20 @@ through the one lockfile; Dependabot watches the repository root, so it covers t
 - **Errors:** `422` field messages appear next to their inputs and focus moves to the first one;
   `429` shows a countdown from `Retry-After` and blocks sending until it ends; network failures say
   so in plain words. `friendlyError` (`features/errors.ts`) is the shared way to word these.
-- **The verify link** is spent exactly once (StrictMode runs effects twice) and the token is then
-  removed from the address bar. Resending has a 60-second cooldown.
+- **The verify link** is the one vendor-api emails: `/verify-email#token=…`. The token is in the URL
+  *fragment* (the browser never sends it to a server, so it stays out of access logs and `Referer`
+  headers); `linkToken` (`features/linkToken.ts`) reads it, and also a `?token=` query. It is spent
+  exactly once (StrictMode runs effects twice) and the token is then removed from the address bar
+  and the history. Resending has a 60-second cooldown.
+- **A finished call keeps no copy of the password.** Mutations that carry one (`signup` here, and
+  `login` and `set-password`) use `gcTime: 0` and `reset()` once the call ends, so the query cache
+  does not hold the password in `variables`; a test checks the mutation cache is empty.
 - **The terms and privacy links** are in `src/config/links.ts`, opened through `SafeLink`.
 
 ## Signing in, signing out and passwords
 
-`src/features/auth/` holds `/login`, `/forgot-password` and `/set-password`; `src/app/AppBar.tsx` holds
-the signed-in frame (brand name, account menu, Sign out), which the dashboard shell grows into the
-full navigation.
+`src/features/auth/` holds `/login`, `/forgot-password` and the set-password screen; the signed-in frame (app bar
+with the account menu and Sign out, section navigation) is `src/app/shell/` (see "The dashboard shell").
 
 - **No screen tells a registered email from an unregistered one.** Every bad login (`401`) shows the
   one message `BAD_LOGIN_MESSAGE`, whatever the server's text; forgot password shows the same
@@ -222,11 +239,16 @@ full navigation.
 - **Login** sends the password and drops it from the form at once, success or not. `403
   vendor_not_allowed` marks the session blocked and shows the explanation page (no loop); `429`
   counts down; after login the `PublicOnly` guard sends the user to the checked `return-to`.
-- **`/set-password?token=…`** (invites and resets) keeps the token in memory only and removes it from
-  the address bar and the history at once. A bad token shows "expired or already used" with a way to
-  request a new link. It and `/verify-email` have access `open` in `portalRoutes.ts`: an emailed link
-  must work whether or not someone is signed in.
-- **Sign out** (app bar and account menu) ends the session, clears caches, drafts and sensitive
+- **The emailed links** are the ones vendor-api sends (`services/vendor-api/vendor_api/services/email/templates.py`):
+  `/verify-email#token=…`, `/reset-password#token=…` (reset) and `/accept-invite#token=…` (staff invite). The token
+  is in the URL *fragment*, which the browser never sends to a server, so it stays out of access logs and
+  `Referer` headers; `linkToken` also accepts a `?token=` query. `/reset-password`, `/accept-invite` and
+  `/set-password` are one screen: it keeps the token in memory only and removes it from the address bar and
+  the history at once (replacing the address with its own path, so the page is not remounted). A bad token
+  shows "expired or already used" with a way to request a new link. These routes and `/verify-email`
+  have access `open` in `portalRoutes.ts`: an emailed link must work whether or not someone is signed in.
+  If vendor-api changes a link, change `portalRoutes.ts` with it.
+- **Sign out** (in the account menu) ends the session, clears caches, drafts and sensitive
   form state, and goes to a plain `/login`: after a deliberate sign-out the next login does not
   "return" to the page the user left (`signedOutByUser`). An expired session does return.
 - **Password fields** (`PasswordField`) have a show/hide toggle, the right `autocomplete`, and never
@@ -293,3 +315,50 @@ width; jsdom has no layout), so check the look by hand before a release, in a re
   (a later version, a submitted one or a live one means it was submitted). When it cannot tell it explains both.
   A `409 product_in_review` that arrives anyway is explained too.
 - **Prefetch:** hovering or focusing a product's title warms its page.
+
+## Uploading images
+
+`src/features/uploads/` is the one way to upload a brand logo, a banner or a product image.
+
+```tsx
+<ImageUploader kind="brand_logo" label="Brand logo" currentUrl={draft.logo_url} onUploaded={(asset) => setLogoId(asset.id)} />
+<ImageUploader kind="product_image" label="Product images" multiple onUploaded={(asset) => addImage(asset.id)} />
+```
+
+`useImageUploads(kind, { concurrency, maxFiles })` is the same thing without the screen, for a custom layout.
+
+**The three steps** (`upload.ts`): sign (`POST /v1/vendor/assets/sign`), send the file straight to the image
+host with progress (`XMLHttpRequest`: `fetch` cannot report upload progress), register
+(`POST /v1/vendor/assets`). Only a registered asset with status `ready` can be used on a page or product.
+
+- **Refused before any request:** a file of the wrong type (JPG, PNG, WebP) or over 10 MB is refused in the
+  browser with "Use a JPG, PNG or WebP under 10 MB". The limits are checked again against the ones the server
+  returns with the signature. The 10 MB (`DEFAULT_MAX_BYTES`) is vendor-api's default `upload_max_bytes`; if
+  the server is configured with a larger limit, raise it in `rules.ts` to match.
+- **Only Cloudinary:** the upload address the server returns must be Cloudinary's `image/upload` endpoint
+  (`isTrustedUploadUrl`); the file and the signature are never sent anywhere else.
+- **Expired signatures** are replaced once, automatically (before sending if already expired, or after the host
+  rejects it). A second rejection is shown as an error, so a bad file cannot loop.
+- **Cancel** stops the request in flight and never starts the registration. The signature step leaves a `pending` record on the
+  server, which cannot be used anywhere. There is no endpoint to delete it and nothing cleans it up yet (a vendor-api
+  follow-up), so it stays. Cancel while the last step ("Saving…") is already running is a request that may have
+  reached the server: the image can then end up registered, but it is only attached to a page if the form is saved.
+- **Registering** retries a few times on `409 upload_not_found` (the host may take a moment to show the file); a
+  `422` shows the server's reason ("The image is larger than 10 MB").
+- **Secrets stay out of sight:** an `UploadError` carries only a sentence written for vendors, never the signature,
+  the API key, the upload address or the host's reply (a test checks every failure path, and that nothing is logged).
+- **Previews:** a `blob:` object URL of the local file while uploading (the CSP allows `blob:` for images only),
+  then the CDN address through `SafeImage`.
+- **Accessibility:** a real button opens the file chooser (files can also be dropped on the box); progress is a
+  named progress bar and is announced by quarter in a live region; errors are `role="alert"` and referenced by the
+  button's `aria-describedby`; every Cancel, Retry and Remove button names its file.
+
+## The brand page editor
+
+`src/features/brand/` is `/brand`.
+
+- **Edit, preview, save, submit.** The form sends the whole draft on every save (the API replaces it). Prices are typed in rupees and converted to paise with integer arithmetic (`99.90` is exactly 9990). The Instagram box takes `@name`, a name or a profile address and shows the handle it will save.
+- **Live preview** beside the form (below it on a phone): the shopper's brand card and page header at a phone or a desktop width. It only reads the form's values, so it updates as the vendor types. Text is rendered as text, links go through `SafeLink` and pictures through `SafeImage`, and a missing logo falls back to an initial.
+- **Unsaved changes** are tracked by comparing what would be saved: leaving the page asks first (`useBlocker`), and closing the tab warns.
+- **A version in review is locked.** It says since when (from `GET /v1/vendor/submissions`), and editing a new draft is a deliberate button. Submitting is off until the decision, because the API allows one version in review (`409 review_pending` is explained if it happens anyway). A version that was not approved shows the admin's reason.
+- **Submitting** needs a category (checked before the call), asks for confirmation that says what happens next, and saves unsaved changes first. The **Published version** tab shows what shoppers see now, or that nothing is published yet.

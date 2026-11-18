@@ -28,10 +28,12 @@ const AccountPage = lazy(() => import('../pages/AccountPage'))
 /** The screens, by path. Every route in `portalRoutes` must have one (a test checks). */
 export const screens: Record<string, ReactNode> = {
   '/login': <LoginPage />,
-  '/signup': <SignupPage />,
-  '/verify-email': <VerifyEmailPage />,
   '/forgot-password': <ForgotPasswordPage />,
   '/set-password': <SetPasswordPage />,
+  '/reset-password': <SetPasswordPage />,
+  '/accept-invite': <SetPasswordPage />,
+  '/signup': <SignupPage />,
+  '/verify-email': <VerifyEmailPage />,
   '/': <OverviewPage />,
   '/brand': <BrandPage />,
   '/products': <ProductsPage />,

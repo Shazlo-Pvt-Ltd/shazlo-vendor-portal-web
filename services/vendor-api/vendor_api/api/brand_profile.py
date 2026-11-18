@@ -124,6 +124,15 @@ class BrandProfileBody(BaseModel):
         return self
 
 
+class BrandReviewOut(BaseModel):
+    """What happened to this version when an admin looked at it. Never says who decided."""
+
+    status: str
+    reason: str | None
+    decided_at: datetime | None
+    submitted_at: datetime
+
+
 class BrandProfileOut(BaseModel):
     id: uuid.UUID
     version: int
@@ -142,6 +151,8 @@ class BrandProfileOut(BaseModel):
     price_max_paise: int
     submitted_at: datetime | None
     published_at: datetime | None
+    # The review of this version: null while it is an unsubmitted draft.
+    review: BrandReviewOut | None
     updated_at: datetime
 
 
@@ -170,6 +181,16 @@ def _out(view: ProfileView) -> dict[str, object]:
         "price_max_paise": profile.price_max_paise,
         "submitted_at": profile.submitted_at,
         "published_at": profile.published_at,
+        "review": (
+            BrandReviewOut(
+                status=view.review.status,
+                reason=view.review.reason,
+                decided_at=view.review.decided_at,
+                submitted_at=view.review.submitted_at,
+            )
+            if view.review is not None
+            else None
+        ),
         "updated_at": profile.updated_at,
     }
 

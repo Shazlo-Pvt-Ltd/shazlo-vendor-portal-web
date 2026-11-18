@@ -49,7 +49,8 @@ export function SignupPage() {
   const [submittedEmail, setSubmittedEmail] = useState<string | undefined>()
   const [focusRequest, setFocusRequest] = useState(0)
   const countdown = useCountdown()
-  const signup = api.useMutation('post', '/v1/auth/signup')
+  // gcTime 0 and reset(): a finished call keeps no copy of what it sent (the password) in the query cache.
+  const signup = api.useMutation('post', '/v1/auth/signup', { gcTime: 0 })
   const heading = useRef<HTMLHeadingElement>(null)
 
   // A typed password must not outlive the session or the screen.
@@ -101,6 +102,8 @@ export function SignupPage() {
       const friendly = friendlyError(caught)
       setFormError(friendly.message)
       if (friendly.retryAfter) countdown.start(friendly.retryAfter)
+    } finally {
+      signup.reset()
     }
   }
 

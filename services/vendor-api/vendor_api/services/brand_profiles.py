@@ -60,6 +60,8 @@ class ProfileView:
     banner_url: str | None
     # Only for the draft: the version now in review, which blocks a new submission.
     in_review_version: int | None = None
+    # The latest review of this very version, if it was ever submitted.
+    review: Review | None = None
 
 
 class BrandProfileService:
@@ -260,11 +262,19 @@ class BrandProfileService:
         in_review = (
             await self._in_review_version(db, profile.vendor_id) if with_review_state else None
         )
+        review = await db.scalar(
+            select(Review)
+            .where(Review.vendor_id == profile.vendor_id, Review.brand_profile_id == profile.id)
+            .order_by(Review.submitted_at.desc(), Review.created_at.desc())
+            .limit(1)
+            .execution_options(populate_existing=True)
+        )
         return ProfileView(
             profile,
             logo_url=urls.get(profile.logo_asset_id) if profile.logo_asset_id else None,
             banner_url=urls.get(profile.banner_asset_id) if profile.banner_asset_id else None,
             in_review_version=in_review,
+            review=review,
         )
 
 

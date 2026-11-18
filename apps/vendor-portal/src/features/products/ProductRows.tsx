@@ -28,6 +28,15 @@ function StatusChip({ status }: { status: string }) {
   )
 }
 
+/**
+ * The API sets `has_pending_changes` whenever a revision sits in the editable or in-review slot, which is
+ * true of every new draft, every product in review and every rejected one. Only for an approved product
+ * does it mean "being edited", so only there is it shown.
+ */
+function hasChangesWaiting(product: ProductSummary): boolean {
+  return product.has_pending_changes && product.status === 'approved'
+}
+
 function PendingBadge() {
   // Words, not just a colour: an approved product that is being edited has changes waiting.
   return <Chip size="small" variant="outlined" color="warning" label="Changes pending" />
@@ -108,7 +117,7 @@ export function ProductsTable({ products, actions }: { products: ProductSummary[
             <TableCell>
               <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 0.5 }}>
                 <StatusChip status={product.status} />
-                {product.has_pending_changes ? <PendingBadge /> : null}
+                {hasChangesWaiting(product) ? <PendingBadge /> : null}
               </Stack>
             </TableCell>
             <TableCell>
@@ -137,7 +146,7 @@ export function ProductCards({ products, actions }: { products: ProductSummary[]
               </Typography>
               <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
                 <StatusChip status={product.status} />
-                {product.has_pending_changes ? <PendingBadge /> : null}
+                {hasChangesWaiting(product) ? <PendingBadge /> : null}
               </Stack>
               <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
                 SKU {product.sku} · {product.category}
