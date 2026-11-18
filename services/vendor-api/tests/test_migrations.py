@@ -1,5 +1,7 @@
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
+from conftest import SERVICE_DIR
 from sqlalchemy import Engine, create_engine, inspect, text
 
 from vendor_api.db.session import sync_url
@@ -151,6 +153,46 @@ def test_the_outbox_migration_alone_can_be_undone_and_redone(
         assert _function_count(engine) == len(FUNCTIONS)
     finally:
         engine.dispose()
+
+
+def _outbox_columns(engine: Engine) -> set[str]:
+    return {column["name"] for column in inspect(engine).get_columns("outbox_events")}
+
+
+def _outbox_trigger_function(engine: Engine) -> str:
+    with engine.connect() as connection:
+        source = connection.scalar(
+            text("SELECT prosrc FROM pg_proc WHERE proname = 'protect_outbox_event'")
+        )
+    return str(source)
+
+
+def test_the_claim_token_migration_alone_can_be_undone_and_redone(
+    alembic_config: Config, migrated_db: str
+) -> None:
+    engine = create_engine(sync_url(migrated_db))
+    try:
+        assert "claim_token" in _outbox_columns(engine)
+        assert "'claim_token'" in _outbox_trigger_function(engine)
+        try:
+            command.downgrade(alembic_config, "0008")
+            assert "claim_token" not in _outbox_columns(engine)
+            # The table, its trigger and the function stay, as 0008 made them.
+            assert "outbox_events" in _tables(migrated_db)
+            assert "claim_token" not in _outbox_trigger_function(engine)
+            assert _function_count(engine) == len(FUNCTIONS)
+        finally:
+            command.upgrade(alembic_config, "head")
+        assert "claim_token" in _outbox_columns(engine)
+        assert "'claim_token'" in _outbox_trigger_function(engine)
+        assert _function_count(engine) == len(FUNCTIONS)
+    finally:
+        engine.dispose()
+
+
+def test_there_is_one_migration_head() -> None:
+    config = Config(str(SERVICE_DIR / "alembic.ini"))  # reads the files only, no database
+    assert len(ScriptDirectory.from_config(config).get_heads()) == 1
 
 
 def test_the_event_detail_migration_alone_can_be_undone_and_redone(

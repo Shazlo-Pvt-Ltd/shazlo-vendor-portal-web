@@ -32,6 +32,11 @@ vendor, when it is approved (`pending` vendors are not reported at all).
 between them, and the run stops while more than `reconcile_max_pending` events wait in the outbox
 (the next run carries on, because what was not repaired is still behind). Only one worker reconciles
 at a time (an advisory lock).
+
+A resync cannot work that way: it re-sends every aggregate it is asked to, so a second run would
+start over from the same first chunks and a catalog larger than the limit would never be finished.
+It therefore **waits** for the outbox to drain (`wait_for_backlog`) and gives up only when the
+backlog has not shrunk for `BACKLOG_PATIENCE_SECONDS` (nobody is delivering).
 """
 
 import asyncio
@@ -80,6 +85,10 @@ UNPUBLISHED = "unpublished"
 AGGREGATE_TYPES = ("vendor", "brand_profile", "product")
 CHUNK = 200
 PAUSE_SECONDS = 1.0
+# A resync waiting for a full outbox to drain: how often it looks, and how long without the backlog
+# shrinking it takes to mean that no worker is delivering.
+BACKLOG_POLL_SECONDS = 5.0
+BACKLOG_PATIENCE_SECONDS = 120.0
 # One advisory lock for the whole job, so that two workers do not repair the same things twice.
 LOCK_KEY = 0x5A4C_0186
 
@@ -184,6 +193,9 @@ class Reconciler:
         max_pending: int = 1000,
         pause: float = PAUSE_SECONDS,
         chunk: int = CHUNK,
+        wait_for_backlog: bool = False,
+        backlog_poll: float = BACKLOG_POLL_SECONDS,
+        backlog_patience: float = BACKLOG_PATIENCE_SECONDS,
         clock: Clock = lambda: datetime.now(UTC),
     ) -> None:
         self._sessions = sessions
@@ -192,6 +204,9 @@ class Reconciler:
         self._max_pending = max_pending
         self._pause = pause
         self._chunk = chunk
+        self._wait_for_backlog = wait_for_backlog
+        self._backlog_poll = backlog_poll
+        self._backlog_patience = backlog_patience
         self._clock = clock
 
     # --- The two jobs ------------------------------------------------------------------------
@@ -249,7 +264,7 @@ class Reconciler:
         """Repairs `ids`, a chunk at a time. False when the run should stop (a full outbox)."""
         for start in range(0, len(ids), self._chunk):
             chunk = ids[start : start + self._chunk]
-            if await self._backlog() >= self._max_pending:
+            if not await self._has_room():
                 report.stopped_for_backlog = True
                 logger.warning(
                     "reconciliation stopped: the outbox is full; the next run carries on",
@@ -295,6 +310,27 @@ class Reconciler:
                 logger.warning("a chunk lost a race with a change", extra={"aggregate_type": kind})
                 return
             report.written[kind] += len(events)
+
+    async def _has_room(self) -> bool:
+        """Whether the outbox has room for another chunk. A resync waits for it to drain; a
+        reconciliation does not (it carries on the next night)."""
+        waiting = await self._backlog()
+        if waiting < self._max_pending:
+            return True
+        if not self._wait_for_backlog:
+            return False
+        patience = max(1, round(self._backlog_patience / self._backlog_poll))  # polls
+        lowest, stalled = waiting, 0
+        while stalled < patience:
+            await asyncio.sleep(self._backlog_poll)
+            waiting = await self._backlog()
+            if waiting < self._max_pending:
+                return True
+            if waiting < lowest:
+                lowest, stalled = waiting, 0
+            else:
+                stalled += 1
+        return False
 
     async def _backlog(self) -> int:
         async with self._sessions() as db:

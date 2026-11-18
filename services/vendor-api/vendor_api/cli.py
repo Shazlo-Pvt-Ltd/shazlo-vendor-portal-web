@@ -78,12 +78,14 @@ async def _resync(vendor: str | None, product: str | None, everything: bool) -> 
         sessions = create_sessionmaker(engine)
         async with sessions() as db:
             scope = await _resync_scope(db, vendor, product, everything)
-        # A short pause between chunks: a whole catalog must not flood the outbox.
+        # A short pause between chunks, and a wait while the outbox is full: a whole catalog must
+        # not flood it, and a second run would only start over from the first aggregates.
         reconciler = Reconciler(
             sessions,
             OutboxWriter(True),
             max_pending=settings.reconcile_max_pending,
             pause=0.2,
+            wait_for_backlog=True,
         )
         return await reconciler.resync(scope)
     finally:
@@ -145,7 +147,11 @@ def _print_resync(report: Report) -> None:
     if report.conflicts:
         print(f"{report.conflicts} lost a race with a change; run the command again.")
     if report.stopped_for_backlog:
-        print("The outbox is full: stopped early. Run the command again once it has drained.")
+        print(
+            "The outbox is full and did not drain: stopped early. Is the worker running, with "
+            "CENTRAL_PUBLISHING_ENABLED=true? Running the command again re-sends everything, "
+            "including what this run already wrote."
+        )
 
 
 async def _seed_dev(password: str) -> bool:

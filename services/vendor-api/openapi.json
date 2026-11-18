@@ -531,6 +531,16 @@
             ],
             "title": "Published At"
           },
+          "review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BrandReviewOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "state": {
             "title": "State",
             "type": "string"
@@ -597,9 +607,55 @@
           "price_max_paise",
           "submitted_at",
           "published_at",
+          "review",
           "updated_at"
         ],
         "title": "BrandProfileOut",
+        "type": "object"
+      },
+      "BrandReviewOut": {
+        "description": "What happened to this version when an admin looked at it. Never says who decided.",
+        "properties": {
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "reason",
+          "decided_at",
+          "submitted_at"
+        ],
+        "title": "BrandReviewOut",
         "type": "object"
       },
       "ChangeOut": {
@@ -910,6 +966,16 @@
             ],
             "title": "Published At"
           },
+          "review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BrandReviewOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "state": {
             "title": "State",
             "type": "string"
@@ -976,6 +1042,7 @@
           "price_max_paise",
           "submitted_at",
           "published_at",
+          "review",
           "updated_at",
           "in_review_version"
         ],
@@ -2486,6 +2553,159 @@
           "created_at"
         ],
         "title": "StatusEventOut",
+        "type": "object"
+      },
+      "SubmissionOut": {
+        "description": "One review of something the vendor submitted. There is no reviewer in it: who decided\nis private to the admins.",
+        "properties": {
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "sku": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sku"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "withdrawn"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "subject": {
+            "enum": [
+              "brand_profile",
+              "product"
+            ],
+            "title": "Subject",
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "subject",
+          "id",
+          "sku",
+          "title",
+          "version",
+          "status",
+          "reason",
+          "submitted_at",
+          "decided_at"
+        ],
+        "title": "SubmissionOut",
+        "type": "object"
+      },
+      "SubmissionPageOut": {
+        "examples": [
+          {
+            "items": [
+              {
+                "decided_at": "2026-11-11T12:00:00Z",
+                "id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
+                "reason": "The photos are too dark to see the print.",
+                "sku": "KRT-001",
+                "status": "rejected",
+                "subject": "product",
+                "submitted_at": "2026-11-10T09:30:00Z",
+                "title": "Indigo block-print kurta",
+                "version": 2
+              },
+              {
+                "id": "7a1c2d3e-4b5f-4a6b-8c7d-9e0f1a2b3c4d",
+                "status": "pending",
+                "subject": "brand_profile",
+                "submitted_at": "2026-11-09T08:00:00Z",
+                "version": 3
+              }
+            ],
+            "limit": 25,
+            "offset": 0,
+            "total": 2
+          }
+        ],
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SubmissionOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "SubmissionPageOut",
         "type": "object"
       },
       "SummaryOut": {
@@ -4925,6 +5145,110 @@
         "summary": "Submit Product",
         "tags": [
           "products"
+        ]
+      }
+    },
+    "/v1/vendor/submissions": {
+      "get": {
+        "description": "Everything the vendor submitted for review and what came of it, newest first. A rejected\nversion carries the admin's reason. Any active user of the vendor can read it.",
+        "operationId": "list_submissions_v1_vendor_submissions_get",
+        "parameters": [
+          {
+            "description": "Only reviews in this status; `all` (the default) lists every one.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "description": "Only reviews in this status; `all` (the default) lists every one.",
+              "enum": [
+                "pending",
+                "approved",
+                "rejected",
+                "withdrawn",
+                "all"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only the brand page's reviews, or only the products'.",
+            "in": "query",
+            "name": "subject",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "brand_profile",
+                    "product"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only the brand page's reviews, or only the products'.",
+              "title": "Subject"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 100000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmissionPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Submissions",
+        "tags": [
+          "submissions"
         ]
       }
     },
