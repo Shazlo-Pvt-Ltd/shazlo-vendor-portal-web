@@ -98,10 +98,7 @@ CREATE INDEX outbox_due ON outbox_events (next_attempt_at) WHERE status = 'pendi
 The publisher worker claims due rows with `FOR UPDATE SKIP LOCKED`, so several workers can run safely, and skips any aggregate that still has an earlier unsent version:
 
 ```sql
-UPDATE outbox_events o
-SET status = 'sending', locked_at = now(), claim_token = gen_random_uuid(),
-    attempts = attempts + 1
-WHERE o.id IN (
+WITH due AS MATERIALIZED (
   SELECT d.id
   FROM outbox_events d
   WHERE d.status = 'pending'
@@ -117,8 +114,15 @@ WHERE o.id IN (
   LIMIT 20
   FOR UPDATE SKIP LOCKED
 )
+UPDATE outbox_events o
+SET status = 'sending', locked_at = now(), claim_token = gen_random_uuid(),
+    attempts = o.attempts + 1
+FROM due
+WHERE o.id = due.id
 RETURNING o.*;
 ```
+
+The locking select is a `MATERIALIZED` CTE on purpose: written as `WHERE o.id IN (SELECT ... LIMIT 20 FOR UPDATE SKIP LOCKED)`, Postgres may run the subquery again for each row it updates and claim more rows than the limit.
 
 A row stuck in `sending` for more than 2 minutes (a crashed worker) is reset to `pending` by a sweeper. A worker records the result of a request only while the row still carries the `claim_token` it claimed it with, so a worker that is late cannot overwrite a row the sweeper gave to another one. Rows with `status = 'sent'` are kept for 30 days for audit and then removed, **except the latest row of each aggregate**: the writer reads it to know what the central app holds (whether a withdrawal is due, what to hide or show again after a suspension, and which version comes next, which for a brand page exists only in the outbox), so it must outlive the retention period.
 
