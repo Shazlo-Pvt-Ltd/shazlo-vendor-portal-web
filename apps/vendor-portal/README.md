@@ -163,7 +163,7 @@ the Vite dev and preview headers, and the tests.
 
 | Header | Value |
 | --- | --- |
-| `Content-Security-Policy` | `default-src 'self'`; scripts from the app only (no inline script, no `eval`); `connect-src` only the API origin and `https://api.cloudinary.com`; `img-src` only the app and `https://res.cloudinary.com`; `frame-ancestors 'none'`, `frame-src 'none'`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`; `upgrade-insecure-requests` |
+| `Content-Security-Policy` | `default-src 'self'`; scripts from the app only (no inline script, no `eval`); `connect-src` only the API origin and `https://api.cloudinary.com`; `img-src` only the app, `https://res.cloudinary.com` and `blob:` (the preview of a file the vendor just chose); `frame-ancestors 'none'`, `frame-src 'none'`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`; `upgrade-insecure-requests` |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
 | `X-Content-Type-Options` | `nosniff` |
 | `Permissions-Policy` | camera, microphone, geolocation, payment, USB and the other listed features switched off |
@@ -297,3 +297,40 @@ width; jsdom has no layout), so check the look by hand before a release, in a re
 - [ ] **Keyboard only** (no mouse), at each width: Tab reaches the skip link first and it works; every control can be reached and used; focus is always visible; after choosing a section focus is on its heading; Escape closes the drawer and the account menu.
 - [ ] **Zoom** to 200% and 400%: nothing is cut off or overlaps.
 - [ ] **A screen reader** announces the page title, the current section (`aria-current`), the loading states and the toasts.
+
+## Uploading images
+
+`src/features/uploads/` is the one way to upload a brand logo, a banner or a product image.
+
+```tsx
+<ImageUploader kind="brand_logo" label="Brand logo" currentUrl={draft.logo_url} onUploaded={(asset) => setLogoId(asset.id)} />
+<ImageUploader kind="product_image" label="Product images" multiple onUploaded={(asset) => addImage(asset.id)} />
+```
+
+`useImageUploads(kind, { concurrency, maxFiles })` is the same thing without the screen, for a custom layout.
+
+**The three steps** (`upload.ts`): sign (`POST /v1/vendor/assets/sign`), send the file straight to the image
+host with progress (`XMLHttpRequest`: `fetch` cannot report upload progress), register
+(`POST /v1/vendor/assets`). Only a registered asset with status `ready` can be used on a page or product.
+
+- **Refused before any request:** a file of the wrong type (JPG, PNG, WebP) or over 10 MB is refused in the
+  browser with "Use a JPG, PNG or WebP under 10 MB". The limits are checked again against the ones the server
+  returns with the signature. The 10 MB (`DEFAULT_MAX_BYTES`) is vendor-api's default `upload_max_bytes`; if
+  the server is configured with a larger limit, raise it in `rules.ts` to match.
+- **Only Cloudinary:** the upload address the server returns must be Cloudinary's `image/upload` endpoint
+  (`isTrustedUploadUrl`); the file and the signature are never sent anywhere else.
+- **Expired signatures** are replaced once, automatically (before sending if already expired, or after the host
+  rejects it). A second rejection is shown as an error, so a bad file cannot loop.
+- **Cancel** stops the request in flight and never starts the registration. The signature step leaves a `pending` record on the
+  server, which cannot be used anywhere. There is no endpoint to delete it and nothing cleans it up yet (a vendor-api
+  follow-up), so it stays. Cancel while the last step ("Saving…") is already running is a request that may have
+  reached the server: the image can then end up registered, but it is only attached to a page if the form is saved.
+- **Registering** retries a few times on `409 upload_not_found` (the host may take a moment to show the file); a
+  `422` shows the server's reason ("The image is larger than 10 MB").
+- **Secrets stay out of sight:** an `UploadError` carries only a sentence written for vendors, never the signature,
+  the API key, the upload address or the host's reply (a test checks every failure path, and that nothing is logged).
+- **Previews:** a `blob:` object URL of the local file while uploading (the CSP allows `blob:` for images only),
+  then the CDN address through `SafeImage`.
+- **Accessibility:** a real button opens the file chooser (files can also be dropped on the box); progress is a
+  named progress bar and is announced by quarter in a live region; errors are `role="alert"` and referenced by the
+  button's `aria-describedby`; every Cancel, Retry and Remove button names its file.
