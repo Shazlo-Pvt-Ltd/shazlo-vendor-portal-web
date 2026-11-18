@@ -1,8 +1,20 @@
 import { render, screen } from '@testing-library/react'
 import { useTheme } from '@mui/material'
-import { describe, expect, it, vi } from 'vitest'
+import { http, HttpResponse } from 'msw'
+import { setupServer } from 'msw/node'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Providers } from './app/Providers'
+import { resetApiClient } from './api/instance'
+import { sessionBody } from './session/testing'
 import { App } from './App'
+
+const server = setupServer()
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
+afterEach(() => {
+  server.resetHandlers()
+  resetApiClient()
+})
+afterAll(() => server.close())
 
 describe('App', () => {
   it('shows what is wrong, not a blank page, when the API URL is missing', () => {
@@ -19,10 +31,11 @@ describe('App', () => {
     expect(document.body.textContent).not.toContain('topsecret')
   })
 
-  it('shows the app when the API URL is valid', () => {
+  it('shows the app when the API URL is valid and the session is restored', async () => {
     vi.stubEnv('VITE_VENDOR_API_URL', 'http://localhost:8002')
+    server.use(http.post('http://localhost:8002/v1/auth/refresh', () => HttpResponse.json(sessionBody())))
     render(<App />)
-    expect(screen.getByRole('heading', { level: 1, name: 'Overview' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Overview' })).toBeTruthy()
     expect(screen.queryByText('The portal is misconfigured')).toBeNull()
   })
 })

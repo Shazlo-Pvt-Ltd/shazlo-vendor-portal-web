@@ -3,6 +3,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { theme } from '@shazlo/ui'
 import { useState, type ReactNode } from 'react'
 import { ErrorBoundary } from '../components/ErrorBoundary'
+import { AuthProvider } from '../session/AuthProvider'
 import { createQueryClient } from './queryClient'
 
 /** Theme, error boundary and data cache around the whole app. */
@@ -12,7 +13,9 @@ export function Providers({ children }: { children: ReactNode }) {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>{children}</AuthProvider>
+        </QueryClientProvider>
       </ErrorBoundary>
     </ThemeProvider>
   )

@@ -61,6 +61,7 @@ src/
   App.tsx             checks the environment, then the router
   app/                providers (theme, error boundary, query client), the route table, the router
   api/                the typed vendor-api client, its hooks and error model (generated types in schema.d.ts)
+  session/            the session store (token in memory), AuthProvider and useSession, the route guards, the blocked page
   config/             the typed environment
   components/         shared pieces (error boundary and screens, not found, misconfigured)
   pages/              one folder per screen as they arrive; today a placeholder for each route
@@ -73,8 +74,8 @@ src/
   `components/`. No business rules in components: they live in plain functions that can be tested.
 - **The shared theme only.** Colours, spacing and fonts come from `@shazlo/ui` (a test fails on a
   hex colour, an `rgb()` or a font family in `src/`).
-- **Routes** are listed once, in `src/app/routes.tsx`, with who may open each (`public` or
-  `authenticated`); the session issue adds the guards that enforce it.
+- **Routes** are listed once, in `src/app/portalRoutes.ts`, with who may open each (`public`,
+  `authenticated` or `owner`); the guards in `src/session/guards.tsx` enforce it.
 - **Queries** do not retry a 4xx answer, retry network errors and 5xx twice, are fresh for 30
   seconds and refetch on window focus (`src/app/queryClient.ts`).
 - **Errors** never show a stack trace: a root error boundary and the router's error element render a
@@ -119,6 +120,34 @@ login.mutate({ body: { email, password } })
 The session code supplies the access token with `setAccessTokenProvider(() => token)`; the client
 always sends cookies, so the refresh cookie reaches `/v1/auth/*`. The bulk import and the template
 download are `importProducts(file)` and `downloadImportTemplate()`. Tests mock the network with MSW.
+
+## The session
+
+`src/session/` keeps the vendor signed in (ADR 0009). The access token (15 minutes) lives **in memory
+only**; the refresh cookie is `HttpOnly`, so scripts cannot read it. After a reload the portal
+calls `POST /v1/auth/refresh` to restore the session. Nothing is written to web storage.
+
+```tsx
+const { status, user, vendor, role, logout } = useSession()
+// status: 'loading' | 'signedIn' | 'signedOut' | 'blocked' | 'unavailable'
+```
+
+- **Renewal:** the token is renewed at 80% of its life, and once on a `401` from any call (the
+  request is then retried once). Concurrent calls share one refresh. A `409 refresh_conflict` (two
+  tabs refreshing together) waits a moment and retries once.
+- **Ending:** a `401` on refresh signs out and clears the query cache. `unavailable` (the server
+  cannot be reached) is not a sign-out; the user can try again.
+- **Tabs:** a `BroadcastChannel` carries only the words `login` and `logout`, never a token.
+- **Guards:** `RequireAuth` (to `/login?return-to=…`, validated by `safeReturnTo`: only a path to a
+  portal screen), `PublicOnly`, and `RequireRole role="owner"`. A route's access is set in
+  `src/app/portalRoutes.ts`.
+- **Blocked vendors** (`403 vendor_not_allowed`, rejected or suspended) get a page that explains and
+  offers support in place, never a redirect to login.
+- **Expiry mid-work:** the user is sent to login with `return-to` set to the same screen. A form can
+  keep its unsaved input with `saveDraft(key, data)` and restore it with `takeDraft(key)`
+  (`session/drafts.ts`); drafts are in memory, survive an expiry, and are dropped on sign-out.
+- **The login screen** (a later issue) calls `session.signIn(response)` with the answer of
+  `POST /v1/auth/login`, or `session.markBlocked()` on a `403 vendor_not_allowed`.
 
 ## Security rules
 
