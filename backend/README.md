@@ -1,184 +1,73 @@
-# Shazlo Backend - Pre-Registration System
+# Shazlo backend (legacy)
 
-A Node.js/Express backend with MongoDB for handling pre-registration functionality.
-
-## Features
-
-- User pre-registration with email, name, and preferences
-- Email validation and duplicate prevention
-- Interest tracking and referral source analytics
-- Rate limiting and security middleware
-- MongoDB Atlas integration
-- RESTful API design
+A Node.js/Express backend with MongoDB for the consumer waitlist, brand registration, catalog upload and the old seller approval screens. **It is the legacy service**: the rewrite replaces its vendor and admin parts with `services/vendor-api` and `services/identity-api` and leaves it untouched until Phase 8 of the [roadmap](../docs/ROADMAP.md). It has no authentication: the admin endpoints below are public.
 
 ## Prerequisites
 
-- Node.js (v18 or higher)
-- MongoDB Atlas account (or local MongoDB)
-- npm or yarn
+- Node.js (see the `engines` field of the root `package.json`)
+- A MongoDB database (Atlas or local) for running it; the tests start their own
 
 ## Installation
 
 1. **Install dependencies:**
 
    ```bash
-   npm install
+   npm ci
    ```
 
-2. **Environment Setup:**
+2. **Environment setup:** copy `.env.example` to `.env` and set `MONGODB_URI` (the connection string with your credentials) and, for image uploads, the three `CLOUDINARY_*` values. `PORT` defaults to 5000. `JWT_SECRET` and `CORS_ORIGIN` are in the example file but no code reads them today.
 
-   - Copy `.env.example` to `.env`
-   - Update the MongoDB connection string with your credentials:
+3. **Database setup:** none. Mongoose creates the collections on first use. With Atlas, allow your IP address in Network Access.
 
-   ```
-   MONGODB_URI=mongodb+srv://<user>:<password>@<cluster-host>/<database>?retryWrites=true&w=majority
-   ```
-
-   - Generate a strong JWT secret
-   - Update CORS origin to match your frontend URL
-
-3. **Database Setup:**
-   - The application will automatically create the database and collections
-   - Make sure your MongoDB Atlas cluster is running
-   - Whitelist your IP address in MongoDB Atlas Network Access
-
-## Running the Application
-
-### Development Mode
+## Running the application
 
 ```bash
-npm run dev
+npm run dev     # nodemon
+npm start       # node server.js
 ```
 
-### Production Mode
+The server listens on port 5000 (or `PORT`). The Express application itself is `app.js`; `server.js` connects to MongoDB and starts listening.
 
-```bash
-npm start
-```
+## API endpoints
 
-The server will start on port 5000 (or the port specified in your .env file).
+Mounted in `app.js`:
 
-## API Endpoints
+| Endpoint | What it does |
+| --- | --- |
+| `GET /api/health` | Health check |
+| `POST /api/waitlist/add` | Add `{ name, email, gender, city }` to the waitlist; a repeated email answers `200` with `alreadyAdded: true` |
+| `POST /api/register-brand` | Register a brand |
+| `POST /api/upload/images` | Upload images (multipart field `images`) to Cloudinary and return their URLs |
+| `POST /api/upload/products` | Save `{ products, sellerId }`; every product is stored as `pending` |
+| `GET /api/admin/sellers` | List sellers |
+| `GET /api/admin/products`, `GET /api/admin/products/:sellerId` | List products, or one seller's |
+| `PUT /api/admin/products/:productId/approve`, `PUT /api/admin/products/:productId/reject` | Approve or reject a product |
 
-### Pre-Registration
+`routes/preRegister.js` (pre-registration with email confirmation) and its model exist but are **not mounted**, so `/api/preregister/*` does not respond.
 
-- **POST** `/api/preregister/register`
+## Data models
 
-  - Register a new user for pre-registration
-  - Body: `{ email, name, phone?, interests?, referralSource?, notificationPreferences? }`
+`models/`: `Brand`, `Product` (status `pending`, `approved` or `rejected`), `WaitlistUser` and `PreRegister` (not used by a mounted route). What the rewrite takes from them is listed in the [roadmap](../docs/ROADMAP.md#what-carries-over-from-the-legacy-code).
 
-- **GET** `/api/preregister/check/:email`
-
-  - Check if an email is already registered
-
-- **GET** `/api/preregister/confirm/:token`
-
-  - Confirm email with confirmation token
-
-- **GET** `/api/preregister/stats`
-  - Get registration statistics (admin endpoint)
-
-### Health Check
-
-- **GET** `/api/health`
-  - API health check
-
-## Data Models
-
-### PreRegister Schema
-
-```javascript
-{
-  email: String (required, unique),
-  name: String (required),
-  phone: String (optional),
-  interests: [String],
-  referralSource: String,
-  notificationPreferences: {
-    email: Boolean,
-    sms: Boolean
-  },
-  status: String (pending, confirmed, notified),
-  confirmationToken: String,
-  ipAddress: String,
-  userAgent: String,
-  createdAt: Date,
-  updatedAt: Date
-}
-```
-
-## Security Features
-
-- Helmet.js for security headers
-- Rate limiting (100 requests per 15 minutes globally, 5 registrations per 15 minutes per IP)
-- Input validation and sanitization
-- CORS protection
-- MongoDB injection protection
-
-## Environment Variables
+## Environment variables read by the code
 
 ```env
-NODE_ENV=development
 PORT=5000
 MONGODB_URI=your_mongodb_connection_string
-JWT_SECRET=your_jwt_secret_key
-CORS_ORIGIN=http://localhost:5173
+CLOUDINARY_CLOUD_NAME=
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
 ```
-
-## Development
-
-### Adding New Features
-
-1. Create new routes in `/routes`
-2. Add data models in `/models`
-3. Update server.js to include new routes
-4. Test endpoints using tools like Postman or curl
-
-### Database Queries
-
-The application uses Mongoose for MongoDB operations. Key features:
-
-- Automatic validation
-- Pre/post middleware hooks
-- Static methods for complex queries
-- Indexing for performance
-
-## Deployment
-
-### MongoDB Atlas Setup
-
-1. Create a cluster in MongoDB Atlas
-2. Create a database user
-3. Whitelist IP addresses
-4. Get connection string and update .env
-
-### Production Deployment
-
-1. Set NODE_ENV=production
-2. Update CORS_ORIGIN to your production frontend URL
-3. Use a strong JWT_SECRET
-4. Consider using PM2 for process management
-5. Set up SSL/TLS certificates
-6. Configure reverse proxy (nginx)
-
-## Monitoring
-
-- Health check endpoint at `/api/health`
-- Console logging for development
-- Consider adding production logging (Winston, etc.)
 
 ## Testing
 
 ```bash
-npm test
+npm test            # in backend/: the legacy-backend Vitest project (run `npm ci` at the repository root first)
+npm test            # at the repository root: every Vitest project
 ```
 
-Currently uses basic error handling. Consider adding:
+The integration suite starts its own disposable MongoDB process (it downloads the binary on the first run) and never uses `MONGODB_URI`. See [the test strategy](../docs/testing.md).
 
-- Unit tests (Jest)
-- Integration tests
-- API testing (Supertest)
+## Deployment
 
-## License
-
-MIT
+There is no Dockerfile or deployment configuration for this service in the repository. It enables CORS for every origin and has no rate limiting and no authentication, so it is not production-ready as it stands.
