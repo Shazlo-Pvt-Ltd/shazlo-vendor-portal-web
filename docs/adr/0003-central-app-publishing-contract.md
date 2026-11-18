@@ -145,15 +145,16 @@ The central app is the consumer backend (`shazlo-server`). Each question has a p
 
 ## Shared secrets
 
-Each environment has its own secret, so a leak in one never exposes another. The secrets themselves are never written in this repository.
+Each environment has its own secret (and key id), so a leak in one never exposes another. No real secret is written in this repository: the only values in it are the contract's test secret and the stub's development default, both marked as not for production.
 
 | Environment | `vendor-api` holds it in | Central app holds it in |
 | --- | --- | --- |
-| Local development | `services/vendor-api/.env` (git-ignored), or unset so publishing is off | The stub receiver's environment |
-| Staging | The platform's secret manager, injected as `CENTRAL_SIGNING_SECRET` | The central app's staging secret manager |
-| Production | The platform's secret manager, injected as `CENTRAL_SIGNING_SECRET` | The central app's production secret manager |
+| Local development | `services/vendor-api/.env` (git-ignored), or unset so publishing is off | The stub receiver's `STUB_SIGNING_KEYS` (`CENTRAL_STUB_SIGNING_KEYS` in compose) |
+| CI | Generated inside each test, or the contract's test vector; no real secret is stored as a CI secret | Not applicable |
+| Staging | The platform's secret manager, injected as `CENTRAL_SIGNING_SECRET` (with `CENTRAL_SIGNING_KEY_ID`) | The central app's staging secret manager |
+| Production | The platform's secret manager, injected as `CENTRAL_SIGNING_SECRET` (with `CENTRAL_SIGNING_KEY_ID`) | The central app's production secret manager |
 
-Rotation, with two keys active at once, is described in [the key-rotation runbook](../runbooks/central-api-key-rotation.md).
+The hosting platform and its secret manager are not chosen yet; the runbook names the actual product and path once they are. Rotation, with two keys active at once, and what to do if a key leaks are in [the key-rotation runbook](../runbooks/central-api-key-rotation.md), which also holds this table with notes.
 
 ## Confirmation record
 
