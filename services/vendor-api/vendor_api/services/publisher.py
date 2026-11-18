@@ -59,6 +59,11 @@ from vendor_api.services.central_events import PRODUCER, iso
 logger = logging.getLogger(__name__)
 
 EVENTS_PATH = "/internal/v1/events"
+VERSIONS_PATH = "/internal/v1/versions"
+VERSIONS_PAGE = 500
+MAX_VERSION_PAGES = 20_000
+# A page of 500 versions is about 60 KB: anything past this is not one.
+MAX_VERSIONS_BYTES = 4 * 1024 * 1024
 
 # The central app answers within 10 seconds (ADR 0003): no single step of a request (connecting,
 # sending, waiting for the next piece of the answer) is allowed to take longer ...
@@ -125,6 +130,10 @@ CLAIM = text(
               o.created_at, o.attempts, o.claim_token
     """
 ).bindparams(bindparam("now", type_=DateTime(timezone=True)), bindparam("limit", type_=Integer))
+
+
+class CentralError(Exception):
+    """The central app could not be asked (not an answer about an event). Safe to show."""
 
 
 @dataclass(frozen=True)
@@ -234,6 +243,7 @@ class CentralClient:
         clock: Clock = _now,
     ) -> None:
         self._url = base_url.rstrip("/") + EVENTS_PATH
+        self._versions_url = base_url.rstrip("/") + VERSIONS_PATH
         self._signer = signer
         self._clock = clock
         self._http = httpx.AsyncClient(
@@ -246,6 +256,49 @@ class CentralClient:
 
     async def close(self) -> None:
         await self._http.aclose()
+
+    async def versions(self, aggregate_type: str) -> dict[uuid.UUID, tuple[int, str]]:
+        """Every aggregate of the type the central app holds: id to (version, state), for
+        reconciliation. Follows the pages; raises `CentralError` if any of it fails."""
+        held: dict[uuid.UUID, tuple[int, str]] = {}
+        cursor: str | None = None
+        for _ in range(MAX_VERSION_PAGES):
+            params = {"aggregate_type": aggregate_type, "limit": str(VERSIONS_PAGE)}
+            if cursor is not None:
+                params["cursor"] = cursor
+            try:
+                # The same single deadline as an event, and a cap on the size: a versions page that
+                # never ends must not hold the reconciliation (and its advisory lock) forever.
+                async with asyncio.timeout(SEND_DEADLINE):
+                    async with self._http.stream(
+                        "GET", self._versions_url, params=params, headers=self._signer.headers(b"")
+                    ) as response:
+                        status = response.status_code
+                        raw = await _read_capped(response, MAX_VERSIONS_BYTES)
+            except (TimeoutError, httpx.TimeoutException) as error:
+                raise CentralError("the central app did not answer the versions in time") from error
+            except httpx.HTTPError as error:
+                raise CentralError(
+                    f"the central app could not be asked ({type(error).__name__})"
+                ) from error
+            if status != 200:
+                reason = _reason(status, raw[:MAX_RESPONSE_BYTES] if raw is not None else b"")
+                raise CentralError(f"the central app answered {reason} to the versions")
+            if raw is None:
+                raise CentralError("the central app's versions answer is too large")
+            try:
+                body = json.loads(raw)
+                for item in body["items"]:
+                    held[uuid.UUID(item["aggregate_id"])] = (
+                        int(item["version"]),
+                        str(item["state"]),
+                    )
+                cursor = body.get("next_cursor")
+            except (ValueError, KeyError, TypeError, AttributeError, RecursionError) as error:
+                raise CentralError("the central app's versions could not be read") from error
+            if not cursor:
+                return held
+        raise CentralError("the central app's versions have too many pages")
 
     async def send(self, event: Claimed) -> Answer:
         body = envelope_bytes(event)
@@ -267,6 +320,16 @@ class CentralClient:
         except httpx.HTTPError as error:
             return Answer(None, f"network error ({type(error).__name__})")
         return answer
+
+
+async def _read_capped(response: httpx.Response, limit: int) -> bytes | None:
+    """The whole body, or None when it is longer than `limit` (reading stops there)."""
+    received = bytearray()
+    async for chunk in response.aiter_bytes():
+        received += chunk
+        if len(received) > limit:
+            return None
+    return bytes(received)
 
 
 async def _read_answer(response: httpx.Response, now: datetime) -> Answer:
