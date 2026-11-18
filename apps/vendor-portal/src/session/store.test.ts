@@ -196,6 +196,18 @@ describe('logout and other tabs', () => {
     store.close()
   })
 
+  it('remembers that the user signed out, as opposed to the session running out', async () => {
+    const { store } = makeStore()
+    await store.start()
+    await store.logout()
+    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', signedOutByUser: true, expired: false })
+    const expiring = makeStore({ refresh: async () => { throw apiError(401, 'unauthorized') } })
+    await expiring.store.start()
+    expect(expiring.store.getSnapshot().signedOutByUser).toBe(false)
+    store.close()
+    expiring.store.close()
+  })
+
   it('a logout in one tab signs out the other, which does not call the server again', async () => {
     const channel = fakeChannels()
     const a = makeStore({ channel: channel() })

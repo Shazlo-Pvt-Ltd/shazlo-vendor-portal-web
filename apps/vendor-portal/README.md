@@ -63,7 +63,7 @@ src/
   api/                the typed vendor-api client, its hooks and error model (generated types in schema.d.ts)
   session/            the session store (token in memory), AuthProvider and useSession, the route guards, the blocked page
   config/             the typed environment, the support address and the website links
-  features/           one folder per feature (signup and email verification so far) and the helpers they share
+  features/           one folder per feature (signup and email verification, sign-in and passwords so far) and the helpers they share
   components/         shared pieces (error boundary and screens, not found, misconfigured)
   pages/              one folder per screen as they arrive; today a placeholder for each route
   security/           the headers (one definition for vercel.json, dev and preview), SafeLink,
@@ -147,7 +147,7 @@ const { status, user, vendor, role, logout } = useSession()
 - **Expiry mid-work:** the user is sent to login with `return-to` set to the same screen. A form can
   keep its unsaved input with `saveDraft(key, data)` and restore it with `takeDraft(key)`
   (`session/drafts.ts`); drafts are in memory, survive an expiry, and are dropped on sign-out.
-- **The login screen** (a later issue) calls `session.signIn(response)` with the answer of
+- **The login screen** (`features/auth/LoginPage.tsx`) calls `session.signIn(response)` with the answer of
   `POST /v1/auth/login`, or `session.markBlocked()` on a `403 vendor_not_allowed`.
 
 ## Security rules
@@ -224,3 +224,30 @@ through the one lockfile; Dependabot watches the repository root, so it covers t
   `login` and `set-password`) use `gcTime: 0` and `reset()` once the call ends, so the query cache
   does not hold the password in `variables`; a test checks the mutation cache is empty.
 - **The terms and privacy links** are in `src/config/links.ts`, opened through `SafeLink`.
+
+## Signing in, signing out and passwords
+
+`src/features/auth/` holds `/login`, `/forgot-password` and the set-password screen; `src/app/AppBar.tsx` holds
+the signed-in frame (brand name, account menu, Sign out), which the dashboard shell grows into the
+full navigation.
+
+- **No screen tells a registered email from an unregistered one.** Every bad login (`401`) shows the
+  one message `BAD_LOGIN_MESSAGE`, whatever the server's text; forgot password shows the same
+  confirmation for every address and does not echo it.
+- **Login** sends the password and drops it from the form at once, success or not. `403
+  vendor_not_allowed` marks the session blocked and shows the explanation page (no loop); `429`
+  counts down; after login the `PublicOnly` guard sends the user to the checked `return-to`.
+- **The emailed links** are the ones vendor-api sends (`services/vendor-api/vendor_api/services/email/templates.py`):
+  `/verify-email#token=…`, `/reset-password#token=…` (reset) and `/accept-invite#token=…` (staff invite). The token
+  is in the URL *fragment*, which the browser never sends to a server, so it stays out of access logs and
+  `Referer` headers; `linkToken` also accepts a `?token=` query. `/reset-password`, `/accept-invite` and
+  `/set-password` are one screen: it keeps the token in memory only and removes it from the address bar and
+  the history at once (replacing the address with its own path, so the page is not remounted). A bad token
+  shows "expired or already used" with a way to request a new link. These routes and `/verify-email`
+  have access `open` in `portalRoutes.ts`: an emailed link must work whether or not someone is signed in.
+  If vendor-api changes a link, change `portalRoutes.ts` with it.
+- **Sign out** (app bar and account menu) ends the session, clears caches, drafts and sensitive
+  form state, and goes to a plain `/login`: after a deliberate sign-out the next login does not
+  "return" to the page the user left (`signedOutByUser`). An expired session does return.
+- **Password fields** (`PasswordField`) have a show/hide toggle, the right `autocomplete`, and never
+  block pasting.
