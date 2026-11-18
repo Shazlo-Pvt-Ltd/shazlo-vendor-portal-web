@@ -34,6 +34,7 @@ from vendor_api.db.scoped import scoped_select
 SCOPED_THROUGH_PARENT = {
     "auth_tokens": "vendor_users",  # a user's one-time tokens
     "review_events": "reviews",  # the audit trail of a review
+    "outbox_event_log": "outbox_events",  # the attempts and retries of an event
     "product_revision_variants": "product_revisions",  # a revision's variant prices
 }
 # Tables whose `vendor_id` is a second column of a key, because every query reaches them through

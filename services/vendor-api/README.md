@@ -14,6 +14,7 @@ FastAPI service for vendors, brand profiles, products, assets, reviews and publi
 - **A catalog:** products with variants and images, where editing a live product makes a pending revision and never changes what is live; a bulk import from `.xlsx` or `.csv` with a report for every row.
 - **Image uploads** straight to Cloudinary with a signature made here, and a record of each image.
 - **Review:** a queue for reviewers with the exact fields that changed, approve and reject (a reason is required) with an audit trail.
+- **What happened to what I submitted:** every brand page version carries its review (status, reason, times), and one call lists the vendor's reviews with the admin's reasons, never who decided.
 - **Vendor accounts:** approve, reject and suspend, with sessions ended at once and an email to the vendor.
 - **Central-app events (Phase 4):** every approval writes its contract-checked event to the outbox in the same transaction, and so do archiving a live product and suspending, rejecting or reinstating a vendor (what shoppers stop or start seeing again); requests to the central app are HMAC-signed. Sending the events is not built yet.
 
@@ -465,7 +466,7 @@ Signup verification, staff invites and password reset send email (issue #80). Th
 
 ## Database
 
-Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (psycopg 3). Migration `0001` is an empty baseline; `0002` adds the vendor and vendor-user tables; `0003` adds assets and brand profiles; `0004` adds products; `0005` adds reviews; `0006` freezes submitted content and decided reviews (triggers), requires a pending revision for a product in review, and indexes the review foreign keys; `0007` adds `detail` to `review_events`; `0008` adds the `outbox_events` table.
+Async SQLAlchemy 2 with `asyncpg` for the app; Alembic runs on a sync engine (psycopg 3). Migration `0001` is an empty baseline; `0002` adds the vendor and vendor-user tables; `0003` adds assets and brand profiles; `0004` adds products; `0005` adds reviews; `0006` freezes submitted content and decided reviews (triggers), requires a pending revision for a product in review, and indexes the review foreign keys; `0007` adds `detail` to `review_events`; `0008` adds the `outbox_events` table; `0009` adds its `claim_token`; `0010` adds the `outbox_event_log` table.
 
 | Table | Notes |
 |---|---|
@@ -513,12 +514,12 @@ An approved product keeps its live content while a new revision is edited and re
 
 ### The outbox (events for the central app)
 
-`outbox_events` is the transactional outbox of [ADR 0003](../../docs/adr/0003-central-app-publishing-contract.md): an event is written in the same transaction as what it announces, so an approval and its event are saved together or not at all. The table is described here; "Writing events" below says who writes it, and sending is the publisher worker's issue.
+`outbox_events` is the transactional outbox of [ADR 0003](../../docs/adr/0003-central-app-publishing-contract.md): an event is written in the same transaction as what it announces, so an approval and its event are saved together or not at all. The table is described here; "Writing events" below says who writes it, and "The publisher worker" below says how it is sent.
 
 - **One event per aggregate version**: `UNIQUE (aggregate_type, aggregate_id, version)`. `id` is the `event_id` the central app de-duplicates on, `payload` the whole event body (the full state of the aggregate), exactly as it will be signed and sent.
 - **Whose it is**: `vendor_id` (a foreign key, indexed) is on every event, because every event is about one vendor's page, product or account; a vendor with events cannot be deleted. The aggregate of a `vendor.*` event is the vendor itself (`aggregate_id = vendor_id`).
 - **Rules in the database**: `aggregate_type` (`brand_profile`, `product`, `vendor`) and `event_type` (the five of the contract) are checked, and an event must be about its own kind of aggregate (`vendor.status_changed` only for a vendor); `version >= 1`; `payload` is a JSON object of at most 256 KB; `last_error` is at most 1000 characters (a reason, not a copy of the response); a `dead` event has a reason; `sent_at` is set exactly when `sent`, and `locked_at` exactly when `sending`.
-- **Content never changes** (migration 0008's trigger): everything except the delivery state (`status`, `attempts`, `next_attempt_at`, `locked_at`, `last_error`, `sent_at`) is frozen, `sent` is final, and the status moves along the worker's path only: `pending` to `sending` (a claim), `sending` to `pending` (a retry or the sweeper), `sent` or `dead`, and `dead` back to `pending` (an admin's retry). Rows are deleted by the retention job 30 days after they were sent, so `DELETE` is allowed.
+- **Content never changes** (migration 0008's trigger, extended by 0009): everything except the delivery state (`status`, `attempts`, `next_attempt_at`, `locked_at`, `claim_token`, `last_error`, `sent_at`) is frozen, `sent` is final, and the status moves along the worker's path only: `pending` to `sending` (a claim), `sending` to `pending` (a retry or the sweeper), `sent` or `dead`, and `dead` back to `pending` (an admin's retry). Rows are deleted by the retention job 30 days after they were sent, except the latest row of each aggregate (see "Writing events: what stops being shown"), so `DELETE` is allowed.
 - **Indexes**: `ix_outbox_events_due` (a partial index on `next_attempt_at` for `pending` rows) serves the worker's claim, and `(status, created_at)` serves the admins' view of what is stuck and the retention scan. A test runs the claim exactly as the ADR writes it: it takes only due events and never two versions of one aggregate at once.
 
 ### Writing events: an approval and its event commit together
@@ -540,7 +541,77 @@ Three changes take things off the central app. Each writes its events **in the c
 - **Suspending a vendor** writes `vendor.status_changed` (version: the number of the change in the vendor's history) and then `brand_profile.unpublished` / `product.unpublished` with reason `vendor_suspended` for **every page or product whose latest event is a `published` one**. **Rejecting** does the same with reason `rejected_after_publish` (normally the vendor published nothing, so only the status event is written).
 - **Approving a vendor again** writes `vendor.status_changed`, then a `published` event, at the next version, for exactly the pages and products whose latest event is an unpublish with a vendor reason. What was archived stays archived, and what was never published is not published. Each is rebuilt from the current database state; one that cannot be built (for example an image that is not ready) refuses the reinstatement with `409 cannot_publish`.
 
-What the central app currently shows is read from the outbox itself (the latest event of each aggregate), so the fan-out is **idempotent**: an aggregate that is already unpublished gets nothing. A fan-out runs in the one transaction, in chunks of 200 aggregates (loaded, built and flushed 200 at a time, so memory stays bounded; a vendor with thousands of products still commits or rolls back as one). Versions only go up: a new event is one past the aggregate's last event, and a product's `version` is raised to match, so its next approval continues from it. A brand page's events are numbered the same way: approving a profile writes the profile's own version, or one past the page's last event if a suspension or reinstatement already used it (all of these hold the vendor lock), so a profile drafted before a suspension is still approved, after it, at a version the central app has not seen.
+What the central app currently shows is read from the outbox itself (the latest event of each aggregate), so the fan-out is **idempotent** and the publisher's 30-day cleanup always **keeps the latest row of every aggregate**, however old (otherwise archiving a product published long ago would find no event and send no withdrawal, and a suspension or reinstatement would miss the aggregates whose events had aged out): an aggregate that is already unpublished gets nothing. A fan-out runs in the one transaction, in chunks of 200 aggregates (loaded, built and flushed 200 at a time, so memory stays bounded; a vendor with thousands of products still commits or rolls back as one). Versions only go up: a new event is one past the aggregate's last event, and a product's `version` is raised to match, so its next approval continues from it. A brand page's events are numbered the same way: approving a profile writes the profile's own version, or one past the page's last event if a suspension or reinstatement already used it (all of these hold the vendor lock), so a profile drafted before a suspension is still approved, after it, at a version the central app has not seen.
+
+### The publisher worker: delivering the outbox
+
+`python -m vendor_api.worker` (the `vendor-worker` compose service, the same image as the API) delivers `outbox_events` to the central app: `POST {CENTRAL_API_URL}/internal/v1/events`, signed as [ADR 0003](../../docs/adr/0003-central-app-publishing-contract.md) section 2 says. It reads the same `CENTRAL_*` settings as the API. With `CENTRAL_PUBLISHING_ENABLED=false` it idles and says so in its log; events keep queueing. Several workers may run. The command also works on Windows (where the event loop has no signal handlers, Ctrl+C is caught with `signal.signal`). A bad setting stops it with one line naming the setting and the reason, never the value it was given (so a password in a rejected `DATABASE_URL` or `CENTRAL_API_URL` is not printed; the API's startup errors are the same).
+
+- **Claim** (`services/publisher.py`, `CLAIM`): the ADR's query. Due rows become `sending` with `FOR UPDATE SKIP LOCKED` and a fresh `claim_token` each, up to 20 at a time, and a row is skipped while an earlier version of its aggregate is `pending` or `sending`: an aggregate's events go out **one at a time, in version order**, so a publish is never overtaken by its own withdrawal. A `dead` event does not block the newer ones. Nothing is held open while a request is out: the claim and each result are short transactions of their own.
+- **The request**: the envelope is rebuilt from the row and serialised **once** (sorted keys, compact, UTF-8); those exact bytes are signed and sent. `Idempotency-Key` is the `event_id`. The only credential is the signature: the client keeps no cookies (a `Set-Cookie` is refused, never sent back), uses no proxy or `.netrc` credentials and never follows a redirect. Each step has a 10 second timeout and the whole request, answer included, a **30 second deadline** (a per-step timeout alone lets a slowly trickling answer run on for ever; it would outlive the sweeper's 2 minutes and stop the worker's whole batch); only the first 64 KB of an answer is read.
+- **Results**:
+
+  | Answer | What happens |
+  | --- | --- |
+  | `200` (accepted, duplicate or stale) | `sent` (`sent_at` set) |
+  | `400`, `409`, `413`, `422` | `dead` at once; `last_error` holds `HTTP <status>` and the central app's error code |
+  | `401` | **not the event's fault** (the key is wrong): the event goes back to `pending` after a minute and keeps its attempts. Five in a row **pause publishing** and log an error with `alert: true` ("check CENTRAL_SIGNING_KEY_ID and CENTRAL_SIGNING_SECRET"); every 5 minutes one event is tried, and any other answer ends the pause |
+  | `408`, `429`, `5xx`, timeout, network error | retry with backoff |
+  | anything else (`403`, `404`, `3xx`...) | retry with backoff: a misconfigured URL or key is fixed by a person, and the events survive until then |
+
+- **Backoff** after the n-th failed attempt: 30 s, 2 min, 10 min, 1 h, 6 h, 12 h, 24 h, each plus or minus 20%. `Retry-After` (seconds or a date) is honoured when it is longer, up to 24 h. After the **8th failed attempt** the event is `dead` (about two days) and keeps its last error, so an admin can see why.
+- **Upkeep** (every minute): the sweeper puts a row stuck in `sending` for more than 2 minutes back to `pending` (a worker crashed with it; the central app de-duplicates a second send). If it was the 8th attempt it is `dead` instead, so an event that crashes its worker is not tried forever. Rows `sent` more than 30 days ago are removed, except the latest row of each aggregate: the outbox writer reads it to know what the central app holds (whether a withdrawal is due, what a suspension hides, which version comes next), so it must outlive the 30 days.
+- **Claim ownership**: a result (sent, retry, dead, a 401, a release) is written only while the row is `sending` **with the claim token this worker got**. If a request outlives the sweeper (a paused process, a slow database) and another worker claims the row, the late result is dropped with a warning ("no longer ours") and the second worker's claim stands; the central app de-duplicates its send.
+- **Shutdown** (SIGTERM or SIGINT): requests in flight finish and are recorded; claims not yet started are given back unused. A row the sweeper took is not overwritten (see Claim ownership).
+
+The log lines carry `event_id`, `event_type`, `version` and `attempt`, never the body or the secret.
+
+### Reconciliation and resync: repairing the central app
+
+Retries cannot repair a restored database, a `dead` event or a catalog published before the outbox existed. Both jobs below write the **current state** of an aggregate as a new event, at a version above everything already written for it (and, for the nightly reconciliation, above what the central app holds), so a repair is not mistaken for something stale (`services/reconciliation.py`).
+
+**Nightly reconciliation** runs inside the worker at `RECONCILE_AT` (UTC, `03:00`; `RECONCILE_ENABLED=false` turns it off). For each aggregate type (vendor status, brand page, product) it reads the central app's `GET /internal/v1/versions` (signed, paged, 500 at a time) and compares:
+
+| vendor-api says | the central app has | what is written |
+| --- | --- | --- |
+| published | nothing, an older version, or an unpublished one | a `published` event |
+| published | the same version or a newer one, published | nothing (a newer one is left alone) |
+| unpublished (withdrawn, archived, vendor suspended or rejected) | it published | an `unpublished` event |
+| unpublished | nothing, or it unpublished | nothing |
+
+"Published" means: a brand page when the vendor is approved and has a published profile; a product when its vendor is approved, it has a live revision and is not archived; a vendor when it is approved (a `pending` vendor is not reported). An aggregate with an event still `pending` or `sending` is skipped, since it is on its way. So **a second run writes nothing**: before the events are delivered they are in flight, and after, the central app is in step. If the central app cannot be asked, nothing is written and the run is tried again the next night. Only one worker reconciles at a time (a Postgres advisory lock).
+
+**Pacing.** It works in chunks of 200 aggregates (a transaction each, a second apart) and stops while more than `RECONCILE_MAX_PENDING` (1000) events wait in the outbox, so a big catalog cannot flood the publisher; what was not repaired is still behind, and the next run carries on. An aggregate that cannot be made into a valid event (for example an image that is not ready) is skipped and logged, the others go on. A chunk that loses a race with an approval is rolled back and repaired by the next run.
+
+**Resync on demand** needs no answer from the central app:
+
+```
+python -m vendor_api.cli resync --vendor <slug or id>      # its page, status and every product
+python -m vendor_api.cli resync --product <id>             # one product
+python -m vendor_api.cli resync --vendor <slug> --product <sku>   # a SKU is unique only per vendor
+python -m vendor_api.cli resync --all                      # everything
+```
+
+It writes a `published` event for what is published, an `unpublished` one for what was published and is not now, and nothing for what never was (so it is also the **first sync** of a catalog published before this phase). It prints how many events it wrote, and how many it left alone because one was already waiting. Each run writes new versions (it is a deliberate re-send); it does not pile on top of events still waiting. While more than `RECONCILE_MAX_PENDING` events wait in the outbox it **waits** for the worker to deliver them (and gives up only after two minutes without the backlog shrinking, which means nobody is delivering), because a second run would start again from the first aggregates and a catalog bigger than the limit would never be finished. It never asks the central app, so after a restored vendor-api database (versions below what the central app holds) it can write a version the central app ignores as stale; the nightly reconciliation, which compares, is the repair for that. A status change after a repair continues above the repair's version, and a product's `version` follows its events.
+
+Operating all of this (running and scaling the worker, reading and retrying a dead event, a refused key, resyncing a vendor, the central app being down for days) is in [docs/runbooks/central-publishing.md](../../docs/runbooks/central-publishing.md). `tests/test_e2e_publishing.py` runs the whole flow against Postgres, Redis and the real stub receiver (`services/central-stub`, installed by the CI job; the test skips without it): publish, withdraw on suspension, restore on reinstatement, the stub failing then recovering, a refused signature, one aggregate failing without blocking another, a worker that crashes mid-send (the sweeper recovers it and the repeat is a `duplicate`), and a dead event found and retried through the admin API.
+
+### The outbox for admins: find, inspect, retry
+
+Part of the admin group (identity-api tokens, role `vendor_reviewer` or `super_admin`; a vendor token is `401`). The admin who retries is always the token's `sub`: an `actor_id` in a query, a header or a body is never read.
+
+| Endpoint | What it does |
+| --- | --- |
+| `GET /v1/admin/outbox` | Events, paged (`limit` 1 to 100, `offset`, a `total`), **without their bodies**. Filters: `status` (`pending`, `sending`, `sent`, `dead`), `aggregate_type` (`brand_profile`, `product`, `vendor`) and `vendor_id`. Newest first; with no `status` filter the **`dead` ones come first**, since they need a person. Each item has the attempt count, `last_error` (a short reason, at most 1000 characters, never a copy of the response) and the times (`created_at`, `next_attempt_at`, `locked_at`, `sent_at`) |
+| `GET /v1/admin/outbox/{id}` | One event with its **payload** (the event body as it was sent) and its **history**, oldest first: every delivery attempt the worker made (what came of it) and every retry (with the admin's id). `404 outbox_event_not_found` |
+| `POST /v1/admin/outbox/{id}/retry` | Puts a `dead` event back to `pending`: attempts start from zero, it is due now, `last_error` stays (why it died is not lost), and the log records the admin. **`409 invalid_outbox_status`** for any other status (a `sent` event is final; a double click retries once). Nothing is sent by the request: the worker sends it in its turn |
+| `GET /v1/admin/outbox/stats` | `pending`, `sending` and `dead` counts and `oldest_due_age_seconds` (how long the oldest `pending` event whose time has come has waited; `null` when none is due) |
+
+**Retrying never skips an earlier version.** The worker's claim leaves an event alone while an earlier version of its aggregate is `pending` or `sending`, so a retried version waits behind one that is still queued. (A *later* version may already have been delivered, since a dead event does not block newer ones; the central app answers `200 stale` to the old one, so it cannot take the central app back in time.)
+
+**Monitoring.** `GET /ready` carries the same four numbers as `outbox` (null when they cannot be read). They never change the probe's verdict: alert on `dead > 0` and on `oldest_due_age_seconds` growing (the worker is down or stuck).
+
+**The log** is `outbox_event_log` (migration 0010), one row per step, written by the worker in the same transaction as the result (`sent (HTTP 200)`, `failed, will try again in 30 s: HTTP 503`, `failed for good: HTTP 422: schema_invalid`, a refused signature kept for later) and by the retry. It goes with its event when the retention job removes it (30 days after it was sent; the latest row of each aggregate, and so its log, stays), and an attempt is only logged by the worker that still holds the claim. Signatures are never stored, and no answer of these endpoints carries a signature, a key id or a secret (a test checks).
 
 ### Reviews
 
