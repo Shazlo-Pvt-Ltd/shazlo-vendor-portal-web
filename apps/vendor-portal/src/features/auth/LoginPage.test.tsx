@@ -1,3 +1,4 @@
+import { QueryClient } from '@tanstack/react-query'
 import { cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { typeFast } from '../../test/typeFast'
@@ -71,6 +72,20 @@ describe('login', () => {
     await screen.findByRole('alert')
     expect((screen.getByLabelText(/^Password/) as HTMLInputElement).value).toBe('')
     expect((screen.getByLabelText(/^Email address/) as HTMLInputElement).value).toBe('asha@kala.example')
+  })
+
+  it.each([
+    ['accepted', () => HttpResponse.json(sessionBody())],
+    ['refused', () => apiErrorResponse(401, 'invalid_credentials')],
+  ])('keeps no copy of the password in the query cache once the call has ended (%s)', async (_name, answer) => {
+    let sent = false
+    server.use(http.post(`${BASE}/v1/auth/login`, () => { sent = true; return answer() }))
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    renderRoute('/login', { queryClient })
+    await screen.findByRole('heading', { level: 1, name: 'Sign in' })
+    await signIn(userEvent.setup())
+    await waitFor(() => expect(sent).toBe(true))
+    await waitFor(() => expect(queryClient.getMutationCache().getAll()).toEqual([]))
   })
 
   it('shows the explanation page, not a loop, for a rejected or suspended vendor', async () => {
