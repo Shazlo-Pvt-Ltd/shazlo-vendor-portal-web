@@ -1,10 +1,11 @@
 import { Alert, Box, Button, CircularProgress, Link as MuiLink, Typography } from '@mui/material'
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router'
+import { Link, useLocation, useNavigate } from 'react-router'
 import { api } from '../../api'
 import { ApiError } from '../../api/errors'
 import { usePageTitle } from '../../hooks/usePageTitle'
 import { friendlyError } from '../errors'
+import { linkToken } from '../linkToken'
 import { ResendVerification } from './ResendVerification'
 import { useCountdown } from './useCountdown'
 
@@ -15,14 +16,15 @@ type State =
   | { name: 'problem'; message: string; retryAfter?: number }
 
 /**
- * The page the emailed link opens: `/verify-email?token=…`. The token is single-use, so it is spent
- * exactly once (StrictMode runs effects twice in development) and then removed from the address bar.
+ * The page the emailed link opens: `/verify-email#token=…` (vendor-api puts the token in the URL fragment,
+ * so it stays out of server logs). The token is single-use, so it is spent exactly once (StrictMode runs
+ * effects twice in development) and then removed from the address bar.
  */
 export function VerifyEmailPage() {
   usePageTitle('Verify your email')
-  const [params] = useSearchParams()
+  const location = useLocation()
   const navigate = useNavigate()
-  const [token] = useState(() => params.get('token')?.trim() ?? '')
+  const [token] = useState(() => linkToken(location))
   const [state, setState] = useState<State>(token === '' ? { name: 'invalid' } : { name: 'verifying' })
   const spent = useRef(false)
   const heading = useRef<HTMLHeadingElement>(null)

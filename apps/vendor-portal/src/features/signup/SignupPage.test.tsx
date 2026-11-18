@@ -1,3 +1,4 @@
+import { QueryClient } from '@tanstack/react-query'
 import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { typeFast } from '../../test/typeFast'
@@ -207,5 +208,21 @@ describe('the signup form', () => {
     await typeFast(user, screen.getByLabelText(/^Password/), 'a-long-enough-password')
     clearSensitiveState()
     await waitFor(() => expect((screen.getByLabelText(/^Password/) as HTMLInputElement).value).toBe(''))
+  })
+
+  it.each([
+    ['accepted', () => HttpResponse.json({ status: 'accepted', message: 'ok' }, { status: 202 })],
+    ['refused', () => HttpResponse.json({ error: { code: 'weak_password', message: 'Password is too common' } }, { status: 422 })],
+  ])('keeps no copy of the password in the query cache once the call has ended (%s)', async (_name, answer) => {
+    let sent = false
+    server.use(http.post(BASE + '/v1/auth/signup', () => { sent = true; return answer() }))
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    renderRoute('/signup', { queryClient })
+    await screen.findByRole('heading', { level: 1, name: 'Create your vendor account' })
+    const user = userEvent.setup()
+    await fillValid(user)
+    await submit(user)
+    await waitFor(() => expect(sent).toBe(true))
+    await waitFor(() => expect(queryClient.getMutationCache().getAll()).toEqual([]))
   })
 })

@@ -48,8 +48,10 @@ never prints the value), instead of a blank page. `src/config/env.ts` has the ru
 | `npm run typecheck -w @shazlo/vendor-portal` | `tsc` only |
 | `npx vitest run --project vendor-portal` | The portal's tests (jsdom, Testing Library) |
 | `npm run lint` | ESLint for the whole repository |
+| `npm run api:generate -w @shazlo/vendor-portal` | Rewrites `src/api/schema.d.ts` from `services/vendor-api/openapi.json` |
+| `npm run api:check -w @shazlo/vendor-portal` | Fails when `schema.d.ts` is stale |
 
-CI runs lint, typecheck, the tests and the build (`apps-ci.yml`).
+CI runs lint, `api:check`, typecheck, the tests and the build (`apps-ci.yml`).
 
 ## Layout and conventions
 
@@ -58,9 +60,14 @@ src/
   main.tsx            entry: fonts, then <App />
   App.tsx             checks the environment, then the router
   app/                providers (theme, error boundary, query client), the route table, the router
-  config/             the typed environment
+  api/                the typed vendor-api client, its hooks and error model (generated types in schema.d.ts)
+  session/            the session store (token in memory), AuthProvider and useSession, the route guards, the blocked page
+  config/             the typed environment, the support address and the website links
+  features/           one folder per feature (signup and email verification so far) and the helpers they share
   components/         shared pieces (error boundary and screens, not found, misconfigured)
   pages/              one folder per screen as they arrive; today a placeholder for each route
+  security/           the headers (one definition for vercel.json, dev and preview), SafeLink,
+                      SafeImage, PasswordField, and the tests of the security rules
   test/               test setup
 ```
 
@@ -68,8 +75,8 @@ src/
   `components/`. No business rules in components: they live in plain functions that can be tested.
 - **The shared theme only.** Colours, spacing and fonts come from `@shazlo/ui` (a test fails on a
   hex colour, an `rgb()` or a font family in `src/`).
-- **Routes** are listed once, in `src/app/routes.tsx`, with who may open each (`public` or
-  `authenticated`); the session issue adds the guards that enforce it.
+- **Routes** are listed once, in `src/app/portalRoutes.ts`, with who may open each (`public`,
+  `authenticated` or `owner`); the guards in `src/session/guards.tsx` enforce it.
 - **Queries** do not retry a 4xx answer, retry network errors and 5xx twice, are fresh for 30
   seconds and refetch on window focus (`src/app/queryClient.ts`).
 - **Errors** never show a stack trace: a root error boundary and the router's error element render a
@@ -79,7 +86,7 @@ src/
 ## Deployment
 
 `vercel.json` rewrites every path to `index.html` so deep links work (static files are served first).
-Security headers are added by the security issue; the per-environment URLs and domains are Phase 8.
+`vercel.json` also carries the security headers (see "Security rules" below); the per-environment URLs and domains are Phase 8.
 
 ## Calling vendor-api
 
@@ -93,6 +100,7 @@ npm run api:check -w @shazlo/vendor-portal      # CI: fails when the committed f
 
 Commit the regenerated `schema.d.ts` with the backend change that caused it. CI runs the web checks
 whenever `openapi.json` changes, so a backend change that breaks the portal fails the build.
+(`.gitattributes` keeps `schema.d.ts` LF on every OS; with CRLF `api:check` would report it stale.)
 
 ```ts
 import { api, ApiError, NetworkError } from './api'
@@ -141,6 +149,7 @@ const { status, user, vendor, role, logout } = useSession()
   (`session/drafts.ts`); drafts are in memory, survive an expiry, and are dropped on sign-out.
 - **The login screen** (a later issue) calls `session.signIn(response)` with the answer of
   `POST /v1/auth/login`, or `session.markBlocked()` on a `403 vendor_not_allowed`.
+
 ## Security rules
 
 The portal is open to the internet, holds vendors' business data and shows content vendors typed.
@@ -206,6 +215,12 @@ through the one lockfile; Dependabot watches the repository root, so it covers t
 - **Errors:** `422` field messages appear next to their inputs and focus moves to the first one;
   `429` shows a countdown from `Retry-After` and blocks sending until it ends; network failures say
   so in plain words. `friendlyError` (`features/errors.ts`) is the shared way to word these.
-- **The verify link** is spent exactly once (StrictMode runs effects twice) and the token is then
-  removed from the address bar. Resending has a 60-second cooldown.
+- **The verify link** is the one vendor-api emails: `/verify-email#token=…`. The token is in the URL
+  *fragment* (the browser never sends it to a server, so it stays out of access logs and `Referer`
+  headers); `linkToken` (`features/linkToken.ts`) reads it, and also a `?token=` query. It is spent
+  exactly once (StrictMode runs effects twice) and the token is then removed from the address bar
+  and the history. Resending has a 60-second cooldown.
+- **A finished call keeps no copy of the password.** Mutations that carry one (`signup` here, and
+  `login` and `set-password`) use `gcTime: 0` and `reset()` once the call ends, so the query cache
+  does not hold the password in `variables`; a test checks the mutation cache is empty.
 - **The terms and privacy links** are in `src/config/links.ts`, opened through `SafeLink`.
