@@ -12,8 +12,8 @@ info:
 servers:
   - url: https://central.shazlo.store
     description: Production (placeholder)
-  - url: http://localhost:8000
-    description: Local development and the stub receiver
+  - url: http://localhost:8003
+    description: Local development and the stub receiver (services/central-stub, compose profile `central`)
 security:
   - hmacSignature: []
 paths:
