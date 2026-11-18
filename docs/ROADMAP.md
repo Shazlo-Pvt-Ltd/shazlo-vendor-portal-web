@@ -120,6 +120,14 @@ Delivered (as the issues #163 to #170), with these differences from the list abo
 - Unpublish and withdraw events.
 - Stub central receiver for local dev, plus a contract doc to align with the central-app team.
 
+Delivered (as the issues #179 to #189), with these differences from the list above:
+- The worker is `python -m vendor_api.worker` (the `vendor-worker` compose service). It claims with `FOR UPDATE SKIP LOCKED`, sends an aggregate's events one at a time in version order, retries with the 30 s to 24 h backoff and marks an event `dead` after the 8th failed attempt. A request is cut off after 30 s, and a result is recorded only by the worker that still holds the claim (a claim token, migration 0009). The 30-day cleanup of `sent` rows keeps the latest row of each aggregate, which the outbox writer and the reconciliation read.
+- A `401` does not kill the event: the key is the problem, not the event, so it stays `pending` and five in a row pause publishing (the contract and the ADR say so now).
+- Besides the approval, archiving a live product and suspending, rejecting or reinstating a vendor also write events, in the same transaction as the change (a suspension withdraws, and a reinstatement restores, exactly what it hid).
+- Reconciliation runs nightly inside the worker: it compares with the central app, writes the current state of what is behind at a version above everything sent and above what the central app holds, and a second run writes nothing. `python -m vendor_api.cli resync` re-sends the current state on demand without asking the central app, and writes new versions each time it runs.
+- Admins get `GET /v1/admin/outbox` (find a stuck event), `GET /v1/admin/outbox/{id}` (its body and history) and `POST .../retry`, and `/ready` carries the outbox counts. This needed one table more than planned, `outbox_event_log` (migration 0010), for the attempt history and the audit of a retry.
+- The end-to-end test (`tests/test_e2e_publishing.py`) runs the whole flow against Postgres, Redis and the real stub: publish, withdraw, restore, the stub failing, a refused signature, one aggregate failing, a worker that crashes mid-send and a duplicate delivery. Operating it is in [runbooks/central-publishing.md](runbooks/central-publishing.md).
+
 ### Phase 5: Vendor Portal web
 - Scaffold: Vite, React Router, TanStack Query, typed API client, `VITE_VENDOR_API_URL`.
 - Signup, login, verify and set-password screens, with route guards.

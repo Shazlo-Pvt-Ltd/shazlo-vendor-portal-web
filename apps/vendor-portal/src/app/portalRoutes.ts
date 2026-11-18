@@ -18,6 +18,10 @@ export const portalRoutes: PortalRoute[] = [
   { path: '/verify-email', title: 'Verify your email', access: 'open' },
   { path: '/forgot-password', title: 'Reset your password', access: 'public' },
   { path: '/set-password', title: 'Set your password', access: 'open' },
+  // The addresses vendor-api puts in its emails (services/vendor-api .../email/templates.py): a
+  // password reset and a staff invite. They show the same screen as /set-password.
+  { path: '/reset-password', title: 'Set your password', access: 'open' },
+  { path: '/accept-invite', title: 'Set your password', access: 'open' },
   { path: '/', title: 'Overview', access: 'authenticated' },
   { path: '/brand', title: 'Brand page', access: 'authenticated' },
   { path: '/products', title: 'Products', access: 'authenticated' },

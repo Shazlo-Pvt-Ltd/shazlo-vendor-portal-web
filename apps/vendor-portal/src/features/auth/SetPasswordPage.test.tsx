@@ -1,4 +1,5 @@
-import { screen } from '@testing-library/react'
+import { QueryClient } from '@tanstack/react-query'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { typeFast } from '../../test/typeFast'
 import { http, HttpResponse } from 'msw'
@@ -9,7 +10,7 @@ import { renderRoute } from '../../test/renderRoute'
 
 const server = useApiServer()
 
-async function open(path = '/set-password?token=tok-123', options: { strict?: boolean } = {}) {
+async function open(path = '/set-password#token=tok-123', options: { strict?: boolean } = {}) {
   const router = renderRoute(path, options)
   const user = userEvent.setup()
   return { router, user }
@@ -26,7 +27,44 @@ describe('set password', () => {
     const { router } = await open()
     await screen.findByRole('heading', { level: 1, name: 'Set your password' })
     expect(router.state.location.search).toBe('')
+    expect(router.state.location.hash).toBe('')
     expect(router.state.historyAction).toBe('REPLACE')
+  })
+
+  it('also accepts the token as a ?token= query', async () => {
+    const bodies: unknown[] = []
+    server.use(http.post(`${BASE}/v1/auth/set-password`, async ({ request }) => { bodies.push(await request.json()); return new HttpResponse(null, { status: 204 }) }))
+    const { router, user } = await open('/set-password?token=from-query')
+    await fill(user)
+    await screen.findByRole('heading', { level: 1, name: 'Your password is saved' })
+    expect(bodies).toEqual([{ token: 'from-query', password: 'a-long-enough-password' }])
+    expect(router.state.location.search).toBe('')
+  })
+
+  // The links vendor-api emails: /reset-password#token=… for a reset, /accept-invite#token=… for a staff invite.
+  it.each(['/reset-password', '/accept-invite'])('works at %s, the address in the email, and stays on that address', async (path) => {
+    const bodies: unknown[] = []
+    server.use(http.post(`${BASE}/v1/auth/set-password`, async ({ request }) => { bodies.push(await request.json()); return new HttpResponse(null, { status: 204 }) }))
+    const { router, user } = await open(`${path}#token=emailed-token`)
+    await fill(user) // the form is still there: removing the token did not remount the page into 'expired'
+    await screen.findByRole('heading', { level: 1, name: 'Your password is saved' })
+    expect(bodies).toEqual([{ token: 'emailed-token', password: 'a-long-enough-password' }])
+    expect(router.state.location.pathname).toBe(path)
+    expect(router.state.location.hash).toBe('')
+  })
+
+  it.each([
+    ['accepted', () => new HttpResponse(null, { status: 204 })],
+    ['refused', () => apiErrorResponse(422, 'weak_password', 'Password is too common')],
+  ])('keeps no copy of the token and password in the query cache once the call has ended (%s)', async (_name, answer) => {
+    let sent = false
+    server.use(http.post(`${BASE}/v1/auth/set-password`, () => { sent = true; return answer() }))
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    renderRoute('/set-password#token=tok-123', { queryClient })
+    await screen.findByRole('heading', { level: 1, name: 'Set your password' })
+    await fill(userEvent.setup())
+    await waitFor(() => expect(sent).toBe(true))
+    await waitFor(() => expect(queryClient.getMutationCache().getAll()).toEqual([]))
   })
 
   it('still has the token after it left the address bar, and sends it once with the password', async () => {
@@ -41,7 +79,7 @@ describe('set password', () => {
 
   it('works in StrictMode, where effects run twice', async () => {
     server.use(http.post(`${BASE}/v1/auth/set-password`, () => new HttpResponse(null, { status: 204 })))
-    const { router, user } = await open('/set-password?token=tok-123', { strict: true })
+    const { router, user } = await open('/set-password#token=tok-123', { strict: true })
     await fill(user)
     await screen.findByRole('heading', { level: 1, name: 'Your password is saved' })
     expect(router.state.location.search).toBe('')
@@ -49,7 +87,7 @@ describe('set password', () => {
 
   it('works for a signed-in user too, as an invite or reset link must', async () => {
     const store = makeStore({ refresh: async () => sessionBody() }).store
-    const router = renderRoute('/set-password?token=tok-123', { store })
+    const router = renderRoute('/set-password#token=tok-123', { store })
     await screen.findByRole('heading', { level: 1, name: 'Set your password' })
     expect(router.state.location.pathname).toBe('/set-password')
   })

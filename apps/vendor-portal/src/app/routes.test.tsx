@@ -26,7 +26,7 @@ function open(path: string, signedIn = true) {
 
 describe('routes', () => {
   // Screens that are built have their own tests (src/features/**).
-  const built = new Set(['/signup', '/verify-email', '/login', '/forgot-password', '/set-password'])
+  const built = new Set(['/signup', '/verify-email', '/login', '/forgot-password', '/set-password', '/reset-password', '/accept-invite'])
 
   it.each(portalRoutes.filter((route) => !built.has(route.path)))('$path shows "$title" and sets the page title', async ({ path, title, access }) => {
     open(path.replace(':productId', '123'), access !== 'public' && access !== 'open')
@@ -40,6 +40,16 @@ describe('routes', () => {
     expect(screen.getByRole('link', { name: 'Go to the dashboard' }).getAttribute('href')).toBe('/')
   })
 
+  it.each(['/reset-password', '/accept-invite', '/set-password', '/verify-email'])(
+    'shows the emailed link %s without the dashboard frame, even to someone who is signed in',
+    async (path) => {
+      open(`${path}#token=abc`)
+      await screen.findByRole('heading', { level: 1 })
+      expect(screen.queryByRole('navigation', { name: 'Sections' })).toBeNull()
+      expect(screen.queryByText('Skip to main content')).toBeNull()
+    },
+  )
+
   it('knows who may open each route', () => {
     const access = Object.fromEntries(portalRoutes.map((route) => [route.path, route.access]))
     expect(access['/login']).toBe('public')
@@ -48,6 +58,9 @@ describe('routes', () => {
     expect(access['/team']).toBe('owner')
     expect(access['/set-password']).toBe('open')
     expect(access['/verify-email']).toBe('open')
+    // The addresses vendor-api's emails use for a password reset and a staff invite.
+    expect(access['/reset-password']).toBe('open')
+    expect(access['/accept-invite']).toBe('open')
     expect(portalRoutes.every((route) => ['public', 'open', 'authenticated', 'owner'].includes(route.access))).toBe(true)
   })
 

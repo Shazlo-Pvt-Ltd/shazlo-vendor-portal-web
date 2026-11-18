@@ -31,7 +31,7 @@ export function LoginPage() {
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({})
   const [formError, setFormError] = useState<string | undefined>()
   const countdown = useCountdown()
-  const login = api.useMutation('post', '/v1/auth/login')
+  const login = api.useMutation('post', '/v1/auth/login', { gcTime: 0 })
   const emailInput = useRef<HTMLInputElement>(null)
   const passwordInput = useRef<HTMLInputElement>(null)
   const expired = (location.state as { expired?: boolean } | null)?.expired === true
@@ -53,7 +53,8 @@ export function LoginPage() {
     if (problems.email) return void emailInput.current?.focus()
     if (problems.password) return void passwordInput.current?.focus()
 
-    // The password leaves component state the moment it is sent, whatever the answer.
+    // The password leaves component state the moment it is sent, whatever the answer (and the
+    // query cache keeps no copy: see the `finally` below).
     const typed = password
     setPassword('')
     try {
@@ -79,6 +80,9 @@ export function LoginPage() {
         if (friendly.retryAfter) countdown.start(friendly.retryAfter)
       }
       passwordInput.current?.focus()
+    } finally {
+      // The mutation object keeps what it was called with: drop it, or the password stays in the query cache.
+      login.reset()
     }
   }
 
