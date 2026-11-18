@@ -53,7 +53,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from vendor_api.db.models import OutboxEvent, OutboxStatus
+from vendor_api.db.models import OutboxEvent, OutboxEventLog, OutboxLogKind, OutboxStatus
 from vendor_api.services.central_events import PRODUCER, iso
 
 logger = logging.getLogger(__name__)
@@ -435,7 +435,12 @@ class Publisher:
         outcome = "retry" if answer.status is None else classify(answer.status)
         if outcome == "sent":
             if await self._finish(
-                event, status=OutboxStatus.SENT, sent_at=now, last_error=None, locked_at=None
+                event,
+                status=OutboxStatus.SENT,
+                sent_at=now,
+                last_error=None,
+                locked_at=None,
+                log=f"sent (HTTP {answer.status})",
             ):
                 logger.info("event sent", extra=self._context(event))
         elif outcome == "dead":
@@ -450,6 +455,7 @@ class Publisher:
                 locked_at=None,
                 next_attempt_at=now + timedelta(seconds=delay),
                 last_error=answer.reason[:ERROR_MAX],
+                log=f"failed, will try again in {round(delay)} s: {answer.reason}",
             ):
                 logger.warning(
                     "event will be sent again",
@@ -462,7 +468,11 @@ class Publisher:
 
     async def _dead(self, event: Claimed, reason: str) -> None:
         if await self._finish(
-            event, status=OutboxStatus.DEAD, locked_at=None, last_error=reason[:ERROR_MAX]
+            event,
+            status=OutboxStatus.DEAD,
+            locked_at=None,
+            last_error=reason[:ERROR_MAX],
+            log=f"failed for good: {reason}",
         ):
             logger.error(
                 "event is dead", extra={**self._context(event), "reason": reason, "alert": True}
@@ -487,6 +497,7 @@ class Publisher:
             attempts=max(event.attempts - 1, 0),
             next_attempt_at=now + timedelta(seconds=UNAUTHORIZED_RETRY_SECONDS),
             last_error=answer.reason[:ERROR_MAX],
+            log=f"{answer.reason}: our signature was refused; kept for later",
         )
 
     async def _release(self, event: Claimed) -> None:
@@ -498,11 +509,13 @@ class Publisher:
             attempts=max(event.attempts - 1, 0),
         )
 
-    async def _finish(self, event: Claimed, **values: Any) -> bool:
+    async def _finish(self, event: Claimed, *, log: str | None = None, **values: Any) -> bool:
         """Updates the row, but only while it is still ours: `sending` with the token this worker
         claimed it with. A sweeper that gave it away in the meantime wins, and so does the worker
         that claimed it after that (its request may still be in flight); the central app
-        de-duplicates the second send. Returns whether the row was ours."""
+        de-duplicates the second send. Returns whether the row was ours. `log` is the attempt's line
+        in the event's history (`outbox_event_log`), written in the same transaction and only when
+        the row was ours, so a worker that lost its claim leaves no entry."""
         async with self._sessions() as db:
             result = cast(
                 "CursorResult[Any]",
@@ -516,6 +529,13 @@ class Publisher:
                     .values(claim_token=None, **values)
                 ),
             )
+            if result.rowcount == 1 and log is not None:
+                # In the same transaction as the result: an attempt is on record or it is not.
+                db.add(
+                    OutboxEventLog(
+                        event_id=event.id, kind=OutboxLogKind.ATTEMPT, outcome=log[:ERROR_MAX]
+                    )
+                )
             await db.commit()
         if result.rowcount != 1:
             logger.warning("the row was no longer ours", extra=self._context(event))
