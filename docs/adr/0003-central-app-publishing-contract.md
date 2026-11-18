@@ -149,6 +149,27 @@ The central app is the consumer backend (`shazlo-server`). Each question has a p
 | 11 | Legacy `discount` and `weight` | Confirm whether `discount` is a percent or an amount, and the unit of `weight`, before the data migration in Phase 8 |
 | 12 | Maximum event size | 256 KB. Larger bodies get `413` |
 
+## Shared secrets
+
+Each environment has its own secret (and key id), so a leak in one never exposes another. No real secret is written in this repository: the only values in it are the contract's test secret and the stub's development default, both marked as not for production.
+
+| Environment | `vendor-api` holds it in | Central app holds it in |
+| --- | --- | --- |
+| Local development | `services/vendor-api/.env` (git-ignored), or unset so publishing is off | The stub receiver's `STUB_SIGNING_KEYS` (`CENTRAL_STUB_SIGNING_KEYS` in compose) |
+| CI | Generated inside each test, or the contract's test vector; no real secret is stored as a CI secret | Not applicable |
+| Staging | The platform's secret manager, injected as `CENTRAL_SIGNING_SECRET` (with `CENTRAL_SIGNING_KEY_ID`) | The central app's staging secret manager |
+| Production | The platform's secret manager, injected as `CENTRAL_SIGNING_SECRET` (with `CENTRAL_SIGNING_KEY_ID`) | The central app's production secret manager |
+
+The hosting platform and its secret manager are not chosen yet; the runbook names the actual product and path once they are. Rotation, with two keys active at once, and what to do if a key leaks are in [the key-rotation runbook](../runbooks/central-api-key-rotation.md), which also holds this table with notes.
+
+## Confirmation record
+
+_To be completed with the central-app owners before the status changes to accepted._
+
+| Confirmed by | Date | Answers 1-12 as proposed? | Changes agreed |
+| --- | --- | --- | --- |
+| _name, central-app team_ | _date_ | _yes / no_ | _none, or list by question number_ |
+
 ## Consequences
 
 **Easier**
@@ -181,6 +202,6 @@ The central app is the consumer backend (`shazlo-server`). Each question has a p
 
 ## Open items
 
-- Confirm the answers in the table above with the central-app owners, then change the status to accepted.
+- Confirm the answers in the table above with the central-app owners, fill in the confirmation record, then change the status to accepted.
 - Final category and fabric lists, and how unknown values are reported.
-- Where the shared secrets live in each environment.
+- ~~Where the shared secrets live in each environment.~~ Settled: see Shared secrets above.

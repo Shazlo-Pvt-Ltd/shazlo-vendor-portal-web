@@ -14,6 +14,7 @@ FastAPI service for vendors, brand profiles, products, assets, reviews and publi
 - **A catalog:** products with variants and images, where editing a live product makes a pending revision and never changes what is live; a bulk import from `.xlsx` or `.csv` with a report for every row.
 - **Image uploads** straight to Cloudinary with a signature made here, and a record of each image.
 - **Review:** a queue for reviewers with the exact fields that changed, approve and reject (a reason is required) with an audit trail.
+- **What happened to what I submitted:** every brand page version carries its review (status, reason, times), and one call lists the vendor's reviews with the admin's reasons, never who decided.
 - **Vendor accounts:** approve, reject and suspend, with sessions ended at once and an email to the vendor.
 - **Central-app events (Phase 4):** every approval writes its contract-checked event to the outbox in the same transaction, and so do archiving a live product and suspending, rejecting or reinstating a vendor (what shoppers stop or start seeing again); requests to the central app are HMAC-signed. Sending the events is not built yet.
 
@@ -94,7 +95,7 @@ The live reference is the OpenAPI document at <http://localhost:8002/docs> (dev;
 | Health | `GET /health`, `GET /ready` | anyone |
 | Keys | `GET /.well-known/jwks.json` | anyone |
 | Vendor auth | `POST /v1/auth/signup`, `verify-email`, `resend-verification`, `login`, `refresh`, `logout`, `change-password`, `forgot-password`, `set-password` | anyone, or a vendor token for `change-password` |
-| Vendor | `GET /v1/vendor/me`; `GET`/`PUT /v1/vendor/brand-profile`, `POST /v1/vendor/brand-profile/submit`, `GET /v1/vendor/brand-profile/published`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only); `GET`/`POST /v1/vendor/products`, `GET`/`PUT`/`DELETE /v1/vendor/products/{id}`, `POST /v1/vendor/products/{id}/submit`; `POST /v1/vendor/assets/sign`, `POST /v1/vendor/assets`; `POST /v1/vendor/products/import`, `GET /v1/vendor/products/import/template` | vendor-api tokens only |
+| Vendor | `GET /v1/vendor/me`; `GET`/`PUT /v1/vendor/brand-profile`, `POST /v1/vendor/brand-profile/submit`, `GET /v1/vendor/brand-profile/published`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only); `GET`/`POST /v1/vendor/products`, `GET`/`PUT`/`DELETE /v1/vendor/products/{id}`, `POST /v1/vendor/products/{id}/submit`; `POST /v1/vendor/assets/sign`, `POST /v1/vendor/assets`; `POST /v1/vendor/products/import`, `GET /v1/vendor/products/import/template`; `GET /v1/vendor/submissions` | vendor-api tokens only |
 | Admin | `GET /v1/admin/me`, `GET /v1/admin/reviews`, `GET /v1/admin/reviews/{id}`, `GET /v1/admin/vendors`, `GET /v1/admin/vendors/{id}`, `POST /v1/admin/vendors/{id}/approve`, `POST /v1/admin/vendors/{id}/reject`, `POST /v1/admin/vendors/{id}/suspend`, `POST /v1/admin/reviews/{id}/approve`, `POST /v1/admin/reviews/{id}/reject` | identity-api tokens only (`vendor_reviewer` or `super_admin`) |
 
 The sections below describe each group.
@@ -252,6 +253,18 @@ A vendor edits a draft, submits it, and reads what was approved. Any active user
 **Editing while a version is in review** (decided here): the submitted version is frozen, so editing never changes it. The next `PUT` (or `GET`) opens a **new draft** (next version number, copied from the version in review) and the vendor can keep working; submitting it waits for the first review to be decided (`409 review_pending`). There is no withdraw: the database does not allow a submitted version to go back to `draft`, and a reviewer decides soon enough. Phase 3's review endpoints will make the decision and, on approval, publish the version.
 
 Every write first locks the vendor's row, so two tabs saving, or a save racing a submit, are handled one after the other for that vendor only.
+
+### What happened to what I submitted
+
+Every brand page version carries the review of **that version** (`review`: `status`, `reason`, `decided_at`, `submitted_at`; `null` while it is an unsubmitted draft), so a vendor sees why a version was rejected. `GET /v1/vendor/submissions` lists all of the vendor's reviews in one call, newest submission first.
+
+| Query | Meaning |
+| --- | --- |
+| `status` | `pending`, `approved`, `rejected`, `withdrawn` or `all` (the default) |
+| `subject` | `brand_profile` or `product` |
+| `limit`, `offset` | Paging (1 to 100, default 25). The answer has `total` |
+
+Each item has `subject`, `id` (the brand page's or the product's), `sku` and `title` (products only), `version`, `status`, `reason`, `submitted_at` and `decided_at`. It never contains the reviewer: who decided is private to the admins. It is scoped to the caller's vendor like every vendor query, and any active user of a `pending` vendor can read it (a `rejected` or `suspended` vendor gets `403 vendor_not_allowed`, as on every vendor endpoint).
 
 ## Products (vendor side)
 
