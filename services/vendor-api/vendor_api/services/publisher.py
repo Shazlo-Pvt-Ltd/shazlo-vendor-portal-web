@@ -2,7 +2,14 @@
 
 A worker claims due rows, sends each as a signed request, and records the result in a short
 transaction of its own. Nothing is held open while a request is in flight: a claimed row is
-`sending` and `locked_at` says since when, so a crashed worker's rows are found by the sweeper.
+`sending`, `locked_at` says since when (so a crashed worker's rows are found by the sweeper) and
+`claim_token` says by whom.
+
+**A request has a deadline** (`SEND_DEADLINE`, 30 s for connecting, sending and reading the whole
+answer), well under the sweeper's two minutes: the per-step timeout alone would let an answer that
+keeps trickling in run on for ever. Even so, a result is only written while the row still carries
+the claim token of the worker that sends it, so a worker that is late (a paused process, a slow
+database) cannot overwrite a row that was given away and claimed again.
 
 **Several workers** may run. The claim is the ADR's query: `FOR UPDATE SKIP LOCKED`, and a row is
 skipped while an earlier version of its aggregate is still `pending` or `sending`, so an aggregate's
@@ -12,8 +19,9 @@ events go out one at a time, in version order. A `dead` event does not block the
 
 - `200` (accepted, a duplicate or stale: all are done): `sent`.
 - `400`, `409`, `413`, `422`: `dead` at once, with the reason.
-- `401`: the key is wrong, which is not the event's fault. The event goes back to `pending`
-  without using up an attempt, and five in a row **pause publishing** and raise an alert.
+- `401`: the key is wrong, which is not the event's fault (ADR 0003 section 4 says so too). The
+  event goes back to `pending` without using up an attempt, and five in a row **pause
+  publishing** and raise an alert.
 - `408`, `429`, `5xx`, a timeout, a network error: retry with backoff.
 - Anything else (3xx, 403, 404...): retry with backoff too. It is a configuration problem a
   person can fix, and the event survives until they do.
@@ -26,6 +34,7 @@ minus 20% (so a hundred events that failed together do not all come back togethe
 
 import asyncio
 import contextlib
+import http.cookiejar
 import json
 import logging
 import random
@@ -39,9 +48,10 @@ from typing import Any, cast
 
 import httpx
 from shazlo_security.signing import RequestSigner
-from sqlalchemy import DateTime, Integer, bindparam, delete, text, update
+from sqlalchemy import DateTime, Integer, bindparam, delete, exists, select, text, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from vendor_api.db.models import OutboxEvent, OutboxStatus
 from vendor_api.services.central_events import PRODUCER, iso
@@ -50,8 +60,14 @@ logger = logging.getLogger(__name__)
 
 EVENTS_PATH = "/internal/v1/events"
 
-# The central app answers within 10 seconds (ADR 0003): a request is not allowed to take longer.
+# The central app answers within 10 seconds (ADR 0003): no single step of a request (connecting,
+# sending, waiting for the next piece of the answer) is allowed to take longer ...
 REQUEST_TIMEOUT = 10.0
+# ... and the whole request, answer included, has this long: well under `STALE_AFTER`, so a row is
+# never still in flight when the sweeper gives it away.
+SEND_DEADLINE = 30.0
+# Only the start of the answer is read: the status and an error code are all that is used.
+MAX_RESPONSE_BYTES = 65_536
 BATCH_SIZE = 20
 POLL_SECONDS = 1.0
 MAINTENANCE_SECONDS = 60.0
@@ -87,7 +103,8 @@ def _now() -> datetime:
 CLAIM = text(
     """
     UPDATE outbox_events o
-    SET status = 'sending', locked_at = :now, attempts = o.attempts + 1
+    SET status = 'sending', locked_at = :now, claim_token = gen_random_uuid(),
+        attempts = o.attempts + 1
     WHERE o.id IN (
       SELECT d.id
       FROM outbox_events d
@@ -105,7 +122,7 @@ CLAIM = text(
       FOR UPDATE SKIP LOCKED
     )
     RETURNING o.id, o.event_type, o.aggregate_type, o.aggregate_id, o.version, o.payload,
-              o.created_at, o.attempts
+              o.created_at, o.attempts, o.claim_token
     """
 ).bindparams(bindparam("now", type_=DateTime(timezone=True)), bindparam("limit", type_=Integer))
 
@@ -122,6 +139,7 @@ class Claimed:
     payload: dict[str, Any]
     created_at: datetime
     attempts: int
+    claim_token: uuid.UUID
 
 
 @dataclass(frozen=True)
@@ -171,15 +189,36 @@ def parse_retry_after(value: str | None, now: datetime) -> float | None:
     if not value:
         return None
     value = value.strip()
-    if value.isdigit():
+    if value.isascii() and value.isdigit():
         return float(value)
     try:
         moment = parsedate_to_datetime(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
     if moment.tzinfo is None:
         return None
     return max(0.0, (moment - now).total_seconds())
+
+
+class _NoCookies(http.cookiejar.CookiePolicy):
+    """Refuses every cookie the central app sets and sends none: `httpx.AsyncClient` keeps cookies
+    between requests by default, and a `Set-Cookie` must not become a credential on later ones."""
+
+    netscape = True
+    rfc2965 = False
+    hide_cookie2 = False
+
+    def set_ok(self, cookie: http.cookiejar.Cookie, request: Any) -> bool:
+        return False
+
+    def return_ok(self, cookie: http.cookiejar.Cookie, request: Any) -> bool:
+        return False
+
+    def domain_return_ok(self, domain: str, request: Any) -> bool:
+        return False
+
+    def path_return_ok(self, path: str, request: Any) -> bool:
+        return False
 
 
 class CentralClient:
@@ -203,6 +242,7 @@ class CentralClient:
             trust_env=False,
             transport=transport,
         )
+        self._http.cookies.jar.set_policy(_NoCookies())
 
     async def close(self) -> None:
         await self._http.aclose()
@@ -215,26 +255,41 @@ class CentralClient:
             "Idempotency-Key": str(event.id),
         }
         try:
-            response = await self._http.post(self._url, content=body, headers=headers)
-        except httpx.TimeoutException:
+            # One deadline for everything: HTTPX's timeouts apply to each step, so an answer that
+            # keeps arriving a little at a time would otherwise never run out.
+            async with asyncio.timeout(SEND_DEADLINE):
+                async with self._http.stream(
+                    "POST", self._url, content=body, headers=headers
+                ) as response:
+                    answer = await _read_answer(response, self._clock())
+        except (TimeoutError, httpx.TimeoutException):
             return Answer(None, "timeout")
         except httpx.HTTPError as error:
             return Answer(None, f"network error ({type(error).__name__})")
-        return Answer(
-            response.status_code,
-            _reason(response),
-            parse_retry_after(response.headers.get("Retry-After"), self._clock()),
-        )
+        return answer
 
 
-def _reason(response: httpx.Response) -> str:
+async def _read_answer(response: httpx.Response, now: datetime) -> Answer:
+    received = bytearray()
+    async for chunk in response.aiter_bytes():
+        received += chunk
+        if len(received) >= MAX_RESPONSE_BYTES:
+            break
+    return Answer(
+        response.status_code,
+        _reason(response.status_code, bytes(received[:MAX_RESPONSE_BYTES])),
+        parse_retry_after(response.headers.get("Retry-After"), now),
+    )
+
+
+def _reason(status: int, body: bytes) -> str:
     """`HTTP 422`, and the central app's error code when it sent one."""
-    reason = f"HTTP {response.status_code}"
+    reason = f"HTTP {status}"
     try:
-        body = response.json()
-    except ValueError:
+        parsed = json.loads(body)
+    except (ValueError, RecursionError):
         return reason
-    error = body.get("error") if isinstance(body, dict) else None
+    error = parsed.get("error") if isinstance(parsed, dict) else None
     code = error.get("code") if isinstance(error, dict) else None
     if isinstance(code, str) and code:
         reason += f": {code[:100]}"
@@ -292,7 +347,13 @@ class Publisher:
         if stop is not None and stop.is_set():
             await self._release(event)  # shutting down: do not start a request now
             return
-        answer = await self._client.send(event)
+        try:
+            answer = await self._client.send(event)
+        except Exception:
+            # Not a failure of the central app (a bad URL, a signing error): the event waits and
+            # backs off like any other, and the rest of the batch is not left hanging.
+            logger.exception("the request could not be sent", extra=self._context(event))
+            answer = Answer(None, "internal error")
         try:
             await self._record(event, answer)
         except Exception:
@@ -310,35 +371,39 @@ class Publisher:
         self._probe_at = None
         outcome = "retry" if answer.status is None else classify(answer.status)
         if outcome == "sent":
-            await self._finish(
+            if await self._finish(
                 event, status=OutboxStatus.SENT, sent_at=now, last_error=None, locked_at=None
-            )
-            logger.info("event sent", extra=self._context(event))
+            ):
+                logger.info("event sent", extra=self._context(event))
         elif outcome == "dead":
             await self._dead(event, answer.reason)
         elif event.attempts >= MAX_ATTEMPTS:
             await self._dead(event, f"{answer.reason} (after {event.attempts} attempts)")
         else:
             delay = backoff_seconds(event.attempts, self._rng, answer.retry_after)
-            await self._finish(
+            if await self._finish(
                 event,
                 status=OutboxStatus.PENDING,
                 locked_at=None,
                 next_attempt_at=now + timedelta(seconds=delay),
                 last_error=answer.reason[:ERROR_MAX],
-            )
-            logger.warning(
-                "event will be sent again",
-                extra={**self._context(event), "reason": answer.reason, "in_seconds": round(delay)},
-            )
+            ):
+                logger.warning(
+                    "event will be sent again",
+                    extra={
+                        **self._context(event),
+                        "reason": answer.reason,
+                        "in_seconds": round(delay),
+                    },
+                )
 
     async def _dead(self, event: Claimed, reason: str) -> None:
-        await self._finish(
+        if await self._finish(
             event, status=OutboxStatus.DEAD, locked_at=None, last_error=reason[:ERROR_MAX]
-        )
-        logger.error(
-            "event is dead", extra={**self._context(event), "reason": reason, "alert": True}
-        )
+        ):
+            logger.error(
+                "event is dead", extra={**self._context(event), "reason": reason, "alert": True}
+            )
 
     async def _unauthorized_answer(self, event: Claimed, answer: Answer, now: datetime) -> None:
         """The central app does not accept our signature. That says nothing about this event, so
@@ -370,21 +435,29 @@ class Publisher:
             attempts=max(event.attempts - 1, 0),
         )
 
-    async def _finish(self, event: Claimed, **values: Any) -> None:
-        """Updates the row, but only while it is still ours (`sending`): a sweeper that gave it
-        away in the meantime wins, and its next send is de-duplicated by the central app."""
+    async def _finish(self, event: Claimed, **values: Any) -> bool:
+        """Updates the row, but only while it is still ours: `sending` with the token this worker
+        claimed it with. A sweeper that gave it away in the meantime wins, and so does the worker
+        that claimed it after that (its request may still be in flight); the central app
+        de-duplicates the second send. Returns whether the row was ours."""
         async with self._sessions() as db:
             result = cast(
                 "CursorResult[Any]",
                 await db.execute(
                     update(OutboxEvent)
-                    .where(OutboxEvent.id == event.id, OutboxEvent.status == OutboxStatus.SENDING)
-                    .values(**values)
+                    .where(
+                        OutboxEvent.id == event.id,
+                        OutboxEvent.status == OutboxStatus.SENDING,
+                        OutboxEvent.claim_token == event.claim_token,
+                    )
+                    .values(claim_token=None, **values)
                 ),
             )
             await db.commit()
         if result.rowcount != 1:
             logger.warning("the row was no longer ours", extra=self._context(event))
+            return False
+        return True
 
     @staticmethod
     def _context(event: Claimed) -> dict[str, Any]:
@@ -398,7 +471,8 @@ class Publisher:
     # --- Upkeep ------------------------------------------------------------------------------
 
     async def maintain(self) -> tuple[int, int]:
-        """The sweeper and the cleanup. Returns (rows given back, rows removed)."""
+        """The sweeper and the cleanup. Returns (rows given back, rows removed). The cleanup removes
+        what was sent over 30 days ago, except the latest row of each aggregate."""
         now = self._clock()
         async with self._sessions() as db:
             # A worker that died with the row: pending again, or dead if it was the last attempt
@@ -415,6 +489,7 @@ class Publisher:
                     .values(
                         status=OutboxStatus.DEAD,
                         locked_at=None,
+                        claim_token=None,
                         last_error="the worker stopped while sending the last attempt",
                     )
                 ),
@@ -427,9 +502,12 @@ class Publisher:
                         OutboxEvent.status == OutboxStatus.SENDING,
                         OutboxEvent.locked_at < now - STALE_AFTER,
                     )
-                    .values(status=OutboxStatus.PENDING, locked_at=None)
+                    .values(status=OutboxStatus.PENDING, locked_at=None, claim_token=None)
                 ),
             )
+            # The latest row of an aggregate stays however old: the outbox writer reads it to know
+            # what the central app holds (whether a withdrawal is due, which version comes next).
+            newer = aliased(OutboxEvent)
             removed = cast(
                 "CursorResult[Any]",
                 await db.execute(
@@ -437,6 +515,13 @@ class Publisher:
                         OutboxEvent.status == OutboxStatus.SENT,
                         OutboxEvent.created_at < now - SENT_RETENTION,
                         OutboxEvent.sent_at < now - SENT_RETENTION,
+                        exists(
+                            select(newer.id).where(
+                                newer.aggregate_type == OutboxEvent.aggregate_type,
+                                newer.aggregate_id == OutboxEvent.aggregate_id,
+                                newer.version > OutboxEvent.version,
+                            )
+                        ),
                     )
                 ),
             )

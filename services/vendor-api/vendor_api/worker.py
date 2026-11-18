@@ -8,6 +8,7 @@ import asyncio
 import logging
 import signal
 import sys
+from types import FrameType
 
 from shazlo_security.signing import RequestSigner, SigningKey
 
@@ -45,19 +46,47 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
         logger.info("publisher stopped")
 
 
+def install_signal_handlers(loop: asyncio.AbstractEventLoop, stop: asyncio.Event) -> None:
+    """SIGTERM and SIGINT set `stop`. Windows' event loops have no `add_signal_handler`, so there
+    the plain `signal.signal` is used (Ctrl+C still stops the worker cleanly)."""
+
+    def request_stop(_signum: int, _frame: FrameType | None) -> None:
+        loop.call_soon_threadsafe(stop.set)
+
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(signum, stop.set)
+        except NotImplementedError:
+            signal.signal(signum, request_stop)
+
+
 async def main() -> None:
     settings = get_settings()
     configure_logging(settings.log_level)
     stop = asyncio.Event()
-    loop = asyncio.get_running_loop()
-    for signum in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(signum, stop.set)
+    install_signal_handlers(asyncio.get_running_loop(), stop)
     await run(settings, stop)
 
 
-if __name__ == "__main__":
+def describe(error: BaseException) -> str:
+    """What to print for a failure: the type, and the message when there is one."""
+    message = str(error).strip()
+    return f"{type(error).__name__}: {message}" if message else type(error).__name__
+
+
+def cli() -> int:
+    """The program's exit code. A failure prints one message and no traceback: a bad setting is
+    named (its value is not, see `hide_input_in_errors` on the settings) and nothing else shown
+    could hold a secret."""
     try:
         asyncio.run(main())
-    except Exception as error:  # a bad setting: say which, not a traceback of secrets
-        print(f"worker failed to start: {error}", file=sys.stderr)
-        sys.exit(1)
+    except KeyboardInterrupt:
+        return 130
+    except Exception as error:
+        print(f"worker failed: {describe(error)}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(cli())

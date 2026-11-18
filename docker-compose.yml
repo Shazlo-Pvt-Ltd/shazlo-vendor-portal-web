@@ -118,8 +118,9 @@ services:
       dockerfile: services/vendor-api/Dockerfile
     command: ["python", "-m", "vendor_api.worker"]
     restart: unless-stopped
-    # It finishes the request in flight on SIGTERM; give it time to.
-    stop_grace_period: 30s
+    # It finishes the requests in flight on SIGTERM, and one may take its whole 30 second deadline
+    # (the central app answers within 10); give it time to, and to record the result.
+    stop_grace_period: 45s
     # The image's healthcheck asks the API's /health, which the worker does not serve.
     healthcheck:
       disable: true

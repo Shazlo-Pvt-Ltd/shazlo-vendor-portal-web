@@ -39,7 +39,7 @@ Call the current key `OLD` (id `k1`) and the new one `NEW` (id `k2`; use a new i
 
 1. Generate `NEW` and add it to the central app (step 1 and 2 above).
 2. Switch vendor-api to `NEW` and roll immediately.
-3. **Remove the leaked key from the central app right away**, without waiting for a retry window: events signed with it fail with `401 unknown_key`, are retried, and go out with `NEW` once their instance has restarted. Nothing is lost; the outbox keeps them.
+3. **Remove the leaked key from the central app right away**, without waiting for a retry window: events signed with it fail with `401 unknown_key`. A `401` does not use up an event's attempts: the event waits (a minute at a time), and five in a row make the worker log `publishing paused` (`alert: true`) and try only one event every 5 minutes, until an instance with `NEW` answers. They go out with `NEW` once their instance has restarted. Nothing is lost; the outbox keeps them.
 4. Look in the central app's logs for requests signed with the leaked key id that vendor-api did not send. Each carries an `event_id`; compare it with the outbox.
 
 The 60-second timestamp window only limits replays of a captured request; it is no defence against a leaked secret.
