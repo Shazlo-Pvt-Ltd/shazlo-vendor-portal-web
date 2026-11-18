@@ -124,7 +124,7 @@ A row stuck in `sending` for more than 2 minutes (a crashed worker) is reset to 
 
 ### 6. Reconciliation
 
-The central app also exposes `GET /internal/v1/versions?aggregate_type=...`, which lists the aggregate ids it holds and their versions. Every night `vendor-api` compares that with what it has published and re-sends the current state of any aggregate where the central app is behind. An operator can run the same job on demand. This repairs anything that retries cannot, for example a restored database.
+The central app also exposes `GET /internal/v1/versions?aggregate_type=...`, which lists the aggregate ids it holds and their versions. Every night `vendor-api` compares that with what it has published and re-sends the current state of any aggregate where the central app is behind. An operator can also re-send the current state of one vendor, one product or everything on demand (the `resync` command), without asking the central app. This repairs anything that retries cannot, for example a restored database.
 
 ### 7. Contract versioning
 

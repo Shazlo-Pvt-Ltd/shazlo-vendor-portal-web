@@ -364,7 +364,7 @@ async def test_a_permanent_failure_is_logged_with_its_reason(
         "pending",
         next_attempt_at=datetime(2026, 11, 11, 11, 0, tzinfo=UTC),
     )
-    receiver = Receiver((422, {}, {"error": {"code": "schema_invalid"}}))
+    receiver = Receiver((422, {}, {"message": "no", "extra": {"code": "schema_invalid"}}))
     await build(session, receiver, Clock()).run_once()
     (entry,) = await log_of(session, event)
     assert entry.outcome == "failed for good: HTTP 422: schema_invalid"

@@ -176,7 +176,7 @@ The producer sends events of **one aggregate one at a time, in version order**. 
 Delays after a failed attempt: 30 seconds, 2 minutes, 10 minutes, 1 hour, 6 hours, 12 hours, 24 hours, each with plus or minus 20% random jitter. After the 8th failed attempt (about two days) the event becomes `dead`: it stops retrying, raises an alert, and appears in the admin review screen with a **Retry** button. A dead event does not block later versions of the same aggregate, because those carry the full state.
 
 ### Reconciliation
-Every night `vendor-api` calls `GET /internal/v1/versions?aggregate_type=...` (paged) and compares it with what it has published. For any aggregate where the receiver holds a lower version, or none, `vendor-api` re-sends the current state as a new event with a new `event_id`. An operator can trigger the same job at any time.
+Every night `vendor-api` calls `GET /internal/v1/versions?aggregate_type=...` (paged) and compares it with what it has published. For any aggregate where the receiver holds a lower version, or none, `vendor-api` re-sends the current state as a new event with a new `event_id`. An operator can also re-send the current state of one vendor, one product or everything at any time (the `resync` command), without asking the receiver.
 
 ## 6. Field mapping from the legacy models
 

@@ -346,14 +346,15 @@ async def _read_answer(response: httpx.Response, now: datetime) -> Answer:
 
 
 def _reason(status: int, body: bytes) -> str:
-    """`HTTP 422`, and the central app's error code when it sent one."""
+    """`HTTP 422`, and the central app's error code when it sent one. The contract's error is
+    `{"message": ..., "extra": {"code": "schema_invalid"}}`."""
     reason = f"HTTP {status}"
     try:
         parsed = json.loads(body)
     except (ValueError, RecursionError):
         return reason
-    error = parsed.get("error") if isinstance(parsed, dict) else None
-    code = error.get("code") if isinstance(error, dict) else None
+    extra = parsed.get("extra") if isinstance(parsed, dict) else None
+    code = extra.get("code") if isinstance(extra, dict) else None
     if isinstance(code, str) and code:
         reason += f": {code[:100]}"
     return reason

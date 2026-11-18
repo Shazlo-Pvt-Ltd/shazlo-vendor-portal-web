@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, JsonValue
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vendor_api.api.admin import Reviewer, reviewer_dependency
@@ -55,7 +55,28 @@ class OutboxEventOut(BaseModel):
     sent_at: datetime | None
 
 
+_EVENT: dict[str, JsonValue] = {
+    "id": "d2c8a7b1-3e5f-4092-8b4c-6f9e1d8b2c35",
+    "vendor_id": "3f0c8a52-6b0e-4a8b-9c1d-2a7d5e9b1c10",
+    "aggregate_type": "product",
+    "aggregate_id": "9b1c2d3e-4f50-4a61-8b72-c3d4e5f60718",
+    "event_type": "product.published",
+    "version": 2,
+    "status": "dead",
+    "attempts": 8,
+    "next_attempt_at": "2026-11-10T09:30:00Z",
+    "locked_at": None,
+    "last_error": "HTTP 503 (after 8 attempts)",
+    "created_at": "2026-11-08T09:00:00Z",
+    "sent_at": None,
+}
+
+
 class OutboxPageOut(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={"examples": [{"items": [_EVENT], "total": 1, "limit": 25, "offset": 0}]}
+    )
+
     items: list[OutboxEventOut]
     total: int
     limit: int
@@ -71,6 +92,31 @@ class LogEntryOut(BaseModel):
 
 
 class OutboxEventDetailOut(OutboxEventOut):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    **_EVENT,
+                    "payload": {"sku": "KURTA-001", "title": "Block-print cotton kurta"},
+                    "history": [
+                        {
+                            "created_at": "2026-11-10T09:29:00Z",
+                            "kind": "attempt",
+                            "outcome": "failed for good: HTTP 503 (after 8 attempts)",
+                            "actor_id": None,
+                        },
+                        {
+                            "created_at": "2026-11-11T08:00:00Z",
+                            "kind": "retry",
+                            "outcome": "put back by an admin",
+                            "actor_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                        },
+                    ],
+                }
+            ]
+        }
+    )
+
     # The event body, as it was sent.
     payload: dict[str, Any]
     # What happened to it, oldest first.
@@ -78,6 +124,12 @@ class OutboxEventDetailOut(OutboxEventOut):
 
 
 class OutboxStatsOut(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [{"pending": 3, "sending": 0, "dead": 1, "oldest_due_age_seconds": 42}]
+        }
+    )
+
     pending: int
     sending: int
     dead: int
