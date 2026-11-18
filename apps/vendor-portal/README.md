@@ -334,3 +334,13 @@ host with progress (`XMLHttpRequest`: `fetch` cannot report upload progress), re
 - **Accessibility:** a real button opens the file chooser (files can also be dropped on the box); progress is a
   named progress bar and is announced by quarter in a live region; errors are `role="alert"` and referenced by the
   button's `aria-describedby`; every Cancel, Retry and Remove button names its file.
+
+## The brand page editor
+
+`src/features/brand/` is `/brand`.
+
+- **Edit, preview, save, submit.** The form sends the whole draft on every save (the API replaces it). Prices are typed in rupees and converted to paise with integer arithmetic (`99.90` is exactly 9990). The Instagram box takes `@name`, a name or a profile address and shows the handle it will save.
+- **Live preview** beside the form (below it on a phone): the shopper's brand card and page header at a phone or a desktop width. It only reads the form's values, so it updates as the vendor types. Text is rendered as text, links go through `SafeLink` and pictures through `SafeImage`, and a missing logo falls back to an initial.
+- **Unsaved changes** are tracked by comparing what would be saved: leaving the page asks first (`useBlocker`), and closing the tab warns.
+- **A version in review is locked.** It says since when (from `GET /v1/vendor/submissions`), and editing a new draft is a deliberate button. Submitting is off until the decision, because the API allows one version in review (`409 review_pending` is explained if it happens anyway). A version that was not approved shows the admin's reason.
+- **Submitting** needs a category (checked before the call), asks for confirmation that says what happens next, and saves unsaved changes first. The **Published version** tab shows what shoppers see now, or that nothing is published yet.
