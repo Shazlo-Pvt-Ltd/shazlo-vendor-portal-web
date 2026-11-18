@@ -166,17 +166,17 @@ The producer sends events of **one aggregate one at a time, in version order**. 
 | --- | --- | --- |
 | `200` | `accepted`, `duplicate` or `stale` | Mark sent |
 | `400`, `409`, `413`, `422` | Permanent problem | Mark `dead` immediately and alert |
-| `401` | The producer's signature or key is refused: not the event's fault | Keep the event `pending` (it keeps its attempts) and retry in a minute. After 5 consecutive `401` responses the producer pauses publishing, alerts, and tries one event every 5 minutes until the answer changes |
-| anything else (`403`, `404`, `3xx`...) | Not in this contract, most likely a configuration problem | Retry with backoff, like a temporary failure |
+| `401` | The key is wrong, which says nothing about the event | Keep the event (pending, no attempt used up). After 5 consecutive `401` responses the producer pauses publishing and alerts, and tries one event now and then |
 | `408`, `429`, `5xx`, network error or timeout | Temporary | Retry with backoff |
+| Anything else (`403`, `404`, a redirect...) | Misconfiguration | Retry with backoff |
 
-`429` honours `Retry-After`. The producer's request timeout is 10 seconds.
+`429` honours `Retry-After`. The producer's request timeout is 10 seconds for each step and 30 seconds for the whole request, and it follows no redirects.
 
 ### Retries and the dead letter
 Delays after a failed attempt: 30 seconds, 2 minutes, 10 minutes, 1 hour, 6 hours, 12 hours, 24 hours, each with plus or minus 20% random jitter. After the 8th failed attempt (about two days) the event becomes `dead`: it stops retrying, raises an alert, and appears in the admin review screen with a **Retry** button. A dead event does not block later versions of the same aggregate, because those carry the full state.
 
 ### Reconciliation
-Every night `vendor-api` calls `GET /internal/v1/versions?aggregate_type=...` (paged) and compares it with what it has published. For any aggregate where the receiver holds a lower version, or none, `vendor-api` re-sends the current state as a new event with a new `event_id`. An operator can trigger the same job at any time.
+Every night `vendor-api` calls `GET /internal/v1/versions?aggregate_type=...` (paged) and compares it with what it has published. For any aggregate where the receiver holds a lower version, or none, `vendor-api` re-sends the current state as a new event with a new `event_id`. An operator can also re-send the current state of one vendor, one product or everything at any time (the `resync` command), without asking the receiver.
 
 ## 6. Field mapping from the legacy models
 

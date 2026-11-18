@@ -57,7 +57,10 @@ class Settings(BaseSettings):
     Settings that carry credentials have no default, so the app refuses to start without them.
     """
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # A bad setting is reported by name and reason, never with the value it was given: a rejected
+    # DATABASE_URL or CENTRAL_API_URL can hold a password, and the error of a check across several
+    # settings would print all of them.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
 
     env: Literal["dev", "test", "prod"] = "dev"
     log_level: str = "INFO"

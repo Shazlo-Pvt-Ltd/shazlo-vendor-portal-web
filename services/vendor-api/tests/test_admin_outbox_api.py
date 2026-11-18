@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from test_publisher import Clock, Receiver, build
 
 from vendor_api.db.models import OutboxEvent, OutboxEventLog
-from vendor_api.services.publisher import CLAIM
+from vendor_api.services.publisher import CLAIM, Answer
 
 OUTBOX = "/v1/admin/outbox"
 
@@ -369,6 +369,34 @@ async def test_a_permanent_failure_is_logged_with_its_reason(
     (entry,) = await log_of(session, event)
     assert entry.outcome == "failed for good: HTTP 422: schema_invalid"
     assert (await row(session, event)).status == "dead"
+
+
+async def test_a_worker_that_lost_its_claim_leaves_no_log_entry(
+    tenants: Tenants, session: AsyncSession
+) -> None:
+    """Worker A's request outlives the sweeper and worker B claims the row: A's late result neither
+    changes the row nor writes an attempt into its history."""
+    event = await add(
+        session,
+        tenants.a.vendor.id,
+        "pending",
+        next_attempt_at=datetime(2026, 11, 11, 11, 0, tzinfo=UTC),
+    )
+    clock = Clock()
+    worker_a = build(session, Receiver(), clock)
+    worker_b = build(session, Receiver(), clock)
+    (held_by_a,) = await worker_a._claim(clock.now, 20)
+    clock.advance(minutes=3)
+    assert await worker_b.maintain() == (1, 0)
+    (held_by_b,) = await worker_b._claim(clock.now, 20)
+
+    await worker_a._record(held_by_a, Answer(503, "HTTP 503"))
+    assert await log_of(session, event) == []
+    assert (await row(session, event)).claim_token == held_by_b.claim_token
+
+    await worker_b._record(held_by_b, Answer(200, "HTTP 200"))
+    (entry,) = await log_of(session, event)
+    assert entry.outcome == "sent (HTTP 200)"
 
 
 # --- Monitoring -----------------------------------------------------------------------------------

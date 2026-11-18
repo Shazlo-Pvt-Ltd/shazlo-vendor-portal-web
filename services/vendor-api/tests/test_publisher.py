@@ -8,11 +8,16 @@ The one test of two real workers uses its own committed rows and removes them.
 import asyncio
 import json
 import logging
+import os
 import random
+import signal
+import subprocess
+import sys
 import uuid
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -30,6 +35,7 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from vendor_api import worker as worker_module
 from vendor_api.core.settings import Settings
 from vendor_api.db.models import OutboxEvent
 from vendor_api.db.session import async_url
@@ -47,6 +53,7 @@ from vendor_api.services.publisher import (
     envelope_bytes,
     parse_retry_after,
 )
+from vendor_api.worker import describe, install_signal_handlers
 from vendor_api.worker import run as run_worker
 
 T0 = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
@@ -99,6 +106,7 @@ def claimed(**changes: Any) -> Claimed:
         "payload": {"title": "Kurta é", "price_paise": 99_900},
         "created_at": T0,
         "attempts": 1,
+        "claim_token": uuid.uuid4(),
     }
     return Claimed(**{**values, **changes})
 
@@ -176,6 +184,75 @@ def test_the_request_has_a_short_timeout_and_follows_nothing() -> None:
     assert http.timeout.read == http.timeout.connect == 10.0
     assert http.follow_redirects is False
     assert http.trust_env is False  # no proxy or .netrc credentials
+    assert publisher_module.STALE_AFTER.total_seconds() / 2 > publisher_module.SEND_DEADLINE
+
+
+async def test_a_cookie_the_central_app_sets_is_never_sent_back() -> None:
+    receiver = Receiver(
+        (200, {"Set-Cookie": "session=abc123; Path=/; Domain=central.test"}, {"status": "ok"}),
+        (200, {"Set-Cookie": "other=1"}, {"status": "ok"}),
+    )
+    client = client_for(receiver)
+    for _ in range(3):
+        await client.send(claimed())
+    assert len(receiver.requests) == 3
+    assert all("cookie" not in request.headers for request in receiver.requests)
+    assert len(client._http.cookies.jar) == 0  # nothing was even kept
+    await client.close()
+
+
+class Trickle(httpx.AsyncByteStream):
+    """An answer that never ends, a little at a time: every step is quick, so HTTPX's per-step
+    timeouts never fire."""
+
+    def __init__(self, pause: float = 0.01) -> None:
+        self.pause = pause
+        self.chunks = 0
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        while True:
+            await asyncio.sleep(self.pause)
+            self.chunks += 1
+            yield b"x" * 100
+
+
+async def test_an_answer_that_trickles_in_is_cut_off_at_the_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(publisher_module, "SEND_DEADLINE", 0.2)
+    trickle = Trickle()
+    client = client_for(lambda request: httpx.Response(200, stream=trickle))
+    started = asyncio.get_running_loop().time()
+    answer = await asyncio.wait_for(client.send(claimed()), 5)
+    await client.close()
+    assert (answer.status, answer.reason) == (None, "timeout")
+    assert 0.15 <= asyncio.get_running_loop().time() - started < 2
+    assert trickle.chunks >= 2  # it really was answering the whole time
+
+
+async def test_a_response_that_never_starts_is_cut_off_at_the_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(publisher_module, "SEND_DEADLINE", 0.1)
+
+    async def silent(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(30)
+        return httpx.Response(200)
+
+    client = client_for(silent)
+    answer = await asyncio.wait_for(client.send(claimed()), 5)
+    await client.close()
+    assert (answer.status, answer.reason) == (None, "timeout")
+
+
+async def test_only_the_start_of_an_answer_is_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(publisher_module, "MAX_RESPONSE_BYTES", 1_000)
+    trickle = Trickle(pause=0)
+    client = client_for(lambda request: httpx.Response(413, stream=trickle))
+    answer = await asyncio.wait_for(client.send(claimed()), 5)
+    await client.close()
+    assert (answer.status, answer.reason) == (413, "HTTP 413")  # not JSON, and not read to the end
+    assert trickle.chunks <= 11
 
 
 # --- Results and backoff (no database) -----------------------------------------------------------
@@ -227,7 +304,7 @@ def test_retry_after_forms() -> None:
     assert parse_retry_after("120", T0) == 120
     assert parse_retry_after("Wed, 11 Nov 2026 12:05:00 GMT", T0) == 300
     assert parse_retry_after("Wed, 11 Nov 2026 11:00:00 GMT", T0) == 0
-    for value in (None, "", "soon", "-5", "1.5"):
+    for value in (None, "", "soon", "-5", "1.5", "²", "٣"):
         assert parse_retry_after(value, T0) is None
 
 
@@ -527,7 +604,13 @@ async def test_another_answer_resets_the_count_of_unauthorized(
 async def test_the_sweeper_gives_back_only_what_is_stuck(
     session: AsyncSession, vendor_id: uuid.UUID, clock: Clock
 ) -> None:
-    stuck = await event(session, vendor_id, status="sending", locked_at=T0 - timedelta(minutes=3))
+    stuck = await event(
+        session,
+        vendor_id,
+        status="sending",
+        locked_at=T0 - timedelta(minutes=3),
+        claim_token=uuid.uuid4(),
+    )
     busy = await event(session, vendor_id, status="sending", locked_at=T0 - timedelta(seconds=90))
     last_try = await event(
         session,
@@ -540,6 +623,7 @@ async def test_the_sweeper_gives_back_only_what_is_stuck(
     assert (given_back, removed) == (2, 0)
     assert (await fresh(session, stuck)).status == "pending"
     assert (await fresh(session, stuck)).locked_at is None
+    assert (await fresh(session, stuck)).claim_token is None
     assert (await fresh(session, busy)).status == "sending"
     dead = await fresh(session, last_try)
     assert dead.status == "dead" and "worker stopped" in (dead.last_error or "")
@@ -556,22 +640,69 @@ async def test_a_swept_event_is_sent_again(
     assert (await fresh(session, row)).status == "sent"
 
 
-async def test_sent_rows_go_after_thirty_days_and_nothing_else_does(
+async def test_old_sent_rows_go_after_thirty_days_but_the_latest_of_each_aggregate_stays(
     session: AsyncSession, vendor_id: uuid.UUID, clock: Clock
 ) -> None:
     old = T0 - timedelta(days=31)
     recent = T0 - timedelta(days=29)
-    gone = await event(session, vendor_id, status="sent", created_at=old, sent_at=old)
-    kept_recent = await event(session, vendor_id, status="sent", created_at=recent, sent_at=recent)
+
+    def sent(**changes: Any) -> Any:
+        return event(session, vendor_id, status="sent", created_at=old, sent_at=old, **changes)
+
+    # Three old versions of one aggregate: only the last, which the outbox writer reads to know
+    # what the central app holds, is kept.
+    first = await sent(version=1)
+    second = await sent(aggregate_id=first.aggregate_id, version=2)
+    third = await sent(aggregate_id=first.aggregate_id, version=3)
+    # An aggregate with one old row keeps it, and so does a brand page or a vendor.
+    alone = await sent()
+    # An old row with a newer one still unsent is not the latest: it goes.
+    behind = await sent(version=1)
+    await event(session, vendor_id, aggregate_id=behind.aggregate_id, version=2, created_at=old)
+    # An old row with a newer dead one: same.
+    before_dead = await sent(version=1)
+    await event(
+        session,
+        vendor_id,
+        aggregate_id=before_dead.aggregate_id,
+        version=2,
+        status="dead",
+        created_at=old,
+        last_error="HTTP 422: bad_event",
+    )
+    # Recent rows, and old ones that are not `sent`, are not touched.
+    kept_recent = await event(
+        session, vendor_id, status="sent", created_at=recent, sent_at=recent, version=1
+    )
+    kept_recent_newer = await event(
+        session,
+        vendor_id,
+        aggregate_id=kept_recent.aggregate_id,
+        status="sent",
+        created_at=recent,
+        sent_at=recent,
+        version=2,
+    )
     old_dead = await event(
         session, vendor_id, status="dead", created_at=old, last_error="HTTP 422: bad_event"
     )
     old_pending = await event(session, vendor_id, created_at=old)
+
     _, removed = await build(session, Receiver(), clock).maintain()
-    assert removed == 1
+
+    assert removed == 4  # first, second, behind, before_dead
     remaining = set(await session.scalars(select(OutboxEvent.id)))
-    assert gone.id not in remaining
-    assert {kept_recent.id, old_dead.id, old_pending.id} <= remaining
+    assert not {first.id, second.id, behind.id, before_dead.id} & remaining
+    assert {
+        third.id,
+        alone.id,
+        kept_recent.id,
+        kept_recent_newer.id,
+        old_dead.id,
+        old_pending.id,
+    } <= remaining
+    # A second run has nothing more to do.
+    assert (await build(session, Receiver(), clock).maintain())[1] == 0
 
 
 # --- Shutting down -------------------------------------------------------------------------------
@@ -641,6 +772,147 @@ async def test_the_loop_keeps_going_when_the_database_fails_once(
     assert (await fresh(session, row)).status == "sent"
 
 
+# --- A worker that is late ----------------------------------------------------------------------
+
+
+LATE_RESULTS = [
+    pytest.param(Answer(200, "HTTP 200"), id="sent"),
+    pytest.param(Answer(503, "HTTP 503"), id="retry"),
+    pytest.param(Answer(None, "timeout"), id="timeout"),
+    pytest.param(Answer(422, "HTTP 422: schema_invalid"), id="dead"),
+    pytest.param(Answer(401, "HTTP 401"), id="unauthorized"),
+    pytest.param(None, id="released-on-shutdown"),
+]
+
+
+@pytest.mark.parametrize("late", LATE_RESULTS)
+async def test_a_late_result_does_not_touch_a_row_another_worker_has_claimed(
+    session: AsyncSession, vendor_id: uuid.UUID, clock: Clock, late: Answer | None
+) -> None:
+    """Worker A's request outlives the sweeper: the row is reset, and worker B claims it. Whatever
+    A reports then, B keeps its claim, and the next version of the aggregate stays blocked."""
+    row = await event(session, vendor_id)
+    await event(session, vendor_id, aggregate_id=row.aggregate_id, version=2)
+    receiver = Receiver()
+    worker_a = build(session, receiver, clock)
+    worker_b = build(session, receiver, clock)
+    (held_by_a,) = await worker_a._claim(clock.now, 20)
+    assert held_by_a.id == row.id
+
+    clock.advance(minutes=3)
+    assert await worker_b.maintain() == (1, 0)  # the sweeper gives the row back ...
+    (held_by_b,) = await worker_b._claim(clock.now, 20)  # ... and B claims it
+    assert held_by_b.id == row.id
+    assert held_by_b.claim_token != held_by_a.claim_token
+
+    if late is None:
+        await worker_a._release(held_by_a)
+    else:
+        await worker_a._record(held_by_a, late)
+
+    mine = await fresh(session, row)
+    assert (mine.status, mine.claim_token, mine.attempts) == ("sending", held_by_b.claim_token, 2)
+    assert mine.locked_at == clock.now and mine.sent_at is None and mine.last_error is None
+    assert await worker_a.run_once() == 0  # version 2 still waits for version 1
+
+    await worker_b._record(held_by_b, Answer(200, "HTTP 200"))  # B finishes as usual
+    done = await fresh(session, row)
+    assert (done.status, done.claim_token, done.sent_at) == ("sent", None, clock.now)
+    assert await worker_a.run_once() == 1  # and only now version 2 goes out
+    assert receiver.versions == [2]
+
+
+async def test_a_result_is_not_recorded_twice(
+    session: AsyncSession, vendor_id: uuid.UUID, clock: Clock, caplog: pytest.LogCaptureFixture
+) -> None:
+    row = await event(session, vendor_id)
+    worker = build(session, Receiver(), clock)
+    (held,) = await worker._claim(clock.now, 20)
+    await worker._record(held, Answer(503, "HTTP 503"))
+    waiting = await fresh(session, row)
+    assert (waiting.status, waiting.claim_token) == ("pending", None)
+    with caplog.at_level(logging.INFO):
+        await worker._record(held, Answer(200, "HTTP 200"))  # the claim is over
+    assert (await fresh(session, row)).status == "pending"
+    assert "no longer ours" in caplog.text
+    assert "event sent" not in caplog.text  # and it does not claim a success it did not record
+
+
+async def test_a_slow_worker_finishing_after_the_sweeper_does_not_overwrite_the_new_claim(
+    session: AsyncSession, vendor_id: uuid.UUID, clock: Clock
+) -> None:
+    """The same, with real requests: A's is held open while the sweeper and B go by."""
+    row = await event(session, vendor_id)
+    gates = {name: asyncio.Event() for name in ("a_in", "a_go", "b_in", "b_go")}
+
+    def answering(entered: str, release: str) -> Callable[[httpx.Request], Any]:
+        async def handler(request: httpx.Request) -> httpx.Response:
+            gates[entered].set()
+            await gates[release].wait()
+            return httpx.Response(200, json={"status": "accepted"})
+
+        return handler
+
+    worker_a = build(session, answering("a_in", "a_go"), clock)
+    worker_b = build(session, answering("b_in", "b_go"), clock)
+    task_a = asyncio.create_task(worker_a.run_once())
+    await asyncio.wait_for(gates["a_in"].wait(), 5)
+
+    clock.advance(minutes=3)
+    assert await worker_b.maintain() == (1, 0)
+    task_b = asyncio.create_task(worker_b.run_once())
+    await asyncio.wait_for(gates["b_in"].wait(), 5)
+    token_b = (await fresh(session, row)).claim_token
+    assert token_b is not None
+
+    gates["a_go"].set()  # A's answer arrives while B's request is still out
+    assert await asyncio.wait_for(task_a, 5) == 1
+    held = await fresh(session, row)
+    assert (held.status, held.claim_token, held.attempts) == ("sending", token_b, 2)
+
+    gates["b_go"].set()
+    assert await asyncio.wait_for(task_b, 5) == 1
+    assert (await fresh(session, row)).status == "sent"
+
+
+async def test_an_unexpected_error_while_sending_is_retried_like_any_failure(
+    session: AsyncSession,
+    vendor_id: uuid.UUID,
+    clock: Clock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    broken = await event(session, vendor_id)
+    fine = await event(session, vendor_id)
+    receiver = Receiver()
+    publisher = build(session, receiver, clock)
+    real = publisher._client.send
+
+    async def send(item: Claimed) -> Answer:
+        if item.id == broken.id:
+            raise RuntimeError("signing failed")
+        return await real(item)
+
+    monkeypatch.setattr(publisher._client, "send", send)
+    assert await publisher.run_once() == 2
+    assert (await fresh(session, fine)).status == "sent"  # the batch did not stop
+    waiting = await fresh(session, broken)
+    assert (waiting.status, waiting.last_error, waiting.claim_token) == (
+        "pending",
+        "internal error",
+        None,
+    )
+
+
+async def test_a_claim_gets_a_token_of_its_own(
+    session: AsyncSession, vendor_id: uuid.UUID, clock: Clock
+) -> None:
+    rows = [await event(session, vendor_id) for _ in range(3)]
+    claimed_rows = await build(session, Receiver(), clock)._claim(clock.now, 20)
+    assert len({c.claim_token for c in claimed_rows}) == 3
+    for row in rows:
+        assert (await fresh(session, row)).claim_token in {c.claim_token for c in claimed_rows}
+
+
 # --- Two workers ---------------------------------------------------------------------------------
 
 
@@ -692,6 +964,73 @@ async def test_with_publishing_off_the_worker_idles_and_says_so(
     with caplog.at_level(logging.WARNING):
         await asyncio.wait_for(run_worker(settings, stop), 5)
     assert "CENTRAL_PUBLISHING_ENABLED is off" in caplog.text
+
+
+async def test_the_signal_handlers_fall_back_where_the_event_loop_has_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Windows' event loops raise NotImplementedError from `add_signal_handler`."""
+    loop = asyncio.get_running_loop()
+
+    def unsupported(*args: Any) -> None:
+        raise NotImplementedError
+
+    registered: dict[int, Callable[[int, Any], None]] = {}
+    monkeypatch.setattr(loop, "add_signal_handler", unsupported)
+    monkeypatch.setattr(
+        signal,
+        "signal",
+        lambda signum, handler: registered.setdefault(signum, handler),
+    )
+    stop = asyncio.Event()
+    install_signal_handlers(loop, stop)
+    assert set(registered) == {signal.SIGTERM, signal.SIGINT}
+    assert not stop.is_set()
+    registered[signal.SIGTERM](signal.SIGTERM, None)
+    await asyncio.wait_for(stop.wait(), 5)
+
+
+def test_a_failure_prints_one_line_with_a_reason(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    async def fails() -> None:
+        raise NotImplementedError  # an exception with no message at all
+
+    monkeypatch.setattr(worker_module, "main", fails)
+    assert worker_module.cli() == 1
+    assert capsys.readouterr().err == "worker failed: NotImplementedError\n"
+    assert describe(ValueError("no way")) == "ValueError: no way"
+
+
+def test_a_bad_setting_stops_the_worker_without_printing_the_value(tmp_path: Path) -> None:
+    password = "Sup3rSecretPassw0rd"
+    secret = "Hunter2-central-secret-0123456789abcdef"
+    env = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith(("DATABASE_", "REDIS_", "CENTRAL_", "JWT_", "OUTBOX_"))
+    }
+    env.update(
+        DATABASE_URL=f"postgres://shazlo:{password}@db.internal:5432/vendor",  # not postgresql://
+        REDIS_URL="redis://localhost:6379/0",
+        CENTRAL_API_URL=f"https://shazlo:{password}@central.example",
+        CENTRAL_SIGNING_SECRET=secret,
+    )
+    done = subprocess.run(  # noqa: S603 (our own interpreter and module)
+        [sys.executable, "-m", "vendor_api.worker"],
+        cwd=tmp_path,  # no `.env` here
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert done.returncode == 1
+    assert done.stderr.startswith("worker failed: ValidationError")
+    assert "database_url" in done.stderr and "must start with" in done.stderr
+    for private in (password, "Sup3rS", secret, "db.internal", "central.example"):
+        assert private not in done.stderr + done.stdout
+    assert "Traceback" not in done.stderr
 
 
 def test_an_answer_carries_what_the_recorder_needs() -> None:

@@ -13,16 +13,19 @@ nothing the central app does can block one.
 ## Watching it work on your machine
 
 ```sh
-cp .env.example .env                       # set POSTGRES_PASSWORD, and uncomment CENTRAL_PUBLISHING_ENABLED=true
-docker compose --profile vendor --profile central up -d --build
+cp .env.example .env     # set POSTGRES_PASSWORD, VENDOR_JWT_KEYS (see the README, "vendor-api") and
+                         # uncomment CENTRAL_PUBLISHING_ENABLED=true
+docker compose --profile vendor --profile central build
 docker compose --profile vendor run --rm vendor-api alembic upgrade head
 docker compose --profile vendor run --rm vendor-api python -m vendor_api.cli seed-dev
+docker compose --profile vendor --profile central up -d
 ```
 
 Open <http://localhost:8003>: the stub lists what it holds. The seed's approved vendor, brand page
-and products arrive within a few seconds (the seed queued their events; the `vendor-worker` service
-sent them). Approve something through `/v1/admin/reviews` and it appears there too. The stub's
-`PUT /_stub/mode` makes it fail on purpose (`{"mode": "error_500", "remaining": 3}`).
+and products arrive within a few seconds of the worker starting (the seed queued their events; the
+`vendor-worker` service sends them). Approving something through `/v1/admin/reviews` (with an admin
+token from identity-api) sends it too. The stub's `PUT /_stub/mode` makes it fail on purpose
+(`{"mode": "error_500", "remaining": 3}`).
 
 The worker is idle, and says so in its log, while `CENTRAL_PUBLISHING_ENABLED` is off. Events are
 still written and queue up, so turning it on later sends everything.
@@ -34,10 +37,12 @@ still written and queue up, so turning it on later sends everything.
 - **Run more than one if you like.** They claim rows with `FOR UPDATE SKIP LOCKED` and never send
   one row twice at the same moment, and an aggregate's events go out one at a time, in version order.
   One worker handles a few hundred events a minute; the limit that matters is the central app's.
-- Stop it with `SIGTERM`: the request in flight finishes, claims not yet started are given back.
-  Give it 30 seconds (`stop_grace_period`).
+- Stop it with `SIGTERM`: the request in flight finishes (a request is cut off after 30 seconds),
+  claims not yet started are given back. Give it 30 seconds (`stop_grace_period`).
 - A worker that dies mid-send leaves rows in `sending`. The sweeper (every minute, in every worker)
-  puts them back after 2 minutes. The central app answers `duplicate` if the event had arrived.
+  puts them back after 2 minutes. The central app answers `duplicate` if the event had arrived. A worker
+  that was only slow cannot overwrite what the next worker records: a result counts only from the
+  worker that still holds the row's claim token.
 - The same process runs the nightly reconciliation at `RECONCILE_AT` (UTC, default `03:00`), under an
   advisory lock, so several workers do not repeat it.
 
@@ -98,9 +103,14 @@ python -m vendor_api.cli resync --all
 ```
 
 It prints how many events it wrote and how many it left alone because one was already waiting. It
-never writes a version the central app would ignore, and it does not need the central app to be up.
-The nightly reconciliation does the same by comparing with the central app first, so it writes only
-what is behind; run it by hand for one vendor with `resync`.
+does not need the central app to be up, and it writes each event above every version vendor-api has
+already written for that aggregate. Each run writes new events (it is a deliberate re-send).
+
+It does not ask the central app what it holds, so it cannot help when the central app holds
+something **newer** than vendor-api's own history (vendor-api's database was restored from a
+backup): the central app answers `stale` and keeps what it has. The nightly reconciliation compares
+versions with the central app and writes above them, so that is the repair for a restored database.
+To run it sooner, set `RECONCILE_AT` to a few minutes ahead and restart the worker.
 
 ## The central app is down for a long time
 
@@ -119,6 +129,9 @@ what is behind; run it by hand for one vendor with `resync`.
 
 ## Things that look wrong and are not
 
+- `sent` events older than 30 days are removed, but the **latest event of every page, product and
+  vendor stays**, however old: the writer reads it to know what the central app holds, and the
+  reconciliation and `resync` read it too. Do not delete them by hand.
 - An event `sent` with a version lower than the central app's: it was answered `stale`, which is a
   success. The central app keeps the newest version.
 - Two events for one product a minute apart: a suspension and a reinstatement are two events, in order.

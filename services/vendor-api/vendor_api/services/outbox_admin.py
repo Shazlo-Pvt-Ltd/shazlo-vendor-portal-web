@@ -145,6 +145,12 @@ async def outbox_stats(db: AsyncSession, now: datetime) -> OutboxStats:
                 func.min(OutboxEvent.next_attempt_at).filter(
                     OutboxEvent.status == OutboxStatus.PENDING, OutboxEvent.next_attempt_at <= now
                 ),
+            ).where(
+                # Only what is not finished: the probe runs every few seconds, and the `sent` rows
+                # (kept for 30 days) are by far the most. This stays on the status index.
+                OutboxEvent.status.in_(
+                    [OutboxStatus.PENDING, OutboxStatus.SENDING, OutboxStatus.DEAD]
+                )
             )
         )
     ).one()

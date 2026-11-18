@@ -62,9 +62,11 @@ A replay inside the 60-second window is harmless because of the de-duplication. 
 | --- | --- | --- |
 | `200` | accepted, duplicate or stale | Mark `sent` |
 | `400`, `409`, `413`, `422` | Permanent | Mark `dead` at once and alert |
-| `401` | The key is refused, which is not the event's fault | Keep the event `pending`, without using up an attempt. Five consecutive `401` responses pause publishing and alert; one event is tried every 5 minutes until the answer changes |
-| anything else (`403`, `404`, `3xx`...) | Not in the contract; probably a configuration problem | Retry with backoff |
+| `401` | The key is wrong, which says nothing about the event | Back to `pending` without using up an attempt. Five consecutive `401` responses pause publishing and alert; one event is then tried now and then, and any other answer ends the pause |
 | `408`, `429`, `5xx`, timeout, network error | Temporary | Retry |
+| Anything else (`403`, `404`, a redirect...) | A configuration problem a person can fix | Retry, so the event survives until they do |
+
+A request has one deadline of 30 seconds, answer included (a timeout on each step is not enough: an answer that keeps arriving a little at a time never runs out), and redirects are not followed.
 
 Backoff after each failure: 30 s, 2 min, 10 min, 1 h, 6 h, 12 h, 24 h, each with plus or minus 20% jitter. After the 8th failed attempt (about two days) the event becomes `dead`: it is listed in the admin review screen with a **Retry** button (Phase 7). A dead event does not block newer versions of the same aggregate, because those carry the full state.
 
@@ -84,6 +86,7 @@ CREATE TABLE outbox_events (
   attempts         integer     NOT NULL DEFAULT 0,
   next_attempt_at  timestamptz NOT NULL DEFAULT now(),
   locked_at        timestamptz,
+  claim_token      uuid,                             -- who holds a 'sending' row
   last_error       text,
   created_at       timestamptz NOT NULL DEFAULT now(),
   sent_at          timestamptz,
@@ -96,7 +99,8 @@ The publisher worker claims due rows with `FOR UPDATE SKIP LOCKED`, so several w
 
 ```sql
 UPDATE outbox_events o
-SET status = 'sending', locked_at = now(), attempts = attempts + 1
+SET status = 'sending', locked_at = now(), claim_token = gen_random_uuid(),
+    attempts = attempts + 1
 WHERE o.id IN (
   SELECT d.id
   FROM outbox_events d
@@ -116,11 +120,11 @@ WHERE o.id IN (
 RETURNING o.*;
 ```
 
-A row stuck in `sending` for more than 2 minutes (a crashed worker) is reset to `pending` by a sweeper. Rows with `status = 'sent'` are kept for 30 days for audit and then removed.
+A row stuck in `sending` for more than 2 minutes (a crashed worker) is reset to `pending` by a sweeper. A worker records the result of a request only while the row still carries the `claim_token` it claimed it with, so a worker that is late cannot overwrite a row the sweeper gave to another one. Rows with `status = 'sent'` are kept for 30 days for audit and then removed, **except the latest row of each aggregate**: the writer reads it to know what the central app holds (whether a withdrawal is due, what to hide or show again after a suspension, and which version comes next, which for a brand page exists only in the outbox), so it must outlive the retention period.
 
 ### 6. Reconciliation
 
-The central app also exposes `GET /internal/v1/versions?aggregate_type=...`, which lists the aggregate ids it holds and their versions. Every night `vendor-api` compares that with what it has published and re-sends the current state of any aggregate where the central app is behind. An operator can run the same job on demand. This repairs anything that retries cannot, for example a restored database.
+The central app also exposes `GET /internal/v1/versions?aggregate_type=...`, which lists the aggregate ids it holds and their versions. Every night `vendor-api` compares that with what it has published and re-sends the current state of any aggregate where the central app is behind. An operator can also re-send the current state of one vendor, one product or everything on demand (the `resync` command), without asking the central app. This repairs anything that retries cannot, for example a restored database.
 
 ### 7. Contract versioning
 
@@ -144,6 +148,27 @@ The central app is the consumer backend (`shazlo-server`). Each question has a p
 | 10 | Is vendor contact data needed centrally? | No. Contact details are not published. If the central app later needs them (for orders) they travel through a separate order contract |
 | 11 | Legacy `discount` and `weight` | Confirm whether `discount` is a percent or an amount, and the unit of `weight`, before the data migration in Phase 8 |
 | 12 | Maximum event size | 256 KB. Larger bodies get `413` |
+
+## Shared secrets
+
+Each environment has its own secret (and key id), so a leak in one never exposes another. No real secret is written in this repository: the only values in it are the contract's test secret and the stub's development default, both marked as not for production.
+
+| Environment | `vendor-api` holds it in | Central app holds it in |
+| --- | --- | --- |
+| Local development | `services/vendor-api/.env` (git-ignored), or unset so publishing is off | The stub receiver's `STUB_SIGNING_KEYS` (`CENTRAL_STUB_SIGNING_KEYS` in compose) |
+| CI | Generated inside each test, or the contract's test vector; no real secret is stored as a CI secret | Not applicable |
+| Staging | The platform's secret manager, injected as `CENTRAL_SIGNING_SECRET` (with `CENTRAL_SIGNING_KEY_ID`) | The central app's staging secret manager |
+| Production | The platform's secret manager, injected as `CENTRAL_SIGNING_SECRET` (with `CENTRAL_SIGNING_KEY_ID`) | The central app's production secret manager |
+
+The hosting platform and its secret manager are not chosen yet; the runbook names the actual product and path once they are. Rotation, with two keys active at once, and what to do if a key leaks are in [the key-rotation runbook](../runbooks/central-api-key-rotation.md), which also holds this table with notes.
+
+## Confirmation record
+
+_To be completed with the central-app owners before the status changes to accepted._
+
+| Confirmed by | Date | Answers 1-12 as proposed? | Changes agreed |
+| --- | --- | --- | --- |
+| _name, central-app team_ | _date_ | _yes / no_ | _none, or list by question number_ |
 
 ## Consequences
 
@@ -177,6 +202,6 @@ The central app is the consumer backend (`shazlo-server`). Each question has a p
 
 ## Open items
 
-- Confirm the answers in the table above with the central-app owners, then change the status to accepted.
+- Confirm the answers in the table above with the central-app owners, fill in the confirmation record, then change the status to accepted.
 - Final category and fabric lists, and how unknown values are reported.
-- Where the shared secrets live in each environment.
+- ~~Where the shared secrets live in each environment.~~ Settled: see Shared secrets above.

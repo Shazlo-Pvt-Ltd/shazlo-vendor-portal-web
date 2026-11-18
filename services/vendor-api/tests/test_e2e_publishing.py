@@ -287,6 +287,39 @@ async def test_an_approval_reaches_the_central_app_is_withdrawn_and_comes_back(
     assert len(logs) == len(rows)  # one attempt each, all delivered the first time
 
 
+async def test_a_central_app_that_lost_its_data_is_repaired_by_reconciliation(
+    world: World, session: AsyncSession
+) -> None:
+    ids = await go_live(world)
+    central = Central(session)
+    assert await central.drain() == 3
+    central.store.reset()  # the central app's database comes back from an old backup: empty
+    assert central.held("product", ids.product) is None
+
+    # Reconciliation asks the real versions endpoint, finds all three aggregates missing and
+    # writes their current state above the versions already sent.
+    reconciler = Reconciler(
+        unlocked(session), OutboxWriter(True), central.client, pause=0, clock=central.clock
+    )
+    report = await reconciler.reconcile()
+    assert dict(report.written) == {"vendor": 1, "brand_profile": 1, "product": 1}
+    assert await central.drain() == 3
+    brand = central.held("brand_profile", ids.vendor)
+    item = central.held("product", ids.product)
+    assert (brand.state, brand.version, item.state, item.version) == (
+        "published",
+        2,
+        "published",
+        2,
+    )
+    assert central.held("vendor", ids.vendor).state == "published"
+    assert item.data["title"] == "Block-print cotton kurta"
+    once_each_in_order(central.wire)
+
+    # Delivered, so a second run has nothing to repair.
+    assert (await reconciler.reconcile()).total == 0
+
+
 # --- Failure cases -------------------------------------------------------------------------------
 
 

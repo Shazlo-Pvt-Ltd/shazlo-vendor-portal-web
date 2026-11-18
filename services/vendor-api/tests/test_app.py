@@ -65,6 +65,18 @@ def test_ready_ok_when_all_checks_pass(settings: Settings) -> None:
     assert (body["status"], body["checks"]) == ("ok", {"postgres": "ok", "redis": "ok"})
 
 
+def test_ready_does_not_ask_for_the_outbox_while_postgres_is_failing(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def never(request: object) -> None:
+        raise AssertionError("the outbox counts need the database")
+
+    monkeypatch.setattr(health, "_outbox", never)
+    response = make_client(settings, {"postgres": _fail, "redis": _ok}).get("/ready")
+    assert response.status_code == 503
+    assert response.json()["outbox"] is None
+
+
 def test_ready_503_when_a_dependency_fails(settings: Settings) -> None:
     response = make_client(settings, {"postgres": _ok, "redis": _fail}).get("/ready")
     assert response.status_code == 503

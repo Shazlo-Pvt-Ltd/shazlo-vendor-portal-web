@@ -40,8 +40,9 @@ async def ready(request: Request) -> JSONResponse:
             "status": "ok" if ok else "unavailable",
             "checks": statuses,
             # For monitoring only: it never changes the status (an alert on `dead` or on the age of
-            # the oldest due event is the monitor's job). Null when it could not be read.
-            "outbox": await _outbox(request),
+            # the oldest due event is the monitor's job). Null when it could not be read, and not
+            # even tried while Postgres is failing: it would only add a second timeout to the probe.
+            "outbox": await _outbox(request) if statuses.get("postgres", "ok") == "ok" else None,
         },
         status_code=200 if ok else 503,
     )
