@@ -14,6 +14,7 @@ FastAPI service for vendors, brand profiles, products, assets, reviews and publi
 - **A catalog:** products with variants and images, where editing a live product makes a pending revision and never changes what is live; a bulk import from `.xlsx` or `.csv` with a report for every row.
 - **Image uploads** straight to Cloudinary with a signature made here, and a record of each image.
 - **Review:** a queue for reviewers with the exact fields that changed, approve and reject (a reason is required) with an audit trail.
+- **What happened to what I submitted:** every brand page version carries its review (status, reason, times), and one call lists the vendor's reviews with the admin's reasons, never who decided.
 - **Vendor accounts:** approve, reject and suspend, with sessions ended at once and an email to the vendor.
 - **Central-app events (Phase 4):** every approval writes its contract-checked event to the outbox in the same transaction, and so do archiving a live product and suspending, rejecting or reinstating a vendor (what shoppers stop or start seeing again); requests to the central app are HMAC-signed. Sending the events is not built yet.
 
