@@ -9,7 +9,7 @@
 
 **Legend:** `[As-is]` found in the source, `[MVP]` needed by Oct 30, `[Target]` after launch, `[Assumption]` needs a decision.
 
-> **Status note (2026-11-19).** This is an audit of the site as it was on 2026-10-19. Since then the dependencies of `app/` have been upgraded (Vite 8 and Material UI 9 now, see `app/package.json`), and `app/` and `backend/` have tests and a production build in CI ([the test strategy](testing.md)). The findings below are not re-audited.
+> **Status note (2026-11-19).** This is an audit of the site as it was on 2026-10-19. Since then the dependencies of `app/` have been upgraded (Vite 8 and Material UI 9 now, see `app/package.json`), and `app/` and `backend/` have tests in CI, and `app/` a production build ([the test strategy](testing.md)). The findings below are not re-audited.
 
 ## 1. What the site is `[As-is]`
 

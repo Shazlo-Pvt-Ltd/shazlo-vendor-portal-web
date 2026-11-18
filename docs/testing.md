@@ -92,7 +92,7 @@ All selected checks run on every pull request (any base branch), and pushes to
 
 ## Running the checks
 
-From the repository root, with the Node version in the root `package.json` `engines` field (22.22.2 or newer on the 22 line, 24.15 or newer, or 26 and up; CI uses Node 22):
+From the repository root, with the Node version in the root `package.json` `engines` field (22.22.2 or newer on the 22 line, 24.15 or newer on the 24 line, or 26 and up; CI uses Node 22):
 
 ```sh
 npm ci
