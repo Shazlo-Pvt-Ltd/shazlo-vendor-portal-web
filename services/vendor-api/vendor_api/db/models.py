@@ -871,9 +871,10 @@ class OutboxEvent(Base):
     worker sends one aggregate's events one at a time in version order. `payload` is the whole
     event body (the full state of the aggregate), exactly as it will be signed and sent.
 
-    A trigger keeps the content of a row (everything but its delivery state) from ever changing,
-    makes `sent` final, and allows only the worker's path between statuses: pending to sending,
-    sending to pending, sent or dead, and dead back to pending (an admin's retry).
+    A trigger keeps the content of a row (everything but its delivery state: the status, the
+    attempts, `next_attempt_at`, `locked_at`, `claim_token`, `last_error` and `sent_at`) from ever
+    changing, makes `sent` final, and allows only the worker's path between statuses: pending to
+    sending, sending to pending, sent or dead, and dead back to pending (an admin's retry).
     """
 
     __tablename__ = "outbox_events"
@@ -942,6 +943,38 @@ class OutboxEvent(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Who holds a `sending` row: a worker records its result only while the row still carries the
+    # token it claimed it with, so a row the sweeper gave to another worker is not overwritten.
+    claim_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     last_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class OutboxLogKind(StrEnum):
+    ATTEMPT = "attempt"  # the worker tried to deliver the event
+    RETRY = "retry"  # an admin put a dead event back
+
+
+class OutboxEventLog(Base):
+    """What happened to an outbox event, one row per step: each delivery attempt (what came of
+    it) and each retry an admin asked for (with the admin's id). Gone with its event."""
+
+    __tablename__ = "outbox_event_log"
+    __table_args__ = (
+        CheckConstraint(_one_of("kind", OutboxLogKind), name="kind_values"),
+        # A retry is somebody's: the admin who asked for it.
+        CheckConstraint("kind <> 'retry' OR actor_id IS NOT NULL", name="retry_has_actor"),
+        # A reason, not a copy of the response.
+        CheckConstraint("length(outcome) <= 1000", name="outcome_bounded"),
+        Index("ix_outbox_event_log_event_id_id", "event_id", "id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    event_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("outbox_events.id", ondelete="CASCADE")
+    )
+    kind: Mapped[str] = mapped_column(String(16))
+    outcome: Mapped[str] = mapped_column(Text)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    created_at: Mapped[datetime] = _created_at()

@@ -48,8 +48,10 @@ never prints the value), instead of a blank page. `src/config/env.ts` has the ru
 | `npm run typecheck -w @shazlo/vendor-portal` | `tsc` only |
 | `npx vitest run --project vendor-portal` | The portal's tests (jsdom, Testing Library) |
 | `npm run lint` | ESLint for the whole repository |
+| `npm run api:generate -w @shazlo/vendor-portal` | Rewrites `src/api/schema.d.ts` from `services/vendor-api/openapi.json` |
+| `npm run api:check -w @shazlo/vendor-portal` | Fails when `schema.d.ts` is stale |
 
-CI runs lint, typecheck, the tests and the build (`apps-ci.yml`).
+CI runs lint, `api:check`, typecheck, the tests and the build (`apps-ci.yml`).
 
 ## Layout and conventions
 
@@ -58,6 +60,7 @@ src/
   main.tsx            entry: fonts, then <App />
   App.tsx             checks the environment, then the router
   app/                providers (theme, error boundary, query client), the route table, the router
+  api/                the typed vendor-api client, its hooks and error model (generated types in schema.d.ts)
   config/             the typed environment
   components/         shared pieces (error boundary and screens, not found, misconfigured)
   pages/              one folder per screen as they arrive; today a placeholder for each route
@@ -93,6 +96,7 @@ npm run api:check -w @shazlo/vendor-portal      # CI: fails when the committed f
 
 Commit the regenerated `schema.d.ts` with the backend change that caused it. CI runs the web checks
 whenever `openapi.json` changes, so a backend change that breaks the portal fails the build.
+(`.gitattributes` keeps `schema.d.ts` LF on every OS; with CRLF `api:check` would report it stale.)
 
 ```ts
 import { api, ApiError, NetworkError } from './api'

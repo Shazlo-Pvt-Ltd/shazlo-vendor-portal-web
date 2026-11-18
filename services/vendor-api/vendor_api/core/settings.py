@@ -57,7 +57,10 @@ class Settings(BaseSettings):
     Settings that carry credentials have no default, so the app refuses to start without them.
     """
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # A bad setting is reported by name and reason, never with the value it was given: a rejected
+    # DATABASE_URL or CENTRAL_API_URL can hold a password, and the error of a check across several
+    # settings would print all of them.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
 
     env: Literal["dev", "test", "prod"] = "dev"
     log_level: str = "INFO"
@@ -224,6 +227,20 @@ class Settings(BaseSettings):
     # at least 32 characters, never in the repository (docs/runbooks/central-api-key-rotation.md).
     central_signing_key_id: str | None = None
     central_signing_secret: SecretStr | None = None
+    # Reconciliation (ADR 0003, section 6): once a day the worker compares what the central app
+    # holds with what vendor-api has published and re-sends the current state of what is behind.
+    # `reconcile_at` is the time of day in UTC (HH:MM); the run stops writing while more than
+    # `reconcile_max_pending` events wait to be sent, and the next run carries on.
+    reconcile_enabled: bool = True
+    reconcile_at: str = "03:00"
+    reconcile_max_pending: int = Field(default=1000, ge=1, le=1_000_000)
+
+    @field_validator("reconcile_at")
+    @classmethod
+    def _check_reconcile_at(cls, value: str) -> str:
+        if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", value.strip()):
+            raise ValueError("RECONCILE_AT must be a time of day like 03:00 (UTC)")
+        return value.strip()
 
     @field_validator("cors_allowed_origins", mode="before")
     @classmethod
