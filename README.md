@@ -65,7 +65,7 @@ Mailpit shows every email the services send (signup, invite and reset links) and
 
 On first start it creates one database per service plus a test database for each: `identity`, `identity_test`, `vendor`, `vendor_test`. Connection string pattern: `postgresql://<user>:<password>@localhost:5432/<db>`.
 
-Redis holds identity-api's refresh tokens (admin sessions) and rate-limit counters. It runs with AOF persistence (`appendfsync everysec`) and a named volume, so a restart or redeploy does not sign admins out. Locally it is published on `127.0.0.1` only and has no password. In production use a managed Redis, or one with persistence enabled, with a password and no public port.
+Redis holds the refresh tokens (sessions) and rate-limit counters of both APIs. In compose, identity-api uses database 0 and vendor-api database 1, and their keys start with different prefixes (`identity:`, `vendor:`). It runs with AOF persistence (`appendfsync everysec`) and a named volume, so a restart or redeploy does not sign admins or vendors out. Locally it is published on `127.0.0.1` only and has no password. In production use a managed Redis, or one with persistence enabled, with a password and no public port.
 
 The init script runs only when the data volume is created. To recreate the databases: `docker compose down -v && docker compose up -d` (this deletes all local data).
 

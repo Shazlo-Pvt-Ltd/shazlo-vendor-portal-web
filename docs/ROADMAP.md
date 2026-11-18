@@ -6,14 +6,14 @@ Shazlo is being split into microservices that feed a central consumer applicatio
 - **Vendor Portal**: vendors sign up, personalise their brand page and list products. Everything a vendor submits stays *pending* until an admin reviews it.
 - **Shazlo-One**: one admin shell that hosts the admin UI of every microservice. The Vendor Portal's admin module lives inside it. Admins review what vendors submit (brand page content, images, products) and approve or reject it. Only approved content is sent to the central app.
 
-The current code in this repo has the right ideas, but very little of it can be kept as code:
+The legacy code (`app/` and `backend/`, which is all this repo held when the rewrite started, and which is still there) has the right ideas, but very little of it can be kept as code:
 
 - `app/` is React in plain JavaScript; `backend/` is Express + MongoDB.
 - There is no authentication. Admin endpoints are public, and the approver ID is hardcoded in the frontend.
 - Brand pages can't be personalised, and only products can be approved.
 - Nothing sends approved content to the central app.
 - API hosts are hardcoded in three places.
-- Build artifacts such as `backend/node_modules` are committed.
+- Build artifacts such as `backend/node_modules` were committed (untracked in Phase 0).
 
 We are rewriting it in phases. Each phase is a GitHub milestone, and its issues are created only when that phase starts.
 

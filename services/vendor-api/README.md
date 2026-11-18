@@ -52,7 +52,7 @@ curl -s localhost:8002/v1/auth/login -H 'content-type: application/json' \
 
 - **`seed-dev`** creates one approved vendor `demo-brand` with a verified owner (`owner@demo-brand.test`) and a staff user (`staff@demo-brand.test`), both with one password: `demo-password-1234`, a **local-only** default (set your own with `--password` or `SEED_VENDOR_PASSWORD`). The command never prints a password, runs only with `ENV=dev`, and is safe to run twice: it never changes anything that exists.
 - **`seed-dev` also fills a demo catalog**, so every screen and admin endpoint has something to show:
-  - **Demo Brand** (approved): a published brand profile and a newer version in review, and four products: `KURTA-DEMO-01` (approved, with an edit in review), `TOTE-DEMO-03` (a first submission in review), `SCARF-DEMO-02` (a draft) and the images they use.
+  - **Demo Brand** (approved): a published brand profile and a newer version in review, and three products: `KURTA-DEMO-01` (approved, with an edit in review), `TOTE-DEMO-03` (a first submission in review), `SCARF-DEMO-02` (a draft) and the images they use.
   - **Demo Pending Brand** (`owner@demo-pending.test`, pending): a brand profile in review, the first submission of an application. A pending vendor can sign in.
   - **Demo Suspended Brand** (`owner@demo-suspended.test`, suspended): its owner cannot sign in.
   - That leaves **four pending reviews** in `GET /v1/admin/reviews` and one pending vendor in `GET /v1/admin/vendors`. The extra owners use the same seed password. Running it again changes nothing.
