@@ -4,7 +4,7 @@ import { RouterProvider, createMemoryRouter } from 'react-router'
 import { describe, expect, it } from 'vitest'
 import { AuthProvider } from '../session/AuthProvider'
 import { apiError, makeStore, sessionBody } from '../session/testing'
-import { portalRoutes, routes } from './routes'
+import { portalRoutes, routes, screens } from './routes'
 
 /** Opens a path as a signed-in owner, or as a signed-out visitor for the public screens. */
 function open(path: string, signedIn = true) {
@@ -40,6 +40,16 @@ describe('routes', () => {
     expect(screen.getByRole('link', { name: 'Go to the dashboard' }).getAttribute('href')).toBe('/')
   })
 
+  it.each(['/reset-password', '/accept-invite', '/set-password', '/verify-email'])(
+    'shows the emailed link %s without the dashboard frame, even to someone who is signed in',
+    async (path) => {
+      open(`${path}#token=abc`)
+      await screen.findByRole('heading', { level: 1 })
+      expect(screen.queryByRole('navigation', { name: 'Sections' })).toBeNull()
+      expect(screen.queryByText('Skip to main content')).toBeNull()
+    },
+  )
+
   it('knows who may open each route', () => {
     const access = Object.fromEntries(portalRoutes.map((route) => [route.path, route.access]))
     expect(access['/login']).toBe('public')
@@ -52,6 +62,10 @@ describe('routes', () => {
     expect(access['/reset-password']).toBe('open')
     expect(access['/accept-invite']).toBe('open')
     expect(portalRoutes.every((route) => ['public', 'open', 'authenticated', 'owner'].includes(route.access))).toBe(true)
+  })
+
+  it('has a screen for every route, so every section of the roadmap list is reachable from the nav', () => {
+    expect(Object.keys(screens).sort()).toEqual(portalRoutes.map((route) => route.path).sort())
   })
 
   it('has no duplicate paths', () => {

@@ -1,22 +1,32 @@
-import type { ReactNode } from 'react'
+import { lazy, type ReactNode } from 'react'
 import { Outlet, type RouteObject } from 'react-router'
-import { NotFound } from '../components/NotFound'
-import { RouteError } from '../components/RouteError'
 import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage'
 import { LoginPage } from '../features/auth/LoginPage'
 import { SetPasswordPage } from '../features/auth/SetPasswordPage'
 import { SignupPage } from '../features/signup/SignupPage'
 import { VerifyEmailPage } from '../features/signup/VerifyEmailPage'
-import { PlaceholderPage } from '../pages/PlaceholderPage'
+import { NotFound } from '../components/NotFound'
+import { RouteError } from '../components/RouteError'
 import { PublicOnly, RequireAuth, RequireRole } from '../session/guards'
-import { AuthenticatedLayout } from './AppBar'
+import { AppShell } from './shell/AppShell'
 import { portalRoutes, type PortalRoute } from './portalRoutes'
 
 export { portalRoutes }
 export type { Access, PortalRoute } from './portalRoutes'
 
-/** Screens that are built. Every other route shows a placeholder until its issue is done. */
-const screens: Record<string, ReactNode> = {
+// Each signed-in screen is its own chunk, loaded when first opened (the shell shows a page skeleton).
+const OverviewPage = lazy(() => import('../pages/OverviewPage'))
+const BrandPage = lazy(() => import('../pages/BrandPage'))
+const ProductsPage = lazy(() => import('../pages/ProductsPage'))
+const NewProductPage = lazy(() => import('../pages/NewProductPage'))
+const EditProductPage = lazy(() => import('../pages/EditProductPage'))
+const ImportPage = lazy(() => import('../pages/ImportPage'))
+const SubmissionsPage = lazy(() => import('../pages/SubmissionsPage'))
+const TeamPage = lazy(() => import('../pages/TeamPage'))
+const AccountPage = lazy(() => import('../pages/AccountPage'))
+
+/** The screens, by path. Every route in `portalRoutes` must have one (a test checks). */
+export const screens: Record<string, ReactNode> = {
   '/login': <LoginPage />,
   '/forgot-password': <ForgotPasswordPage />,
   '/set-password': <SetPasswordPage />,
@@ -24,10 +34,19 @@ const screens: Record<string, ReactNode> = {
   '/accept-invite': <SetPasswordPage />,
   '/signup': <SignupPage />,
   '/verify-email': <VerifyEmailPage />,
+  '/': <OverviewPage />,
+  '/brand': <BrandPage />,
+  '/products': <ProductsPage />,
+  '/products/new': <NewProductPage />,
+  '/products/:productId': <EditProductPage />,
+  '/import': <ImportPage />,
+  '/submissions': <SubmissionsPage />,
+  '/team': <TeamPage />,
+  '/account': <AccountPage />,
 }
 
 function page(route: PortalRoute): RouteObject {
-  return { path: route.path, element: screens[route.path] ?? <PlaceholderPage title={route.title} /> }
+  return { path: route.path, element: screens[route.path] }
 }
 
 const only = (access: PortalRoute['access']) => portalRoutes.filter((route) => route.access === access).map(page)
@@ -45,15 +64,16 @@ export const routes: RouteObject[] = [
         element: <RequireAuth />,
         children: [
           {
-            element: <AuthenticatedLayout />,
+            element: <AppShell />,
             children: [
               ...only('authenticated'),
               { element: <RequireRole role="owner" />, children: only('owner') },
+              // An unknown address keeps the frame: the menu is still there to find the way.
+              { path: '*', element: <NotFound embedded /> },
             ],
           },
         ],
       },
-      { path: '*', element: <NotFound /> },
     ],
   },
 ]

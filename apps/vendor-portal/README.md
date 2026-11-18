@@ -60,12 +60,14 @@ src/
   main.tsx            entry: fonts, then <App />
   App.tsx             checks the environment, then the router
   app/                providers (theme, error boundary, query client), the route table, the router
+  app/shell/          the signed-in frame: app bar, navigation, status banner, section boundary
   api/                the typed vendor-api client, its hooks and error model (generated types in schema.d.ts)
   session/            the session store (token in memory), AuthProvider and useSession, the route guards, the blocked page
   config/             the typed environment, the support address and the website links
   features/           one folder per feature (signup and email verification, sign-in and passwords so far) and the helpers they share
   components/         shared pieces (error boundary and screens, not found, misconfigured)
-  pages/              one folder per screen as they arrive; today a placeholder for each route
+  ui/                 patterns every screen shares: page header, loading, empty, error, toast, confirm
+  pages/              one module per route (a placeholder until its feature arrives)
   security/           the headers (one definition for vercel.json, dev and preview), SafeLink,
                       SafeImage, PasswordField, and the tests of the security rules
   test/               test setup
@@ -75,8 +77,9 @@ src/
   `components/`. No business rules in components: they live in plain functions that can be tested.
 - **The shared theme only.** Colours, spacing and fonts come from `@shazlo/ui` (a test fails on a
   hex colour, an `rgb()` or a font family in `src/`).
-- **Routes** are listed once, in `src/app/portalRoutes.ts`, with who may open each (`public`,
-  `authenticated` or `owner`); the guards in `src/session/guards.tsx` enforce it.
+- **Routes** are listed once, in `src/app/portalRoutes.ts`, with who may open each (`public`, `open`,
+  `authenticated` or `owner`); the guards in `src/session/guards.tsx` enforce it and `src/app/routes.tsx`
+  attaches the screens.
 - **Queries** do not retry a 4xx answer, retry network errors and 5xx twice, are fresh for 30
   seconds and refetch on window focus (`src/app/queryClient.ts`).
 - **Errors** never show a stack trace: a root error boundary and the router's error element render a
@@ -227,9 +230,8 @@ through the one lockfile; Dependabot watches the repository root, so it covers t
 
 ## Signing in, signing out and passwords
 
-`src/features/auth/` holds `/login`, `/forgot-password` and the set-password screen; `src/app/AppBar.tsx` holds
-the signed-in frame (brand name, account menu, Sign out), which the dashboard shell grows into the
-full navigation.
+`src/features/auth/` holds `/login`, `/forgot-password` and the set-password screen; the signed-in frame (app bar
+with the account menu and Sign out, section navigation) is `src/app/shell/` (see "The dashboard shell").
 
 - **No screen tells a registered email from an unregistered one.** Every bad login (`401`) shows the
   one message `BAD_LOGIN_MESSAGE`, whatever the server's text; forgot password shows the same
@@ -246,8 +248,52 @@ full navigation.
   shows "expired or already used" with a way to request a new link. These routes and `/verify-email`
   have access `open` in `portalRoutes.ts`: an emailed link must work whether or not someone is signed in.
   If vendor-api changes a link, change `portalRoutes.ts` with it.
-- **Sign out** (app bar and account menu) ends the session, clears caches, drafts and sensitive
+- **Sign out** (in the account menu) ends the session, clears caches, drafts and sensitive
   form state, and goes to a plain `/login`: after a deliberate sign-out the next login does not
   "return" to the page the user left (`signedOutByUser`). An expired session does return.
 - **Password fields** (`PasswordField`) have a show/hide toggle, the right `autocomplete`, and never
   block pasting.
+
+## The dashboard shell
+
+`src/app/shell/` is the frame of every signed-in screen; `src/ui/` holds the patterns every screen
+shares. A screen added later should use these and nothing of its own for the same job.
+
+**Frame.** A skip link, an app bar (vendor name, account menu with Sign out), the section navigation
+and the page in `<main id="main-content">`. From the `md` breakpoint (900 px) the navigation is always
+visible; below it (phones and tablets in portrait) it sits in a drawer behind a menu button, which
+closes when a section is chosen or on Escape. Team is shown to owners only (`nav.ts`). A `pending`
+vendor sees the review banner (`StatusBanner`). An unknown address shows "Page not found" inside the
+frame, and each page is guarded by `SectionBoundary`, so a page that throws leaves the navigation
+standing and clears when another section is opened.
+
+**Adding a screen.** Put its path in `portalRoutes.ts` (with who may open it), its page in `src/pages/`
+as a default export, and lazy-load it in `routes.tsx` (`screens` must cover every route; a test checks).
+The shell shows a page skeleton while its code loads.
+
+**Shared patterns** (`import … from '../ui'`):
+
+| Component | Use |
+| --- | --- |
+| `PageHeader` | The page's one `h1` (also its title), description and actions. After a navigation it takes focus. |
+| `LoadingState`, `PageSkeleton` | Anything loading; announced politely. |
+| `EmptyState` | Nothing here yet: say so, and offer the next step. |
+| `ErrorState` | A failed call: a plain sentence, "Try again", the request id for support. Pass the error; never print `error.message` raw. |
+| `useToast()` | `success`, `error`, `info` messages for something that just happened. |
+| `useConfirm()` | `if (await confirm({ title, message, destructive: true })) …` before anything that cannot be undone. |
+
+**Accessibility baseline.** Skip link; one `h1` per page (a test visits every section); focus moves to
+the heading on navigation (but not on the first load); the page title is set per screen; every
+focusable element has a visible focus ring (`Providers`).
+
+### Manual responsive checklist
+
+Tests cover the navigation behaviour at 320, 768 and 1280 px (`test/viewport.ts` pretends the window
+width; jsdom has no layout), so check the look by hand before a release, in a real browser at each width:
+
+- [ ] **320 px:** no horizontal scrolling on any section; the menu button opens the drawer, a link closes it; the app bar shows the vendor name (truncated) and Account; cards are one column; buttons and links are at least 44 px tall.
+- [ ] **768 px:** the menu button is still used (the navigation is permanent from 900 px); cards in two columns.
+- [ ] **1280 px:** the navigation is always visible; cards in three columns; the page title is not obscured by the sticky app bar when navigating.
+- [ ] **Keyboard only** (no mouse), at each width: Tab reaches the skip link first and it works; every control can be reached and used; focus is always visible; after choosing a section focus is on its heading; Escape closes the drawer and the account menu.
+- [ ] **Zoom** to 200% and 400%: nothing is cut off or overlaps.
+- [ ] **A screen reader** announces the page title, the current section (`aria-current`), the loading states and the toasts.
