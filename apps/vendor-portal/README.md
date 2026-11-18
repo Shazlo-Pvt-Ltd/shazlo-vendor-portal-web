@@ -62,7 +62,8 @@ src/
   app/                providers (theme, error boundary, query client), the route table, the router
   api/                the typed vendor-api client, its hooks and error model (generated types in schema.d.ts)
   session/            the session store (token in memory), AuthProvider and useSession, the route guards, the blocked page
-  config/             the typed environment
+  config/             the typed environment, the support address and the website links
+  features/           one folder per feature (signup and email verification so far) and the helpers they share
   components/         shared pieces (error boundary and screens, not found, misconfigured)
   pages/              one folder per screen as they arrive; today a placeholder for each route
   security/           the headers (one definition for vercel.json, dev and preview), SafeLink,
@@ -197,3 +198,29 @@ regenerate `vercel.json` (the test tells you what it should contain).
 
 **Dependencies.** CI runs `npm audit` for any PR that changes a manifest, covering every workspace
 through the one lockfile; Dependabot watches the repository root, so it covers the portal.
+
+## Signup and email verification
+
+`src/features/signup/` holds the `/signup` and `/verify-email` screens.
+
+- **Prices** are typed in rupees and sent as whole paise, using integer arithmetic only
+  (`rupeesToPaise`: `99.90` becomes `9990`, `1,000` becomes `100000`; floating point gets `1.15 * 100`
+  wrong). Never multiply a price by 100 anywhere else.
+- **Validation** mirrors vendor-api's `SignupRequest` in `rules.ts`. `rules.test.ts` compares the email
+  and phone patterns, the length limits and the price ceiling with `openapi.json`, so a change to the
+  API fails the portal's tests. The password length (12) is a server setting that is not in the
+  OpenAPI file; the server has the last word, and its answer is shown next to the password field.
+- **No hint about existing accounts:** signup always answers `202`, and the confirmation page, the
+  resend answer and the expired-link page use the same wording whatever happened.
+- **Errors:** `422` field messages appear next to their inputs and focus moves to the first one;
+  `429` shows a countdown from `Retry-After` and blocks sending until it ends; network failures say
+  so in plain words. `friendlyError` (`features/errors.ts`) is the shared way to word these.
+- **The verify link** is the one vendor-api emails: `/verify-email#token=…`. The token is in the URL
+  *fragment* (the browser never sends it to a server, so it stays out of access logs and `Referer`
+  headers); `linkToken` (`features/linkToken.ts`) reads it, and also a `?token=` query. It is spent
+  exactly once (StrictMode runs effects twice) and the token is then removed from the address bar
+  and the history. Resending has a 60-second cooldown.
+- **A finished call keeps no copy of the password.** Mutations that carry one (`signup` here, and
+  `login` and `set-password`) use `gcTime: 0` and `reset()` once the call ends, so the query cache
+  does not hold the password in `variables`; a test checks the mutation cache is empty.
+- **The terms and privacy links** are in `src/config/links.ts`, opened through `SafeLink`.

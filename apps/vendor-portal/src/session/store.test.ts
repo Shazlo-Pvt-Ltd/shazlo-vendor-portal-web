@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NetworkError } from '../api/errors'
+import { registerSensitiveReset } from '../security/sensitiveState'
 import { clearDrafts, saveDraft, takeDraft } from './drafts'
 import { apiError, fakeChannels, makeStore, sessionBody } from './testing'
 
@@ -159,6 +160,23 @@ describe('renewal', () => {
     expect(await store.renew()).toBe(false)
     expect(store.getSnapshot().status).toBe('signedIn')
     store.close()
+  })
+})
+
+describe('sensitive form state', () => {
+  it('is cleared when the session ends, by logout or by expiry', async () => {
+    const reset = vi.fn()
+    const undo = registerSensitiveReset(reset)
+    const { store } = makeStore()
+    await store.start()
+    await store.logout()
+    expect(reset).toHaveBeenCalledTimes(1)
+    const expiring = makeStore({ refresh: async () => { throw apiError(401, 'unauthorized') } })
+    await expiring.store.start()
+    expect(reset).toHaveBeenCalledTimes(2)
+    undo()
+    store.close()
+    expiring.store.close()
   })
 })
 
