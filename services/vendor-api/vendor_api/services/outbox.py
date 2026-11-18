@@ -128,6 +128,20 @@ class OutboxWriter:
                 "(one already exists). Nothing was saved",
             ) from error
 
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
+
+    async def write_many(
+        self, db: AsyncSession, events: Sequence[BuiltEvent], context: dict[str, str]
+    ) -> None:
+        """Writes events built elsewhere (reconciliation), in the caller's transaction. A product's
+        `version` is raised to its events' (see `_raise_product_versions`)."""
+        if not events:
+            return
+        await self._raise_product_versions(db, events)
+        await self._write(db, events, context=context)
+
     async def last_version(
         self, db: AsyncSession, aggregate_type: str, aggregate_id: uuid.UUID
     ) -> int | None:
@@ -216,7 +230,10 @@ class OutboxWriter:
                 extra={"vendor_id": str(vendor.id)},
             )
             return
+        # The change's number in the vendor's history, but past any event a reconciliation wrote.
         version = await vendor_status_version(db, vendor.id, audit_event_id)
+        last = await self.last_version(db, "vendor", vendor.id)
+        version = max(version, (last or 0) + 1)
         try:
             event = vendor_status_changed(
                 vendor.id,
