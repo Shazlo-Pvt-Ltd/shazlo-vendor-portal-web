@@ -1,5 +1,4 @@
-import { Button, useMediaQuery } from '@mui/material'
-import type { Theme } from '@mui/material/styles'
+import { Button } from '@mui/material'
 import { Banner, EmptyState, PageHeader } from '@shazlo/ui'
 import { useState } from 'react'
 import { Link as RouterLink, useParams } from 'react-router'
@@ -8,13 +7,14 @@ import { useProduct } from '../../api/queries'
 import { useCrumb } from '../../app/crumbs'
 import { paths } from '../../app/paths'
 import { productEditorCopy as copy } from '../../copy/productEditor'
+import { useNavMode } from '../../shell/layout'
 import { Editor } from './editor/Editor'
 import { EditorSkeleton } from './editor/EditorSkeleton'
 
 // V-07 Product editor, for /products/new and /products/:id.
 export default function ProductEditor() {
   const { id } = useParams()
-  const twoColumn = useMediaQuery((t: Theme) => t.breakpoints.up('lg'))
+  const twoColumn = useNavMode() === 'desktop'
 
   // A new product moves from /products/new to /products/:id once its first save creates it. That
   // editor keeps its key ("adopted"), so the seller keeps typing in the same form; opening

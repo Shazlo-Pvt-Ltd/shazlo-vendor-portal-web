@@ -1,27 +1,28 @@
-import { z } from 'zod'
+import type { FieldErrors, Resolver } from 'react-hook-form'
 import type { Schemas } from '../../../api/client'
 import { productEditorCopy } from '../../../copy/productEditor'
-import { payout } from '../../../lib/format'
+import { sizeCode, sortSizes, type Gender, type ProductForSubmit, type ProductType } from '../../../lib/catalog'
 
 type Product = Schemas['Product']
 type ProductInput = Schemas['ProductInput']
 
-const SIZES: readonly string[] = productEditorCopy.options.sizes
 const errors = productEditorCopy.price.errors
+export const MAX_STOCK = 99_999
 
 export type SizeRow = { size: string; stock: string }
 
-// What the seller edits. Money stays as typed text ("2,499") until it is saved as paise.
+// What the seller edits. Money and stock stay as typed text ("2,499") until they are saved.
 export type EditorValues = {
   title: string
+  gender: Gender | ''
+  category: ProductType | ''
+  mainColour: string
+  otherColours: string[]
+  material: string
   description: string
-  category: string
-  gender: string
-  fabric: string
-  mrp: string
-  price: string
   sizes: SizeRow[]
-  returnsUseDefault: boolean
+  price: string
+  mrp: string
 }
 
 // The last values the server holds, used where the form's own value is not safe to save.
@@ -45,38 +46,32 @@ export function parseRupees(text: string): { ok: true; paise: number | null } | 
   return { ok: true, paise: Math.round(Number(clean) * 100) }
 }
 
-export const sizeIndex = (size: string) => {
-  const i = SIZES.indexOf(size)
-  return i === -1 ? SIZES.length : i
-}
+export const stockOf = (text: string) => Math.min(MAX_STOCK, Number.parseInt(text, 10) || 0)
 
-export const sortSizes = (rows: SizeRow[]) => [...rows].sort((a, b) => sizeIndex(a.size) - sizeIndex(b.size))
-
-export const skuFor = (sku: string, size: string) => `${sku}-${size === 'One size' ? 'OS' : size}`
-
-export const stockOf = (text: string) => Math.min(99_999, Number.parseInt(text, 10) || 0)
+export const sortRows = (rows: SizeRow[]) => sortSizes(rows, (r) => r.size)
 
 export function toValues(product: Product | null): EditorValues {
   return {
     title: product?.title ?? '',
-    description: product?.description ?? '',
-    category: product?.category ?? '',
     gender: product?.gender ?? '',
-    fabric: product?.fabric ?? '',
-    mrp: rupeesText(product?.mrp_paise),
+    category: product?.category ?? '',
+    mainColour: product?.main_colour ?? '',
+    otherColours: product?.other_colours ?? [],
+    material: product?.material ?? '',
+    description: product?.description ?? '',
+    sizes: sortRows((product?.variants ?? []).map((v) => ({ size: v.size, stock: String(v.stock) }))),
     price: rupeesText(product?.price_paise),
-    sizes: sortSizes((product?.variants ?? []).map((v) => ({ size: v.size, stock: String(v.stock) }))),
-    returnsUseDefault: product?.returns_use_default ?? true,
+    mrp: rupeesText(product?.mrp_paise),
   }
 }
 
-// One rule set for the inline errors and for what autosave may send.
+// Format checks for the two prices, shown when the seller presses Next or Send. Whether a price is
+// there at all is a send-for-review check (productProblems in src/lib/catalog.ts).
 export function priceIssues(values: Pick<EditorValues, 'mrp' | 'price'>, live: boolean): { mrp?: string; price?: string } {
   const issues: { mrp?: string; price?: string } = {}
   const mrp = parseRupees(values.mrp)
   const price = parseRupees(values.price)
   if (!mrp.ok) issues.mrp = errors.format
-  else if (mrp.paise === null && live) issues.mrp = errors.liveNeedsMrp
   else if (mrp.paise !== null && mrp.paise <= 0) issues.mrp = errors.mrpZero
   if (!price.ok) issues.price = errors.format
   else if (price.paise === null && live) issues.price = errors.liveNeedsPrice
@@ -85,25 +80,21 @@ export function priceIssues(values: Pick<EditorValues, 'mrp' | 'price'>, live: b
   return issues
 }
 
-export function editorSchema(live: boolean) {
-  return z
-    .object({
-      title: z.string(),
-      description: z.string(),
-      category: z.string(),
-      gender: z.string(),
-      fabric: z.string(),
-      mrp: z.string(),
-      price: z.string(),
-      sizes: z.array(z.object({ size: z.string(), stock: z.string() })),
-      returnsUseDefault: z.boolean(),
-    })
-    .superRefine((values, ctx) => {
-      const issues = priceIssues(values, live)
-      if (issues.mrp) ctx.addIssue({ code: 'custom', path: ['mrp'], message: issues.mrp })
-      if (issues.price) ctx.addIssue({ code: 'custom', path: ['price'], message: issues.price })
-    })
+// The form's own checks: only the two price formats. Everything a product needs before review is
+// checked when it is sent (productProblems), not while the seller types.
+export function editorResolver(live: boolean): Resolver<EditorValues> {
+  return (values) => {
+    const issues = priceIssues(values, live)
+    const errors: FieldErrors<EditorValues> = {}
+    if (issues.mrp) errors.mrp = { type: 'custom', message: issues.mrp }
+    if (issues.price) errors.price = { type: 'custom', message: issues.price }
+    return Object.keys(errors).length ? { values: {}, errors } : { values, errors: {} }
+  }
 }
+
+// Other colours never repeat the main colour (the API refuses that), so a new main colour drops
+// itself from the others.
+export const otherColoursFor = (values: Pick<EditorValues, 'mainColour' | 'otherColours'>) => values.otherColours.filter((c) => c !== values.mainColour)
 
 // What autosave sends. A price that fails the checks keeps the saved one, so a half-typed or
 // wrong price never reaches the server (on a live product it would reach shoppers at once).
@@ -114,20 +105,40 @@ export function toInput(values: EditorValues, base: SavedBase): ProductInput {
   const price = parseRupees(values.price)
   return {
     title: values.title.trim(),
+    gender: values.gender || null,
+    category: values.category || null,
+    main_colour: values.mainColour || null,
+    other_colours: otherColoursFor(values),
+    material: values.material.trim(),
     description: values.description.trim(),
-    category: values.category,
-    gender: values.gender,
-    fabric: values.fabric,
     mrp_paise: ok && mrp.ok ? mrp.paise : base.mrp,
     price_paise: ok && price.ok ? price.paise : base.price,
-    variants: values.sizes.map((row) => ({ size: row.size, sku: base.sku ? skuFor(base.sku, row.size) : '', stock: stockOf(row.stock) })),
-    returns_use_default: values.returnsUseDefault,
+    variants: values.sizes.map((row) => ({ size: row.size, sku: base.sku ? sizeCode(base.sku, row.size) : '', stock: stockOf(row.stock) })),
   }
 }
 
-// The card shows whole rupees: commission rounded to the rupee, and the seller's share is what
-// is left, so the two always add up to the price.
-export function payoutRupees(pricePaise: number, commissionBps: number): { commission: number; receive: number } {
-  const commission = Math.round(payout(pricePaise, commissionBps).commission / 100) * 100
-  return { commission, receive: pricePaise - commission }
+// The product as it stands on screen, for the send-for-review checks.
+export function forSubmit(values: EditorValues, images: Product['images']): ProductForSubmit {
+  const price = parseRupees(values.price)
+  const mrp = parseRupees(values.mrp)
+  return {
+    title: values.title,
+    gender: values.gender || null,
+    category: values.category || null,
+    main_colour: values.mainColour || null,
+    material: values.material,
+    description: values.description,
+    images,
+    variants: values.sizes.map((row) => ({ size: row.size, sku: '', stock: stockOf(row.stock) })),
+    price_paise: price.ok ? price.paise : null,
+    mrp_paise: mrp.ok ? mrp.paise : null,
+  }
+}
+
+// Whole rupees for the "You receive" line: the commission rounded to the rupee, and the seller's
+// share is what is left, so the two always add up to the price.
+export function wholeRupees(split: { commission: number; receive: number }): { commission: number; receive: number } {
+  const total = split.commission + split.receive
+  const commission = Math.round(split.commission / 100) * 100
+  return { commission, receive: total - commission }
 }

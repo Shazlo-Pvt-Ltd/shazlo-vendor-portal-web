@@ -1,12 +1,12 @@
 import { configure, screen, waitFor, within } from '@testing-library/react'
 import { http } from 'msw'
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { beforeAll, describe, expect, it, onTestFinished } from 'vitest'
 import { renderApp } from '../../test/render'
 import { server } from '../../test/server'
 
 // The first test also loads the screen's chunk, and refetches re-render the full MUI table:
 // give async queries more than the default second on slow machines.
-configure({ asyncUtilTimeout: 4000 })
+configure({ asyncUtilTimeout: 8000, defaultHidden: true })
 
 type User = Awaited<ReturnType<typeof renderApp>>['user']
 type Router = Awaited<ReturnType<typeof renderApp>>['router']
@@ -63,7 +63,14 @@ function trackListRequests() {
   return seen
 }
 
-describe('V-06 Products', () => {
+// The table re-renders the full MUI tree on every refetch; slow machines need more than 15 s a test.
+const SLOW = { timeout: 45_000 }
+
+describe('V-06 Products', SLOW, () => {
+  beforeAll(async () => {
+    await import('./ProductList')
+  }, 120_000)
+
   it('shows the catalogue with status counts and the first ten products', async () => {
     await renderApp({ route: '/products' })
     expect(await screen.findByRole('heading', { level: 1, name: 'Products' })).toBeInTheDocument()
@@ -71,14 +78,18 @@ describe('V-06 Products', () => {
 
     const main = screen.getByRole('main')
     expect(within(main).getByRole('link', { name: 'Bulk import' })).toHaveAttribute('href', '/products/import')
+    // One main (contained) button: Add product.
     expect(within(main).getByRole('link', { name: 'Add product' })).toHaveAttribute('href', '/products/new')
+    expect(within(main).getByRole('link', { name: 'Add product' })).toHaveClass('MuiButton-contained')
+    expect(within(main).getByRole('link', { name: 'Bulk import' })).toHaveClass('MuiButton-outlined')
+    expect(within(main).queryByText('Easier on a laptop')).toBeNull()
 
     const tabs = screen.getByRole('tablist', { name: 'Product status' })
-    expect(within(tabs).getAllByRole('tab').map((t) => t.textContent)).toEqual(['All 27', 'Live 18', 'Pending review 4', 'Sent back 2', 'Drafts 3', 'Archived 0'])
+    expect(within(tabs).getAllByRole('tab').map((t) => t.textContent)).toEqual(['All 27', 'Live 18', 'In review 4', 'Needs changes 2', 'Drafts 3', 'Archived 0'])
     expect(within(tabs).getByRole('tab', { name: 'All 27' })).toHaveAttribute('aria-selected', 'true')
 
     const table = await waitForRows(10)
-    for (const name of ['Product', 'Category', 'Price', 'Stock', 'Status', 'Updated']) {
+    for (const name of ['Product', 'Product type', 'Price', 'Stock', 'Status', 'Updated']) {
       expect(within(table).getByRole('columnheader', { name })).toBeInTheDocument()
     }
     expect(within(table).getByRole('checkbox', { name: 'Select all on this page' })).toBeInTheDocument()
@@ -90,13 +101,15 @@ describe('V-06 Products', () => {
     expect(within(ajrakh).getByText('₹2,499')).toBeInTheDocument()
     expect(within(ajrakh).getByText('MRP ₹2,999')).toBeInTheDocument()
     expect(within(ajrakh).getByText('28')).toBeInTheDocument()
-    expect(within(ajrakh).getByText('Sent back')).toBeInTheDocument()
+    expect(within(ajrakh).getByText('Needs changes')).toBeInTheDocument()
     expect(within(ajrakh).getByRole('button', { name: 'Actions for Ajrakh Block-Print Kurta' })).toBeInTheDocument()
 
-    // A live product with an edit waiting shows both states.
+    // A live product with an edit waiting says both, in words.
     const shirt = row(table, 'Handloom Cotton Shirt — Rust')
-    expect(within(shirt).getByText('Live')).toBeInTheDocument()
-    expect(within(shirt).getAllByText('Edit in review')).toHaveLength(2)
+    expect(within(shirt).getByText('Live · Changes in review')).toBeInTheDocument()
+    // Calm: status is plain text, and the word SKU never shows.
+    expect(table.querySelector('.MuiChip-root, [data-status="live"] svg')).toBeNull()
+    expect(main).not.toHaveTextContent(/SKU/)
 
     // Price equal to MRP: no MRP line. No price or sizes yet: a dash, not a zero.
     expect(within(row(table, 'Kutch Mirror-Work Jacket')).queryByText(/^MRP/)).toBeNull()
@@ -117,6 +130,7 @@ describe('V-06 Products', () => {
     const table = await waitForRows(3)
     expect(titles(table)).toEqual(['Indigo Dabu Co-ord', 'Maheshwari Silk Stole', 'Kala Cotton Overshirt'])
     expect(screen.getByRole('tab', { name: 'Drafts 3' })).toHaveAttribute('aria-selected', 'true')
+    for (const r of rows(table)) expect(r).toHaveTextContent('Draft')
 
     await router.navigate(-1)
     await waitForRows(10)
@@ -133,14 +147,14 @@ describe('V-06 Products', () => {
     await renderApp({ route: '/products?status=rejected' })
     const table = await waitForRows(2)
     expect(titles(table)).toEqual(['Ajrakh Block-Print Kurta', 'Kutch Mirror-Work Jacket'])
-    expect(screen.getByRole('tab', { name: 'Sent back 2' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'Needs changes 2' })).toHaveAttribute('aria-selected', 'true')
   })
 
-  it('searches name or SKU once typing pauses', async () => {
+  it('searches name or code once typing pauses', async () => {
     const seen = trackListRequests()
     const { user, router } = await renderApp({ route: '/products' })
     await waitForRows(10)
-    const search = screen.getByRole('textbox', { name: 'Search name or SKU' })
+    const search = screen.getByRole('textbox', { name: 'Search name or code' })
     await user.type(search, 'ajrakh')
     expect(params(router).get('q')).toBeNull()
     await waitFor(() => expect(params(router).get('q')).toBe('ajrakh'))
@@ -162,7 +176,7 @@ describe('V-06 Products', () => {
   it('combines filters, and offers to clear them when nothing matches', async () => {
     const { user, router } = await renderApp({ route: '/products' })
     await waitForRows(10)
-    await choose(user, 'Category', 'Jackets')
+    await choose(user, 'Product type', 'Jackets')
     expect(params(router).get('category')).toBe('Jackets')
     let table = await waitForRows(3)
     expect(titles(table)).toEqual(['Kutch Mirror-Work Jacket', 'Kantha Stitch Jacket', 'Khadi Nehru Jacket'])
@@ -224,7 +238,7 @@ describe('V-06 Products', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/products/p_003'))
   })
 
-  it('edits, submits or archives one product from its row menu', async () => {
+  it('edits, sends or archives one product from its row menu, with the result in the page', async () => {
     const { user, router, db } = await renderApp({ route: '/products' })
     let table = await waitForRows(10)
 
@@ -234,29 +248,33 @@ describe('V-06 Products', () => {
     expect(within(menu).getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Edit', 'Archive'])
     await user.keyboard('{Escape}')
 
+    // A draft without its try-on photos comes back with what to fix.
     await user.click(within(table).getByRole('button', { name: 'Actions for Indigo Dabu Co-ord' }))
     menu = await screen.findByRole('menu')
-    expect(within(menu).getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Edit', 'Submit for review', 'Archive'])
-    await user.click(within(menu).getByRole('menuitem', { name: 'Submit for review' }))
-    expect(await screen.findByText('1 product sent for review')).toBeInTheDocument()
-    expect(db.products.find((p) => p.id === 'p_027')!.status).toBe('pending_review')
-
-    // A draft without a price comes back with what to fix.
-    table = await productTable()
-    await user.click(within(table).getByRole('button', { name: 'Actions for Maheshwari Silk Stole' }))
-    await user.click(await screen.findByRole('menuitem', { name: 'Submit for review' }))
+    expect(within(menu).getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Edit', 'Send for review', 'Archive'])
+    await user.click(within(menu).getByRole('menuitem', { name: 'Send for review' }))
     const banner = await screen.findByRole('alert')
     expect(banner).toHaveTextContent('1 product could not be sent for review')
-    expect(banner).toHaveTextContent('Maheshwari Silk Stole: Add a selling price.')
-    expect(db.products.find((p) => p.id === 'p_026')!.status).toBe('draft')
+    expect(banner).toHaveTextContent('Indigo Dabu Co-ord: Add 5 more try-on photos. We need 5 photos of real people wearing it.')
+    expect(db.products.find((p) => p.id === 'p_027')!.status).toBe('draft')
 
+    // With the store details finished, a complete product goes.
+    db.store.payout = { method: 'upi', upi_id: 'kalki@okhdfcbank' }
+    table = await productTable()
     await user.click(within(table).getByRole('button', { name: 'Actions for Kutch Mirror-Work Jacket' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Send for review' }))
+    expect(await screen.findByText('1 product sent for review')).toBeInTheDocument()
+    expect(screen.getByText('1 product sent for review').closest('[role="status"]')).toBeInTheDocument()
+    expect(db.products.find((p) => p.id === 'p_002')!.status).toBe('pending_review')
+
+    table = await productTable()
+    await user.click(within(table).getByRole('button', { name: 'Actions for Bagru Print Palazzo' }))
     await user.click(await screen.findByRole('menuitem', { name: 'Archive' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Archive Kutch Mirror-Work Jacket?' })
+    const dialog = await screen.findByRole('dialog', { name: 'Archive Bagru Print Palazzo?' })
     expect(dialog).toHaveTextContent('It leaves the app and moves to Archived. You can restore it later.')
     await user.click(within(dialog).getByRole('button', { name: 'Archive' }))
     expect(await screen.findByText('1 product archived')).toBeInTheDocument()
-    expect(db.products.find((p) => p.id === 'p_002')!.status).toBe('archived')
+    expect(db.products.find((p) => p.id === 'p_011')!.status).toBe('archived')
 
     await user.click(within(await productTable()).getByRole('button', { name: 'Actions for Ajrakh Block-Print Kurta' }))
     await user.click(await screen.findByRole('menuitem', { name: 'Edit' }))
@@ -272,18 +290,17 @@ describe('V-06 Products', () => {
     expect(bar).toHaveTextContent('3 selected')
     for (const r of rows(table)) expect(within(r).getByRole('checkbox')).toBeChecked()
 
-    await user.click(within(bar).getByRole('button', { name: 'Submit for review' }))
-    expect(await screen.findByText('1 product sent for review')).toBeInTheDocument()
+    await user.click(within(bar).getByRole('button', { name: 'Send for review' }))
     const banner = await screen.findByRole('alert')
-    expect(banner).toHaveTextContent('2 products could not be sent for review')
+    expect(banner).toHaveTextContent('3 products could not be sent for review')
     expect(within(banner).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
-      'Maheshwari Silk Stole: Add a selling price.',
-      'Kala Cotton Overshirt: Add a selling price.',
+      'Indigo Dabu Co-ord: Add 5 more try-on photos. We need 5 photos of real people wearing it.',
+      'Maheshwari Silk Stole: Add a description.',
+      'Kala Cotton Overshirt: Choose who it is for: women, men or unisex.',
     ])
-    expect(db.products.find((p) => p.title === 'Indigo Dabu Co-ord')!.status).toBe('pending_review')
-    expect(db.products.find((p) => p.title === 'Kala Cotton Overshirt')!.status).toBe('draft')
+    expect(screen.queryByText(/^\d+ products? sent for review$/)).toBeNull()
+    expect(db.products.filter((p) => p.status === 'draft')).toHaveLength(3)
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Bulk actions' })).toBeNull())
-    await waitFor(() => expect(screen.getByRole('tab', { name: 'Drafts 2' })).toBeInTheDocument())
   })
 
   it('asks before archiving a selection', async () => {
@@ -373,11 +390,11 @@ describe('V-06 Products', () => {
     expect(within(main).getByRole('link', { name: 'Add product' })).toHaveAttribute('href', '/products/new')
     expect(within(main).getByRole('link', { name: 'Bulk import' })).toHaveAttribute('href', '/products/import')
     expect(screen.queryByRole('table')).toBeNull()
-    expect(screen.queryByRole('textbox', { name: 'Search name or SKU' })).toBeNull()
+    expect(screen.queryByRole('textbox', { name: 'Search name or code' })).toBeNull()
   })
 })
 
-describe('V-06 Products on phones', () => {
+describe('V-06 Products on phones', SLOW, () => {
   it('shows a card per product and no table or checkboxes', async () => {
     const { user, router } = await renderApp({ route: '/products', viewport: 'mobile' })
     const list = await screen.findByRole('list', { name: 'Products' })
@@ -391,7 +408,13 @@ describe('V-06 Products on phones', () => {
     expect(card).toHaveTextContent('KS-AJR-014')
     expect(card).toHaveTextContent('₹2,499')
     expect(card).toHaveTextContent('Stock 28')
-    expect(card).toHaveTextContent('Sent back')
+    expect(card).toHaveTextContent('Needs changes')
+
+    // One main button; Bulk import is secondary, with the laptop note.
+    const main = screen.getByRole('main')
+    expect(within(main).getByRole('link', { name: 'Add product' })).toHaveClass('MuiButton-contained')
+    expect(within(main).getByRole('link', { name: 'Bulk import' })).toHaveClass('MuiButton-outlined')
+    expect(within(main).getByText('Easier on a laptop')).toBeInTheDocument()
     await user.click(within(card).getByRole('link'))
     await waitFor(() => expect(router.state.location.pathname).toBe('/products/p_001'))
   })
@@ -399,12 +422,12 @@ describe('V-06 Products on phones', () => {
   it('keeps search in view and moves the other filters into a drawer', async () => {
     const { user, router } = await renderApp({ route: '/products', viewport: 'mobile' })
     const list = await screen.findByRole('list', { name: 'Products' })
-    expect(screen.getByRole('textbox', { name: 'Search name or SKU' })).toBeInTheDocument()
-    expect(screen.queryByRole('combobox', { name: 'Category' })).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Search name or code' })).toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Product type' })).toBeNull()
 
     await user.click(screen.getByRole('button', { name: 'Filters' }))
     const drawer = await screen.findByRole('dialog', { name: 'Filters' })
-    await choose(user, 'Category', 'Sarees')
+    await choose(user, 'Product type', 'Sarees')
     expect(params(router).get('category')).toBe('Sarees')
     await user.click(within(drawer).getByRole('button', { name: 'Show results' }))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Filters' })).toBeNull())

@@ -6,7 +6,8 @@ import { paths } from '../../../app/paths'
 import { ProductThumb } from '../../../components/ProductThumb'
 import { productsCopy } from '../../../copy/products'
 import { formatCount } from '../../../lib/format'
-import { Pills, Price } from './ProductTable'
+import { ProductStatus } from '../status'
+import { Price } from './ProductTable'
 
 type Product = Schemas['ProductSummary']
 
@@ -42,7 +43,7 @@ export function ProductCards({ items, fetching }: { items: Product[] | undefined
                   <Typography variant="body1" sx={{ color: neutral.ink, overflowWrap: 'anywhere' }}>
                     {product.title}
                   </Typography>
-                  <Typography variant="mono" component="div" color="text.secondary">
+                  <Typography variant="caption" component="div" color="text.secondary">
                     {product.sku}
                   </Typography>
                   <Stack direction="row" spacing={2} sx={{ alignItems: 'baseline', justifyContent: 'space-between', mt: 1 }}>
@@ -51,8 +52,8 @@ export function ProductCards({ items, fetching }: { items: Product[] | undefined
                       {productsCopy.card.stock(formatCount(product.stock))}
                     </Typography>
                   </Stack>
-                  <Box sx={{ mt: 1 }}>
-                    <Pills product={product} />
+                  <Box sx={{ mt: 0.5 }}>
+                    <ProductStatus product={product} />
                   </Box>
                 </Box>
               </CardActionArea>

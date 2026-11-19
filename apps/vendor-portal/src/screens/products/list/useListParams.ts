@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router'
 import type { Schemas } from '../../../api/client'
 import type { ProductFilters } from '../../../api/queries'
 import { productsCopy, type SortKey, type StockKey } from '../../../copy/products'
-import { productTabs } from '../../../lib/status'
 
 export const PAGE_SIZE = 10
 export const DEFAULT_SORT: SortKey = 'updated_desc'
@@ -22,7 +21,7 @@ export interface ListParams {
 export type ParamKey = keyof ListParams
 type Patch = Partial<Record<ParamKey, string | number | undefined>>
 
-const STATUSES = productTabs.flatMap((t) => (t.status ? [t.status] : []))
+const STATUSES = productsCopy.tabs.flatMap((t) => (t.status ? [t.status] : []))
 const STOCKS = productsCopy.stockOptions.map((o) => o.value)
 const SORTS = productsCopy.sortOptions.map((o) => o.value)
 

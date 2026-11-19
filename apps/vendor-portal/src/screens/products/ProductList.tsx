@@ -1,6 +1,6 @@
 import { Box, Button, Skeleton, Stack, Tab, Tabs, Typography, useMediaQuery } from '@mui/material'
 import { type Theme } from '@mui/material/styles'
-import { Banner, brand, EmptyState, neutral, PageHeader, useSnackbar } from '@shazlo/ui'
+import { Banner, brand, EmptyState, neutral, PageHeader } from '@shazlo/ui'
 import type { RowSelectionState } from '@tanstack/react-table'
 import { Plus, Upload } from 'lucide-react'
 import { lazy, Suspense, useCallback, useId, useState } from 'react'
@@ -10,7 +10,7 @@ import { useBulkProducts, useProducts } from '../../api/queries'
 import { paths } from '../../app/paths'
 import { productsCopy as copy } from '../../copy/products'
 import { formatCount } from '../../lib/format'
-import { productTabs } from '../../lib/status'
+import { useIsPhone } from '../../shell/layout'
 import { ArchiveDialog, BulkBar, OutcomeBanner, RowMenu, type BulkAction, type BulkOutcome } from './list/BulkBar'
 import { DesktopFilters, MobileFilters } from './list/Filters'
 import { ProductCards } from './list/ProductCards'
@@ -25,15 +25,41 @@ type Counts = Schemas['StatusCounts']
 
 const icon = { size: 18, strokeWidth: 1.5, 'aria-hidden': true } as const
 
-function HeaderActions({ importTo }: { importTo: { pathname: string; search: string } }) {
+type ImportTo = { pathname: string; search: string }
+
+// One main button, Add product. Bulk import is secondary; on phones it says it is easier on a laptop.
+function BulkImportButton({ importTo, phone }: { importTo: ImportTo; phone: boolean }) {
+  const button = (
+    <Button variant="outlined" component={RouterLink} to={importTo} startIcon={<Upload {...icon} />} sx={{ minHeight: 44 }}>
+      {copy.bulkImport}
+    </Button>
+  )
+  if (!phone) return button
   return (
+    <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+      {button}
+      <Typography variant="body2" color="text.secondary">
+        {copy.laptopNote}
+      </Typography>
+    </Stack>
+  )
+}
+
+function HeaderActions({ importTo, phone }: { importTo: ImportTo; phone: boolean }) {
+  const add = (
+    <Button variant="contained" component={RouterLink} to={paths.newProduct} startIcon={<Plus {...icon} />} sx={{ minHeight: 44, ...(phone && { flex: '1 1 100%' }) }}>
+      {copy.addProduct}
+    </Button>
+  )
+  return phone ? (
     <>
-      <Button variant="outlined" component={RouterLink} to={importTo} startIcon={<Upload {...icon} />}>
-        {copy.bulkImport}
-      </Button>
-      <Button variant="contained" component={RouterLink} to={paths.newProduct} startIcon={<Plus {...icon} />}>
-        {copy.addProduct}
-      </Button>
+      {add}
+      <BulkImportButton importTo={importTo} phone />
+    </>
+  ) : (
+    <>
+      <BulkImportButton importTo={importTo} phone={false} />
+      {add}
     </>
   )
 }
@@ -49,7 +75,7 @@ function StatusTabs({ value, counts, onChange }: { value: string; counts: Counts
       textColor="inherit"
       sx={{ borderBottom: `1px solid ${neutral.line}`, minHeight: 44, '& .MuiTabs-indicator': { bgcolor: brand.brown } }}
     >
-      {productTabs.map((tab) => (
+      {copy.tabs.map((tab) => (
         <Tab
           key={tab.key}
           value={tab.key}
@@ -100,7 +126,7 @@ function Pagination({ page, shown, total, onPage }: { page: number; shown: numbe
 }
 
 // Which empty state fits: a brand-new catalogue, a quiet tab, or filters that match nothing.
-function ListEmpty({ params, onClearFilters, onShowAll, importTo }: { params: ListParams; onClearFilters: () => void; onShowAll: () => void; importTo: { pathname: string; search: string } }) {
+function ListEmpty({ params, onClearFilters, onShowAll, importTo, phone }: { params: ListParams; onClearFilters: () => void; onShowAll: () => void; importTo: ImportTo; phone: boolean }) {
   if (params.q || activeFilterCount(params) > 0) {
     return (
       <EmptyState
@@ -130,10 +156,10 @@ function ListEmpty({ params, onClearFilters, onShowAll, importTo }: { params: Li
       />
     )
   }
-  return <CatalogueEmpty importTo={importTo} />
+  return <NoProducts importTo={importTo} phone={phone} />
 }
 
-function CatalogueEmpty({ importTo }: { importTo: { pathname: string; search: string } }) {
+function NoProducts({ importTo, phone }: { importTo: ImportTo; phone: boolean }) {
   return (
     <EmptyState
       illustration="kurta"
@@ -141,13 +167,11 @@ function CatalogueEmpty({ importTo }: { importTo: { pathname: string; search: st
       title={copy.empty.title}
       body={copy.empty.body}
       action={
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-          <Button variant="contained" component={RouterLink} to={paths.newProduct} startIcon={<Plus {...icon} />}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ alignItems: 'center' }}>
+          <Button variant="contained" component={RouterLink} to={paths.newProduct} startIcon={<Plus {...icon} />} sx={{ minHeight: 44 }}>
             {copy.addProduct}
           </Button>
-          <Button variant="outlined" component={RouterLink} to={importTo} startIcon={<Upload {...icon} />}>
-            {copy.bulkImport}
-          </Button>
+          <BulkImportButton importTo={importTo} phone={phone} />
         </Stack>
       }
     />
@@ -156,9 +180,10 @@ function CatalogueEmpty({ importTo }: { importTo: { pathname: string; search: st
 
 export default function ProductList({ importOpen }: { importOpen?: boolean }) {
   const desktop = useMediaQuery((t: Theme) => t.breakpoints.up('md'))
+  const phone = useIsPhone()
   const navigate = useNavigate()
-  const { search } = useLocation()
-  const notify = useSnackbar()
+  const location = useLocation()
+  const { search } = location
   const selectAllId = useId()
   const [params, update] = useListParams()
   const filters = toFilters(params)
@@ -175,7 +200,11 @@ export default function ProductList({ importOpen }: { importOpen?: boolean }) {
   // Kept after closing (open: false) so the dialog keeps its words while it fades out.
   const [confirm, setConfirm] = useState<{ ids: string[]; name?: string; open: boolean } | null>(null)
   const closeConfirm = () => setConfirm((c) => c && { ...c, open: false })
-  const [outcome, setOutcome] = useState<BulkOutcome | null>(null)
+  const [outcomes, setOutcomes] = useState<BulkOutcome[]>([])
+  // A notice handed over by another page (the editor after archiving), shown here until dismissed.
+  const handed = (location.state as { notice?: string } | null)?.notice
+  const [dismissed, setDismissed] = useState<string | null>(null)
+  const notice = handed && dismissed !== location.key ? handed : null
   const [pending, setPending] = useState<BulkAction | null>(null)
 
   const importTo = { pathname: paths.bulkImport, search }
@@ -186,24 +215,27 @@ export default function ProductList({ importOpen }: { importOpen?: boolean }) {
   const focusSelectAll = () => requestAnimationFrame(() => document.getElementById(selectAllId)?.focus())
 
   async function run(action: BulkAction, ids: string[]) {
-    setOutcome(null)
+    setOutcomes([])
+    setDismissed(location.key)
     setPending(action)
     const name = (id: string) => data?.items.find((p) => p.id === id)?.title ?? id
     try {
       const { results } = await bulk.mutateAsync({ action, ids })
       const done = results.filter((r) => r.ok).length
       const failed = results.filter((r) => !r.ok)
-      if (done) notify(action === 'submit' ? copy.results.submitted(done) : copy.results.archived(done))
+      const next: BulkOutcome[] = []
+      if (done) next.push({ tone: 'success', title: action === 'submit' ? copy.results.submitted(done) : copy.results.archived(done), messages: [] })
       if (failed.length) {
-        setOutcome({
+        next.push({
           tone: 'warning',
           title: action === 'submit' ? copy.results.notSubmitted(failed.length) : copy.results.notArchived(failed.length),
           messages: failed.map((r) => r.message ?? `${name(r.id)}: ${copy.results.failed}`),
         })
       }
+      setOutcomes(next)
       clearSelection()
     } catch (error) {
-      setOutcome({ tone: 'error', title: copy.results.failed, messages: [error instanceof Error ? error.message : ''].filter(Boolean) })
+      setOutcomes([{ tone: 'error', title: copy.results.failed, messages: [error instanceof Error ? error.message : ''].filter(Boolean) }])
     } finally {
       setPending(null)
       closeConfirm()
@@ -220,7 +252,7 @@ export default function ProductList({ importOpen }: { importOpen?: boolean }) {
   const openProduct = (product: Product) => navigate(paths.product(product.id))
   const closeImport = () => navigate({ pathname: paths.products, search })
 
-  const catalogueEmpty = data !== undefined && data.counts.all === 0 && data.counts.archived === 0
+  const noProducts = data !== undefined && data.counts.all === 0 && data.counts.archived === 0
   const items = data?.items
   const showSelection = desktop && selectedIds.length > 0
 
@@ -254,7 +286,7 @@ export default function ProductList({ importOpen }: { importOpen?: boolean }) {
       />
     )
   } else if (items && items.length === 0) {
-    body = <ListEmpty params={params} onClearFilters={clearFilters} onShowAll={() => update({ status: undefined })} importTo={importTo} />
+    body = <ListEmpty params={params} onClearFilters={clearFilters} onShowAll={() => update({ status: undefined })} importTo={importTo} phone={phone} />
   } else {
     const footer = data ? <Pagination page={params.page} shown={data.items.length} total={data.total} onPage={(page) => update({ page })} /> : null
     body = desktop ? (
@@ -281,14 +313,17 @@ export default function ProductList({ importOpen }: { importOpen?: boolean }) {
       <PageHeader
         title={copy.title}
         subtitle={data ? copy.subtitle(data.counts.all, data.counts.approved) : query.isPending ? <Skeleton variant="text" width={240} component="span" sx={{ display: 'inline-block' }} /> : undefined}
-        actions={catalogueEmpty ? undefined : <HeaderActions importTo={importTo} />}
+        actions={noProducts ? undefined : <HeaderActions importTo={importTo} phone={phone} />}
       />
 
-      {catalogueEmpty ? (
-        <CatalogueEmpty importTo={importTo} />
+      {noProducts ? (
+        <NoProducts importTo={importTo} phone={phone} />
       ) : (
         <Stack spacing={2}>
-          {outcome && <OutcomeBanner outcome={outcome} onClose={() => setOutcome(null)} />}
+          {notice && <Banner tone="success" title={notice} onClose={() => setDismissed(location.key)} />}
+          {outcomes.map((outcome) => (
+            <OutcomeBanner key={outcome.tone} outcome={outcome} onClose={() => setOutcomes((list) => list.filter((o) => o !== outcome))} />
+          ))}
           {errorBanner}
           <StatusTabs value={params.status ?? 'all'} counts={data?.counts} onChange={(key) => update({ status: key === 'all' ? undefined : key })} />
           {showSelection ? (

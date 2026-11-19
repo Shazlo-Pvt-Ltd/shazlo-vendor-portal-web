@@ -1,6 +1,5 @@
 import { Box, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Menu, MenuItem, Stack, Typography } from '@mui/material'
-import { alpha } from '@mui/material/styles'
-import { Banner, brand, radius } from '@shazlo/ui'
+import { Banner, neutral, radius } from '@shazlo/ui'
 import { useId } from 'react'
 import type { Schemas } from '../../../api/client'
 import { productsCopy } from '../../../copy/products'
@@ -9,35 +8,27 @@ const copy = productsCopy
 type Product = Schemas['ProductSummary']
 export type BulkAction = 'submit' | 'archive'
 
-const onNavy = {
-  color: brand.offWhite,
-  borderColor: alpha(brand.offWhite, 0.6),
-  minHeight: 36,
-  '@media (hover: hover)': { '&:hover': { borderColor: brand.offWhite, bgcolor: alpha(brand.offWhite, 0.08) } },
-  // The app's navy focus ring would vanish on the navy bar.
-  '&:focus-visible': { outline: `2px solid ${brand.offWhite}`, outlineOffset: 2 },
-  '&.Mui-disabled': { color: alpha(brand.offWhite, 0.6), borderColor: alpha(brand.offWhite, 0.3) },
-} as const
+const barButton = { minHeight: 36 } as const
 
-// Navy bar above the table while rows are selected (options board pick for V-06).
+// A quiet bar above the table while rows are selected (calm rules, spec §8: no extra colour).
 export function BulkBar({ count, pending, onAction, onClear }: { count: number; pending: BulkAction | null; onAction: (action: BulkAction) => void; onClear: () => void }) {
   return (
     <Box
       role="region"
       aria-label={copy.bulk.label}
-      sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1.5, minHeight: 56, px: 2, py: 1, bgcolor: brand.navy, color: brand.offWhite, borderRadius: `${radius.card}px` }}
+      sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1.5, minHeight: 56, px: 2, py: 1, bgcolor: neutral.surface, color: neutral.ink, border: `1px solid ${neutral.lineStrong}`, borderRadius: `${radius.card}px` }}
     >
       <Typography variant="body1" role="status" sx={{ fontVariantNumeric: 'tabular-nums', mr: 1 }}>
         {copy.bulk.selected(count)}
       </Typography>
-      <Button variant="outlined" color="inherit" disabled={pending !== null} onClick={() => onAction('submit')} sx={onNavy}>
+      <Button variant="outlined" disabled={pending !== null} onClick={() => onAction('submit')} sx={barButton}>
         {pending === 'submit' ? copy.bulk.submitting : copy.bulk.submit}
       </Button>
-      <Button variant="outlined" color="inherit" disabled={pending !== null} onClick={() => onAction('archive')} sx={onNavy}>
+      <Button variant="outlined" disabled={pending !== null} onClick={() => onAction('archive')} sx={barButton}>
         {pending === 'archive' ? copy.bulk.archiving : copy.bulk.archive}
       </Button>
       <Box sx={{ flex: 1 }} />
-      <Button variant="text" color="inherit" onClick={onClear} sx={{ ...onNavy, textDecoration: 'underline', textUnderlineOffset: '0.2em' }}>
+      <Button variant="text" color="inherit" onClick={onClear} sx={{ ...barButton, textDecoration: 'underline', textUnderlineOffset: '0.2em' }}>
         {copy.bulk.clear}
       </Button>
     </Box>
@@ -96,9 +87,10 @@ export function RowMenu({ target, onClose, onEdit, onAction }: { target: { ancho
   )
 }
 
-export type BulkOutcome = { tone: 'warning' | 'error'; title: string; messages: string[] }
+export type BulkOutcome = { tone: 'success' | 'warning' | 'error'; title: string; messages: string[] }
 
-// Products that did not go through, each with the reason the API gave.
+// What a bulk action did, in the page (no toasts, spec §8): how many went through, and the
+// products that did not, each with the reason the API gave.
 export function OutcomeBanner({ outcome, onClose }: { outcome: BulkOutcome; onClose: () => void }) {
   return (
     <Banner tone={outcome.tone} title={outcome.title} onClose={onClose}>

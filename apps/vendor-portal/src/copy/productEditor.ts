@@ -1,36 +1,53 @@
-// Copy for the product editor (V-07). One module per screen keeps a later Hindi translation in one place.
+import { formatCount } from '../lib/format'
+import { catalogCopy } from './catalog'
 
-// Options match vendor-api's lists (src/mocks/db.ts until the real endpoints ship).
-const categories = ['Kurtas', 'Kurtis', 'Sarees', 'Dupattas', 'Stoles', 'Jackets', 'Shirts', 'Skirts', 'Co-ords', 'Dresses', 'Palazzos']
-const genders = ['Women', 'Men', 'Unisex']
-const fabrics = ['Cotton (mul)', 'Cotton', 'Linen', 'Silk', 'Mashru silk', 'Kala cotton', 'Khadi', 'Chanderi']
-const sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'One size']
+// Copy for the product editor (V-07). Option labels (genders, product types, colours, photo slots,
+// what a product needs before review) are in ./catalog.ts. One module per screen keeps a later Hindi
+// translation in one place.
 
-const returnPolicies: Record<string, string> = {
-  no_returns: 'no returns',
-  '7_day': '7-day returns',
-  '14_day': '14-day returns',
-}
+const photos = (n: number) => `${formatCount(n)} ${n === 1 ? 'photo' : 'photos'}`
 
 export const productEditorCopy = {
-  options: { categories, genders, fabrics, sizes },
-
   newTitle: 'New product',
   productTitle: 'Product',
   untitled: 'Untitled product',
-  newSubtitle: 'Start with a title. Everything saves as you type.',
+  newSubtitle: 'Start with a name. Everything saves as you go.',
   loading: 'Loading product',
   moreActions: 'More actions',
+  code: (code: string) => `Code ${code}`,
 
   save: {
-    createFailed: 'We could not start this draft. Check your connection, then edit the title to try again.',
+    createFailed: 'We could not start this draft. Check your connection, then edit the name to try again.',
   },
 
   submit: {
-    draft: 'Submit for review',
-    rejected: 'Resubmit for review',
-    approved: 'Submit changes for review',
-    sending: 'Sending for review…',
+    draft: 'Send for review',
+    rejected: 'Send for review again',
+    approved: 'Send changes for review',
+    sending: 'Sending…',
+  },
+
+  // Phones: one section per screen (spec §7).
+  steps: {
+    of: (n: number, total: number) => `Step ${n} of ${total}`,
+    names: { photos: 'Photos', about: 'About the product', sizes: 'Sizes and stock', price: 'Price' },
+    next: 'Next',
+    back: 'Back',
+    toCheck: 'Check and send',
+  },
+
+  check: {
+    title: 'Check and send',
+    missingTitle: 'Still to do',
+    missingBody: 'Add these before sending for review. Everything you have added is saved.',
+    ready: 'Everything is ready to send.',
+    readyBody: 'Our team usually decides within 24 hours.',
+    summaryLabel: 'Your product',
+    change: 'Change',
+    changeLabel: (step: string) => `Change ${step.toLowerCase()}`,
+    notAdded: 'Not added yet',
+    photos: (added: number, total: number) => `${formatCount(added)} of ${formatCount(total)} photos added`,
+    sizes: (count: number, stock: string) => `${formatCount(count)} ${count === 1 ? 'size' : 'sizes'} · ${stock} in stock`,
   },
 
   archive: {
@@ -39,7 +56,7 @@ export const productEditorCopy = {
     body: 'It leaves the app and moves to Archived.',
     confirm: 'Archive product',
     cancel: 'Cancel',
-    done: 'Product archived. Find it under Archived in Products.',
+    done: 'Product archived. Find it under Archived.',
   },
 
   banners: {
@@ -50,89 +67,148 @@ export const productEditorCopy = {
     locked: 'This product is in review, so your last change was not saved. You can edit it again once our team has decided.',
     sent: 'Sent for review. We usually decide within 24 hours.',
     changesSent: 'Changes sent for review. The live version stays in the app until we approve them.',
-    problems: 'Fix these before sending for review.',
+    problems: catalogCopy.errors.product.submitProblems,
+    problem: (label: string, message: string) => `${label}: ${message}`,
     unsaved: 'Your latest changes did not save, so we have not sent this for review. Check your connection and try again.',
     retry: 'Try again',
   },
 
   photos: {
     title: 'Photos',
-    limits: '3 required · up to 8',
-    helper: 'JPG, PNG or WebP · max 10 MB · at least 1200 px on the long side. The front photo is the cover in the feed.',
-    needsTitle: 'Add a title first to upload photos.',
-    requiredList: 'Required photos',
-    extraList: 'Extra photos',
-    extraHeading: 'Extra photos',
-    extraHint: 'Optional: details, styling, the fabric in daylight.',
-    slots: { front: 'Front', back: 'Back', closeup: 'Fabric close-up' },
-    upload: (label: string) => `Upload ${label.toLowerCase()}`,
-    fileInput: (label: string) => `${label} photo file`,
-    photoAlt: (label: string) => `${label} photo`,
-    remove: (label: string) => `Remove ${label.toLowerCase()} photo`,
-    replace: 'Replace',
-    replaceLabel: (label: string) => `Replace ${label.toLowerCase()} photo`,
-    missing: (label: string) => `${label} photo is missing.`,
+    added: (added: number, total: number) => `${formatCount(added)} of ${formatCount(total)} added`,
+    productGroup: 'Product photos',
+    productHint: 'Front, back, a close-up of the detail, and one being worn. Up to 4 extra.',
+    tryonGroup: 'Try-on photos',
+    tryonHint: 'Real people wearing it, so shoppers see the true fit',
+    main: 'Main photo',
     extra: (n: number) => `Extra ${n}`,
-    extraAlt: (n: number) => `Extra photo ${n}`,
-    removeExtra: (n: number) => `Remove extra photo ${n}`,
-    replaceExtra: (n: number) => `Replace extra photo ${n}`,
-    replaceExtraFile: (n: number) => `Replacement for extra photo ${n}`,
-    addPhoto: 'Add photo',
-    addFileInput: 'Extra photo file',
-    uploading: 'Uploading…',
-    removed: (label: string) => `${label} photo removed.`,
-    notAdded: (file: string, reason: string) => `${file} was not added. ${reason}`,
-    removeFailed: 'That photo was not removed. Try again.',
-  },
-
-  details: {
-    title: 'Details',
-    name: 'Title',
-    nameHint: 'What it is, in a few words. For example: Ajrakh Block-Print Kurta.',
-    description: 'Description',
-    descriptionHint: 'Fabric, fit, how it is made and how to care for it.',
-    category: 'Product type',
-    gender: 'Gender',
-    fabric: 'Fabric',
-  },
-
-  price: {
-    title: 'Price',
-    mrp: 'MRP (₹)',
-    mrpHint: 'The price on the tag.',
-    selling: 'Selling price (₹)',
-    sellingHint: 'What shoppers pay. It can match the MRP.',
-    receive: 'You receive per sale',
-    after: (percent: string, commission: string) => `after ${percent} commission (${commission})`,
-    afterUnknown: 'after Shazlo commission',
-    noPrice: 'Add a selling price to see what you receive.',
-    fixPrice: 'Fix the selling price to see what you receive.',
-    errors: {
-      format: 'Enter an amount in rupees, like 2,499.',
-      sellingZero: 'Enter a selling price above ₹0.',
-      mrpZero: 'Enter an MRP above ₹0.',
-      aboveMrp: 'Selling price cannot be above the MRP.',
-      liveNeedsPrice: 'This product is live, so it needs a selling price.',
-      liveNeedsMrp: 'This product is live, so it needs an MRP.',
+    tryon: (n: number) => `Try-on ${n}`,
+    choose: 'Choose photos',
+    chooseTryon: 'Choose try-on photos',
+    take: 'Take photo',
+    takeProduct: 'Take photo of the product',
+    takeTryon: 'Take photo for try-on',
+    inputs: {
+      product: 'Product photo files',
+      tryon: 'Try-on photo files',
+      productCamera: 'Camera for product photos',
+      tryonCamera: 'Camera for try-on photos',
+      slot: 'Photo file for the chosen slot',
     },
+    addShort: 'Add',
+    add: (name: string) => `Add ${name.toLowerCase()}`,
+    addExtra: 'Add extra photos',
+    named: (label: string) => `${label} photo`,
+    extraName: (n: number) => `Extra photo ${n}`,
+    tryonName: (n: number) => `Try-on photo ${n}`,
+    options: (name: string) => `Options for ${name.toLowerCase()}`,
+    makeMain: 'Make main photo',
+    moveLeft: 'Move left',
+    moveRight: 'Move right',
+    replace: 'Replace photo',
+    remove: 'Remove photo',
+    missing: (name: string) => `${name} is missing.`,
+    needsName: 'Add a name first, then add photos.',
+    needsNameLink: 'Add a name',
+    empty: 'No photo',
+    states: { waiting: 'Waiting…', preparing: 'Getting it ready…', uploading: 'Uploading…' },
+    progress: (name: string) => `Uploading ${name.toLowerCase()}`,
+    failed: (reason: string) => (reason ? `Not added. ${reason}` : 'Not added.'),
+    retry: 'Try again',
+    retryLabel: (name: string) => `Try again: ${name.toLowerCase()}`,
+    discard: 'Cancel',
+    discardLabel: (name: string) => `Cancel ${name.toLowerCase()}`,
+    unreadable: 'We could not open this photo on this device. Save it as a JPG and try again.',
+    skipped: (n: number, reason: string) => `${photos(n)} ${n === 1 ? 'was' : 'were'} not added. ${reason}`,
+    removed: (name: string) => `${name} removed.`,
+    moved: 'Photos moved.',
+    actionFailed: (reason: string) => `That did not work. ${reason}`,
+    helper: 'Photos shrink to about 2000 px on your device before they upload, so they go quickly. JPG, PNG, WebP or iPhone photos.',
+  },
+
+  about: {
+    title: 'About the product',
+    name: 'Name',
+    nameHint: 'What it is, in a few words. For example: Relaxed Linen Shirt.',
+    gender: 'Gender',
+    type: 'Product type',
+    mainColour: catalogCopy.colours.main,
+    otherColours: catalogCopy.colours.other,
+    otherHint: 'Up to 2, different from the main colour.',
+    addColour: 'Add another colour (up to 2)',
+    material: 'Material',
+    materialHint: 'For example: 100% linen',
+    description: 'Description',
+    descriptionHint: 'How it fits, how it is made and how to care for it.',
   },
 
   sizes: {
     title: 'Sizes and stock',
     chips: 'Sizes',
-    chipsHint: 'Pick every size you make, then set how many you have.',
-    decrease: (size: string) => `Decrease stock for ${size}`,
-    increase: (size: string) => `Increase stock for ${size}`,
+    waist: catalogCopy.sizes.waist,
+    chipsHint: 'Tap each size you have, then type how many are in stock.',
+    noType: 'Choose a product type to see only its sizes.',
+    decrease: (size: string) => `One less in stock for ${size}`,
+    increase: (size: string) => `One more in stock for ${size}`,
     stock: (size: string) => `Stock for ${size}`,
+    soldOut: 'Sold out',
     total: (stock: string, count: number) => `${stock} in stock across ${count} ${count === 1 ? 'size' : 'sizes'}`,
-    none: 'No sizes yet. Pick the sizes you make.',
+    none: 'No sizes yet. Tap the sizes you have.',
+  },
+
+  sizeChart: {
+    toggle: 'Size chart (optional)',
+    savedNote: 'Saved',
+    intro: 'Measurements in centimetres. Fill in what you know; every box is optional.',
+    noSizes: 'Tap your sizes above, then fill in their measurements here.',
+    size: 'Size',
+    cell: (measurement: string, size: string) => `${measurement} for ${size}, in cm`,
+    photoTitle: 'Or add a photo of your own size chart',
+    addPhoto: 'Add a photo',
+    replacePhoto: 'Change photo',
+    removePhoto: 'Remove photo',
+    photoAlt: 'Your size chart',
+    photoInput: 'Size chart photo file',
+    photoUploading: 'Uploading…',
+    save: 'Save size chart',
+    saving: 'Saving…',
+    saved: 'Size chart saved.',
+    fix: 'Check the highlighted measurements.',
+  },
+
+  price: {
+    title: 'Price',
+    selling: 'Selling price',
+    sellingHint: 'What shoppers pay, in rupees.',
+    mrp: 'MRP (optional)',
+    mrpHint: 'The price on the tag, if it has one.',
+    rule: 'Price rule: your price on Shazlo is never higher than anywhere else.',
+    receive: (receive: string, percent: string, commission: string) => `You receive ${receive} after ${percent} commission (${commission})`,
+    receiveNoPrice: 'Add a selling price to see what you receive.',
+    receiveFixPrice: 'Fix the selling price to see what you receive.',
+    receivePending: 'You will see what you receive once your commission is agreed.',
+    commissionLink: 'Store details › Commission',
+    errors: {
+      format: 'Enter an amount in rupees, like 2,499.',
+      sellingZero: 'Enter a selling price above ₹0.',
+      mrpZero: 'Enter an MRP above ₹0.',
+      aboveMrp: catalogCopy.errors.product.priceAboveMrp,
+      liveNeedsPrice: 'This product is live, so it needs a selling price.',
+    },
+  },
+
+  returnsNote: {
+    title: 'Returns and delivery',
+    body: 'Returns and delivery come from your store details.',
+    policy: (days: number) => (days === 0 ? 'This store takes no returns.' : `This store takes returns within ${days} days.`),
+    link: 'Store details',
   },
 
   history: {
     title: 'Review history',
     events: {
       created: 'Created as draft',
-      submitted: 'Submitted for review',
+      submitted: 'Sent for review',
       rejected: 'Sent back',
       approved: 'Approved',
       archived: 'Archived',
@@ -142,14 +218,7 @@ export const productEditorCopy = {
   liveNote: {
     title: 'What needs review again',
     immediate: 'Price and stock: live immediately',
-    reviewed: 'Title, description, photos: reviewed first',
-  },
-
-  returns: {
-    title: 'Returns',
-    useDefault: (policy: string | undefined) => (policy ? `Use store default: ${returnPolicies[policy] ?? policy}` : 'Use the store default return policy'),
-    hint: 'Override only if this product cannot be returned, for example made-to-measure.',
-    overridden: 'Shoppers cannot return this product.',
+    reviewed: 'Name, description, photos: reviewed first',
   },
 
   notFound: {
@@ -158,16 +227,4 @@ export const productEditorCopy = {
     back: 'Back to products',
   },
   loadFailed: 'This product did not load.',
-
-  fieldLabels: {
-    images: 'Photos',
-    title: 'Title',
-    description: 'Description',
-    category: 'Product type',
-    gender: 'Gender',
-    fabric: 'Fabric',
-    price_paise: 'Selling price',
-    mrp_paise: 'MRP',
-    variants: 'Sizes and stock',
-  } as Record<string, string>,
 } as const

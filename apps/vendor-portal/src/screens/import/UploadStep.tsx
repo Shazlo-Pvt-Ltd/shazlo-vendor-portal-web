@@ -1,5 +1,4 @@
 import { Box, Button, DialogActions, DialogContent, LinearProgress, Stack, Typography } from '@mui/material'
-import { alpha } from '@mui/material/styles'
 import { brand, neutral, radius, status } from '@shazlo/ui'
 import { AlertTriangle, FileSpreadsheet } from 'lucide-react'
 import { useRef, useState, type DragEvent } from 'react'
@@ -10,7 +9,7 @@ const copy = importCopy.upload
 
 // Step 2: a drop zone with a real button for keyboards and phones. While a file uploads or is
 // checked, the zone shows progress instead; server refusals (413, 415) are shown inside it.
-export function UploadStep({ busy, error, onFile, onBack }: { busy: string | null; error: string | null; onFile: (file: File) => void; onBack: () => void }) {
+export function UploadStep({ busy, error, notice, onFile, onBack }: { busy: string | null; error: string | null; notice?: string | null; onFile: (file: File) => void; onBack: () => void }) {
   const input = useRef<HTMLInputElement>(null)
   const [over, setOver] = useState(false)
 
@@ -24,6 +23,11 @@ export function UploadStep({ busy, error, onFile, onBack }: { busy: string | nul
   return (
     <>
       <DialogContent>
+        {notice && (
+          <Typography role="status" variant="body1" sx={{ mb: 2 }}>
+            {notice}
+          </Typography>
+        )}
         <Box
           data-dropzone=""
           onDragOver={(event) => {
@@ -41,7 +45,7 @@ export function UploadStep({ busy, error, onFile, onBack }: { busy: string | nul
             py: { xs: 4, sm: 6 },
             border: `1.5px dashed ${over ? brand.brown : neutral.lineStrong}`,
             borderRadius: `${radius.card}px`,
-            bgcolor: over ? alpha(brand.cream, 0.45) : neutral.canvas,
+            bgcolor: over ? neutral.placeholder : neutral.canvas,
           }}
         >
           <Box sx={{ color: brand.brown, display: 'flex' }}>

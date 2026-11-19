@@ -1,12 +1,13 @@
-import { Box, Checkbox, FormControlLabel, Stack, Typography } from '@mui/material'
+import { Box, Link, Stack, Typography } from '@mui/material'
 import { brand, neutral, radius, SectionCard, status, statusBackground } from '@shazlo/ui'
 import { Check, Clock } from 'lucide-react'
 import { memo, useId } from 'react'
-import { Controller, type UseFormReturn } from 'react-hook-form'
+import { Link as RouterLink } from 'react-router'
 import type { Schemas } from '../../../api/client'
+import { useStoreDetails } from '../../../api/queries'
+import { paths } from '../../../app/paths'
 import { productEditorCopy } from '../../../copy/productEditor'
 import { formatStamp } from '../../../lib/format'
-import type { EditorValues } from './form'
 
 const copy = productEditorCopy
 
@@ -68,34 +69,18 @@ export const HistoryCard = memo(function HistoryCard({ history }: { history: Sch
   )
 })
 
-export const ReturnsCard = memo(function ReturnsCard({ form, policy, readOnly }: { form: UseFormReturn<EditorValues>; policy: string | undefined; readOnly: boolean }) {
-  const hintId = useId()
-  return (
-    <SectionCard title={copy.returns.title}>
-      <Controller
-        control={form.control}
-        name="returnsUseDefault"
-        render={({ field }) => (
-          <>
-            <FormControlLabel
-              sx={{ alignItems: 'flex-start', mr: 0, '& .MuiFormControlLabel-label': { pt: '9px' } }}
-              control={
-                <Checkbox
-                  checked={field.value}
-                  onBlur={field.onBlur}
-                  onChange={(event) => field.onChange(event.target.checked)}
-                  disabled={readOnly}
-                  slotProps={{ input: { ref: field.ref, 'aria-describedby': hintId } }}
-                />
-              }
-              label={copy.returns.useDefault(policy)}
-            />
-            <Typography id={hintId} variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              {field.value ? copy.returns.hint : `${copy.returns.overridden} ${copy.returns.hint}`}
-            </Typography>
-          </>
-        )}
-      />
-    </SectionCard>
+// Returns and delivery are set once for the store, not per product (spec §7). The note says the
+// store's return window when the store details have one, and links to where it is changed.
+export function ReturnsNote({ plain = false }: { plain?: boolean }) {
+  const returns = useStoreDetails().data?.returns
+  const text = (
+    <Typography variant="body2" color="text.secondary">
+      {copy.returnsNote.body}
+      {returns && ` ${copy.returnsNote.policy(returns.window_days)}`}{' '}
+      <Link component={RouterLink} to={returns ? paths.storeSection('returns') : paths.storeDetails}>
+        {copy.returnsNote.link}
+      </Link>
+    </Typography>
   )
-})
+  return plain ? text : <SectionCard title={copy.returnsNote.title}>{text}</SectionCard>
+}

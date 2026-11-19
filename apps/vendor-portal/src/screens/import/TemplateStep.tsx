@@ -1,37 +1,48 @@
 import { Box, Button, DialogActions, DialogContent, Stack, Typography } from '@mui/material'
-import { Banner, brand, fontFamily, neutral, radius, useSnackbar } from '@shazlo/ui'
+import { Banner, fontFamily, neutral, radius } from '@shazlo/ui'
 import { Download } from 'lucide-react'
 import { useId } from 'react'
 import { useImportTemplate } from '../../api/queries'
+import { catalogCopy } from '../../copy/catalog'
 import { importCopy } from '../../copy/import'
+import { IMPORT_COLUMNS, OPTIONAL_IMPORT_COLUMNS } from '../../lib/catalog'
 import { saveFile } from './download'
 import { actionsSx } from './layout'
 
 const copy = importCopy.template
 
+// The 10 template columns (PDF §4), each with whether it is needed and the example row's value.
 export function ColumnGuide() {
   const headingId = useId()
   return (
     <Box>
-      <Typography id={headingId} variant="h3" component="h3" sx={{ mb: 1 }}>
+      <Typography id={headingId} variant="h3" component="h3" sx={{ mb: 0.5 }}>
         {copy.columnsTitle}
       </Typography>
-      <Box
-        component="ul"
-        role="list"
-        aria-labelledby={headingId}
-        sx={{ listStyle: 'none', p: 0, m: 0, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, columnGap: 4, borderTop: `1px solid ${neutral.line}` }}
-      >
-        {copy.columns.map((column) => (
-          <Box component="li" key={column.name} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 2, py: 1, borderBottom: `1px solid ${neutral.line}` }}>
-            <Typography variant="body1" component="span">
-              {column.name}
-            </Typography>
-            {column.note && (
-              <Typography variant="caption" component="span" color="text.secondary" sx={{ textAlign: 'right' }}>
-                {column.note}
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+        {copy.exampleTitle}: {copy.example.product_name}
+      </Typography>
+      <Box component="ul" role="list" aria-labelledby={headingId} sx={{ listStyle: 'none', p: 0, m: 0, borderTop: `1px solid ${neutral.line}` }}>
+        {IMPORT_COLUMNS.map((column) => (
+          <Box
+            component="li"
+            key={column}
+            sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr auto', sm: 'minmax(0, 1fr) minmax(0, 1.4fr) auto' }, columnGap: 2, rowGap: 0.25, alignItems: 'baseline', py: 1, borderBottom: `1px solid ${neutral.line}` }}
+          >
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="body1" component="span">
+                {catalogCopy.importColumns[column]}
               </Typography>
-            )}
+              <Typography variant="caption" component="span" color="text.secondary" sx={{ display: 'block', fontFamily: fontFamily.mono }}>
+                {column}
+              </Typography>
+            </Box>
+            <Typography variant="body2" component="span" color="text.secondary" sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' }, gridRow: { xs: 2, sm: 'auto' }, overflowWrap: 'anywhere' }}>
+              {copy.example[column]}
+            </Typography>
+            <Typography variant="caption" component="span" color="text.secondary" sx={{ textAlign: 'right', gridRow: { xs: 1, sm: 'auto' }, gridColumn: { xs: 2, sm: 'auto' } }}>
+              {OPTIONAL_IMPORT_COLUMNS.includes(column) ? copy.optional : copy.required}
+            </Typography>
           </Box>
         ))}
       </Box>
@@ -40,15 +51,13 @@ export function ColumnGuide() {
 }
 
 // Step 1: what the template holds, and the template itself.
-export function TemplateStep({ onNext }: { onNext: () => void }) {
+export function TemplateStep({ onNext }: { onNext: (downloaded: boolean) => void }) {
   const template = useImportTemplate()
-  const notify = useSnackbar()
 
   const download = async () => {
     try {
       saveFile(await template.mutateAsync(), copy.fileName)
-      notify(copy.downloaded)
-      onNext()
+      onNext(true)
     } catch {
       // The banner below says what happened.
     }
@@ -62,19 +71,22 @@ export function TemplateStep({ onNext }: { onNext: () => void }) {
             {copy.intro}
           </Typography>
           <ColumnGuide />
-          <Box sx={{ bgcolor: brand.cream, borderRadius: `${radius.card}px`, px: 2, py: 1.5 }}>
+          <Box sx={{ bgcolor: neutral.canvas, border: `1px solid ${neutral.line}`, borderRadius: `${radius.card}px`, px: 2, py: 1.5 }}>
             <Typography variant="body1">
               <Box component="span" sx={{ fontFamily: fontFamily.display }}>
                 {copy.sizesLabel}
               </Box>{' '}
               {copy.sizesNote}
             </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              {copy.photosNote}
+            </Typography>
           </Box>
           {template.isError && <Banner tone="error" title={copy.downloadFailed} />}
         </Stack>
       </DialogContent>
       <DialogActions sx={actionsSx}>
-        <Button variant="outlined" onClick={onNext}>
+        <Button variant="outlined" onClick={() => onNext(false)}>
           {copy.haveFile}
         </Button>
         <Button variant="contained" onClick={() => void download()} disabled={template.isPending} startIcon={<Download size={18} strokeWidth={1.5} aria-hidden="true" />}>

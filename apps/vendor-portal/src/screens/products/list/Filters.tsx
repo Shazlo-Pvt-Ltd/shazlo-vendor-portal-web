@@ -2,7 +2,9 @@ import { Box, Button, Drawer, IconButton, InputAdornment, MenuItem, Select, Stac
 import { neutral, radius } from '@shazlo/ui'
 import { Search, SlidersHorizontal, X } from 'lucide-react'
 import { useEffect, useId, useState } from 'react'
+import { catalogCopy } from '../../../copy/catalog'
 import { productsCopy } from '../../../copy/products'
+import { GENDERS, PRODUCT_TYPES } from '../../../lib/catalog'
 import { activeFilterCount, type ListParams, type ParamKey } from './useListParams'
 
 const copy = productsCopy
@@ -11,8 +13,8 @@ const SEARCH_DELAY_MS = 300
 type Update = (patch: Partial<Record<ParamKey, string | number | undefined>>, options?: { replace?: boolean }) => void
 type Option = { value: string; label: string }
 
-const categoryOptions: Option[] = copy.categories.map((c) => ({ value: c, label: c }))
-const genderOptions: Option[] = copy.genders.map((g) => ({ value: g, label: g }))
+const categoryOptions: Option[] = PRODUCT_TYPES.map((t) => ({ value: t, label: catalogCopy.productTypes[t] }))
+const genderOptions: Option[] = GENDERS.map((g) => ({ value: g, label: catalogCopy.genders[g] }))
 const stockOptions: Option[] = [...copy.stockOptions]
 const sortOptions: Option[] = [...copy.sortOptions]
 

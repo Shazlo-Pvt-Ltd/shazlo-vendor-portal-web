@@ -1,6 +1,5 @@
 import { Box, Card, Checkbox, IconButton, LinearProgress, Link, Skeleton, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material'
-import { alpha } from '@mui/material/styles'
-import { brand, neutral, StatusPill } from '@shazlo/ui'
+import { neutral } from '@shazlo/ui'
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef, type RowSelectionState, type Updater } from '@tanstack/react-table'
 import { MoreHorizontal } from 'lucide-react'
 import { useMemo, type MouseEvent, type ReactNode } from 'react'
@@ -10,9 +9,9 @@ import { paths } from '../../../app/paths'
 import { ProductThumb } from '../../../components/ProductThumb'
 import { productsCopy } from '../../../copy/products'
 import { formatCount, formatINR, formatRelative } from '../../../lib/format'
-import { productPills } from '../../../lib/status'
-import { PAGE_SIZE } from './useListParams'
 import { srOnly } from '../../../lib/a11y'
+import { ProductStatus } from '../status'
+import { PAGE_SIZE } from './useListParams'
 
 const copy = productsCopy.table
 type Product = Schemas['ProductSummary']
@@ -30,16 +29,6 @@ const layout: Record<string, { align?: 'right'; width?: number | string }> = {
   status: { width: 196 },
   updated_at: { width: 112 },
   actions: { width: 56 },
-}
-
-export function Pills({ product }: { product: Product }) {
-  return (
-    <Stack direction="row" sx={{ gap: 0.5, flexWrap: 'wrap' }}>
-      {productPills(product).map((status) => (
-        <StatusPill key={status} status={status} />
-      ))}
-    </Stack>
-  )
 }
 
 export function Price({ product, align = 'right' }: { product: Product; align?: 'right' | 'left' }) {
@@ -73,17 +62,9 @@ function ProductCell({ product }: { product: Product }) {
         >
           {product.title}
         </Link>
-        <Stack direction="row" spacing={0.75} sx={{ alignItems: 'baseline', color: 'text.secondary' }}>
-          <Typography variant="mono">{product.sku}</Typography>
-          {product.edit_in_review && (
-            <>
-              <Box component="span" aria-hidden="true" sx={{ typography: 'caption' }}>
-                ·
-              </Box>
-              <Typography variant="caption">{copy.editInReview}</Typography>
-            </>
-          )}
-        </Stack>
+        <Typography variant="caption" component="div" color="text.secondary" noWrap>
+          {product.sku}
+        </Typography>
       </Box>
     </Stack>
   )
@@ -135,7 +116,6 @@ export function ProductTable({ items, fetching, selection, onSelectionChange, on
             onChange={table.getToggleAllPageRowsSelectedHandler()}
             disabled={table.getRowModel().rows.length === 0}
             slotProps={{ input: { 'aria-label': copy.selectAll, id: selectAllId } as object }}
-            sx={{ '&.MuiCheckbox-indeterminate': { color: brand.brown } }}
           />
         ),
         cell: ({ row }) => (
@@ -151,7 +131,7 @@ export function ProductTable({ items, fetching, selection, onSelectionChange, on
       { accessorKey: 'category', header: copy.category, cell: ({ row }) => row.original.category || copy.noCategory },
       { id: 'price', header: copy.price, cell: ({ row }) => <Price product={row.original} /> },
       { accessorKey: 'stock', header: copy.stock, cell: ({ row }) => formatCount(row.original.stock) },
-      { id: 'status', header: copy.status, cell: ({ row }) => <Pills product={row.original} /> },
+      { id: 'status', header: copy.status, cell: ({ row }) => <ProductStatus product={row.original} /> },
       {
         accessorKey: 'updated_at',
         header: copy.updated,
@@ -200,7 +180,6 @@ export function ProductTable({ items, fetching, selection, onSelectionChange, on
   })
 
   const loading = items === undefined
-  const selectedBg = alpha(brand.cream, 0.55)
 
   return (
     <Card sx={{ position: 'relative' }}>
@@ -240,8 +219,9 @@ export function ProductTable({ items, fetching, selection, onSelectionChange, on
                   sx={{
                     height: 56,
                     cursor: 'pointer',
-                    '&.Mui-selected, &.Mui-selected:hover': { bgcolor: selectedBg },
-                    '@media (hover: hover)': { '&:hover:not(.Mui-selected)': { bgcolor: alpha(brand.cream, 0.25) } },
+                    // Calm (spec §8): a neutral tint for hover and selection, no yellow.
+                    '&.Mui-selected, &.Mui-selected:hover': { bgcolor: neutral.placeholder },
+                    '@media (hover: hover)': { '&:hover:not(.Mui-selected)': { bgcolor: neutral.canvas } },
                     '&:last-of-type td': { borderBottom: footer ? undefined : 0 },
                   }}
                 >

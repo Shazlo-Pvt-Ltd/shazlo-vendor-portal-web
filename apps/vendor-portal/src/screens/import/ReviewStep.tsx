@@ -3,6 +3,7 @@ import { Banner, brand, neutral, radius, StatFigure, status } from '@shazlo/ui'
 import { AlertTriangle, Download, FileSpreadsheet } from 'lucide-react'
 import { useId } from 'react'
 import type { Schemas } from '../../api/client'
+import { catalogCopy } from '../../copy/catalog'
 import { importCopy } from '../../copy/import'
 import { formatCount } from '../../lib/format'
 import { errorReportCsv, saveFile } from './download'
@@ -13,6 +14,9 @@ type Job = Schemas['ImportJob']
 type RowError = Job['errors'][number]
 
 const tabular = { fontVariantNumeric: 'tabular-nums' } as const
+
+// The column in the seller's words, from the template column when the check names one.
+const columnOf = (e: RowError) => (e.field ? catalogCopy.importColumns[e.field] : e.column || copy.wholeRow)
 
 function FileCard({ name, rows, onReplace }: { name: string; rows: number; onReplace: () => void }) {
   return (
@@ -55,7 +59,7 @@ function ErrorRows({ errors, title, wide }: { errors: RowError[]; title: string;
         <Typography id={titleId} variant="h3" component="h3">
           {title}
         </Typography>
-        <Button variant="text" size="small" onClick={() => saveFile(errorReportCsv(errors), copy.reportFileName)} startIcon={<Download size={16} strokeWidth={1.5} aria-hidden="true" />}>
+        <Button variant="text" size="small" onClick={() => saveFile(errorReportCsv(errors.map((e) => ({ ...e, column: columnOf(e) }))), copy.reportFileName)} startIcon={<Download size={16} strokeWidth={1.5} aria-hidden="true" />}>
           {copy.downloadReport}
         </Button>
       </Stack>
@@ -78,7 +82,7 @@ function ErrorRows({ errors, title, wide }: { errors: RowError[]; title: string;
                     {formatCount(e.row)}
                   </TableCell>
                   <TableCell sx={{ overflowWrap: 'anywhere' }}>{e.product ?? copy.noProduct}</TableCell>
-                  <TableCell>{e.column}</TableCell>
+                  <TableCell>{columnOf(e)}</TableCell>
                   <TableCell>
                     <Fix message={e.message} />
                   </TableCell>
@@ -92,7 +96,7 @@ function ErrorRows({ errors, title, wide }: { errors: RowError[]; title: string;
           {errors.map((e, i) => (
             <Box component="li" key={`${e.row}-${e.column}-${i}`} sx={{ py: 1.5, borderBottom: `1px solid ${neutral.line}` }}>
               <Typography variant="caption" color="text.secondary" component="div" sx={tabular}>
-                {copy.rowLabel(e.row)} · {e.column}
+                {copy.rowLabel(e.row)} · {columnOf(e)}
               </Typography>
               <Typography variant="body1" sx={{ overflowWrap: 'anywhere' }}>
                 {e.product ?? copy.noProduct}
@@ -111,7 +115,7 @@ function ErrorRows({ errors, title, wide }: { errors: RowError[]; title: string;
 // Step 3: what the check found, and creating the rows that passed as drafts.
 export function ReviewStep({ job, wide, creating, createError, onReplace, onCreate }: { job: Job; wide: boolean; creating: boolean; createError: string | null; onReplace: () => void; onCreate: () => void }) {
   const allClear = job.errors.length === 0
-  // Rows sharing a Product ID become one product, so the button counts products, not rows.
+  // One row is one product.
   const ready = job.ok_products
   return (
     <>
@@ -124,11 +128,10 @@ export function ReviewStep({ job, wide, creating, createError, onReplace, onCrea
             </Banner>
           ) : (
             <>
-              <Box role="group" aria-label={copy.statsLabel} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 1.5 }}>
+              <Box role="group" aria-label={copy.statsLabel} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(3, 1fr)' }, gap: 1.5 }}>
                 <StatFigure label={copy.stats.total} value={formatCount(job.total_rows)} />
                 <StatFigure label={copy.stats.ok} value={formatCount(job.ok_rows)} baseline={copy.stats.okBaseline} />
                 <StatFigure label={copy.stats.errors} value={formatCount(job.error_rows)} baseline={copy.stats.errorsBaseline} />
-                <StatFigure label={copy.stats.images} value={formatCount(job.image_errors)} baseline={copy.stats.imagesBaseline} />
               </Box>
               <ErrorRows errors={job.errors} title={copy.errorsTitle(job.error_rows)} wide={wide} />
             </>
