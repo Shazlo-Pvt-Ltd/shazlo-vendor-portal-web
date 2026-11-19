@@ -17,7 +17,7 @@ One secret (and key id) per environment, never shared across environments. The s
 
 | Environment | vendor-api reads it from | Central app / receiver holds it in | Notes |
 |---|---|---|---|
-| Local development | `services/vendor-api/.env` (git-ignored), or unset: publishing is off | the stub receiver's own environment (`CENTRAL_SIGNING_SECRET` or its documented test secret) | The contract's test secret (`shazlo-contract-test-secret-not-for-production`) is for tests only; never use it outside them |
+| Local development | `.env` at the repository root for docker-compose (`CENTRAL_SIGNING_SECRET`), or `services/vendor-api/.env` when run on the host (git-ignored), or unset: publishing is off | the stub receiver's `STUB_SIGNING_KEYS` (`CENTRAL_STUB_SIGNING_KEYS` in compose; its default is a development secret) | The contract's test secret (`shazlo-contract-test-secret-not-for-production`) is for tests only; never use it outside them |
 | CI | generated per run inside the test, or the contract test vector | n/a | No real secret is stored as a CI secret |
 | Staging | the platform's secret manager, injected as `CENTRAL_SIGNING_SECRET` | the central app's secret manager for staging | Its own secret, not production's |
 | Production | the platform's secret manager, injected as `CENTRAL_SIGNING_SECRET` (`prod` also needs `CENTRAL_API_URL` over https) | the central app's secret manager for production | Exchanged secret-manager to secret-manager, or through a one-time-secret link; never by chat, email or git |

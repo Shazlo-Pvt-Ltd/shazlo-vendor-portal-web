@@ -2,11 +2,13 @@
 
 Companion to [ADR 0003](../0003-central-app-publishing-contract.md). This is what `vendor-api` (the **producer**) sends and what the central app (the **receiver**, `shazlo-server`) must implement.
 
+Status (2026-11-19): `vendor-api` produces exactly this (the outbox, the worker and the nightly reconciliation) and [`services/central-stub`](../../../services/central-stub/README.md) receives it, and both are tested against the schemas and examples here. The contract stays a draft until the central-app team has confirmed the answers in the ADR (section 7 below).
+
 Machine-readable parts: [`openapi.yaml`](openapi.yaml), [`schemas/`](schemas), [`examples/`](examples).
 
 ## 1. Scope
 
-Only **approved** content leaves `vendor-api`. Four kinds of fact are published:
+Only **approved** content leaves `vendor-api`. Five event types, about three kinds of fact (a brand page, a product, a vendor's status), are published:
 
 | Event type | Aggregate | Meaning |
 | --- | --- | --- |

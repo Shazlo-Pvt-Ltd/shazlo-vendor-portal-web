@@ -57,7 +57,7 @@ Do this at once; it ends every session of the service whose key leaked (admins f
 4. **Know the gap.** Whoever holds `OLD` can sign tokens with any `exp`, any `sub` and any `roles`, so the token lifetime does **not** limit the exposure. A forged token verifies on every service that still has `OLD` in its cached key set: up to 10 minutes (the cache TTL) after step 2, and longer on a service that fails to refetch. Close the gap right after step 2 by restarting every service that verifies this service's tokens (or clearing its JWKS cache), then check that a token signed with `OLD` is rejected.
 5. **Revoke refresh tokens.** Refresh tokens are not signed, but they were issued under the leaked key's regime and an attacker may have obtained one with a forged session. They live in the service's Redis, under its prefix (`identity:` or `vendor:`); delete every refresh-token key so nobody can refresh without signing in again:
    ```sh
-   PREFIX=identity:   # or vendor: for vendor-api (its refresh tokens exist once vendor login does)
+   PREFIX=identity:   # or vendor: for vendor-api
    for pattern in "${PREFIX}rf:*" "${PREFIX}rt:*" "${PREFIX}rtu:*" "${PREFIX}ra:*" "${PREFIX}rg:*"; do
      redis-cli -u "$REDIS_URL" --scan --pattern "$pattern" | xargs -r -n 500 redis-cli -u "$REDIS_URL" del
    done

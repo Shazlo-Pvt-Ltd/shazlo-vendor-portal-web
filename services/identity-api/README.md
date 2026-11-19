@@ -101,7 +101,8 @@ identity_api/
   core/         settings, JSON logging, request-ID middleware, error handlers
   db/           models, declarative base (constraint naming convention), async engine and sessions
   migrations/   Alembic env and versions (runs on a sync psycopg engine)
-  services/     business logic, free of HTTP concerns (auth, admins, tokens, keys, refresh tokens, rate limits)
+  services/     business logic, free of HTTP concerns (auth, admins)
+  core/security.py  wires the shared `packages/py-security` code (key ring, token issuer, refresh-token store, rate limiter, passwords) to this service's settings
   cli.py        `seed` and `generate-key`
 ```
 

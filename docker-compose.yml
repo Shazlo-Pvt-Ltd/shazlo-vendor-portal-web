@@ -35,7 +35,7 @@ services:
 
   # Opt-in (`--profile identity`): it needs a signing key in IDENTITY_JWT_KEYS, so a plain
   # `docker compose up -d` starts only Postgres, Redis and Mailpit. `--profile full` starts
-  # both APIs. See README.md, Local development.
+  # everything: both APIs, vendor-worker and central-stub. See README.md, Local development.
   identity-api:
     profiles: ["identity", "full"]
     build:
@@ -68,8 +68,9 @@ services:
   vendor-api:
     profiles: ["vendor", "full"]
     build:
-      # Built from the repository root so shared packages can be added to the image later
-      # (services/vendor-api/Dockerfile.dockerignore limits what is sent).
+      # Built from the repository root: the image contains packages/py-auth and packages/py-security
+      # and the contract schemas in docs/adr/0003-contract (services/vendor-api/Dockerfile.dockerignore
+      # limits what is sent).
       context: .
       dockerfile: services/vendor-api/Dockerfile
     restart: unless-stopped

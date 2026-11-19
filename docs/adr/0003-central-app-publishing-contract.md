@@ -189,8 +189,8 @@ _To be completed with the central-app owners before the status changes to accept
 - A shared secret must be managed and rotated on both sides.
 
 **Follow-ups**
-- Phase 4: implement the outbox, the worker, the dead-letter screen, and the stub receiver from the OpenAPI file.
-- Add contract tests in `vendor-api` (examples validate against the schemas) and in the central app (it accepts every example).
+- Phase 4: implement the outbox, the worker, the dead-letter screen, and the stub receiver from the OpenAPI file. *Update 2026-11-19: the outbox, the worker, the nightly reconciliation and `resync`, an admin API to find and retry dead events (`/v1/admin/outbox`) and the stub receiver (`services/central-stub`) are built in `vendor-api` and tested end to end; the dead-letter screen is the admin UI of Phase 7.*
+- Add contract tests in `vendor-api` (examples validate against the schemas) and in the central app (it accepts every example). *Update 2026-11-19: the `vendor-api` side exists (`services/vendor-api/tests/test_central_contract.py`, and `test/contracts/publishing.test.js` in the root test run); the central app's side is the central-app team's.*
 - Agree the stock command contract between the central app and `vendor-api` separately.
 
 ## Alternatives considered

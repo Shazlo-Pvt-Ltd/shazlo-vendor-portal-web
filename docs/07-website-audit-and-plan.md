@@ -9,11 +9,13 @@
 
 **Legend:** `[As-is]` found in the source, `[MVP]` needed by Oct 30, `[Target]` after launch, `[Assumption]` needs a decision.
 
+> **Status note (2026-11-19).** This is an audit of the site as it was on 2026-10-19. Since then the dependencies of `app/` have been upgraded (Vite 8 and Material UI 9 now, see `app/package.json`), and `app/` and `backend/` have tests in CI, and `app/` a production build ([the test strategy](testing.md)). The findings below are not re-audited.
+
 ## 1. What the site is `[As-is]`
 
 | Item | Finding |
 | --- | --- |
-| Stack | Vite 7, React 19, `react-router-dom` 7 (client-side routes, no server rendering), Material UI, framer-motion, plus three.js and Spline libraries; JavaScript only; Vercel hosting (`vercel.json` has one rewrite of every path to `/`) |
+| Stack | Vite 7 (Vite 8 now), React 19, `react-router-dom` 7 (client-side routes, no server rendering), Material UI, framer-motion, plus three.js and Spline libraries; JavaScript only; Vercel hosting (`vercel.json` has one rewrite of every path to `/`) |
 | Repositories | `Shazlo/` is the website repo. Inside it, `app/` is the site and `backend/` is a small **legacy Node, Express and Mongo service** for waitlist and brand registration (deployed on Render). The outer `D:\shazlosite` folder holds an extra empty git repo and can be ignored |
 | Live page | `Home_v2` (hero, about, how it works, features, team, partner, investors, footer). About 45 other components are legacy |
 | Routes | `/`, `/home_v2`, `/swipe` (web swipe demo), `/alternate_home`, `/waitlist`, `/privacy`, `/terms-of-service`, `/contact`, `/faq`, `/partner`. Hostname-based screens for `seller.*` and `crm.*` also exist |
