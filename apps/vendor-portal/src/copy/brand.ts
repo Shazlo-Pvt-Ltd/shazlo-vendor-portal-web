@@ -25,6 +25,7 @@ export const brandCopy = {
     confirm: 'Discard draft',
     working: 'Discarding…',
   },
+  // Shown in the page, not as a toast (spec §8).
   discarded: 'Draft discarded. Your page matches the live version again.',
   discardedFirst: 'Draft discarded.',
   banners: {
@@ -56,21 +57,10 @@ export const brandCopy = {
   },
   shopping: {
     title: 'Shopping details',
-    returnPolicy: 'Return policy',
-    dispatchTime: 'Dispatch time',
     instagram: 'Instagram',
     website: 'Website (optional)',
-  },
-  returnPolicies: {
-    no_returns: { label: 'No returns', short: 'No returns' },
-    '7_day': { label: '7-day returns, unworn with tags', short: '7-day returns' },
-    '14_day': { label: '14-day returns, unworn with tags', short: '14-day returns' },
-  },
-  dispatchTimes: {
-    '1_2_days': 'Ships in 1–2 days',
-    '2_3_days': 'Ships in 2–3 days',
-    '3_5_days': 'Ships in 3–5 days',
-    '5_7_days': 'Ships in 5–7 days',
+    fromStore: 'Returns and delivery come from your store details.',
+    fromStoreLink: 'Change them in Store details',
   },
   errors: {
     tagline: 'Keep the tagline to 60 characters.',
@@ -80,6 +70,11 @@ export const brandCopy = {
     upload: 'The photo did not upload. Try again.',
   },
   preview: {
+    // Read from Store details (spec §5).
+    shazloDelivery: 'Shazlo delivery',
+    deliversIn: (days: string) => `Delivers in ${days}`,
+    noReturns: 'No returns',
+    returnDays: (days: number) => `${days}-day returns`,
     title: 'Preview in the Shazlo app',
     version: 'Preview version',
     draft: 'Draft',

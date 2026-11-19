@@ -1,10 +1,11 @@
 import { Box, Skeleton, Stack, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material'
 import { brand, fontFamily, neutral, radius } from '@shazlo/ui'
-import { Clock, Eye, ImageIcon, MapPin, RotateCcw, type LucideIcon } from 'lucide-react'
+import { Eye, ImageIcon, MapPin, RotateCcw, Truck, type LucideIcon } from 'lucide-react'
 import { memo, useId, useState, type ReactNode } from 'react'
 import type { Schemas } from '../../api/client'
-import { useProducts } from '../../api/queries'
+import { useProducts, useStoreDetails } from '../../api/queries'
 import { brandCopy as copy } from '../../copy/brand'
+import { catalogCopy } from '../../copy/catalog'
 import { formatINR } from '../../lib/format'
 import { LogoMark } from './fields'
 import { cityOf, type Profile } from './schema'
@@ -79,9 +80,20 @@ const ProductTiles = memo(function ProductTiles() {
   )
 })
 
+// Delivery and returns as the app shows them, from Store details (spec §5); nothing until saved.
+function storeLines(details: Schemas['StoreDetails'] | undefined): { delivery: string | null; returns: string | null } {
+  const d = details?.delivery
+  const r = details?.returns
+  return {
+    delivery: d?.mode === 'shazlo' ? copy.preview.shazloDelivery : d?.mode === 'own' ? copy.preview.deliversIn(catalogCopy.delivery.days[d.delivery_days]) : null,
+    returns: !r ? null : r.window_days === 0 ? copy.preview.noReturns : copy.preview.returnDays(r.window_days),
+  }
+}
+
 // A phone-sized rendering of the brand page as shoppers see it in the Shazlo app.
 function Phone({ profile, contained }: { profile: Profile; contained: boolean }) {
   const city = cityOf(profile.based_in)
+  const store = storeLines(useStoreDetails().data)
   return (
     <Box sx={{ width: 300, maxWidth: '100%', mx: 'auto', border: `6px solid ${neutral.lineStrong}`, borderRadius: '28px', bgcolor: neutral.surface, overflow: 'hidden' }}>
       <Box aria-hidden="true" sx={{ height: 22, display: 'grid', placeItems: 'center' }}>
@@ -107,8 +119,8 @@ function Phone({ profile, contained }: { profile: Profile; contained: boolean })
           )}
           <Stack direction="row" sx={{ flexWrap: 'wrap', columnGap: 1.5, rowGap: 0.5, mt: 1.5, color: brand.brown }}>
             {city && <Meta icon={MapPin}>{city}</Meta>}
-            <Meta icon={Clock}>{copy.dispatchTimes[profile.dispatch_time]}</Meta>
-            <Meta icon={RotateCcw}>{copy.returnPolicies[profile.return_policy].short}</Meta>
+            {store.delivery && <Meta icon={Truck}>{store.delivery}</Meta>}
+            {store.returns && <Meta icon={RotateCcw}>{store.returns}</Meta>}
           </Stack>
           {profile.story && (
             <Typography variant="body2" sx={{ mt: 1.5, whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>

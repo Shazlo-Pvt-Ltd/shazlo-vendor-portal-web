@@ -4,8 +4,10 @@ import { brandCopy as copy } from '../../copy/brand'
 
 export type Profile = Schemas['BrandProfile']
 
-export const RETURN_POLICIES = ['no_returns', '7_day', '14_day'] as const satisfies readonly Profile['return_policy'][]
-export const DISPATCH_TIMES = ['1_2_days', '2_3_days', '3_5_days', '5_7_days'] as const satisfies readonly Profile['dispatch_time'][]
+// Returns and delivery moved to Store details (spec §5). The API still takes these two deprecated
+// fields, so the form carries them through unchanged; nothing on the page edits them.
+const RETURN_POLICIES = ['no_returns', '7_day', '14_day'] as const satisfies readonly Profile['return_policy'][]
+const DISPATCH_TIMES = ['1_2_days', '2_3_days', '3_5_days', '5_7_days'] as const satisfies readonly Profile['dispatch_time'][]
 export const LIMITS = { tagline: 60, story: 600 } as const
 
 // Drafts may be incomplete (the server checks completeness on submit), but what is there must be well formed.
@@ -28,7 +30,7 @@ export const brandSchema = z.object({
 export type BrandValues = z.infer<typeof brandSchema>
 
 // The fields a seller can change; brand_name is fixed (support changes it).
-export const EDITABLE = ['logo_url', 'cover_url', 'based_in', 'tagline', 'story', 'return_policy', 'dispatch_time', 'instagram', 'website'] as const satisfies readonly (keyof Profile)[]
+export const EDITABLE = ['logo_url', 'cover_url', 'based_in', 'tagline', 'story', 'instagram', 'website'] as const satisfies readonly (keyof Profile)[]
 export type EditableField = (typeof EDITABLE)[number]
 
 export const isEditableField = (key: string): key is EditableField => (EDITABLE as readonly string[]).includes(key)

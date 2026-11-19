@@ -1,9 +1,10 @@
 import { Box, Card, Link, Stack, Typography, useMediaQuery } from '@mui/material'
 import { type Theme } from '@mui/material/styles'
 import { brand, fontFamily, Logo, neutral } from '@shazlo/ui'
-import { HelpCircle } from 'lucide-react'
+import { ChevronLeft, HelpCircle } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { authCopy as copy } from '../../copy/auth'
+import { useKeyboardInset } from '../../shell/StickyFooter'
 
 function Header() {
   return (
@@ -34,19 +35,30 @@ function Footer() {
   )
 }
 
+const PHONE = '(max-width:599.95px)'
+const SAFE_BOTTOM = 'env(safe-area-inset-bottom, 0px)'
+
 // Signed-out pages: logo and help line on top, legal links at the bottom.
 // With `aside`, desktop splits into the form and a cream panel (V-01, pick C); phones drop the panel.
-export function AuthLayout({ children, aside, width = 440 }: { children: ReactNode; aside?: ReactNode; width?: number }) {
+// With `task` (sign-up), phones get the page edge to edge with no card, so the sticky footer can span
+// the screen; wider screens a centred card at most 680 px wide (spec §3).
+export function AuthLayout({ children, aside, width = 440, task = false }: { children: ReactNode; aside?: ReactNode; width?: number; task?: boolean }) {
   const wide = useMediaQuery((t: Theme) => t.breakpoints.up('md'))
+  const phone = useMediaQuery(PHONE, { noSsr: true })
+  const flush = task && phone
+  const maxWidth = task ? 680 : width
   return (
     <Box sx={{ minHeight: '100dvh', display: 'flex', bgcolor: neutral.canvas }}>
       <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <Header />
-        <Box component="main" sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', px: 2, py: { xs: 4, sm: 6 } }}>
-          {aside && wide ? (
-            <Box sx={{ width: '100%', maxWidth: width }}>{children}</Box>
+        <Box
+          component="main"
+          sx={{ flex: 1, display: 'flex', alignItems: task ? 'flex-start' : 'center', justifyContent: 'center', px: 2, py: flush ? 3 : { xs: 4, sm: 6 }, ...(task && { overscrollBehaviorY: 'contain' }) }}
+        >
+          {flush || (aside && wide) ? (
+            <Box sx={{ width: '100%', maxWidth }}>{children}</Box>
           ) : (
-            <Card sx={{ width: '100%', maxWidth: width, p: { xs: 3, sm: 5 }, borderRadius: '12px' }}>{children}</Card>
+            <Card sx={{ width: '100%', maxWidth, p: { xs: 3, sm: 5 }, borderRadius: '12px', overflow: 'visible' }}>{children}</Card>
           )}
         </Box>
         <Footer />
@@ -56,6 +68,71 @@ export function AuthLayout({ children, aside, width = 440 }: { children: ReactNo
           {aside}
         </Box>
       )}
+    </Box>
+  )
+}
+
+// The one main button of a sign-up page (spec §3, §8). On phones it sticks to the bottom of the
+// screen above the home indicator, rides on top of the on-screen keyboard, and rests at the end of
+// the page; wider screens show it at the end of the card.
+export function TaskFooter({ children }: { children: ReactNode }) {
+  const phone = useMediaQuery(PHONE, { noSsr: true })
+  const keyboard = useKeyboardInset()
+  if (!phone) {
+    return <Stack direction="row" sx={{ justifyContent: 'flex-end', gap: 1.5, mt: 4 }}>{children}</Stack>
+  }
+  return (
+    <Box
+      data-sticky-footer=""
+      sx={{
+        position: 'sticky',
+        bottom: keyboard > 0 ? `${keyboard}px` : 0,
+        zIndex: 15,
+        display: 'flex',
+        gap: 1.5,
+        mt: 4,
+        mx: -2,
+        px: 2,
+        pt: 1.5,
+        pb: keyboard > 0 ? '12px' : `calc(12px + ${SAFE_BOTTOM})`,
+        bgcolor: neutral.surface,
+        borderTop: `1px solid ${neutral.line}`,
+        '& > *': { flex: '1 1 0', minWidth: 0, minHeight: 48 },
+      }}
+    >
+      {children}
+    </Box>
+  )
+}
+
+// "Back" at the top of a sign-up page.
+export function BackButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <Box
+      component="button"
+      type="button"
+      onClick={onClick}
+      sx={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 0.25,
+        minHeight: 44,
+        pl: 0.5,
+        pr: 1.5,
+        ml: -1,
+        mb: 1,
+        color: neutral.ink,
+        typography: 'body1',
+        font: 'inherit',
+        border: 0,
+        bgcolor: 'transparent',
+        cursor: 'pointer',
+        borderRadius: '6px',
+        '@media (hover: hover)': { '&:hover': { textDecoration: 'underline' } },
+      }}
+    >
+      <ChevronLeft size={20} strokeWidth={1.75} aria-hidden="true" />
+      {label}
     </Box>
   )
 }

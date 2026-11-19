@@ -1,207 +1,263 @@
 import { z } from 'zod'
 import type { Schemas } from '../../api/client'
-import { onboardingCopy } from '../../copy/onboarding'
+import {
+  DELIVERY_DAYS,
+  DELIVERY_MODES,
+  normaliseBusiness,
+  normaliseContact,
+  normaliseDelivery,
+  normalisePayOnDelivery,
+  normalisePayout,
+  normaliseReturns,
+  PAYOUT_METHODS,
+  REFUND_DAYS,
+  RETURN_CONDITIONS,
+  RETURN_WINDOWS,
+  type FieldErrors,
+} from '../../lib/storeDetails'
+import {
+  businessBody,
+  checkTerms,
+  checkTopic,
+  contactBody,
+  deliveryBody,
+  empty,
+  FIELD_ORDER,
+  hasErrors,
+  paymentBody,
+  payoutBody,
+  placesOf,
+  proposedBps,
+  returnsBody,
+  type BrandAnswers,
+  type BusinessAnswers,
+  type ContactAnswers,
+  type DeliveryAnswers,
+  type PaymentAnswers,
+  type PayoutAnswers,
+  type ReturnsAnswers,
+  type TermsAnswers,
+  type Topic,
+} from '../store/topics/model'
 
-const e = onboardingCopy.apply.errors
+// Sign-up (V-02, spec §5): an intro, seven topic pages, Check your answers, then Send. The topic
+// forms and their checks are the ones Store details uses (src/screens/store/topics); this module
+// adds the page order, the draft kept on this device and the application the API takes.
 
-export const ABOUT_MIN = 40
-export const ABOUT_MAX = 600
-const PRICE_CAP_RUPEES = 1_00_00_000
-
-// ---- phone and price parsing -------------------------------------------------------------
-
-// Indian mobiles: ten digits starting 6–9, typed with or without +91 / 0 and spaces or dashes.
-export function normalisePhone(raw: string): string | null {
-  let digits = raw.replace(/[\s\-().]/g, '')
-  if (digits.startsWith('+91')) digits = digits.slice(3)
-  else if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2)
-  else if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1)
-  return /^[6-9]\d{9}$/.test(digits) ? digits : null
-}
-
-// Whole rupees, with or without en-IN grouping ("1,25,000") or a ₹ sign.
-export function parseRupees(raw: string): number | null {
-  const plain = raw.replace(/[₹,\s]/g, '')
-  return /^\d+$/.test(plain) ? Number(plain) : null
-}
-
-const HANDLE = /^@?(?!.*\.\.)[a-z0-9._]{1,30}$/i
-const WEBSITE = /^(https?:\/\/)?([a-z0-9-]+\.)+[a-z]{2,}(\/\S*)?$/i
-
-// ---- one schema per step -----------------------------------------------------------------
-
-export const brandSchema = z.object({
-  brand_name: z.string().trim().min(1, e.brandNameRequired).max(80, e.brandNameLong),
-  city: z.string().trim().min(2, e.cityRequired),
-  instagram_or_website: z
-    .string()
-    .trim()
-    .refine((v) => v === '' || HANDLE.test(v) || WEBSITE.test(v), e.linkFormat),
-})
-
-export const contactSchema = z.object({
-  owner_name: z.string().trim().min(1, e.ownerNameRequired),
-  email: z.string().trim().min(1, e.emailRequired).email(e.emailFormat),
-  phone: z
-    .string()
-    .trim()
-    .min(1, e.phoneRequired)
-    .refine((v) => normalisePhone(v) !== null, e.phoneFormat),
-})
-
-function price(required: string) {
-  return z
-    .string()
-    .trim()
-    .min(1, required)
-    .refine((v) => {
-      const n = parseRupees(v)
-      return n !== null && n > 0
-    }, e.priceFormat)
-    .refine((v) => (parseRupees(v) ?? 0) < PRICE_CAP_RUPEES, e.priceTooHigh)
-}
-
-export const catalogueSchema = z
-  .object({
-    product_types: z.array(z.string()).min(1, e.productTypesRequired),
-    price_min: price(e.priceMinRequired),
-    price_max: price(e.priceMaxRequired),
-    about: z.string().trim().min(ABOUT_MIN, e.aboutShort).max(ABOUT_MAX, e.aboutLong),
-  })
-  .refine((v) => (parseRupees(v.price_max) ?? 0) >= (parseRupees(v.price_min) ?? 0), { path: ['price_max'], message: e.priceOrder })
-
-export type BrandValues = z.infer<typeof brandSchema>
-export type ContactValues = z.infer<typeof contactSchema>
-export type CatalogueValues = z.infer<typeof catalogueSchema>
-
-export type StepIndex = 0 | 1 | 2
-export const STEP_KEYS = ['brand', 'contact', 'catalogue'] as const
-export type StepKey = (typeof STEP_KEYS)[number]
+// Pages: 0 is the intro, 1–7 the topics, 8 Check your answers.
+export const INTRO = 0
+export const CHECK = 8
+export const STEP_COUNT = 7
+// The topic each step page shows; step 7 adds the commission and agreements.
+export const STEP_TOPICS: readonly Topic[] = ['brand', 'contact', 'delivery', 'returns', 'payment', 'payout', 'business']
 
 export interface ApplyDraft {
-  step: StepIndex
-  brand: BrandValues
-  contact: ContactValues
-  catalogue: CatalogueValues
+  page: number
+  // Came from Check your answers: Continue goes back there.
+  checking: boolean
+  brand: BrandAnswers
+  contact: ContactAnswers
+  delivery: DeliveryAnswers
+  returns: ReturnsAnswers
+  payment: PaymentAnswers
+  payout: PayoutAnswers
+  business: BusinessAnswers
+  terms: TermsAnswers
 }
 
-export const emptyDraft: ApplyDraft = {
-  step: 0,
-  brand: { brand_name: '', city: '', instagram_or_website: '' },
-  contact: { owner_name: '', email: '', phone: '' },
-  catalogue: { product_types: [], price_min: '', price_max: '', about: '' },
-}
-
-const SCHEMAS = [brandSchema, contactSchema, catalogueSchema] as const
-
-// Field messages keyed by form field name (price_min, not price_min_paise).
-export type FieldMessages = Record<string, string>
-
-const FIELD_STEP: Record<string, StepIndex> = {
-  brand_name: 0,
-  city: 0,
-  instagram_or_website: 0,
-  owner_name: 1,
-  email: 1,
-  phone: 1,
-  product_types: 2,
-  price_min: 2,
-  price_max: 2,
-  about: 2,
-}
-
-// The API names prices in paise; the form asks in rupees.
-const FROM_API: Record<string, string> = { price_min_paise: 'price_min', price_max_paise: 'price_max' }
-
-export function fieldsFromApi(fields: Record<string, string>): FieldMessages {
-  const out: FieldMessages = {}
-  for (const [name, message] of Object.entries(fields)) {
-    const field = FROM_API[name] ?? name
-    if (field in FIELD_STEP) out[field] = message
-  }
-  return out
-}
-
-// The earliest step holding one of these fields, so the seller works forward through them.
-export function firstStepWith(fields: FieldMessages): StepIndex | null {
-  const steps = Object.keys(fields).map((f) => FIELD_STEP[f]).filter((s): s is StepIndex => s !== undefined)
-  return steps.length ? (Math.min(...steps) as StepIndex) : null
-}
-
-export function fieldsOfStep(step: StepIndex, fields: FieldMessages): FieldMessages {
-  return Object.fromEntries(Object.entries(fields).filter(([f]) => FIELD_STEP[f] === step))
-}
-
-// Once a step is passed, its messages are settled; the rest wait for their own step.
-export function withoutStep(step: StepIndex, fields: FieldMessages): FieldMessages {
-  return Object.fromEntries(Object.entries(fields).filter(([f]) => FIELD_STEP[f] !== step))
-}
-
-// Checks every step again before sending (a restored draft may predate a rule change).
-export function validateDraft(draft: ApplyDraft): FieldMessages {
-  const out: FieldMessages = {}
-  STEP_KEYS.forEach((key, i) => {
-    const result = SCHEMAS[i]!.safeParse(draft[key])
-    if (!result.success) for (const issue of result.error.issues) out[String(issue.path[0])] ??= issue.message
-  })
-  return out
-}
-
-export function toApplication({ brand, contact, catalogue }: ApplyDraft): Schemas['VendorApplication'] {
-  const link = brand.instagram_or_website.trim()
+export function emptyDraft(): ApplyDraft {
   return {
-    brand_name: brand.brand_name.trim(),
-    city: brand.city.trim(),
-    ...(link ? { instagram_or_website: link } : {}),
-    owner_name: contact.owner_name.trim(),
-    email: contact.email.trim(),
-    phone: `+91${normalisePhone(contact.phone) ?? ''}`,
-    product_types: onboardingCopy.categories.filter((c) => catalogue.product_types.includes(c)),
-    price_min_paise: (parseRupees(catalogue.price_min) ?? 0) * 100,
-    price_max_paise: (parseRupees(catalogue.price_max) ?? 0) * 100,
-    about: catalogue.about.trim(),
+    page: INTRO,
+    checking: false,
+    brand: empty.brand(),
+    contact: empty.contact(),
+    delivery: empty.delivery(),
+    returns: empty.returns(),
+    payment: empty.payment(),
+    payout: empty.payout(),
+    business: empty.business(),
+    terms: empty.terms(),
   }
 }
 
-// ---- the draft kept on this device ---------------------------------------------------------
+export const isStep = (page: number) => page >= 1 && page <= STEP_COUNT
 
-export const DRAFT_KEY = 'shazlo.seller.application-draft'
+// The answers a step page edits (what error messages are about).
+export function valuesOfStep(step: number, d: ApplyDraft): unknown {
+  return step === 7 ? { ...d.business, ...d.terms } : d[STEP_TOPICS[step - 1]!]
+}
+
+// Fields of a step in page order, for the error summary.
+export function orderOfStep(step: number): readonly string[] {
+  if (step === 7) return [...FIELD_ORDER.business, ...FIELD_ORDER.terms]
+  const topic = STEP_TOPICS[step - 1]
+  return topic ? FIELD_ORDER[topic] : []
+}
+
+// What Continue checks on a step, keyed by field.
+export function checkStep(step: number, d: ApplyDraft): FieldErrors {
+  switch (step) {
+    case 1: return checkTopic('brand', d.brand, { storeName: true })
+    case 2: return checkTopic('contact', d.contact)
+    case 3: return checkTopic('delivery', d.delivery)
+    case 4: return checkTopic('returns', d.returns)
+    case 5: return checkTopic('payment', d.payment)
+    case 6: return checkTopic('payout', d.payout)
+    case 7: return { ...checkTopic('business', d.business), ...checkTerms(d.terms) }
+  }
+  return {}
+}
+
+// Before sending, every step again: a restored draft may have skipped one, and account numbers
+// are never restored. The first step with problems, or null.
+export function firstProblem(d: ApplyDraft): { step: number; errors: FieldErrors } | null {
+  for (let step = 1; step <= STEP_COUNT; step++) {
+    const errors = checkStep(step, d)
+    if (hasErrors(errors)) return { step, errors }
+  }
+  return null
+}
+
+// Places typed on the delivery page but not added become chips once the page is done.
+export function settleDelivery(a: DeliveryAnswers): DeliveryAnswers {
+  return a.areas.all_india === false ? { ...a, areas: { ...a.areas, places: placesOf(a) }, place: '' } : { ...a, place: '' }
+}
+
+// The application as POST /public/vendor-applications takes it, trimmed and in canonical form.
+// Only for a draft that passed every step.
+export function toApplication(d: ApplyDraft): Schemas['VendorApplication'] {
+  const contact = normaliseContact(contactBody(d.contact))
+  const business = normaliseBusiness(businessBody(d.business))
+  const bps = proposedBps(d.terms.commission)
+  const link = d.brand.instagram_or_website.trim()
+  return {
+    brand_name: d.brand.brand_name.trim(),
+    sells: d.brand.sells as Schemas['Sells'],
+    city: d.brand.city.trim(),
+    ...(link ? { instagram_or_website: link } : {}),
+    owner_name: contact.name,
+    phone: contact.phone,
+    email: contact.email,
+    delivery: normaliseDelivery(deliveryBody(d.delivery)),
+    returns: normaliseReturns(returnsBody(d.returns)),
+    pay_on_delivery: normalisePayOnDelivery(paymentBody(d.payment)),
+    payout: normalisePayout(payoutBody(d.payout)),
+    ...(business.legal_name ? { legal_name: business.legal_name } : {}),
+    ...(business.gstin ? { gstin: business.gstin } : {}),
+    ...(bps !== null && !Number.isNaN(bps) ? { proposed_commission_bps: bps } : {}),
+    agreed_terms: true,
+    agreed_price_rule: true,
+  }
+}
+
+// ---- messages from the server (422) ------------------------------------------------------------
+
+const PREFIXED: [prefix: string, step: number][] = [['delivery.', 3], ['returns.', 4], ['payout.', 6]]
+const PLAIN: Record<string, [step: number, key: string]> = {
+  brand_name: [1, 'brand_name'],
+  sells: [1, 'sells'],
+  city: [1, 'city'],
+  instagram_or_website: [1, 'instagram_or_website'],
+  owner_name: [2, 'name'],
+  phone: [2, 'phone'],
+  email: [2, 'email'],
+  delivery: [3, 'mode'],
+  returns: [4, 'window_days'],
+  pay_on_delivery: [5, 'pay_on_delivery'],
+  payout: [6, 'method'],
+  legal_name: [7, 'legal_name'],
+  gstin: [7, 'gstin'],
+  proposed_commission_bps: [7, 'commission'],
+  agreed_terms: [7, 'agreed_terms'],
+  agreed_price_rule: [7, 'agreed_price_rule'],
+}
+
+// The API names fields by their place in the application ("delivery.pickup_address.pin",
+// "owner_name"); the pages by their place in the step ("pickup_address.pin", "name").
+export function errorsByStep(fields: Record<string, string>): Map<number, FieldErrors> {
+  const out = new Map<number, FieldErrors>()
+  const put = (step: number, key: string, message: string) => out.set(step, { ...out.get(step), [key]: message })
+  for (const [field, message] of Object.entries(fields)) {
+    const plain = PLAIN[field]
+    if (plain) {
+      put(plain[0], plain[1], message)
+      continue
+    }
+    const prefixed = PREFIXED.find(([prefix]) => field.startsWith(prefix))
+    if (prefixed) put(prefixed[1], field.slice(prefixed[0].length), message)
+  }
+  return out
+}
+
+// ---- the draft kept on this device ---------------------------------------------------------------
+
+// v2: the Build 2 sign-up. Drafts of the old three-step form are thrown away.
+export const DRAFT_KEY = 'shazlo.seller.application-draft.v2'
+const OLD_DRAFT_KEYS = ['shazlo.seller.application-draft']
 
 const text = z.string().max(2000).catch('')
+const flag = z.boolean().catch(false)
+const choice = <const T extends readonly string[]>(values: T) => z.enum([...values, ''] as const).catch('')
+
 const storedDraft = z.object({
-  step: z.union([z.literal(0), z.literal(1), z.literal(2)]).catch(0),
-  brand: z.object({ brand_name: text, city: text, instagram_or_website: text }).catch(emptyDraft.brand),
-  contact: z.object({ owner_name: text, email: text, phone: text }).catch(emptyDraft.contact),
-  catalogue: z
-    .object({ product_types: z.array(z.string()).catch([]), price_min: text, price_max: text, about: text })
-    .catch(emptyDraft.catalogue),
+  page: z.number().int().min(INTRO).max(CHECK).catch(INTRO),
+  checking: flag,
+  brand: z.object({ brand_name: text, sells: choice(['women', 'men', 'both']), city: text, instagram_or_website: text }).catch(empty.brand),
+  contact: z.object({ name: text, phone: text, email: text }).catch(empty.contact),
+  delivery: z
+    .object({
+      mode: choice(DELIVERY_MODES),
+      pickup_address: z.object({ line1: text, area: text, city: text, pin: text }).catch(() => empty.delivery().pickup_address),
+      areas: z.object({ all_india: z.boolean().nullable().catch(null), places: z.array(z.string().max(100)).max(50).catch([]) }).catch(() => empty.delivery().areas),
+      place: text,
+      delivery_days: choice(DELIVERY_DAYS),
+    })
+    .catch(empty.delivery),
+  returns: z
+    .object({
+      window_days: z.literal(RETURN_WINDOWS).nullable().catch(null),
+      condition: z.enum(RETURN_CONDITIONS).nullable().catch(null),
+      refund_days: z.literal(REFUND_DAYS).nullable().catch(null),
+    })
+    .catch(empty.returns),
+  payment: z.object({ cash: flag, upi: flag }).catch(empty.payment),
+  // Account numbers are never stored (below), so they are not read back either.
+  payout: z.object({ method: choice(PAYOUT_METHODS), holder_name: text, ifsc: text, upi_id: text }).catch(empty.payout),
+  business: z.object({ legal_name: text, gstin: text }).catch(empty.business),
+  terms: z.object({ commission: text, agreed_terms: flag, agreed_price_rule: flag }).catch(empty.terms),
 })
 
-export function hasAnswers(draft: ApplyDraft): boolean {
-  const { brand, contact, catalogue } = draft
-  return [...Object.values(brand), ...Object.values(contact), catalogue.price_min, catalogue.price_max, catalogue.about].some((v) => v.trim() !== '') || catalogue.product_types.length > 0
+export function hasAnswers(d: ApplyDraft): boolean {
+  const filled = (v: unknown): boolean =>
+    typeof v === 'string' ? v.trim() !== '' : typeof v === 'boolean' ? v : typeof v === 'number' ? true : Array.isArray(v) ? v.length > 0 : v !== null && typeof v === 'object' ? Object.values(v).some(filled) : false
+  const { page: _page, checking: _checking, ...answers } = d
+  return filled(answers)
 }
 
 // Storage can be blocked (private mode) or hold something we did not write; both mean no draft.
 export function readDraft(): ApplyDraft | null {
   try {
+    for (const key of OLD_DRAFT_KEYS) localStorage.removeItem(key)
     const raw = localStorage.getItem(DRAFT_KEY)
     if (!raw) return null
     const parsed = storedDraft.safeParse(JSON.parse(raw))
     if (!parsed.success) return null
-    const draft = parsed.data
-    const known = new Set<string>(onboardingCopy.categories)
-    draft.catalogue.product_types = draft.catalogue.product_types.filter((c) => known.has(c))
+    const draft: ApplyDraft = { ...parsed.data, payout: { ...parsed.data.payout, account_number: '', account_number_again: '' } }
     return hasAnswers(draft) ? draft : null
   } catch {
     return null
   }
 }
 
+// The bank account number stays in memory only: this device may be shared.
 export function writeDraft(draft: ApplyDraft): void {
   try {
-    if (hasAnswers(draft)) localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
-    else localStorage.removeItem(DRAFT_KEY)
+    if (!hasAnswers(draft)) {
+      localStorage.removeItem(DRAFT_KEY)
+      return
+    }
+    const { account_number: _a, account_number_again: _b, ...payout } = draft.payout
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...draft, payout }))
   } catch {
     // Blocked storage: the application still works, it just will not survive a reload.
   }

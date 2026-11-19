@@ -1,4 +1,4 @@
-import { Box, Button, FormHelperText, MenuItem, Stack, TextField, Typography } from '@mui/material'
+import { Box, Button, FormHelperText, Stack, TextField, Typography } from '@mui/material'
 import { brand, fontFamily, neutral, radius, StatusPill } from '@shazlo/ui'
 import { ImageIcon, Upload } from 'lucide-react'
 import { memo, useId, useRef, useState, type ChangeEvent, type InputHTMLAttributes, type ReactNode } from 'react'
@@ -112,43 +112,6 @@ export const TextInput = memo(function TextInput({
           </Box>
         )
       }}
-    />
-  )
-})
-
-export const SelectInput = memo(function SelectInput({
-  control,
-  name,
-  label,
-  options,
-  changed,
-  disabled,
-}: {
-  control: Control<BrandValues>
-  name: 'return_policy' | 'dispatch_time'
-  label: string
-  options: readonly { value: string; label: string }[]
-  changed: boolean
-  disabled: boolean
-}) {
-  const id = useId()
-  const labelId = `${id}-label`
-  return (
-    <Controller
-      control={control}
-      name={name}
-      render={({ field }) => (
-        <Box>
-          <FieldLabel id={labelId} label={label} changed={changed} />
-          <TextField select id={id} name={field.name} value={field.value} onChange={field.onChange} onBlur={field.onBlur} inputRef={field.ref} disabled={disabled} fullWidth slotProps={{ select: { labelId } }}>
-            {options.map((o) => (
-              <MenuItem key={o.value} value={o.value} sx={touchTarget}>
-                {o.label}
-              </MenuItem>
-            ))}
-          </TextField>
-        </Box>
-      )}
     />
   )
 })

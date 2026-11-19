@@ -1,18 +1,20 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Box, Button, Card, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, FormHelperText, Skeleton, Stack, useMediaQuery } from '@mui/material'
+import { Box, Button, Card, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, FormHelperText, Link, Skeleton, Stack, Typography, useMediaQuery } from '@mui/material'
 import type { Theme } from '@mui/material/styles'
-import { Banner, PageHeader, radius, SectionCard, shadow, StatusPill, useSnackbar } from '@shazlo/ui'
+import { Banner, PageHeader, radius, SectionCard, shadow, StatusPill } from '@shazlo/ui'
 import { Eye, EyeOff, Send } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type InputHTMLAttributes, type ReactNode } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
+import { Link as RouterLink } from 'react-router'
 import { ApiError, type Schemas } from '../../api/client'
 import { useBrandPage, useDiscardBrandDraft, useMe, useSaveBrandDraft, useSubmitBrandPage } from '../../api/queries'
 import { useCrumb } from '../../app/crumbs'
+import { paths } from '../../app/paths'
 import { brandCopy as copy } from '../../copy/brand'
 import { SaveStatus, useAutosave } from '../../lib/autosave'
 import { BrandPreview } from './BrandPreview'
-import { BrandNameField, ImageInput, SelectInput, TextInput, touchTarget } from './fields'
-import { brandSchema, changedFields, DISPATCH_TIMES, emptyProfile, isEditableField, LIMITS, RETURN_POLICIES, toValues, type BrandValues, type Profile } from './schema'
+import { BrandNameField, ImageInput, TextInput, touchTarget } from './fields'
+import { brandSchema, changedFields, emptyProfile, isEditableField, LIMITS, toValues, type BrandValues, type Profile } from './schema'
 
 type Page = Schemas['BrandPage']
 type Outcome = { tone: 'success' | 'error'; title: string }
@@ -30,8 +32,6 @@ const columns = {
 const pair = { display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 3 } as const
 
 // Stable props for the memoised inputs.
-const RETURN_OPTIONS = RETURN_POLICIES.map((value) => ({ value, label: copy.returnPolicies[value].label }))
-const DISPATCH_OPTIONS = DISPATCH_TIMES.map((value) => ({ value, label: copy.dispatchTimes[value] }))
 const PLACE_INPUT: InputHTMLAttributes<HTMLInputElement> = { autoComplete: 'address-level2' }
 const HANDLE_INPUT: InputHTMLAttributes<HTMLInputElement> = { autoComplete: 'off', autoCapitalize: 'none', spellCheck: false }
 const URL_INPUT: InputHTMLAttributes<HTMLInputElement> = { inputMode: 'url', autoComplete: 'url', autoCapitalize: 'none', spellCheck: false }
@@ -40,13 +40,26 @@ export default function BrandEditor() {
   useCrumb(copy.crumb)
   const page = useBrandPage()
   const me = useMe()
-  // Discarding swaps the whole form for a fresh one built from the live page.
+  // Discarding swaps the whole form for a fresh one built from the live page, which then says so.
   const [generation, setGeneration] = useState(0)
+  const [discarded, setDiscarded] = useState<string | null>(null)
   const data = page.data
   const brandName = data?.live?.brand_name ?? data?.draft?.brand_name ?? me.data?.vendor.brand_name
 
   if (data && (brandName !== undefined || !me.isPending)) {
-    return <BrandForm key={generation} page={data} brandName={brandName ?? ''} onDiscarded={() => setGeneration((g) => g + 1)} />
+    return (
+      <BrandForm
+        key={generation}
+        page={data}
+        brandName={brandName ?? ''}
+        discarded={discarded}
+        onDismissDiscarded={() => setDiscarded(null)}
+        onDiscarded={(message) => {
+          setDiscarded(message)
+          setGeneration((g) => g + 1)
+        }}
+      />
+    )
   }
   if (page.isError) {
     return (
@@ -179,9 +192,20 @@ function messageOf(error: unknown): string {
   return error instanceof Error && error.message ? error.message : copy.genericError
 }
 
-function BrandForm({ page, brandName, onDiscarded }: { page: Page; brandName: string; onDiscarded: () => void }) {
+function BrandForm({
+  page,
+  brandName,
+  discarded,
+  onDismissDiscarded,
+  onDiscarded,
+}: {
+  page: Page
+  brandName: string
+  discarded: string | null
+  onDismissDiscarded: () => void
+  onDiscarded: (message: string) => void
+}) {
   const sideBySide = useSideBySide()
-  const notify = useSnackbar()
   const { live, review } = page
   const editable = review.state !== 'waiting'
 
@@ -237,10 +261,11 @@ function BrandForm({ page, brandName, onDiscarded }: { page: Page; brandName: st
   // Checks the fields first; an invalid form focuses its first problem and sends nothing.
   const onSubmit = () => handleSubmit(sendForReview)()
 
-  // The submit button disappears once the page is in review, so focus moves to the outcome.
+  // The submit button disappears once the page is in review, and the discard dialog closes, so
+  // focus moves to what happened.
   useEffect(() => {
-    if (outcome?.tone === 'success') outcomeRef.current?.focus()
-  }, [outcome])
+    if (outcome?.tone === 'success' || discarded) outcomeRef.current?.focus()
+  }, [outcome, discarded])
 
   const discard = useDiscardBrandDraft()
   const [confirming, setConfirming] = useState(false)
@@ -251,8 +276,7 @@ function BrandForm({ page, brandName, onDiscarded }: { page: Page; brandName: st
     if (valid) await autosave.flush()
     try {
       await discard.mutateAsync()
-      notify(live ? copy.discarded : copy.discardedFirst)
-      onDiscarded()
+      onDiscarded(live ? copy.discarded : copy.discardedFirst)
     } catch (error) {
       setDiscardError(messageOf(error))
     }
@@ -291,6 +315,13 @@ function BrandForm({ page, brandName, onDiscarded }: { page: Page; brandName: st
   ) : undefined
 
   const banners: ReactNode[] = []
+  if (discarded && !outcome) {
+    banners.push(
+      <Box key="discarded" ref={outcomeRef} tabIndex={-1} sx={{ borderRadius: `${radius.card}px` }}>
+        <Banner tone="success" title={discarded} onClose={onDismissDiscarded} />
+      </Box>,
+    )
+  }
   if (outcome?.tone === 'success') {
     banners.push(
       <Box key="outcome" ref={outcomeRef} tabIndex={-1} sx={{ borderRadius: `${radius.card}px` }}>
@@ -330,12 +361,19 @@ function BrandForm({ page, brandName, onDiscarded }: { page: Page; brandName: st
             </Stack>
           </SectionCard>
           <SectionCard title={copy.shopping.title}>
-            <Box sx={pair}>
-              <SelectInput control={control} name="return_policy" label={copy.shopping.returnPolicy} options={RETURN_OPTIONS} changed={changed.has('return_policy')} disabled={locked} />
-              <SelectInput control={control} name="dispatch_time" label={copy.shopping.dispatchTime} options={DISPATCH_OPTIONS} changed={changed.has('dispatch_time')} disabled={locked} />
-              <TextInput control={control} name="instagram" label={copy.shopping.instagram} changed={changed.has('instagram')} disabled={locked} htmlInput={HANDLE_INPUT} />
-              <TextInput control={control} name="website" label={copy.shopping.website} changed={changed.has('website')} disabled={locked} htmlInput={URL_INPUT} />
-            </Box>
+            <Stack spacing={3}>
+              <Box sx={pair}>
+                <TextInput control={control} name="instagram" label={copy.shopping.instagram} changed={changed.has('instagram')} disabled={locked} htmlInput={HANDLE_INPUT} />
+                <TextInput control={control} name="website" label={copy.shopping.website} changed={changed.has('website')} disabled={locked} htmlInput={URL_INPUT} />
+              </Box>
+              {/* Returns and delivery are store details now (spec §5); the preview reads them from there. */}
+              <Typography variant="body1" color="text.secondary">
+                {copy.shopping.fromStore}{' '}
+                <Link component={RouterLink} to={paths.storeDetails}>
+                  {copy.shopping.fromStoreLink}
+                </Link>
+              </Typography>
+            </Stack>
           </SectionCard>
         </Stack>
         {sideBySide ? (

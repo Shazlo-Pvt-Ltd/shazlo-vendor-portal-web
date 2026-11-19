@@ -1,276 +1,203 @@
-import { Box, Button, Divider, Link, Stack, Step, StepLabel, Stepper, Typography, type StepIconProps } from '@mui/material'
-import { Banner, brand, neutral } from '@shazlo/ui'
-import { Check, Clock, Mail, MessageCircle, type LucideIcon } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Link as RouterLink } from 'react-router'
+import { Box } from '@mui/material'
+import { Banner } from '@shazlo/ui'
+import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '../../api/client'
-import { useApply } from '../../api/queries'
-import { paths } from '../../app/paths'
+import { useApply, useIfsc } from '../../api/queries'
 import { onboardingCopy } from '../../copy/onboarding'
-import { AuthLayout, AuthTitle } from './AuthLayout'
+import type { FieldErrors } from '../../lib/storeDetails'
+import { fieldId, hasErrors, unknownIfsc } from '../store/topics/model'
+import { useFormErrors } from '../store/topics/useFormErrors'
+import { AuthLayout } from './AuthLayout'
 import {
+  CHECK,
+  checkStep,
   clearDraft,
   emptyDraft,
-  fieldsFromApi,
-  fieldsOfStep,
-  firstStepWith,
+  errorsByStep,
+  firstProblem,
+  INTRO,
+  isStep,
+  orderOfStep,
   readDraft,
+  settleDelivery,
+  STEP_COUNT,
   toApplication,
-  validateDraft,
-  withoutStep,
+  valuesOfStep,
   writeDraft,
   type ApplyDraft,
-  type BrandValues,
-  type CatalogueValues,
-  type ContactValues,
-  type FieldMessages,
-  type StepIndex,
 } from './applyModel'
-import { BrandStep, CatalogueStep, ContactStep } from './applySteps'
-import { srOnly } from '../../lib/a11y'
+import { ApplicationReceived, CheckAnswersPage, IntroPage, Restored, StepPage, type Received } from './applySteps'
 
 const copy = onboardingCopy.apply
 
+// Where focus goes on a new page: its heading, the error summary, or an answer picked on Check
+// your answers.
+type Arrival = { round: number; target: 'heading' | 'summary' | { field: string } }
 
-// Numbered dots: amber for the current step (the same fill as the main action), brown with a tick once done.
-function StepDot({ active, completed, icon }: StepIconProps) {
-  return (
-    <Box
-      component="span"
-      aria-hidden="true"
-      sx={{
-        width: 28,
-        height: 28,
-        borderRadius: '50%',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        border: '1px solid',
-        borderColor: completed || active ? brand.brown : neutral.lineStrong,
-        bgcolor: completed ? brand.brown : active ? brand.amber : neutral.surface,
-        color: completed ? brand.offWhite : active ? brand.wine : neutral.inkSecondary,
-        typography: 'body2',
-        lineHeight: 1,
-        fontVariantNumeric: 'lining-nums',
-      }}
-    >
-      {completed ? <Check size={16} strokeWidth={1.5} /> : icon}
-    </Box>
-  )
-}
+// A Change link on Check your answers names a row; this is the input it opens on.
+const FIELD_OF_ROW: Record<string, string> = { pickup_address: 'pickup_address.line1' }
 
-const stepperSx = {
-  mb: 4,
-  '& .MuiStepConnector-alternativeLabel': { top: 13, left: 'calc(-50% + 22px)', right: 'calc(50% + 22px)' },
-  '& .MuiStepConnector-line': { borderColor: neutral.line },
-  '& .MuiStepConnector-root.Mui-active .MuiStepConnector-line, & .MuiStepConnector-root.Mui-completed .MuiStepConnector-line': { borderColor: brand.brown },
-  '& .MuiStepLabel-label': { fontWeight: 400, color: 'text.secondary' },
-  '& .MuiStepLabel-label.MuiStepLabel-alternativeLabel': { mt: 1 },
-  '& .MuiStepLabel-label.Mui-active': { fontWeight: 400, color: 'text.primary' },
-  '& .MuiStepLabel-label.Mui-completed': { fontWeight: 400, color: 'text.secondary' },
-}
-
-function Progress({ step }: { step: StepIndex }) {
-  return (
-    <Stepper activeStep={step} alternativeLabel aria-label={copy.stepsLabel} sx={stepperSx}>
-      {copy.steps.map((s, i) => (
-        <Step key={s.label} aria-current={i === step ? 'step' : undefined}>
-          <StepLabel slots={{ stepIcon: StepDot }}>
-            {s.label}
-            {i < step && (
-              <Box component="span" sx={srOnly}>
-                {copy.stepDone}
-              </Box>
-            )}
-          </StepLabel>
-        </Step>
-      ))}
-    </Stepper>
-  )
-}
-
-type Received = { name: string; email: string; brand: string }
-
-function NextItem({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode }) {
-  return (
-    <Stack component="li" direction="row" spacing={1.5}>
-      <Box sx={{ color: brand.brown, pt: '2px', flexShrink: 0, display: 'flex' }}>
-        <Icon size={18} strokeWidth={1.5} aria-hidden="true" />
-      </Box>
-      <Typography variant="body1" sx={{ overflowWrap: 'anywhere' }}>
-        {children}
-      </Typography>
-    </Stack>
-  )
-}
-
-function ApplicationReceived({ name, email, brand: brandName }: Received) {
-  const r = copy.received
-  const ref = useRef<HTMLDivElement>(null)
-  // The form this replaces held focus; hand it to the confirmation so it is read out.
-  useEffect(() => ref.current?.focus(), [])
-  return (
-    <Box ref={ref} tabIndex={-1} sx={{ outline: 'none' }}>
-      <AuthTitle title={r.title} subtitle={<Box component="span" sx={{ overflowWrap: 'anywhere' }}>{r.subtitle(name, brandName)}</Box>} />
-      <Typography variant="h2" component="h2" sx={{ mb: 2 }}>
-        {r.nextTitle}
-      </Typography>
-      <Stack component="ol" spacing={2} sx={{ listStyle: 'none', p: 0, m: 0 }}>
-        <NextItem icon={Clock}>{r.review}</NextItem>
-        <NextItem icon={Mail}>{r.approved(email)}</NextItem>
-        <NextItem icon={MessageCircle}>
-          {r.questions} <Link href={`mailto:${onboardingCopy.partnersEmail}`}>{onboardingCopy.partnersEmail}</Link>.
-        </NextItem>
-      </Stack>
-      <Divider sx={{ my: 4 }} />
-      <Button variant="outlined" size="large" component={RouterLink} to={paths.signIn} sx={{ minHeight: 44 }}>
-        {r.backToSignIn}
-      </Button>
-    </Box>
-  )
-}
-
-// What a step sees when it (re)mounts: messages to show and where focus goes.
-type Arrival = { errors: FieldMessages; focus: 'heading' | 'field' | null; round: number }
-
+// V-02 Apply to sell (spec §5): an intro, one topic per page with Continue, Check your answers,
+// Send application, then what happens next. Answers are checked on Continue only, and saved on
+// this device as the seller types (except the bank account number).
 export default function Apply() {
   const [restoredDraft] = useState(readDraft)
-  const [draft, setDraft] = useState<ApplyDraft>(restoredDraft ?? emptyDraft)
+  const [draft, setDraft] = useState<ApplyDraft>(() => restoredDraft ?? emptyDraft())
   const [restored, setRestored] = useState(restoredDraft !== null)
-  const [arrival, setArrival] = useState<Arrival>({ errors: {}, focus: null, round: 0 })
   const [failure, setFailure] = useState<string | null>(null)
   const [received, setReceived] = useState<Received | null>(null)
+  // Server messages for steps after the one being fixed: shown when the seller gets there.
+  const [later, setLater] = useState<Map<number, FieldErrors>>(() => new Map())
+  const [arrival, setArrival] = useState<Arrival>({ round: 0, target: 'heading' })
   const heading = useRef<HTMLHeadingElement>(null)
   const apply = useApply()
-  const { step } = draft
+  const { page } = draft
+  const form = useFormErrors(isStep(page) ? orderOfStep(page) : [])
+  const ifsc = useIfsc(draft.payout.method === 'bank' ? draft.payout.ifsc : null)
 
-  // Options board pick: each step is saved. The draft lives on this device until it is sent.
   useEffect(() => writeDraft(draft), [draft])
 
   useEffect(() => {
-    if (arrival.focus === 'heading') heading.current?.focus()
+    // The summary focuses itself (useFormErrors).
+    if (arrival.round === 0 || arrival.target === 'summary') return
+    const field = typeof arrival.target === 'object' ? document.getElementById(fieldId(arrival.target.field)) : null
+    if (field) field.focus()
+    else heading.current?.focus()
   }, [arrival])
 
-  // Keystrokes go straight to this device; React state only changes between steps.
-  const save = useMemo(
-    () => ({
-      brand: (brand: BrandValues) => writeDraft({ ...draft, brand }),
-      contact: (contact: ContactValues) => writeDraft({ ...draft, contact }),
-      catalogue: (catalogue: CatalogueValues) => writeDraft({ ...draft, catalogue }),
-    }),
-    [draft],
-  )
-
-  function goTo(next: StepIndex, patch: Partial<ApplyDraft>, errors: FieldMessages, focus: Arrival['focus'] = 'heading') {
-    setDraft((d) => ({ ...d, ...patch, step: next }))
-    setArrival((a) => ({ errors, focus, round: a.round + 1 }))
+  function go(next: number, { patch, client = {}, server = {}, field }: { patch?: Partial<ApplyDraft>; client?: FieldErrors; server?: FieldErrors; field?: string } = {}) {
+    const nextDraft = { ...draft, ...patch, page: next }
+    setDraft(nextDraft)
+    setFailure(null)
+    if (page !== next) setRestored(false)
+    const waiting = { ...later.get(next), ...server }
+    if (later.has(next)) {
+      setLater((m) => {
+        const copyOf = new Map(m)
+        copyOf.delete(next)
+        return copyOf
+      })
+    }
+    window.scrollTo(0, 0)
+    if (isStep(next) && (hasErrors(client) || hasErrors(waiting))) {
+      form.show(client, waiting, valuesOfStep(next, nextDraft))
+      setArrival((a) => ({ round: a.round + 1, target: 'summary' }))
+    } else {
+      form.clear()
+      setArrival((a) => ({ round: a.round + 1, target: field ? { field } : 'heading' }))
+    }
   }
 
-  function move(next: StepIndex, patch: Partial<ApplyDraft>, settled?: StepIndex) {
-    setFailure(null)
-    goTo(next, patch, settled === undefined ? arrival.errors : withoutStep(settled, arrival.errors))
+  function update<K extends keyof ApplyDraft>(key: K, value: ApplyDraft[K]) {
+    const next = { ...draft, [key]: value }
+    setDraft(next)
+    form.settle(checkStep(page, next), valuesOfStep(page, next))
+  }
+
+  function onContinue() {
+    const problems = checkStep(page, draft)
+    // A well-formed IFSC that belongs to no bank: say so now rather than after Send.
+    const lookup = page === 6 && draft.payout.method === 'bank' && !problems.ifsc ? unknownIfsc(ifsc.error) : {}
+    if (hasErrors(problems) || hasErrors(lookup)) {
+      form.show(problems, lookup, valuesOfStep(page, draft))
+      return
+    }
+    const patch = page === 3 ? { delivery: settleDelivery(draft.delivery) } : undefined
+    const waiting = [...later.keys()].filter((s) => s > page).sort((a, b) => a - b)[0]
+    go(waiting ?? (draft.checking || page === STEP_COUNT ? CHECK : page + 1), { patch })
+  }
+
+  function onBack() {
+    if (page === CHECK) go(STEP_COUNT)
+    else if (draft.checking) go(CHECK)
+    else go(page - 1)
   }
 
   function startOver() {
     clearDraft()
+    setLater(new Map())
+    go(INTRO, { patch: emptyDraft() })
     setRestored(false)
-    setFailure(null)
-    goTo(0, emptyDraft, {})
   }
 
-  function send(catalogue: CatalogueValues) {
-    const full: ApplyDraft = { ...draft, catalogue }
+  function send() {
     setFailure(null)
-    setDraft(full)
-    const problems = validateDraft(full)
-    const stale = firstStepWith(problems)
-    if (stale !== null) {
-      goTo(stale, {}, problems, 'field')
+    // Every step again: a restored draft has no account number, and may have skipped a step.
+    const problem = firstProblem(draft)
+    if (problem) {
+      go(problem.step, { patch: { checking: true }, client: problem.errors })
       return
     }
-    apply.mutate(toApplication(full), {
+    const application = toApplication(draft)
+    apply.mutate(application, {
       onSuccess: () => {
         clearDraft()
-        setDraft(emptyDraft)
-        setRestored(false)
-        setReceived({ name: full.contact.owner_name.trim().split(/\s+/)[0] ?? '', email: full.contact.email.trim(), brand: full.brand.brand_name.trim() })
+        setReceived({ name: draft.contact.name.trim().split(/\s+/)[0] ?? '', email: application.email, brand: application.brand_name })
+        setDraft(emptyDraft())
       },
       onError: (error) => {
+        const byStep = error instanceof ApiError && error.status === 422 ? errorsByStep(error.fields) : new Map<number, FieldErrors>()
+        if (byStep.size > 0) {
+          // Start with the earliest step; the others wait until the seller gets to them.
+          const first = Math.min(...byStep.keys())
+          const rest = new Map(byStep)
+          rest.delete(first)
+          setLater(rest)
+          go(first, { patch: { checking: true }, server: byStep.get(first) })
+          return
+        }
         setFailure(error instanceof ApiError ? error.message : copy.failed)
-        const fields = error instanceof ApiError && error.status === 422 ? fieldsFromApi(error.fields) : {}
-        const target = firstStepWith(fields)
-        if (target !== null) goTo(target, {}, fields, 'field')
       },
     })
   }
 
   if (received) {
     return (
-      <AuthLayout width={560}>
+      <AuthLayout task>
         <ApplicationReceived {...received} />
       </AuthLayout>
     )
   }
 
-  const meta = copy.steps[step]
-  // A fresh form on every arrival, so it starts from the saved draft.
-  const key = `${step}-${arrival.round}`
-  const shared = { errors: fieldsOfStep(step, arrival.errors), focusErrors: arrival.focus === 'field' }
-
-  return (
-    <AuthLayout width={560}>
-      <AuthTitle title={copy.title} subtitle={copy.subtitle} />
-      {restored && (
-        <Box sx={{ mb: 3 }}>
-          <Banner
-            tone="info"
-            title={copy.restored.title}
-            action={
-              <Button size="small" onClick={startOver} sx={{ minHeight: { xs: 44, md: 'auto' } }}>
-                {copy.restored.startOver}
-              </Button>
-            }
-          >
-            {copy.restored.body}
-          </Banner>
-        </Box>
-      )}
-      <Progress step={step} />
-      <Typography ref={heading} tabIndex={-1} variant="h2" component="h2" sx={{ outline: 'none' }}>
-        {meta.heading}
-      </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5, mb: 3 }}>
-        {meta.intro}
-      </Typography>
+  const notice = (
+    <>
+      {restored && <Restored onStartOver={startOver} />}
       {failure && (
-        <Box sx={{ mb: 2.5 }}>
+        <Box sx={{ mb: 3 }}>
           <Banner tone="error" title={failure} />
         </Box>
       )}
-      {step === 0 && <BrandStep {...shared} key={key} values={draft.brand} onChange={save.brand} onNext={(brand) => move(1, { brand }, 0)} />}
-      {step === 1 && (
-        <ContactStep
-          {...shared}
-          key={key}
-          values={draft.contact}
-          onChange={save.contact}
-          onBack={(contact) => move(0, { contact })}
-          onNext={(contact) => move(2, { contact }, 1)}
+    </>
+  )
+
+  return (
+    <AuthLayout task>
+      {page === INTRO && <IntroPage headingRef={heading} notice={notice} onStart={() => go(1)} />}
+      {isStep(page) && (
+        <StepPage
+          key={page}
+          step={page}
+          draft={draft}
+          headingRef={heading}
+          errors={form.errors}
+          ordered={form.ordered}
+          notice={notice}
+          onChange={update}
+          onBack={onBack}
+          onContinue={onContinue}
         />
       )}
-      {step === 2 && (
-        <CatalogueStep {...shared} key={key} values={draft.catalogue} onChange={save.catalogue} onBack={(catalogue) => move(1, { catalogue })} onNext={send} pending={apply.isPending} />
-      )}
-      {step === 0 && (
-        <>
-          <Divider sx={{ my: 3 }} />
-          <Typography variant="body1" color="text.secondary">
-            {copy.signInPrompt}{' '}
-            <Link component={RouterLink} to={paths.signIn}>
-              {copy.signIn}
-            </Link>
-          </Typography>
-        </>
+      {page === CHECK && (
+        <CheckAnswersPage
+          draft={draft}
+          bankName={ifsc.data?.bank}
+          headingRef={heading}
+          notice={notice}
+          pending={apply.isPending}
+          onBack={onBack}
+          onChange={(step, row) => go(step, { patch: { checking: true }, field: FIELD_OF_ROW[row] ?? row })}
+          onSend={send}
+        />
       )}
     </AuthLayout>
   )

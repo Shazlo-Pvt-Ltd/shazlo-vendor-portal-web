@@ -1,70 +1,40 @@
-// Signed-out onboarding: V-02 Apply to sell, V-03 Set password, Forgot password.
+// Signed-out onboarding: V-02 Apply to sell, V-03 Set password, Forgot password. The sign-up's
+// fields and messages are shared with Store details (./store.ts, ./catalog.ts).
 // One module per screen group, so a Hindi version can be added beside it later.
 
 const partnersEmail = 'partners@shazlo.store'
 
 export const onboardingCopy = {
   partnersEmail,
-  // What sellers can say they make. Mirrors the catalogue categories the product editor offers.
-  categories: ['Kurtas', 'Kurtis', 'Sarees', 'Dupattas', 'Stoles', 'Jackets', 'Shirts', 'Skirts', 'Co-ords', 'Dresses', 'Palazzos'],
 
   apply: {
     title: 'Apply to sell',
-    subtitle: 'Three short steps, about five minutes. We save your answers on this device as you go.',
-    stepsLabel: 'Application steps',
-    stepDone: ', done',
+    intro: {
+      subtitle: 'Tell us about your brand in 7 short steps. It takes about 8 minutes.',
+      needTitle: 'What you will need',
+      need: ['Your pickup address', 'Your bank account or UPI ID', 'Your GST number, if you have one'],
+      saved: 'We save your answers on this device as you go, so you can stop and come back.',
+      start: 'Start',
+    },
+    stepOf: (step: number, total: number) => `Step ${step} of ${total}`,
+    // One page per topic, in order (spec §5).
     steps: [
-      { label: 'Your brand', heading: 'Tell us about your brand', intro: 'The name shoppers will know you by, and where you work from.' },
-      { label: 'Contact', heading: 'Who should we talk to?', intro: 'We use these details only to reply about your application.' },
-      { label: 'Catalogue', heading: 'What do you make?', intro: 'A rough picture is enough. You add products once you are approved.' },
+      { title: 'Your brand', intro: 'The name shoppers will know you by, and where you ship from.' },
+      { title: 'Contact', intro: 'We use these details only to talk to you about your store.' },
+      { title: 'Delivery', intro: 'How your orders get to shoppers.' },
+      { title: 'Returns', intro: 'Shoppers see this on every product before they buy.' },
+      { title: 'Payment on delivery', intro: 'Shoppers can always pay online. Choose what they can also do when the order arrives.' },
+      { title: 'Payouts', intro: 'Where we send the money from your sales.' },
+      { title: 'Business details and commission', intro: 'The last step. Business details are optional.' },
     ],
+    check: {
+      title: 'Check your answers',
+      subtitle: 'Change anything that is not right, then send your application.',
+    },
     restored: {
       title: 'Picked up where you left off',
       body: 'Your answers were saved on this device.',
       startOver: 'Start over',
-    },
-    fields: {
-      brandName: 'Brand name',
-      city: 'City',
-      link: 'Instagram or website (optional)',
-      ownerName: 'Your name',
-      email: 'Work email',
-      phone: 'Mobile number',
-      productTypes: 'What you sell',
-      priceRange: 'Typical price range',
-      priceMin: 'Lowest price',
-      priceMax: 'Highest price',
-      about: 'Tell us about your label',
-    },
-    hints: {
-      brandName: 'As it appears on your labels and Instagram.',
-      city: 'Where you make or ship from, like Ahmedabad, Gujarat.',
-      link: 'Helps us see your work, like @kalki.studio or kalkistudio.in.',
-      ownerName: 'The person we should write to.',
-      email: 'We send our decision and your sign-in link here.',
-      phone: 'An Indian mobile number, like 98250 12345. We call only if we have a question.',
-      productTypes: 'Choose all that apply.',
-      priceRange: 'What most of your pieces sell for, in rupees.',
-      about: 'How you make things and who makes them. 40 to 600 characters.',
-    },
-    errors: {
-      brandNameRequired: 'Add your brand name.',
-      brandNameLong: 'Keep your brand name under 80 characters.',
-      cityRequired: 'Add your city, like Ahmedabad, Gujarat.',
-      linkFormat: 'Enter an Instagram handle like @kalki.studio or a website like kalkistudio.in.',
-      ownerNameRequired: 'Add your name.',
-      emailRequired: 'Enter your work email.',
-      emailFormat: 'Enter an email like name@brand.in.',
-      phoneRequired: 'Enter your mobile number.',
-      phoneFormat: 'Enter a 10-digit Indian mobile number, like 98250 12345.',
-      productTypesRequired: 'Choose at least one thing you sell.',
-      priceMinRequired: 'Enter your lowest price in rupees.',
-      priceMaxRequired: 'Enter your highest price in rupees.',
-      priceFormat: 'Enter a whole number of rupees, like 2,499.',
-      priceTooHigh: 'Enter a price under ₹1,00,00,000.',
-      priceOrder: 'The highest price should be at least the lowest.',
-      aboutShort: 'Tell us a little more: at least 40 characters.',
-      aboutLong: 'Keep it under 600 characters.',
     },
     back: 'Back',
     next: 'Continue',
@@ -78,6 +48,7 @@ export const onboardingCopy = {
       subtitle: (name: string, brand: string) => `Thank you, ${name}. We have your application for ${brand}.`,
       nextTitle: 'What happens next',
       review: 'Our team reviews it within 2 working days.',
+      commission: 'We agree your commission with you before you start selling.',
       approved: (email: string) => `If it is approved, we email ${email} a link to set your password.`,
       questions: 'Questions? Write to',
       backToSignIn: 'Back to sign in',

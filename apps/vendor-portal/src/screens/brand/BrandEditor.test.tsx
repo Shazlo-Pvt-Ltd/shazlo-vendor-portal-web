@@ -81,8 +81,10 @@ describe('V-05 Brand page', () => {
     expect(within(identity).getByRole('button', { name: 'Upload logo' })).toBeInTheDocument()
 
     const shopping = screen.getByRole('region', { name: 'Shopping details' })
-    expect(within(shopping).getByRole('combobox', { name: /^Return policy/ })).toHaveTextContent('7-day returns, unworn with tags')
-    expect(within(shopping).getByRole('combobox', { name: /^Dispatch time/ })).toHaveTextContent('Ships in 2–3 days')
+    // Returns and delivery are store details now (spec §5): one line and a link, nothing to edit here.
+    expect(within(shopping).queryByRole('combobox')).toBeNull()
+    expect(within(shopping).getByText(/Returns and delivery come from your store details\./)).toBeInTheDocument()
+    expect(within(shopping).getByRole('link', { name: 'Change them in Store details' })).toHaveAttribute('href', '/store/details')
     expect(within(shopping).getByRole('textbox', { name: 'Instagram' })).toHaveValue('@kalki.studio')
     expect(within(shopping).getByRole('textbox', { name: 'Website (optional)' })).toHaveValue('kalkistudio.in')
 
@@ -163,7 +165,8 @@ describe('V-05 Brand page', () => {
     expect(within(phone).getByText('Kalki Studio')).toBeInTheDocument()
     expect(within(phone).getByText(LIVE_TAGLINE)).toBeInTheDocument()
     expect(within(phone).getByText('Ahmedabad')).toBeInTheDocument()
-    expect(within(phone).getByText('Ships in 2–3 days')).toBeInTheDocument()
+    // Delivery and returns come from Store details (the demo store: Shazlo delivery, 7-day returns).
+    expect(await within(phone).findByText('Shazlo delivery')).toBeInTheDocument()
     expect(within(phone).getByText('7-day returns')).toBeInTheDocument()
     expect(within(phone).getByText(DRAFT_STORY)).toBeInTheDocument()
     expect(within(phone).getByText('Product tiles show only approved products.')).toBeInTheDocument()
@@ -176,21 +179,35 @@ describe('V-05 Brand page', () => {
     await replace(user, textbox('Tagline'), 'Ajrakh from Kutch.')
     expect(within(phone).getByText('Ajrakh from Kutch.')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('combobox', { name: /^Dispatch time/ }))
-    await user.click(await screen.findByRole('option', { name: 'Ships in 3–5 days' }))
-    expect(screen.getByRole('combobox', { name: /^Dispatch time Changed/ })).toHaveTextContent('Ships in 3–5 days')
-    expect(within(phone).getByText('Ships in 3–5 days')).toBeInTheDocument()
-
     await user.click(within(version).getByRole('button', { name: 'Live' }))
     expect(within(version).getByRole('button', { name: 'Live' })).toHaveAttribute('aria-pressed', 'true')
     expect(within(phone).getByText(LIVE_TAGLINE)).toBeInTheDocument()
     expect(within(phone).getByText(LIVE_STORY)).toBeInTheDocument()
-    expect(within(phone).getByText('Ships in 2–3 days')).toBeInTheDocument()
+    expect(within(phone).getByText('Shazlo delivery')).toBeInTheDocument()
     expect(within(phone).queryByText('Ajrakh from Kutch.')).toBeNull()
 
     await user.click(within(version).getByRole('button', { name: 'Draft' }))
     expect(within(phone).getByText('Ajrakh from Kutch.')).toBeInTheDocument()
   })
+
+  it('previews the delivery and returns saved in Store details, and leaves the old fields as they were', async () => {
+    const { user, db } = await openBrandPage({
+      prepare: (d) => {
+        d.store.delivery = { mode: 'own', areas: { all_india: true, places: [] }, delivery_days: '3_5' }
+        d.store.returns = { window_days: 0, condition: null, refund_days: null }
+      },
+    })
+    const phone = preview()
+    expect(await within(phone).findByText('Delivers in 3–5 days')).toBeInTheDocument()
+    expect(within(phone).getByText('No returns')).toBeInTheDocument()
+
+    const basedIn = textbox('Based in')
+    await user.clear(basedIn)
+    await user.type(basedIn, 'Bhuj')
+    await waitFor(() => expect(db.brand.draft?.based_in).toBe('Bhuj'), AUTOSAVE_WAIT)
+    // The API still takes the old return and dispatch fields; the editor sends them back unchanged.
+    expect(db.brand.draft).toMatchObject({ return_policy: '7_day', dispatch_time: '2_3_days' })
+  }, SLOW)
 
   it('discards the draft only after asking', async () => {
     const { user, db } = await openBrandPage()
@@ -205,7 +222,11 @@ describe('V-05 Brand page', () => {
     await user.click(screen.getByRole('button', { name: 'Discard draft' }))
     dialog = await screen.findByRole('dialog', { name: 'Discard your draft?' })
     await user.click(within(dialog).getByRole('button', { name: 'Discard draft' }))
-    expect(await screen.findByText('Draft discarded. Your page matches the live version again.')).toBeInTheDocument()
+    // The result shows in the page and takes focus; no toast (spec §8).
+    const discarded = await screen.findByText('Draft discarded. Your page matches the live version again.')
+    expect(discarded.closest('[role="status"]')).toBeInTheDocument()
+    await waitFor(() => expect(discarded.closest('[tabindex="-1"]')).toHaveFocus())
+    expect(document.querySelector('.MuiSnackbar-root')).toBeNull()
     expect(db.brand.draft).toBeNull()
     expect(textbox('Story')).toHaveValue(LIVE_STORY)
     expect(screen.queryAllByText('Changed')).toHaveLength(0)
@@ -227,7 +248,7 @@ describe('V-05 Brand page', () => {
     expect(screen.getByText('Pending review', { selector: '[data-status="pending"]' })).toBeInTheDocument()
     expect(tagline).toBeDisabled()
     expect(textbox(/^Story/)).toBeDisabled()
-    expect(screen.getByRole('combobox', { name: /^Return policy/ })).toHaveAttribute('aria-disabled', 'true')
+    expect(textbox('Instagram')).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Replace cover image' })).toBeDisabled()
     expect(screen.queryByRole('button', { name: 'Submit for review' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Discard draft' })).toBeNull()

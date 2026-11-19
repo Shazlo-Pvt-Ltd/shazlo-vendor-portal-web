@@ -1,5 +1,5 @@
 import { screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { DEMO_LOGIN } from '../../mocks/db'
 import { renderApp } from '../../test/render'
 
@@ -8,12 +8,20 @@ async function fill(user: Awaited<ReturnType<typeof renderApp>>['user'], email: 
   await user.type(screen.getByLabelText('Password'), password)
 }
 
+// The screen is lazy-loaded; transform it once before the first test, which a slow machine can time out.
+beforeAll(async () => {
+  await import('./SignIn')
+}, 60_000)
+
 describe('V-01 Sign in', () => {
   it('pairs the form with reasons to sell on desktop (options board pick C)', async () => {
     await renderApp({ route: '/sign-in', signedIn: false })
-    expect(await screen.findByRole('heading', { level: 1, name: 'Sign in to your seller account' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Sign in to your seller account' }, { timeout: 8000 })).toBeInTheDocument()
     const why = screen.getByRole('complementary', { name: 'Why sell on Shazlo' })
     expect(within(why).getAllByRole('listitem')).toHaveLength(3)
+    // Commission is agreed per brand (spec §6): no fixed rate anywhere.
+    expect(within(why).getByRole('heading', { name: 'Commission agreed with each brand. No listing fees.' })).toBeInTheDocument()
+    expect(why).not.toHaveTextContent('%')
     expect(screen.getByRole('link', { name: 'Apply to sell' })).toHaveAttribute('href', '/apply')
     expect(screen.getByRole('link', { name: 'Forgot password?' })).toHaveAttribute('href', '/forgot-password')
   })

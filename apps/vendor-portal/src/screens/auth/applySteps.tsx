@@ -1,226 +1,280 @@
-import { zodResolver } from '@hookform/resolvers/zod'
-import { Box, Button, Chip, FormHelperText, FormLabel, InputAdornment, Stack, TextField, Typography } from '@mui/material'
-import { brand, neutral } from '@shazlo/ui'
-import { ArrowLeft, Check } from 'lucide-react'
-import { useEffect, useId, useState, type FormEventHandler, type ReactNode } from 'react'
-import { Controller, useForm, useWatch, type Control, type FieldValues, type Path, type UseFormReturn } from 'react-hook-form'
+import { Box, Button, Divider, Link, Stack, Typography } from '@mui/material'
+import { Banner, brand, fontFamily } from '@shazlo/ui'
+import { Clock, Handshake, Mail, MessageCircle, type LucideIcon } from 'lucide-react'
+import { forwardRef, useEffect, useRef, type FormEvent, type ReactNode, type Ref } from 'react'
+import { Link as RouterLink } from 'react-router'
+import { paths } from '../../app/paths'
+import { catalogCopy } from '../../copy/catalog'
 import { onboardingCopy } from '../../copy/onboarding'
-import { fieldProps } from '../../lib/forms'
-import {
-  ABOUT_MAX,
-  brandSchema,
-  catalogueSchema,
-  contactSchema,
-  type BrandValues,
-  type CatalogueValues,
-  type ContactValues,
-  type FieldMessages,
-} from './applyModel'
+import { storeCopy } from '../../copy/store'
+import { maskPayout } from '../../lib/storeDetails'
+import { ErrorSummary } from '../store/topics/controls'
+import { BusinessFields, TermsFields, TopicFields } from '../store/topics/forms'
+import { businessBody, contactBody, deliveryBody, paymentBody, payoutBody, proposedBps, returnsBody, type Topic, type TopicAnswers } from '../store/topics/model'
+import { brandRows, businessRows, contactRows, deliveryRows, paymentRows, payoutRows, returnsRows, SummaryList, termsRows, type Row } from '../store/topics/summary'
+import { BackButton, TaskFooter } from './AuthLayout'
+import { STEP_COUNT, STEP_TOPICS, type ApplyDraft } from './applyModel'
 
 const copy = onboardingCopy.apply
-const f = copy.fields
-const h = copy.hints
 
-export interface StepProps<V> {
-  values: V
-  // Messages to show on arrival (from the server, or a stale draft), keyed by field.
-  errors: FieldMessages
-  // Move focus to the first of those fields (after a jump back from "Send application").
-  focusErrors: boolean
-  // Called on every change, so the draft on this device stays current.
-  onChange: (values: V) => void
-  onNext: (values: V) => void
-  onBack?: (values: V) => void
-  pending?: boolean
-}
+// ---- page furniture -----------------------------------------------------------------------------
 
-// Keeps the draft in step with the form, shows any messages the step arrived with, and returns
-// the submit handler. Focus goes to the first problem in reading order, not registration order.
-function useStep<V extends FieldValues>(form: UseFormReturn<V>, { errors, focusErrors, onChange, onNext }: StepProps<V>, order: readonly Path<V>[]) {
-  const { subscribe, setError, setFocus, handleSubmit } = form
-  useEffect(() => subscribe({ formState: { values: true }, callback: ({ values }) => onChange({ ...values }) }), [subscribe, onChange])
-
-  // A step remounts on every arrival, so these are read once.
-  const [arrival] = useState(() => ({ errors, focusErrors }))
-  useEffect(() => {
-    const names = order.filter((name) => arrival.errors[name])
-    for (const name of names) setError(name, { type: 'server', message: arrival.errors[name] })
-    if (arrival.focusErrors && names[0]) setFocus(names[0])
-  }, [arrival, order, setError, setFocus])
-
-  return handleSubmit(onNext, (problems) => {
-    const first = order.find((name) => name in problems)
-    if (first) setFocus(first)
-  })
-}
-
-const touch = { minHeight: 44 }
-
-function StepForm({ onSubmit, onBack, nextLabel, pending, children }: { onSubmit: FormEventHandler; onBack?: () => void; nextLabel: string; pending?: boolean; children: ReactNode }) {
+export const PageTitle = forwardRef<HTMLHeadingElement, { children: ReactNode }>(function PageTitle({ children }, ref) {
   return (
-    <Box component="form" noValidate onSubmit={onSubmit}>
-      <Stack spacing={2.5}>
-        {children}
-        <Stack direction="row" sx={{ justifyContent: onBack ? 'space-between' : 'flex-end', gap: 1.5, pt: 1 }}>
-          {onBack && (
-            <Button variant="outlined" size="large" onClick={onBack} startIcon={<ArrowLeft size={18} strokeWidth={1.5} aria-hidden="true" />} sx={touch}>
-              {copy.back}
-            </Button>
-          )}
-          <Button type="submit" variant="contained" size="large" disabled={pending} sx={{ ...touch, flex: { xs: 1, sm: 'none' } }}>
-            {nextLabel}
+    <Typography
+      ref={ref}
+      tabIndex={-1}
+      variant="h1"
+      component="h1"
+      sx={{ fontFamily: fontFamily.display, fontSize: { xs: '1.75rem', sm: '2.25rem' }, lineHeight: 1.15, fontWeight: 400, textWrap: 'balance', outline: 'none' }}
+    >
+      {children}
+    </Typography>
+  )
+})
+
+export function Restored({ onStartOver }: { onStartOver: () => void }) {
+  return (
+    <Box sx={{ mb: 3 }}>
+      <Banner
+        tone="info"
+        title={copy.restored.title}
+        action={
+          <Button size="small" onClick={onStartOver} sx={{ minHeight: 44 }}>
+            {copy.restored.startOver}
           </Button>
-        </Stack>
-      </Stack>
+        }
+      >
+        {copy.restored.body}
+      </Banner>
     </Box>
   )
 }
 
-const noAutoCaps = { htmlInput: { autoCapitalize: 'none', spellCheck: false } }
-
-// ---- 1 · Your brand ----------------------------------------------------------------------
-
-const BRAND_ORDER = ['brand_name', 'city', 'instagram_or_website'] as const
-
-export function BrandStep(props: StepProps<BrandValues>) {
-  const form = useForm<BrandValues>({ resolver: zodResolver(brandSchema), defaultValues: props.values, shouldFocusError: false })
-  const onSubmit = useStep(form, props, BRAND_ORDER)
-  const { register, formState } = form
-  const { errors } = formState
+function SignInLine() {
   return (
-    <StepForm onSubmit={onSubmit} nextLabel={copy.next}>
-      <TextField label={f.brandName} autoComplete="organization" {...fieldProps(register('brand_name'), errors.brand_name, h.brandName)} />
-      <TextField label={f.city} autoComplete="address-level2" {...fieldProps(register('city'), errors.city, h.city)} />
-      <TextField label={f.link} autoComplete="url" slotProps={noAutoCaps} {...fieldProps(register('instagram_or_website'), errors.instagram_or_website, h.link)} />
-    </StepForm>
+    <Typography variant="body1" color="text.secondary">
+      {copy.signInPrompt}{' '}
+      <Link component={RouterLink} to={paths.signIn} sx={{ display: 'inline-flex', alignItems: 'center', minHeight: 44 }}>
+        {copy.signIn}
+      </Link>
+    </Typography>
   )
 }
 
-// ---- 2 · Contact -------------------------------------------------------------------------
+// ---- before step 1 -------------------------------------------------------------------------------
 
-const CONTACT_ORDER = ['owner_name', 'email', 'phone'] as const
-
-export function ContactStep(props: StepProps<ContactValues>) {
-  const form = useForm<ContactValues>({ resolver: zodResolver(contactSchema), defaultValues: props.values, shouldFocusError: false })
-  const onSubmit = useStep(form, props, CONTACT_ORDER)
-  const { register, getValues, formState } = form
-  const { errors } = formState
-  const back = props.onBack
+export function IntroPage({ headingRef, notice, onStart }: { headingRef: Ref<HTMLHeadingElement>; notice?: ReactNode; onStart: () => void }) {
+  const i = copy.intro
   return (
-    <StepForm onSubmit={onSubmit} onBack={back && (() => back(getValues()))} nextLabel={copy.next}>
-      <TextField label={f.ownerName} autoComplete="name" {...fieldProps(register('owner_name'), errors.owner_name, h.ownerName)} />
-      <TextField
-        label={f.email}
-        type="email"
-        autoComplete="email"
-        slotProps={{ htmlInput: { inputMode: 'email', autoCapitalize: 'none', spellCheck: false } }}
-        {...fieldProps(register('email'), errors.email, h.email)}
-      />
-      <TextField label={f.phone} type="tel" autoComplete="tel" slotProps={{ htmlInput: { inputMode: 'tel' } }} {...fieldProps(register('phone'), errors.phone, h.phone)} />
-    </StepForm>
-  )
-}
-
-// ---- 3 · Catalogue -----------------------------------------------------------------------
-
-const CATALOGUE_ORDER = ['product_types', 'price_min', 'price_max', 'about'] as const
-
-const fieldset = { border: 0, p: 0, m: 0, minWidth: 0 }
-const legend = { typography: 'body1', color: 'text.primary', mb: 0.5, '&.Mui-focused': { color: 'text.primary' } }
-
-function CategoryChips({ control }: { control: Control<CatalogueValues> }) {
-  const hintId = useId()
-  return (
-    <Controller
-      name="product_types"
-      control={control}
-      render={({ field, fieldState }) => {
-        const chosen = new Set(field.value)
-        const toggle = (category: string) => field.onChange(chosen.has(category) ? field.value.filter((c) => c !== category) : [...field.value, category])
-        return (
-          <Box component="fieldset" aria-describedby={hintId} sx={fieldset}>
-            <FormLabel component="legend" error={Boolean(fieldState.error)} sx={{ ...legend, mb: 1.25 }}>
-              {f.productTypes}
-            </FormLabel>
-            <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: 1 }}>
-              {onboardingCopy.categories.map((category, i) => {
-                const on = chosen.has(category)
-                return (
-                  <Chip
-                    key={category}
-                    component="button"
-                    ref={i === 0 ? field.ref : undefined}
-                    label={category}
-                    aria-pressed={on}
-                    onClick={() => toggle(category)}
-                    onBlur={field.onBlur}
-                    icon={on ? <Check size={16} strokeWidth={1.5} aria-hidden="true" /> : undefined}
-                    variant="outlined"
-                    sx={{
-                      height: { xs: 44, md: 36 },
-                      px: 0.5,
-                      typography: 'body1',
-                      color: neutral.ink,
-                      borderColor: on ? brand.brown : neutral.lineStrong,
-                      bgcolor: on ? brand.cream : 'transparent',
-                      '& .MuiChip-icon': { color: brand.brown, ml: 1, mr: -0.5 },
-                      '&&:hover': { bgcolor: on ? brand.cream : 'transparent' },
-                      '@media (hover: hover)': { '&&:hover': { bgcolor: on ? brand.cream : neutral.muted } },
-                      '&.Mui-focusVisible': { outline: `2px solid ${brand.navy}`, outlineOffset: 2, bgcolor: on ? brand.cream : 'transparent' },
-                    }}
-                  />
-                )
-              })}
-            </Stack>
-            <FormHelperText id={hintId} error={Boolean(fieldState.error)} sx={{ mx: 1.75, mt: 0.75 }}>
-              {fieldState.error?.message ?? h.productTypes}
-            </FormHelperText>
-          </Box>
-        )
-      }}
-    />
-  )
-}
-
-const rupee = { input: { startAdornment: <InputAdornment position="start">₹</InputAdornment> }, htmlInput: { inputMode: 'numeric' as const } }
-
-export function CatalogueStep(props: StepProps<CatalogueValues>) {
-  const form = useForm<CatalogueValues>({ resolver: zodResolver(catalogueSchema), defaultValues: props.values, shouldFocusError: false })
-  const onSubmit = useStep(form, props, CATALOGUE_ORDER)
-  const { register, getValues, control, formState } = form
-  const { errors } = formState
-  const about = useWatch({ control, name: 'about' })
-  const priceHintId = useId()
-  const back = props.onBack
-  return (
-    <StepForm onSubmit={onSubmit} onBack={back && (() => back(getValues()))} nextLabel={props.pending ? copy.submitting : copy.submit} pending={props.pending}>
-      <CategoryChips control={control} />
-      <Box component="fieldset" aria-describedby={priceHintId} sx={fieldset}>
-        <FormLabel component="legend" sx={legend}>
-          {f.priceRange}
-        </FormLabel>
-        <Typography id={priceHintId} variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          {h.priceRange}
-        </Typography>
-        <Stack direction="row" spacing={1.5}>
-          <TextField label={f.priceMin} autoComplete="off" slotProps={rupee} sx={{ flex: 1, minWidth: 0 }} {...fieldProps(register('price_min'), errors.price_min)} />
-          <TextField label={f.priceMax} autoComplete="off" slotProps={rupee} sx={{ flex: 1, minWidth: 0 }} {...fieldProps(register('price_max'), errors.price_max)} />
-        </Stack>
+    <>
+      <PageTitle ref={headingRef}>{copy.title}</PageTitle>
+      <Typography variant="body1" color="text.secondary" sx={{ mt: 1.5, mb: 3 }}>
+        {i.subtitle}
+      </Typography>
+      {notice}
+      <Typography variant="h2" component="h2" sx={{ mb: 1.5 }}>
+        {i.needTitle}
+      </Typography>
+      <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+        {i.need.map((item) => (
+          <Typography component="li" variant="body1" key={item} sx={{ py: 0.5 }}>
+            {item}
+          </Typography>
+        ))}
       </Box>
-      <TextField
-        label={f.about}
-        multiline
-        minRows={4}
-        {...fieldProps(register('about'), errors.about)}
-        helperText={
-          <Box component="span" sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-            <span>{errors.about?.message ?? h.about}</span>
-            <Box component="span" aria-hidden="true" sx={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
-              {about.trim().length} / {ABOUT_MAX}
+      <Typography variant="body1" color="text.secondary" sx={{ mt: 2.5 }}>
+        {i.saved}
+      </Typography>
+      <Divider sx={{ my: 3 }} />
+      <SignInLine />
+      <TaskFooter>
+        <Button variant="contained" size="large" onClick={onStart} sx={{ minHeight: 44 }}>
+          {i.start}
+        </Button>
+      </TaskFooter>
+    </>
+  )
+}
+
+// ---- one topic per page ----------------------------------------------------------------------------
+
+type StepPageProps = {
+  step: number
+  draft: ApplyDraft
+  headingRef: Ref<HTMLHeadingElement>
+  errors: Record<string, string>
+  ordered: readonly [string, string][]
+  notice?: ReactNode
+  onChange: <K extends keyof ApplyDraft>(key: K, value: ApplyDraft[K]) => void
+  onBack: () => void
+  onContinue: () => void
+}
+
+export function StepPage({ step, draft, headingRef, errors, ordered, notice, onChange, onBack, onContinue }: StepPageProps) {
+  const meta = copy.steps[step - 1]!
+  const topic = STEP_TOPICS[step - 1]!
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    onContinue()
+  }
+  return (
+    <>
+      <BackButton onClick={onBack} label={copy.back} />
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+        {copy.stepOf(step, STEP_COUNT)}
+      </Typography>
+      <PageTitle ref={headingRef}>{meta.title}</PageTitle>
+      <Typography variant="body1" color="text.secondary" sx={{ mt: 1, mb: 3 }}>
+        {meta.intro}
+      </Typography>
+      {notice}
+      <ErrorSummary errors={ordered} />
+      <Box component="form" noValidate onSubmit={submit} aria-label={meta.title}>
+        {step === 7 ? (
+          <Stack spacing={3}>
+            <BusinessFields values={draft.business} onChange={(v) => onChange('business', v)} errors={errors} />
+            <TermsFields values={draft.terms} onChange={(v) => onChange('terms', v)} errors={errors} />
+          </Stack>
+        ) : (
+          <TopicFields
+            topic={topic}
+            values={draft[topic]}
+            onChange={(v) => onChange(topic, v as ApplyDraft[typeof topic])}
+            errors={errors}
+            storeName="edit"
+            accountNote={storeCopy.payout.accountNotKept}
+          />
+        )}
+        <TaskFooter>
+          <Button type="submit" variant="contained" size="large" sx={{ minHeight: 44 }}>
+            {copy.next}
+          </Button>
+        </TaskFooter>
+      </Box>
+    </>
+  )
+}
+
+// ---- Check your answers --------------------------------------------------------------------------------
+
+function topicRows(topic: Topic, a: TopicAnswers, bankName: string | undefined): Row[] {
+  switch (topic) {
+    case 'brand': return brandRows({ ...a.brand, brand_name: a.brand.brand_name.trim() })
+    case 'contact': return contactRows(contactBody(a.contact))
+    case 'delivery': return deliveryRows(a.delivery.mode ? deliveryBody(a.delivery) : { mode: '' })
+    case 'returns': return returnsRows(returnsBody(a.returns))
+    case 'payment': return paymentRows(paymentBody(a.payment))
+    case 'payout': {
+      const p = a.payout
+      if (!p.method || (p.method === 'bank' && !p.account_number.trim()) || (p.method === 'upi' && !p.upi_id.trim())) return payoutRows(null)
+      return payoutRows(maskPayout(payoutBody(p), bankName ?? catalogCopy.payoutMethods.bank))
+    }
+    case 'business': return businessRows(businessBody(a.business))
+  }
+}
+
+// The Change link opens the step with that answer, focused.
+export function CheckAnswersPage({
+  draft,
+  bankName,
+  headingRef,
+  notice,
+  pending,
+  onBack,
+  onChange,
+  onSend,
+}: {
+  draft: ApplyDraft
+  bankName: string | undefined
+  headingRef: Ref<HTMLHeadingElement>
+  notice?: ReactNode
+  pending: boolean
+  onBack: () => void
+  onChange: (step: number, field: string) => void
+  onSend: () => void
+}) {
+  return (
+    <>
+      <BackButton onClick={onBack} label={copy.back} />
+      <PageTitle ref={headingRef}>{copy.check.title}</PageTitle>
+      <Typography variant="body1" color="text.secondary" sx={{ mt: 1, mb: 3 }}>
+        {copy.check.subtitle}
+      </Typography>
+      {notice}
+      <Stack spacing={3.5}>
+        {copy.steps.map((meta, i) => {
+          const step = i + 1
+          const topic = STEP_TOPICS[i]!
+          const rows =
+            step === 7
+              ? [
+                  ...topicRows('business', draft, bankName),
+                  ...termsRows({ proposedBps: proposedBps(draft.terms.commission), agreedTerms: draft.terms.agreed_terms, agreedPriceRule: draft.terms.agreed_price_rule }),
+                ]
+              : topicRows(topic, draft, bankName)
+          return (
+            <Box component="section" key={meta.title} aria-labelledby={`check-${step}`}>
+              <Typography id={`check-${step}`} variant="h2" component="h2" sx={{ mb: 0.5 }}>
+                {meta.title}
+              </Typography>
+              <SummaryList rows={rows} change={(row) => ({ onClick: () => onChange(step, row.key) })} />
             </Box>
-          </Box>
-        }
-      />
-    </StepForm>
+          )
+        })}
+      </Stack>
+      <TaskFooter>
+        <Button variant="contained" size="large" onClick={onSend} disabled={pending} sx={{ minHeight: 44 }}>
+          {pending ? copy.submitting : copy.submit}
+        </Button>
+      </TaskFooter>
+    </>
+  )
+}
+
+// ---- sent -------------------------------------------------------------------------------------------------
+
+export type Received = { name: string; email: string; brand: string }
+
+function NextItem({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode }) {
+  return (
+    <Stack component="li" direction="row" spacing={1.5}>
+      <Box sx={{ color: brand.brown, pt: '2px', flexShrink: 0, display: 'flex' }}>
+        <Icon size={18} strokeWidth={1.5} aria-hidden="true" />
+      </Box>
+      <Typography variant="body1" sx={{ overflowWrap: 'anywhere' }}>
+        {children}
+      </Typography>
+    </Stack>
+  )
+}
+
+export function ApplicationReceived({ name, email, brand: brandName }: Received) {
+  const r = copy.received
+  const ref = useRef<HTMLDivElement>(null)
+  // The page this replaces held focus; hand it to the confirmation so it is read out.
+  useEffect(() => ref.current?.focus(), [])
+  return (
+    <Box ref={ref} tabIndex={-1} sx={{ outline: 'none' }}>
+      <PageTitle>{r.title}</PageTitle>
+      <Typography variant="body1" color="text.secondary" sx={{ mt: 1.5, mb: 4, overflowWrap: 'anywhere' }}>
+        {r.subtitle(name, brandName)}
+      </Typography>
+      <Typography variant="h2" component="h2" sx={{ mb: 2 }}>
+        {r.nextTitle}
+      </Typography>
+      <Stack component="ol" spacing={2} sx={{ listStyle: 'none', p: 0, m: 0 }}>
+        <NextItem icon={Clock}>{r.review}</NextItem>
+        <NextItem icon={Handshake}>{r.commission}</NextItem>
+        <NextItem icon={Mail}>{r.approved(email)}</NextItem>
+        <NextItem icon={MessageCircle}>
+          {r.questions} <Link href={`mailto:${onboardingCopy.partnersEmail}`}>{onboardingCopy.partnersEmail}</Link>.
+        </NextItem>
+      </Stack>
+      <Divider sx={{ my: 4 }} />
+      <Button variant="outlined" size="large" component={RouterLink} to={paths.signIn} sx={{ minHeight: 44 }}>
+        {r.backToSignIn}
+      </Button>
+    </Box>
   )
 }

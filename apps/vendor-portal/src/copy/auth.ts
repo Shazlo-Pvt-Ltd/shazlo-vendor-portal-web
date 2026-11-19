@@ -32,7 +32,7 @@ export const authCopy = {
     points: [
       { title: 'Seen in the swipe feed', body: 'Approved products appear in the Shazlo app, where shoppers swipe through looks from independent labels.' },
       { title: 'Reviewed within 24 hours', body: 'Our team checks every product and tells you exactly what to fix if something is missing.' },
-      { title: '15% commission, no listing fees', body: 'You see what you receive on every product before you send it for review.' },
+      { title: 'Commission agreed with each brand. No listing fees.', body: 'You see what you receive on every product before you send it for review.' },
     ],
   },
 } as const
