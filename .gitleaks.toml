@@ -1,0 +1,93 @@
+# gitleaks configuration (CI: .github/workflows/secret-scan.yml; triage: docs/security-scanning.md).
+#
+# The default rules stay on. One rule is added (connection strings with an inline password, which
+# the defaults do not cover), and the allowlists below cover ONLY values that are deliberately
+# committed test or demo data. Each allowlist names the file and the exact value, so the same
+# value anywhere else, or any other value in these files, is still reported.
+#
+# Never allowlist a real credential here. Rotate it at the provider first; after that, a finding
+# that only remains in history can be silenced by adding its fingerprint to .gitleaksignore.
+
+title = "shazlo-vendor-portal-web"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "connection-uri-with-password"
+description = "Database, cache or broker connection URI with an inline password"
+regex = '''(?i)\b(?:mongodb(?:\+srv)?|postgres(?:ql)?(?:\+[a-z0-9]+)?|mysql|mariadb|rediss?|amqps?)://[^\s:@/'"<>${}]+:([^\s:@/'"<>${}]{3,})@([a-z0-9.-]+)'''
+secretGroup = 1
+keywords = ["mongodb", "postgres", "mysql", "mariadb", "redis", "amqp"]
+
+  # Local development and test databases: localhost, the compose service names and reserved
+  # test domains. A password for any other host is reported.
+  [[rules.allowlists]]
+  description = "Local, compose-network and reserved test hosts"
+  regexTarget = "match"
+  regexes = ['''@(?:localhost|127\.0\.0\.1|postgres|redis|h|[a-z0-9.-]+\.(?:test|example|invalid|localhost))$''']
+
+  # services/vendor-api/tests/test_settings.py checks that a production URL's password is never
+  # echoed in an error; the host and password are invented.
+  [[rules.allowlists]]
+  description = "vendor-api settings test: invented production-shaped URL"
+  condition = "AND"
+  paths = ['''^services/vendor-api/tests/test_settings\.py$''']
+  regexTarget = "match"
+  regexes = ['''@db\.internal$''']
+
+  # An early backend/README.md showed the URI shape with a placeholder password.
+  [[rules.allowlists]]
+  description = "Legacy backend README placeholder password"
+  condition = "AND"
+  paths = ['''^backend/README\.md$''']
+  regexes = ['''^YOUR_PASSWORD$''']
+
+# Fake Cloudinary credentials for the portal's upload tests.
+[[allowlists]]
+description = "vendor-portal upload test fixture key"
+condition = "AND"
+paths = ['''^apps/vendor-portal/src/features/uploads/testing\.ts$''']
+regexes = ['''^key-123456789012345$''']
+
+# The signing secret the publishing end-to-end test shares between vendor-api and central-stub.
+[[allowlists]]
+description = "vendor-api publishing e2e test signing secret"
+condition = "AND"
+paths = ['''^services/vendor-api/tests/test_e2e_publishing\.py$''']
+regexes = ['''^e2e-publishing-secret-0123456789-abcdef$''']
+
+# Tests that assert these values never appear in logs or error messages.
+[[allowlists]]
+description = "vendor-api redaction tests: invented password and signing secret"
+condition = "AND"
+paths = ['''^services/vendor-api/tests/test_(?:publisher|settings)\.py$''']
+regexes = ['''^(?:Sup3rSecretPassw0rd|Hunter2-central-secret-0123456789abcdef)$''']
+
+# Invented email-link tokens rendered into the email templates under test.
+[[allowlists]]
+description = "vendor-api email tests: invented link tokens"
+condition = "AND"
+paths = ['''^services/vendor-api/tests/test_email_(?:senders|service|templates)\.py$''']
+regexes = ['''^(?:tok_Secret-9f8e7d|tok_AbC-123_xyz)$''']
+
+# An example request header in the contract document (a UUID event id, not a key).
+[[allowlists]]
+description = "ADR 0003 example Idempotency-Key header"
+condition = "AND"
+paths = ['''^docs/adr/0003-contract/README\.md$''']
+regexes = ['''^d2c8a7b1-3e5f-4092-8b4c-6f9e1d8b2c35$''']
+
+# Demo passwords of the in-browser mock APIs (MSW) and their Playwright tests, on the UI
+# branches. They sign in to the mocks only; no real service accepts them.
+[[allowlists]]
+description = "Shazlo-One mock identity-api demo admin password"
+condition = "AND"
+paths = ['''^apps/shazlo-one/src/(?:mocks/identity|api/mock)\.ts$''']
+regexes = ['''^shazlo-one-2026$''']
+
+[[allowlists]]
+description = "vendor-portal mock vendor-api demo seller password"
+condition = "AND"
+paths = ['''^apps/vendor-portal/(?:src/mocks/db|e2e/support)\.ts$''']
+regexes = ['''^ajrakh-indigo-26$''']
