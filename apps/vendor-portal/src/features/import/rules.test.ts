@@ -105,6 +105,11 @@ describe('the error report CSV', () => {
     expect(csvCell('+1')).toBe("'+1")
     expect(csvCell('@SUM(A1)')).toBe("'@SUM(A1)")
     expect(csvCell('-2')).toBe("'-2")
+    expect(csvCell('\t=1+1')).toBe("'\t=1+1")
+    expect(csvCell('\r=1+1')).toBe(`"'\r=1+1"`)
+    expect(csvCell('=A1,"x"\n')).toBe(`"'=A1,""x""\n"`)
+    // Only a leading character makes a formula; one inside the text is harmless.
+    expect(csvCell('a=b')).toBe('a=b')
     expect(csvCell(12)).toBe('12')
     expect(csvCell(null)).toBe('')
   })

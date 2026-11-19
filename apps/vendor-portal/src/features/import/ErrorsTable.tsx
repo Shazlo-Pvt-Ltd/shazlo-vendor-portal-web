@@ -79,7 +79,9 @@ export function ErrorsTable({ errors, truncated, fileName }: Props) {
         />
       </Stack>
       <Typography variant="body2" color="text.secondary" role="status" sx={{ mb: 1 }}>
-        {filtered ? `${shown.length} of ${errors.length} problems match.` : `${errors.length} problems.`}
+        {filtered
+          ? `${shown.length} of ${errors.length} problems match.`
+          : `${errors.length} ${errors.length === 1 ? 'problem' : 'problems'}.`}
       </Typography>
 
       <TableContainer>

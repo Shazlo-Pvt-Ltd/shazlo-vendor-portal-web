@@ -129,6 +129,21 @@ describe('the bulk import', () => {
     expect(calls.map((c) => c.mode)).toEqual(['validate'])
   })
 
+  it('says so, without asking for fixes, when every product was already imported', async () => {
+    serve({
+      validate: json(report({ summary: { products: 2, unchanged: 2, rows_read: 2 } })),
+      import: json(report({ mode: 'import', committed: false, summary: { products: 2, unchanged: 2, rows_read: 2 } })),
+    })
+    const user = await open()
+    await user.upload(fileInput(), csv())
+    await user.click(screen.getByRole('button', { name: 'Check the file' }))
+    await user.click(await screen.findByRole('button', { name: 'Import' }))
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Import' }))
+    expect(await screen.findByRole('heading', { name: 'Already imported' })).toBeTruthy()
+    expect(screen.getByText(/already in your products list, so nothing changed/)).toBeTruthy()
+    expect(screen.queryByText(/Fix the problems/)).toBeNull()
+  })
+
   it('sends all_or_nothing when chosen, and says when nothing was written', async () => {
     const calls = serve({
       validate: json(checkWithErrors),

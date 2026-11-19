@@ -8,6 +8,12 @@ export type RowError = ImportReport['errors'][number]
  */
 export const IMPORT_MAX_BYTES = 2 * 1024 * 1024
 
+/**
+ * vendor-api's default `import_max_rows` (1,000 rows after the column names). Only the server can
+ * count rows (an .xlsx must be unzipped); a longer file is its `422`. Change both together.
+ */
+export const IMPORT_MAX_ROWS = 1000
+
 /** "2 MB", "512 KB". */
 export function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`

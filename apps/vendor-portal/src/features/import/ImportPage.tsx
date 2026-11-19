@@ -26,7 +26,7 @@ import { isAbort } from '../uploads/upload'
 import { PageHeader, useConfirm, useToast } from '../../ui'
 import { saveFile } from './download'
 import { ErrorsTable } from './ErrorsTable'
-import { IMPORT_MAX_BYTES, TEMPLATE_COLUMNS, canImport, checkImportFile, fileErrorMessage, formatBytes } from './rules'
+import { IMPORT_MAX_BYTES, IMPORT_MAX_ROWS, TEMPLATE_COLUMNS, canImport, checkImportFile, fileErrorMessage, formatBytes } from './rules'
 
 type WriteMode = Exclude<ImportMode, 'validate'>
 type Busy = 'checking' | 'importing' | undefined
@@ -269,7 +269,8 @@ export default function ImportPage() {
             </Button>
             <input ref={input} type="file" hidden accept={ACCEPT} aria-label="Spreadsheet to import" onChange={onInput} />
             <Typography id={hintId} variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              A CSV (.csv) or Excel (.xlsx) file up to {formatBytes(IMPORT_MAX_BYTES)}, with at most 1,000 rows. You can also drop it here.
+              A CSV (.csv) or Excel (.xlsx) file up to {formatBytes(IMPORT_MAX_BYTES)}, with at most {IMPORT_MAX_ROWS.toLocaleString('en-IN')} rows. You can
+              also drop it here.
             </Typography>
             {file ? (
               <Typography sx={{ mt: 1, overflowWrap: 'anywhere' }}>
@@ -378,12 +379,18 @@ function ImportResult({ result, headingRef }: { result: { file: File; mode: Writ
   const { report } = result
   const created = report.products.filter((product) => product.status === 'created' && product.product_id)
   const nothingWritten = !report.committed
+  // Every product in the file already exists: nothing to write, and nothing wrong either.
+  const alreadyThere = nothingWritten && report.summary.rejected === 0 && report.summary.unchanged > 0
   return (
     <Box sx={{ mt: 3 }}>
       <Typography ref={headingRef} tabIndex={-1} component="h3" variant="h6" gutterBottom sx={{ outline: 'none' }}>
-        {nothingWritten ? 'Nothing was imported' : 'Import finished'}
+        {alreadyThere ? 'Already imported' : nothingWritten ? 'Nothing was imported' : 'Import finished'}
       </Typography>
-      {nothingWritten ? (
+      {alreadyThere ? (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Every product in this file is already in your products list, so nothing changed.
+        </Alert>
+      ) : nothingWritten ? (
         <Alert severity="warning" sx={{ mb: 2 }}>
           {result.mode === 'all_or_nothing'
             ? 'Some rows have problems, so nothing was imported. Fix them and check the file again.'

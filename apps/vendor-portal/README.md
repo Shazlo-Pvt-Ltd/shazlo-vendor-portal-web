@@ -64,10 +64,10 @@ src/
   api/                the typed vendor-api client, its hooks and error model (generated types in schema.d.ts)
   session/            the session store (token in memory), AuthProvider and useSession, the route guards, the blocked page
   config/             the typed environment, the support address and the website links
-  features/           one folder per feature (signup and email verification, sign-in and passwords, the image uploader, the brand page editor, the products list and the product form) and the helpers they share
+  features/           one folder per feature (signup and email verification, sign-in and passwords, the image uploader, the brand page editor, the products list, the product form and the bulk import) and the helpers they share
   components/         shared pieces (error boundary and screens, not found, misconfigured)
   ui/                 patterns every screen shares: page header, loading, empty, error, toast, confirm
-  pages/              one module per route (Account, Import, Submissions and Team are still the placeholder page until their features arrive)
+  pages/              one module per route (Account, Submissions and Team are still the placeholder page until their features arrive)
   security/           the headers (one definition for vercel.json, dev and preview), SafeLink,
                       SafeImage, PasswordField, and the tests of the security rules
   test/               test setup
@@ -123,7 +123,7 @@ login.mutate({ body: { email, password } })
 
 The session code supplies the access token with `setAccessTokenProvider(() => token)`; the client
 always sends cookies, so the refresh cookie reaches `/v1/auth/*`. The bulk import and the template
-download are `importProducts(file)` and `downloadImportTemplate()`. Tests mock the network with MSW.
+download are `importProducts(file, { mode })` (the mode is required) and `downloadImportTemplate()`. Tests mock the network with MSW.
 
 ## The session
 
@@ -395,7 +395,9 @@ host with progress (`XMLHttpRequest`: `fetch` cannot report upload progress), re
 - **Template first.** The page downloads the template (Excel or CSV, from `GET .../import/template`) and explains each column
   (`TEMPLATE_COLUMNS` in `rules.ts`, which mirrors vendor-api's `COLUMNS`).
 - **Checked in the browser before sending:** only `.csv` or `.xlsx`, not empty, at most 2 MB (`IMPORT_MAX_BYTES`, vendor-api's
-  default `import_max_bytes`; change both together). The file is sent as the request body with its own content type.
+  default `import_max_bytes`; change both together). The file is sent as the request body with its own content type. The page
+  also states the row limit, 1,000 (`IMPORT_MAX_ROWS`, vendor-api's default `import_max_rows`); only the server counts rows, and a
+  longer file is its `422`.
 - **Validate first, always.** "Check the file" runs `mode=validate`, which writes nothing, and shows the report: counts, an errors
   table (row, column, problem) with a column filter and a search, a notice when the list was cut short, and the ignored columns.
   The **error report** downloads as a CSV built in the browser (UTF-8 with a byte order mark so Excel reads it; any cell that a
@@ -404,7 +406,8 @@ host with progress (`XMLHttpRequest`: `fetch` cannot report upload progress), re
   file clears the check. The two modes are explained in plain words: `import` creates the products without problems and skips the
   rest; `all_or_nothing` writes nothing if any row has a problem. `importProducts` takes the mode as a required argument, because
   the API's default is `import`.
-- **Result:** created, unchanged and rejected counts, links to the new drafts, and "importing this file again is safe".
+- **Result:** created, unchanged and rejected counts, links to the new drafts, and "importing this file again is safe". A file whose
+  products all exist already says so ("Already imported"), not "fix the problems".
 - **Errors:** `413`, `415` and `422` (with the server's reason) and `429` (vendor-api allows 10 imports or checks an hour) have
   their own messages. A check or an import can be cancelled; a cancelled or timed-out import says that some products may already
   have been imported and that importing again is safe. There is no upload percentage: `fetch` cannot report one, and the files are
