@@ -32,13 +32,15 @@ still written and queue up, so turning it on later sends everything.
 
 ## Running and scaling the worker
 
-- One process: `python -m vendor_api.worker` (compose: `vendor-worker`). It needs the same
-  `DATABASE_URL` and `CENTRAL_*` settings as the API and nothing else.
+- One process: `python -m vendor_api.worker` (compose: `vendor-worker`). It reads the API's settings
+  (the same `Settings` class), so it needs `DATABASE_URL` and `REDIS_URL` and the `CENTRAL_*` settings, and
+  nothing else in development. With `ENV=prod` it also needs what the API needs in prod (for example
+  `RATE_LIMIT_HMAC_KEY`, `JWT_ISSUER` and the `IDENTITY_*` pair), because those checks run on every start.
 - **Run more than one if you like.** They claim rows with `FOR UPDATE SKIP LOCKED` and never send
   one row twice at the same moment, and an aggregate's events go out one at a time, in version order.
   One worker handles a few hundred events a minute; the limit that matters is the central app's.
 - Stop it with `SIGTERM`: the request in flight finishes (a request is cut off after 30 seconds),
-  claims not yet started are given back. Give it 30 seconds (`stop_grace_period`).
+  claims not yet started are given back. Give it 45 seconds (compose sets `stop_grace_period: 45s`).
 - A worker that dies mid-send leaves rows in `sending`. The sweeper (every minute, in every worker)
   puts them back after 2 minutes. The central app answers `duplicate` if the event had arrived. A worker
   that was only slow cannot overwrite what the next worker records: a result counts only from the

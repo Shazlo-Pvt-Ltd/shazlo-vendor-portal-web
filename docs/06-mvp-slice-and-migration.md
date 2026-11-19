@@ -9,6 +9,8 @@
 
 **Legend:** `[As-is]` verified in today's code, `[MVP]` built by Oct 30, `[Target]` after the MVP, `[Assumption]` needs a team decision.
 
+> **Status note (2026-11-19).** The dates here are the plan as written. In this repository the vendor-admin service is `services/vendor-api` (Phases 2 to 4 of the [roadmap](ROADMAP.md), delivered) and its events to Core go through the outbox, worker and reconciliation of [ADR 0003](adr/0003-central-app-publishing-contract.md) rather than the `outbox_publish` job of section 6. The vendor-admin side of the `contracts/` folder is `docs/adr/0003-contract/` here. See [what is built and how the names differ](README.md#what-is-built-and-what-these-documents-are).
+
 ## 1. Principle
 
 Ship the **core loop** by Oct 30 on the hardened Core service plus the new vendor-admin service:

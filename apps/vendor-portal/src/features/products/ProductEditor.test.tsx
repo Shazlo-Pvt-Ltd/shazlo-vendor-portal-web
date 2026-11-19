@@ -14,17 +14,22 @@ import { detail, fullRevision } from './testing'
 // The uploader has its own tests; here it only has to hand back uploaded images, one per click.
 let uploads = 0
 vi.mock('../uploads/ImageUploader', () => ({
-  ImageUploader: ({ label, onUploaded }: { label: string; onUploaded: (asset: unknown, file: File) => void }) => (
-    <button
-      type="button"
-      onClick={() => {
-        uploads += 1
-        onUploaded({ id: `asset-${uploads}`, url: `https://res.cloudinary.com/demo/${uploads}.jpg`, status: 'ready' }, new File([], 'x.jpg'))
-      }}
-    >
-      Upload {label}
-    </button>
-  ),
+  ImageUploader: ({ label, onUploaded }: { label: string; onUploaded: (asset: unknown, file: File) => void }) => {
+    const upload = () => {
+      uploads += 1
+      onUploaded({ id: `asset-${uploads}`, url: `https://res.cloudinary.com/demo/${uploads}.jpg`, status: 'ready' }, new File([], 'x.jpg'))
+    }
+    return (
+      <>
+        <button type="button" onClick={upload}>
+          Upload {label}
+        </button>
+        <button type="button" onClick={() => [upload(), upload(), upload()]}>
+          Upload three at once
+        </button>
+      </>
+    )
+  },
 }))
 
 const server = useApiServer()
@@ -293,6 +298,29 @@ describe('editing a product', () => {
     expect((puts[0]!.images as { asset_id: string }[]).map((i) => i.asset_id)).toEqual(['img-3', 'img-1', 'img-2'])
   })
 
+  it('keeps focus on the image that became the cover, and in the list after removing one', async () => {
+    const { user } = await open('/products/p1', product({ working: fullRevision({ images: [image(1, 'Front'), image(2, 'Back'), image(3, 'Side')] }) }))
+    await user.click(screen.getByRole('button', { name: 'Make image 3 the cover' }))
+    // Its "Make cover" and "Move up" are gone or disabled: focus lands on its "Move down", not on the page.
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Move image 1 down' })))
+    expect(input(/Description of image 1/).value).toBe('Side')
+
+    await user.click(screen.getByRole('button', { name: 'Remove image 2' }))
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Remove image 2' })))
+    expect(input(/Description of image 2/).value).toBe('Back')
+  })
+
+  it('says when more images were chosen than fit, instead of dropping them silently', async () => {
+    const images = Array.from({ length: 8 }, (_, i) => image(i + 1))
+    const { user, puts } = await open('/products/p1', product({ working: fullRevision({ images }) }))
+    await user.click(screen.getByRole('button', { name: 'Upload three at once' }))
+    expect(screen.getByText(/Only 10 images fit/)).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: /^Remove image/ })).toHaveLength(10)
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    await screen.findByText('Product saved')
+    expect(puts[0]!.images).toHaveLength(10)
+  })
+
   it('submits after a confirmation, then shows the version in review, read-only', async () => {
     const { user, submits } = await open('/products/p1', product())
     await user.click(screen.getByRole('button', { name: 'Submit for review' }))
@@ -328,6 +356,16 @@ describe('editing a product', () => {
     await user.click(screen.getByRole('button', { name: 'Submit for review' }))
     await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Submit for review' }))
     expect(await screen.findByText(/To submit, add an active variant and an image\./)).toBeTruthy()
+  })
+
+  it('explains nothing_to_submit and reloads the product', async () => {
+    const { user, submits } = await open('/products/p1', product(), {
+      onSubmit: () => apiErrorResponse(409, 'nothing_to_submit', 'There are no unsubmitted changes to send for review'),
+    })
+    await user.click(screen.getByRole('button', { name: 'Submit for review' }))
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Submit for review' }))
+    expect(await screen.findByText(/There is nothing new to submit/)).toBeTruthy()
+    expect(submits).toEqual(['p1'])
   })
 
   it('explains a version that went into review meanwhile, and reloads the product', async () => {
@@ -401,6 +439,8 @@ describe('the states of a product', () => {
     expect(screen.getByText(/The live product stays as it is meanwhile/)).toBeTruthy()
     for (const label of [/^Title/, /^Category/, /^Weight/]) expect(isDisabled(input(label))).toBe(true)
     expect(isDisabled(screen.getByRole('button', { name: 'Move image 1 down' }))).toBe(true)
+    expect(isDisabled(input(/Description of image 1/))).toBe(true)
+    expect(screen.getByRole('list', { name: 'Product images, in order' }).querySelector('[draggable="true"]')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Upload Add images' })).toBeNull()
   })

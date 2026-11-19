@@ -27,6 +27,7 @@ type Action = 'up' | 'down'
 export function ImagesEditor({ images, errors, listError, disabled, onChange, onAltEdited }: Props) {
   const [announcement, setAnnouncement] = useState('')
   const [dragging, setDragging] = useState<number | null>(null)
+  const [notice, setNotice] = useState('')
   const [focusAfterMove, setFocusAfterMove] = useState<{ assetId: string; action: Action } | null>(null)
   const buttons = useRef(new Map<string, HTMLButtonElement | null>())
   // The uploader reports each image once; the list may have changed meanwhile, so read it from a ref.
@@ -54,6 +55,13 @@ export function ImagesEditor({ images, errors, listError, disabled, onChange, on
   const remove = (index: number) => {
     onChange(images.filter((_, i) => i !== index))
     setAnnouncement(`Image ${index + 1} removed.`)
+    setNotice('')
+    // The button that had focus is gone: keep focus in the list, on the next image's Remove (or the previous one's).
+    requestAnimationFrame(() => {
+      const rows = document.querySelectorAll<HTMLButtonElement>('[data-remove-image]')
+      const target = rows[Math.min(index, rows.length - 1)]
+      ;(target ?? document.getElementById(`${IMAGES_ID}-heading`))?.focus()
+    })
   }
 
   const onDrop = (event: DragEvent, to: number) => {
@@ -66,7 +74,7 @@ export function ImagesEditor({ images, errors, listError, disabled, onChange, on
 
   return (
     <Box component="section" aria-labelledby={`${IMAGES_ID}-heading`}>
-      <Typography id={`${IMAGES_ID}-heading`} component="h2" variant="h6" gutterBottom>
+      <Typography id={`${IMAGES_ID}-heading`} tabIndex={-1} component="h2" variant="h6" gutterBottom>
         Images
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -89,22 +97,24 @@ export function ImagesEditor({ images, errors, listError, disabled, onChange, on
                 component="li"
                 direction={{ xs: 'column', sm: 'row' }}
                 spacing={2}
-                draggable={!disabled}
-                onDragStart={() => setDragging(index)}
                 onDragOver={(event: DragEvent) => event.preventDefault()}
                 onDrop={(event: DragEvent) => onDrop(event, index)}
-                onDragEnd={() => setDragging(null)}
                 sx={{
                   listStyle: 'none',
                   p: 1.5,
                   border: 1,
                   borderColor: dragging === index ? 'primary.main' : 'divider',
                   borderRadius: 1,
-                  cursor: disabled ? 'default' : 'grab',
                   opacity: dragging === index ? 0.6 : 1,
                 }}
               >
-                <Box sx={{ width: 96, height: 96, flexShrink: 0, borderRadius: 1, overflow: 'hidden', bgcolor: 'action.hover' }}>
+                {/* Only the picture is dragged: a draggable parent would stop Firefox selecting text in the description field. */}
+                <Box
+                  draggable={!disabled}
+                  onDragStart={() => setDragging(index)}
+                  onDragEnd={() => setDragging(null)}
+                  sx={{ width: 96, height: 96, flexShrink: 0, borderRadius: 1, overflow: 'hidden', bgcolor: 'action.hover', cursor: disabled ? 'default' : 'grab' }}
+                >
                   <SafeImage src={image.url} alt={image.alt.trim()} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 </Box>
                 <Box sx={{ flexGrow: 1, minWidth: 0 }}>
@@ -118,6 +128,7 @@ export function ImagesEditor({ images, errors, listError, disabled, onChange, on
                     size="small"
                     fullWidth
                     value={image.alt}
+                    disabled={disabled}
                     error={errors[image.assetId] !== undefined}
                     helperText={errors[image.assetId] ?? 'For example "Front view, indigo kurta on a model"'}
                     onChange={(event) => {
@@ -146,11 +157,11 @@ export function ImagesEditor({ images, errors, listError, disabled, onChange, on
                       Move down
                     </Button>
                     {index > 0 ? (
-                      <Button size="small" disabled={disabled} onClick={() => reorder(index, 0)} aria-label={`Make ${label} the cover`}>
+                      <Button size="small" disabled={disabled} onClick={() => reorder(index, 0, 'up')} aria-label={`Make ${label} the cover`}>
                         Make cover
                       </Button>
                     ) : null}
-                    <Button size="small" color="error" disabled={disabled} onClick={() => remove(index)} aria-label={`Remove ${label}`}>
+                    <Button size="small" color="error" data-remove-image disabled={disabled} onClick={() => remove(index)} aria-label={`Remove ${label}`}>
                       Remove
                     </Button>
                   </Stack>
@@ -172,13 +183,24 @@ export function ImagesEditor({ images, errors, listError, disabled, onChange, on
           multiple
           onUploaded={(asset) => {
             const current = latest.current
-            if (current.some((image) => image.assetId === asset.id) || current.length >= LIMITS.images) return
+            if (current.some((image) => image.assetId === asset.id)) return
+            if (current.length >= LIMITS.images) {
+              // More files were chosen than there is room for: say so instead of dropping them silently.
+              setNotice(`Only ${LIMITS.images} images fit. The extra ones were not added; remove an image to make room.`)
+              return
+            }
             const next = [...current, { assetId: asset.id, url: asset.url, alt: '' }]
             latest.current = next
             onChange(next)
           }}
         />
       )}
+
+      {notice ? (
+        <Typography role="status" variant="body2" color="warning.main" sx={{ mt: 1 }}>
+          {notice}
+        </Typography>
+      ) : null}
 
       <Box role="status" aria-live="polite" sx={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}>
         {announcement}

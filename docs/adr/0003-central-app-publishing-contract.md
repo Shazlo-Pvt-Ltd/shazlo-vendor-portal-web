@@ -98,10 +98,7 @@ CREATE INDEX outbox_due ON outbox_events (next_attempt_at) WHERE status = 'pendi
 The publisher worker claims due rows with `FOR UPDATE SKIP LOCKED`, so several workers can run safely, and skips any aggregate that still has an earlier unsent version:
 
 ```sql
-UPDATE outbox_events o
-SET status = 'sending', locked_at = now(), claim_token = gen_random_uuid(),
-    attempts = attempts + 1
-WHERE o.id IN (
+WITH due AS MATERIALIZED (
   SELECT d.id
   FROM outbox_events d
   WHERE d.status = 'pending'
@@ -117,8 +114,15 @@ WHERE o.id IN (
   LIMIT 20
   FOR UPDATE SKIP LOCKED
 )
+UPDATE outbox_events o
+SET status = 'sending', locked_at = now(), claim_token = gen_random_uuid(),
+    attempts = o.attempts + 1
+FROM due
+WHERE o.id = due.id
 RETURNING o.*;
 ```
+
+The locking select is a `MATERIALIZED` CTE on purpose: written as `WHERE o.id IN (SELECT ... LIMIT 20 FOR UPDATE SKIP LOCKED)`, Postgres may run the subquery again for each row it updates and claim more rows than the limit.
 
 A row stuck in `sending` for more than 2 minutes (a crashed worker) is reset to `pending` by a sweeper. A worker records the result of a request only while the row still carries the `claim_token` it claimed it with, so a worker that is late cannot overwrite a row the sweeper gave to another one. Rows with `status = 'sent'` are kept for 30 days for audit and then removed, **except the latest row of each aggregate**: the writer reads it to know what the central app holds (whether a withdrawal is due, what to hide or show again after a suspension, and which version comes next, which for a brand page exists only in the outbox), so it must outlive the retention period.
 
@@ -185,8 +189,8 @@ _To be completed with the central-app owners before the status changes to accept
 - A shared secret must be managed and rotated on both sides.
 
 **Follow-ups**
-- Phase 4: implement the outbox, the worker, the dead-letter screen, and the stub receiver from the OpenAPI file.
-- Add contract tests in `vendor-api` (examples validate against the schemas) and in the central app (it accepts every example).
+- Phase 4: implement the outbox, the worker, the dead-letter screen, and the stub receiver from the OpenAPI file. *Update 2026-11-19: the outbox, the worker, the nightly reconciliation and `resync`, an admin API to find and retry dead events (`/v1/admin/outbox`) and the stub receiver (`services/central-stub`) are built in `vendor-api` and tested end to end; the dead-letter screen is the admin UI of Phase 7.*
+- Add contract tests in `vendor-api` (examples validate against the schemas) and in the central app (it accepts every example). *Update 2026-11-19: the `vendor-api` side exists (`services/vendor-api/tests/test_central_contract.py`, and `test/contracts/publishing.test.js` in the root test run); the central app's side is the central-app team's.*
 - Agree the stock command contract between the central app and `vendor-api` separately.
 
 ## Alternatives considered

@@ -1,15 +1,20 @@
 # Repository test strategy and evidence
 
-## Current state of the Python services (2026-11-09)
+## Current state (2026-11-19)
 
-The inventory and evidence below were recorded on 29 October 2026, before Phase 1 and Phase 2 landed. Their statements that the Python services have no routes, auth, SQL models or migrations are no longer true:
+Most of this document is a record of the assessment made on 29 and 30 October 2026, when the Python services were scaffolds and the web apps were placeholders. It is kept as written, as history: the source inventory, the repository map, the decision table, the verification results and the follow-up reviews. In them, statements that the Python services have no routes, auth, SQL models, workers or migrations, that there is no outbox, producer or receiver for the publishing contract, that the new web apps are placeholders, and that auth, outbox, JWT and migrations are "not run" or "planned" were true then and are not now: Phases 1 to 4 of the [roadmap](ROADMAP.md) are delivered and Phase 5 (the vendor portal) is in progress. The test counts, coverage figures and tool versions quoted below are also from then. This section and [Running the checks](#running-the-checks) are the current state.
 
-- **identity-api** and **vendor-api** are FastAPI services with routes, auth and Alembic migrations (`identity_api/migrations/`, `vendor_api/migrations/`). Shared code is tested in `packages/py-auth` and `packages/py-security`.
+- **Services and packages with tests:** `services/identity-api`, `services/vendor-api`, `services/central-stub`, `packages/py-auth` and `packages/py-security`. Each service README has its exact local commands.
 - **Database tests** run against a real Postgres from `DATABASE_URL` and are **skipped** when it is unset. The suite refuses any database not named `test` or `*_test`, drops and recreates the schema with Alembic, and rolls each test back.
-- **End-to-end tests** (`tests/test_e2e_auth.py` in each service) also need a real Redis in `REDIS_URL`. They empty that Redis database, so they refuse database 0; use `redis://localhost:6379/1`.
-- CI (`services-ci.yml`) runs ruff, mypy and pytest for both services and both packages on every pull request, with Postgres 16 and Redis 7, and a `compose` job that builds both images and signs in. Each service README has the exact local commands.
+- **End-to-end tests** need a real Redis in `REDIS_URL` as well. They empty that Redis database, so they refuse database 0; use `redis://localhost:6379/1`. They are `tests/test_e2e_auth.py` (identity-api and vendor-api), and in vendor-api `tests/test_e2e_catalog.py` (brand page, catalog, review, vendor accounts) and `tests/test_e2e_publishing.py` (approval to outbox to worker to the real stub receiver, including a refused signature, a failing receiver, a crash mid-send and a duplicate delivery). The publishing test also needs `services/central-stub` installed (CI does that) and is skipped without it.
+- **Publishing contract** ([ADR 0003](adr/0003-central-app-publishing-contract.md), `docs/adr/0003-contract/`): vendor-api's `test_central_contract.py` and `test_central_events.py` check the schemas, examples, OpenAPI file, signing vector and the five event builders; `test/contracts/publishing.test.js` (the root `contracts` Vitest project) validates the same examples with Ajv; `services/central-stub/tests/test_receiver.py` covers the receiver's rules. The outbox, publisher worker, reconciliation, unpublish events and admin outbox API have `test_outbox.py`, `test_outbox_writer.py`, `test_outbox_retention.py`, `test_publisher.py`, `test_reconciliation.py`, `test_unpublish_events.py` and `test_admin_outbox_api.py` in vendor-api.
+- **Isolation and routes:** `test_isolation.py`, `test_isolation_structure.py` and `test_route_auth_coverage.py` fail when a vendor route or table skips the vendor-scoping or authentication rule. `test_openapi_examples.py` and `test_seed_openapi.py` keep the committed `openapi.json` and its examples in step.
+- **CI** (`.github/workflows`): `services-ci.yml` runs ruff, mypy and pytest for `identity-api`, `vendor-api`, `central-stub`, `py-auth` and `py-security` on Python 3.12 with Postgres 16 and Redis 7, plus a `compose` job that builds the images and follows the root README (signing in to both APIs, an email in Mailpit, the OpenAPI document, the stub rejecting an unsigned request); `apps-ci.yml` runs lint, typecheck, the Vitest projects with coverage, the UI demo build, the vendor-portal build and the legacy app build on Node 22, and an `npm audit` when manifests change; `codeql.yml` scans JavaScript/TypeScript and Python. All three run on every pull request and push to `main` (`apps-ci` skips its web jobs for a pull request that touches only services, Python packages, `docker/`, `docs/` or the compose and env files, except `docs/adr/0003-contract/`). Dependabot opens weekly updates for npm and pip and monthly ones for GitHub Actions.
+- **Not covered yet:** the browser journeys, since Shazlo-One and the vendor-admin module are not built and the vendor portal is in progress; the central app itself (its side of the contract is the central-app team's); live Cloudinary and a real SMTP provider.
 
 ## Source inventory
+
+*As of 29 and 30 October 2026. The repository has since moved to `Shazlo-Pvt-Ltd/shazlo-vendor-portal-web`; the addresses and run links in this record are the ones used at the time.*
 
 Assessment started on 29 October 2026 in `shazlo/Shazlo_vendor_portal`.
 Default branch: `main`, `7b234303cb4444464695d6ae9422ed09cd959eeb`.
@@ -87,7 +92,7 @@ All selected checks run on every pull request (any base branch), and pushes to
 
 ## Running the checks
 
-From the repository root, with Node 22.12+ (Vitest 5 requires it):
+From the repository root, with the Node version in the root `package.json` `engines` field (22.22.2 or newer on the 22 line, 24.15 or newer on the 24 line, or 26 and up; CI uses Node 22):
 
 ```sh
 npm ci
@@ -123,8 +128,10 @@ delivery nor provider credentials are validated. The first run needs network
 access to download MongoDB; subsequent runs use the binary cache. A download or
 boot failure fails the suite instead of silently skipping integration tests.
 
-Test-only tooling uses Vitest 4.1.12 and Testing Library already present in the UI
-workspace. The coverage provider is pinned to the installed Vitest version.
+Test-only tooling (versions now: Vitest 5.1.0 with `@vitest/coverage-v8` 5.1.0,
+`mongodb-memory-server-core` 11.3.0, Ajv 8.20.0 and ajv-formats 3.0.1; the text below was written
+for Vitest 4.1.12 and `mongodb-memory-server-core` 10.4.3) uses the Testing Library already present
+in the UI workspace. The coverage provider is pinned to the installed Vitest version.
 Legacy app tests declare Testing Library locally so its native React DOM imports
 use the same React 19.1 as the app. `mongodb-memory-server-core` 10.4.3 (MIT,
 Node >=16.20.1) supplies a real local database without an install hook; MongoDB is
@@ -142,7 +149,9 @@ threshold or 100% target is imposed. Assertions, not line counts, determine the
 risk evidence. JUnit/HTML/JSON coverage and source/environment metadata are kept
 for 14 days by CI; all original exit codes propagate.
 
-Inside each Python service, use an isolated Python >=3.12 environment (the shared packages first):
+Inside each Python service (and each package under `packages/`), use an isolated Python >=3.12
+environment (the shared packages first; `packages/py-auth` and `packages/py-security` have no
+`requirements-shared.txt`, so skip that line there):
 
 ```sh
 pip install -r requirements-shared.txt
@@ -152,6 +161,12 @@ ruff format --check .
 mypy
 pytest --junitxml=reports/pytest.xml
 ```
+
+For the database and end-to-end tests, start Postgres and Redis with `docker compose up -d` at the
+repository root and point `DATABASE_URL` and `REDIS_URL` at them, for example
+`DATABASE_URL=postgresql://shazlo:<password>@localhost:5432/vendor_test REDIS_URL=redis://localhost:6379/1 pytest`
+in `services/vendor-api` (`identity_test` for identity-api). To include vendor-api's publishing
+end-to-end test, first `pip install -e ../central-stub` there.
 
 ## GitHub evidence and enforcement
 

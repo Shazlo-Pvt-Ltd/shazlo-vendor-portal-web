@@ -6,14 +6,14 @@ Shazlo is being split into microservices that feed a central consumer applicatio
 - **Vendor Portal**: vendors sign up, personalise their brand page and list products. Everything a vendor submits stays *pending* until an admin reviews it.
 - **Shazlo-One**: one admin shell that hosts the admin UI of every microservice. The Vendor Portal's admin module lives inside it. Admins review what vendors submit (brand page content, images, products) and approve or reject it. Only approved content is sent to the central app.
 
-The current code in this repo has the right ideas, but very little of it can be kept as code:
+The legacy code (`app/` and `backend/`, which is all this repo held when the rewrite started, and which is still there) has the right ideas, but very little of it can be kept as code:
 
 - `app/` is React in plain JavaScript; `backend/` is Express + MongoDB.
 - There is no authentication. Admin endpoints are public, and the approver ID is hardcoded in the frontend.
 - Brand pages can't be personalised, and only products can be approved.
 - Nothing sends approved content to the central app.
 - API hosts are hardcoded in three places.
-- Build artifacts such as `backend/node_modules` are committed.
+- Build artifacts such as `backend/node_modules` were committed (untracked in Phase 0).
 
 We are rewriting it in phases. Each phase is a GitHub milestone, and its issues are created only when that phase starts.
 
@@ -25,23 +25,28 @@ We are rewriting it in phases. Each phase is a GitHub milestone, and its issues 
 | Database | PostgreSQL |
 | Media | Cloudinary (signed direct uploads) |
 | Admin micro-frontends | Shazlo-One embeds each service's admin UI in an **iframe** |
-| Code and issues | This repo (`shazlo/Shazlo`) |
+| Code and issues | This repo (`Shazlo-Pvt-Ltd/shazlo-vendor-portal-web`) |
 
 ## Repo layout
 New code lives beside the legacy code:
 
 ```
-Shazlo/
+shazlo-vendor-portal-web/
   app/, backend/            legacy; untouched until Phase 8 (app/ also hosts the consumer landing/waitlist)
   services/
     identity-api/           FastAPI: Shazlo-One admin users, roles, JWT (RS256) + JWKS
-    vendor-api/             FastAPI: vendors, brand profiles, products, assets, reviews, publishing
+    vendor-api/             FastAPI: vendors, brand profiles, products, assets, reviews, outbox and publisher worker
+    central-stub/           FastAPI: stand-in for the central app's ingest API (ADR 0003), local dev and tests only
   apps/
     vendor-portal/          React+TS: vendor-facing app
     shazlo-one/             React+TS: admin shell (login, nav, iframe host)
     vendor-admin/           React+TS: vendor review module, loaded in a Shazlo-One iframe
-  packages/ui/              shared MUI theme/tokens (black #000 / gold #FFD700, Voyage font)
-  docker-compose.yml        Postgres + services for local dev
+  packages/
+    ui/                     shared MUI theme/tokens
+    py-auth/                Python: access-token verifier, JWKS client, FastAPI `require_role`
+    py-security/            Python: passwords, rate limiter, client IP, refresh tokens, key ring and tokens, request signing
+  docs/                     this roadmap, design docs, ADRs, runbooks
+  docker-compose.yml        Postgres, Redis, Mailpit and the services (profiles) for local dev
 ```
 
 ## What carries over from the legacy code
@@ -57,6 +62,8 @@ These are used as reference only. None of the code is reused.
 ## Phases
 Each phase matches a milestone in this repo. The bullets are the proposed scope; the actual issues are filed when the phase starts.
 
+Status (2026-11-19): Phases 0 to 4 are delivered, and Phase 5 (the vendor portal) is in progress (its sign-in, dashboard, brand page editor, products list and product form are merged). Phases 6 to 8 have not started. One decision is still open from Phase 4: the central-app team has not signed off [ADR 0003](adr/0003-central-app-publishing-contract.md), so it is still `proposed` (issue #179).
+
 ### Phase 0: Foundation & security hygiene
 - Repo hygiene: untrack local env files and `node_modules`, fix `.gitignore`, and add `.env.example` files.
 - Create the folder layout above and a root architecture README.
@@ -64,6 +71,8 @@ Each phase matches a milestone in this repo. The bullets are the proposed scope;
 - CI: ruff + mypy + pytest for services; eslint + tsc + vitest for apps.
 - Shared `packages/ui` theme.
 - ADRs: iframe protocol, auth model, central-app publishing contract.
+
+Delivered. The iframe protocol ([0001](adr/0001-iframe-postmessage-protocol.md)) and publishing contract ([0003](adr/0003-central-app-publishing-contract.md)) ADRs are still `proposed`; the auth model ([0009](adr/0009-auth-model.md)) is accepted.
 
 ### Phase 1: Identity API (Shazlo-One admins)
 - FastAPI scaffold: pydantic-settings, SQLAlchemy 2 + Alembic, structured logging, `/health` and `/ready`; Redis and identity-api in docker-compose.
@@ -77,6 +86,8 @@ Each phase matches a milestone in this repo. The bullets are the proposed scope;
 - `packages/py-auth`: the shared token verifier, JWKS client and `require_role` that every service uses.
 - `packages/py-security`: password hashing, the rate limiter and client-IP detection shared by identity-api and vendor-api (ADR 0010).
 - End-to-end test of the whole flow against Postgres and Redis, including key rotation with a token in flight.
+
+Delivered. (The shared security code later moved from identity-api into `packages/py-security`, see Phase 2.)
 
 ### Phase 2: Vendor API core
 - FastAPI scaffold using the same conventions as identity-api.
@@ -111,7 +122,7 @@ Delivered (as the issues #163 to #170), with these differences from the list abo
 - Uploads are two calls (sign, then register after the browser uploaded): the server picks the file's name in the vendor's own folder, and what Cloudinary really stored (not what the browser says) decides.
 - The import has three modes (`validate`, `import`, `all_or_nothing`), never overwrites a product, and importing the same file again creates nothing.
 - Reviewers also get a list and a detail of vendors (`GET /v1/admin/vendors`), not only the three status changes; every decision carries the version the reviewer saw, so a review that changed under them is a `409`.
-- Migration 0007 adds `review_events.detail` (what a decision changed, before and after), and `ReviewDecisionService.add_hook` is where Phase 4 writes the outbox row, inside the approval's transaction.
+- Migration 0007 adds `review_events.detail` (what a decision changed, before and after), and `ReviewDecisionService.add_hook` is where Phase 4 writes the outbox row, inside the approval's transaction (the outbox writer is registered there).
 - A dev seed fills a demo catalog with every state, and an end-to-end test walks the whole flow against Postgres and Redis.
 
 ### Phase 4: Central-app publishing
@@ -125,10 +136,14 @@ Delivered (as the issues #179 to #189), with these differences from the list abo
 - A `401` does not kill the event: the key is the problem, not the event, so it stays `pending` and five in a row pause publishing (the contract and the ADR say so now).
 - Besides the approval, archiving a live product and suspending, rejecting or reinstating a vendor also write events, in the same transaction as the change (a suspension withdraws, and a reinstatement restores, exactly what it hid).
 - Reconciliation runs nightly inside the worker: it compares with the central app, writes the current state of what is behind at a version above everything sent and above what the central app holds, and a second run writes nothing. `python -m vendor_api.cli resync` re-sends the current state on demand without asking the central app, and writes new versions each time it runs.
-- Admins get `GET /v1/admin/outbox` (find a stuck event), `GET /v1/admin/outbox/{id}` (its body and history) and `POST .../retry`, and `/ready` carries the outbox counts. This needed one table more than planned, `outbox_event_log` (migration 0010), for the attempt history and the audit of a retry.
+- Admins get `GET /v1/admin/outbox` (find a stuck event), `GET /v1/admin/outbox/{id}` (its body and history), `POST .../retry` and `GET /v1/admin/outbox/stats`, and `/ready` carries the outbox counts. This needed one table more than planned, `outbox_event_log` (migration 0010), for the attempt history and the audit of a retry.
 - The end-to-end test (`tests/test_e2e_publishing.py`) runs the whole flow against Postgres, Redis and the real stub: publish, withdraw, restore, the stub failing, a refused signature, one aggregate failing, a worker that crashes mid-send and a duplicate delivery. Operating it is in [runbooks/central-publishing.md](runbooks/central-publishing.md).
 
 ### Phase 5: Vendor Portal web
+Status (2026-11-19): in progress. Merged so far: the scaffold (Vite, React Router, TanStack Query, the shared theme, `VITE_VENDOR_API_URL`), the typed API client generated from `openapi.json`, the security baseline (CSP and headers, safe rendering), the session (in-memory access token, silent renewal, route guards, blocked page), signup and email verification, sign in, forgot, set and reset password and accepting an invite (the emailed links carry the token in the URL fragment), sign out, the dashboard shell with an overview, the image uploader, the brand page editor with live preview and submit for review, the products list, and the product create/edit form (variants, images, live and working versions, submit for review). On the API side, `GET /v1/vendor/submissions` and the `review` block on brand-page outputs give the portal the outcome of each submission. Not merged yet: bulk import with an error report, and the submission-status screen that shows the admin's reasons. Where the code and this list differ, the code is right; `apps/vendor-portal/README.md` describes what the app does today.
+
+Planned scope:
+
 - Scaffold: Vite, React Router, TanStack Query, typed API client, `VITE_VENDOR_API_URL`.
 - Signup, login, verify and set-password screens, with route guards.
 - Dashboard shell with a route for each section.
@@ -137,6 +152,8 @@ Delivered (as the issues #179 to #189), with these differences from the list abo
 - Submission status, showing the admin's reasons.
 
 ### Phase 6: Shazlo-One shell
+Status: not started (`apps/shazlo-one` holds only a README).
+
 - Scaffold, admin login against identity-api, and session handling.
 - Module registry and a nav that only shows the modules an admin's roles allow.
 - Iframe host with a postMessage protocol:
@@ -147,6 +164,8 @@ Delivered (as the issues #179 to #189), with these differences from the list abo
 - Admin user management UI.
 
 ### Phase 7: Vendor admin module
+Status: not started (`apps/vendor-admin` holds only a README). The API it needs is partly there: reviews, vendor accounts and the outbox are served under `/v1/admin/*` by vendor-api.
+
 - Scaffold. It accepts auth only through postMessage from the Shazlo-One origin and sets `Content-Security-Policy: frame-ancestors`.
 - Review queue with stats and filters.
 - Item review: brand-page preview, images, product details, diff, and approve/reject with a reason.
@@ -155,6 +174,8 @@ Delivered (as the issues #179 to #189), with these differences from the list abo
 - Playwright end-to-end smoke test.
 
 ### Phase 8: Migration & cutover
+Status: not started. The `invite-owner` command it needs exists (Phase 2).
+
 - Migrate `brands` and `products` from MongoDB to Postgres.
 - Send invite emails so migrated vendors can set passwords.
 - Deploy services and apps with per-environment config and domains.
@@ -167,7 +188,7 @@ Delivered (as the issues #179 to #189), with these differences from the list abo
 4. Once a phase is closed, the next phase's scope is adjusted for anything learned, and its issues are filed.
 
 ## Open items
-- Central-app ingestion contract (endpoint, payload, auth). Phase 4 starts with a stub.
+- Central-app sign-off of the ingestion contract. The contract is written ([ADR 0003](adr/0003-central-app-publishing-contract.md) and [the contract folder](adr/0003-contract/README.md)) and vendor-api and `central-stub` implement it; what is open is the central-app team confirming the answers in the ADR (issue #179), after which the ADR becomes `accepted`. Also open: the final category and fabric lists.
 - Hosting for the FastAPI services and Postgres. Needed by Phase 8.
 - Whether the service behind `/v1/seller-signup/` (called by legacy `BrandOnboarding.jsx`) holds vendor data we must migrate.
 
