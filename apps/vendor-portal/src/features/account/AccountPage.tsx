@@ -11,7 +11,8 @@ import { friendlyError } from '../errors'
 import { LIMITS, PASSWORD_MIN_LENGTH } from '../signup/rules'
 import { checkPasswords, type Errors, type Field } from './rules'
 import { useCountdown } from '../signup/useCountdown'
-import { exactTime, roleLabel } from '../team/rules'
+import { roleLabel } from '../team/rules'
+import { exactTime } from '../time'
 
 const VENDOR_STATUS: Record<string, string> = {
   pending: 'In review: our team is checking your application',

@@ -23,7 +23,7 @@ Where the code and the design documents use different names, the code is right:
 | The Vendor-admin service (FastAPI, `vendor-api.shazlo.store`): vendors, catalog authoring, moderation, publishing | `services/vendor-api`, with admin sign-in in `services/identity-api`. Fulfilment screens, statements, payouts and commission are not built |
 | Core (Django), the customer backend and the receiver of published events | A separate repository (`shazlo-server`). Here `services/central-stub` stands in for it, and [ADR 0003](adr/0003-central-app-publishing-contract.md) is the contract |
 | `outbox_events` and `outbox_publish` (every minute, a cron job) | The `outbox_events` table in vendor-api and its publisher worker (`python -m vendor_api.worker`); see [the publishing runbook](runbooks/central-publishing.md) |
-| The portal React app (`frontend/` in a portal repo) and admin pages | `apps/vendor-portal` (Phase 5, in progress: sign-in, dashboard, brand page editor, products list, product form, bulk import, and team and account pages are merged), `apps/shazlo-one` and `apps/vendor-admin` (Phases 6 and 7, not started) |
+| The portal React app (`frontend/` in a portal repo) and admin pages | `apps/vendor-portal` (Phase 5, in progress: sign-in, dashboard, brand page editor, products list, product form, bulk import, team and account pages, and submission status are merged), `apps/shazlo-one` and `apps/vendor-admin` (Phases 6 and 7, not started) |
 | `apps/vendor-admin` (this name) | The React review module, not the FastAPI service the documents call "vendor-admin" |
 
 ## Read in this order

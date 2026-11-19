@@ -64,10 +64,10 @@ src/
   api/                the typed vendor-api client, its hooks and error model (generated types in schema.d.ts)
   session/            the session store (token in memory), AuthProvider and useSession, the route guards, the blocked page
   config/             the typed environment, the support address and the website links
-  features/           one folder per feature (signup and email verification, sign-in and passwords, the image uploader, the brand page editor, the products list, the product form, the bulk import, the team and the account) and the helpers they share
+  features/           one folder per feature (signup and email verification, sign-in and passwords, the image uploader, the brand page editor, the products list, the product form, the bulk import, the team, the account and the submissions) and the helpers they share (errors, emailed-link tokens, dates in `time.ts`)
   components/         shared pieces (error boundary and screens, not found, misconfigured)
   ui/                 patterns every screen shares: page header, loading, empty, error, toast, confirm
-  pages/              one module per route (Submissions is still the placeholder page until its feature arrives)
+  pages/              one module per route
   security/           the headers (one definition for vercel.json, dev and preview), SafeLink,
                       SafeImage, PasswordField, and the tests of the security rules
   test/               test setup
@@ -434,3 +434,26 @@ host with progress (`XMLHttpRequest`: `fetch` cannot report upload progress), re
   out; the page says so. A wrong current password (`400 invalid_current_password`) is shown next to that field, a `422
   weak_password` next to the new one, and `429` counts down. Like the other password forms, the mutation keeps no copy of the
   passwords (`gcTime: 0` and `reset()`), and signing out clears the fields.
+
+## Submissions
+
+`src/features/submissions/` is `/submissions`; its card is on the Overview.
+
+- **The list** (`GET /v1/vendor/submissions`): the brand page's and the products' reviews, newest first, with a status chip in words
+  (In review, Approved, Not approved, Withdrawn) and the submitted and decided dates, relative with the exact time. Status, type and
+  page live in the address (`?status=rejected&subject=product&page=2`); a page past the last one says so and offers the first page.
+- **A rejection** shows the admin's reason prominently through `ReviewReason`: as text, so a reason that looks like HTML is shown
+  literally, with its line breaks kept. "Fix and resubmit" goes to `/brand` or the product's page; it is replaced by "A newer version
+  was submitted" when a later version of the same thing is on the page. For a product that is already live, the row says the live
+  version is unchanged (it reads the product's detail, for rejected products only). The brand editor and the product form show the
+  same status and reason in a banner, and the brand editor also says when its latest version was approved.
+- **Freshness:** the list (and the Overview card) refetch every 60 s (`REFRESH_MS`) and when the window regains focus. A status that
+  changes while the page is open is announced in a polite live region.
+- **"New since your last visit"** marks decisions made after the vendor last left the page. The time is kept in memory
+  (`lastVisit.ts`), like the session: the portal writes nothing to web storage, so the marker starts over after a reload or a
+  sign-out.
+- **Overview:** how many items (brand page and products together) are in review, and the latest three decisions, a rejected one
+  linking to its fix (newest decision first, taken from the ten most recent submissions).
+- **Empty:** a vendor who has submitted nothing is told what to do first (the brand page, then products).
+- **Dates** everywhere (here, the team list, the account page) come from `features/time.ts`: relative ("3 days ago") with the
+  exact time beside it.

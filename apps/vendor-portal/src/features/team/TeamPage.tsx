@@ -6,12 +6,11 @@ import { ApiError } from '../../api/errors'
 import { useSession } from '../../session/AuthProvider'
 import { EmptyState, ErrorState, PageHeader, PageSkeleton, useConfirm, useToast } from '../../ui'
 import { LIMITS } from '../signup/rules'
+import { exactTime, relativeTime } from '../time'
 import {
   STATUS_COLOR,
   checkInviteEmail,
-  exactTime,
   isMemberStatus,
-  relativeTime,
   roleLabel,
   sortMembers,
   statusLabel,

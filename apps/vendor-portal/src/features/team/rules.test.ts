@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ApiError, NetworkError } from '../../api/errors'
-import { checkInviteEmail, relativeTime, sortMembers, statusLabel, teamErrorMessage, type Member } from './rules'
+import { checkInviteEmail, sortMembers, statusLabel, teamErrorMessage, type Member } from './rules'
 
 const m = (email: string, role: string, status: string): Member => ({ id: email, email, role, status, last_login_at: null, created_at: '2026-11-01T00:00:00Z' })
 
@@ -30,14 +30,5 @@ describe('team rules', () => {
     expect(teamErrorMessage(api(429, 'rate_limited', { retryAfter: 61 }), 'invite')).toMatch(/2 minutes/)
     expect(teamErrorMessage(api(422, 'validation_error', { fieldErrors: { email: 'use plain letters' } }), 'invite')).toBe('use plain letters')
     expect(teamErrorMessage(new NetworkError('network'), 'invite')).toMatch(/connection/)
-  })
-
-  it('says how long ago', () => {
-    const now = Date.parse('2026-11-19T12:00:00Z')
-    expect(relativeTime('2026-11-19T11:59:30Z', now)).toBe('just now')
-    expect(relativeTime('2026-11-19T09:00:00Z', now)).toBe('3 hours ago')
-    expect(relativeTime('2026-11-18T12:00:00Z', now)).toBe('yesterday')
-    expect(relativeTime('2026-11-05T12:00:00Z', now)).toBe('2 weeks ago')
-    expect(relativeTime('nonsense', now)).toBe('')
   })
 })

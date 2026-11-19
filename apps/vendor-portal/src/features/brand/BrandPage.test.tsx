@@ -297,6 +297,18 @@ describe('the states of the page', () => {
     expect(isDisabled(field(/Brand name/))).toBe(false)
   })
 
+  it('shows the reason as plain text, with its line breaks', async () => {
+    await open({ latest: submission({ status: 'rejected', version: 1, reason: '<b>Blurry</b> banner.\nRetake it.' }) })
+    const reason = screen.getByTestId('review-reason')
+    expect(reason.textContent).toBe('<b>Blurry</b> banner.\nRetake it.')
+    expect(reason.querySelector('b')).toBeNull()
+  })
+
+  it('says when the latest version was approved', async () => {
+    await open({ latest: submission({ status: 'approved', version: 1 }) })
+    expect(screen.getByText(/Version 1 was approved/).closest('.MuiAlert-root')?.textContent).toContain('on 10 Nov 2026')
+  })
+
   it('shows nothing published yet, and then the published version with its date', async () => {
     const { user } = await open()
     await user.click(screen.getByRole('tab', { name: 'Published version' }))
