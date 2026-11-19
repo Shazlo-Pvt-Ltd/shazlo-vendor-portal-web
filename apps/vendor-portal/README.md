@@ -64,10 +64,10 @@ src/
   api/                the typed vendor-api client, its hooks and error model (generated types in schema.d.ts)
   session/            the session store (token in memory), AuthProvider and useSession, the route guards, the blocked page
   config/             the typed environment, the support address and the website links
-  features/           one folder per feature (signup and email verification, sign-in and passwords, the image uploader, the brand page editor, the products list, the product form and the bulk import) and the helpers they share
+  features/           one folder per feature (signup and email verification, sign-in and passwords, the image uploader, the brand page editor, the products list, the product form, the bulk import, the team and the account) and the helpers they share
   components/         shared pieces (error boundary and screens, not found, misconfigured)
   ui/                 patterns every screen shares: page header, loading, empty, error, toast, confirm
-  pages/              one module per route (Account, Submissions and Team are still the placeholder page until their features arrive)
+  pages/              one module per route (Submissions is still the placeholder page until its feature arrives)
   security/           the headers (one definition for vercel.json, dev and preview), SafeLink,
                       SafeImage, PasswordField, and the tests of the security rules
   test/               test setup
@@ -412,3 +412,25 @@ host with progress (`XMLHttpRequest`: `fetch` cannot report upload progress), re
   their own messages. A check or an import can be cancelled; a cancelled or timed-out import says that some products may already
   have been imported and that importing again is safe. There is no upload percentage: `fetch` cannot report one, and the files are
   small.
+
+## Team and account
+
+`src/features/team/` is `/team` (owner only); `src/features/account/` is `/account` (everyone).
+
+- **Owner only.** Team is in the navigation for the owner alone, and `RequireRole` shows staff who open `/team` by its address a
+  "You don't have access to this page" page (error 403) inside the frame. The team list is never requested for them.
+- **The list** (`GET /v1/vendor/users`): the owner first, then active, invited and disabled staff, with role and status chips and
+  the last sign-in (relative, with the exact time). Nobody can act on the owner or on themselves.
+- **Inviting** (`POST /v1/vendor/users`) shows the API's one answer, "If this address can be invited, we have sent an invitation",
+  whatever the address: vendor-api does not say whether an address is already registered, so neither does the portal.
+  **Resend** is offered for invited people; `409 not_invited` is explained. **Disable** and **Enable** ask first (disabling signs
+  the person out everywhere at once, and ends their unused invitation link). Enabling someone who never accepted their invitation
+  puts them back to "invited", so the page asks the owner to resend it; `cannot_disable_self`, `owner_cannot_be_disabled`, `user_not_found` and `429` (20 invitations
+  an hour) have their own words.
+- **Account** shows the profile from the session (email, role, vendor name and status, last sign-in). vendor-api has no user name,
+  so there is none to show.
+- **Changing the password** (`POST /v1/auth/change-password`) needs the current one. The API ends every session of the user and
+  returns a new one, which the portal adopts (`session.signIn`), so this tab stays signed in and every other device is signed
+  out; the page says so. A wrong current password (`400 invalid_current_password`) is shown next to that field, a `422
+  weak_password` next to the new one, and `429` counts down. Like the other password forms, the mutation keeps no copy of the
+  passwords (`gcTime: 0` and `reset()`), and signing out clears the fields.
