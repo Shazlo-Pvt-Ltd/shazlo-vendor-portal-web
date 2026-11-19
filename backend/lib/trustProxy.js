@@ -19,5 +19,13 @@ export function parseTrustProxy(value) {
       "TRUST_PROXY=true would trust a client-supplied X-Forwarded-For header; set the number of proxy hops instead",
     );
   }
-  return setting.split(",").map((entry) => entry.trim()).filter(Boolean);
+  const entries = setting.split(",").map((entry) => entry.trim()).filter(Boolean);
+  // A /0 subnet (0.0.0.0/0, ::/0) matches every address, which is the same as "true".
+  const everything = entries.find((entry) => /\/0+$/.test(entry));
+  if (everything) {
+    throw new Error(
+      `TRUST_PROXY=${everything} would trust every address, including a client-supplied X-Forwarded-For; set the number of proxy hops instead`,
+    );
+  }
+  return entries;
 }

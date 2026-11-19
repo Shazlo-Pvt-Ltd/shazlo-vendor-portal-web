@@ -13,6 +13,9 @@ import { parseTrustProxy } from "./lib/trustProxy.js";
 // Mongoose 6; applies to every query in the process.
 mongoose.set("sanitizeFilter", true);
 
+export const BODY_LIMIT = "100kb";
+export const CATALOG_BODY_LIMIT = "5mb";
+
 /**
  * Builds the HTTP application. Keep HTTP composition separate from database connection and
  * process lifecycle: tests use this same application with a disposable local MongoDB instance.
@@ -31,8 +34,11 @@ export function createApp({
   app.disable("x-powered-by");
 
   app.use(cors());
-  app.use(express.json({ limit: "10mb" }));
-  app.use(express.urlencoded({ extended: true }));
+  // Small bodies everywhere (forms and admin actions), except a catalog upload of up to 1000
+  // products. The specific parser must come first: a body is parsed once.
+  app.use("/api/upload/products", express.json({ limit: CATALOG_BODY_LIMIT }));
+  app.use(express.json({ limit: BODY_LIMIT }));
+  app.use(express.urlencoded({ extended: true, limit: BODY_LIMIT }));
   app.use("/api/waitlist", createWaitlistRouter({ rateLimits }));
   app.use("/api", createBrandRouter({ rateLimits }));
   app.use("/api/upload", createUploadRouter({ rateLimits }));

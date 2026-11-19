@@ -164,6 +164,26 @@ describe('production HTTP application', () => {
     expect(json(response)).toEqual({ message: 'request entity too large' })
     expect(await WaitlistUser.countDocuments()).toBe(0)
   })
+
+  it('limits form bodies to 100 KB', async () => {
+    const response = await post('/api/waitlist/add', { ...waitlistInput(), name: 'a'.repeat(101 * 1024) })
+    expect(response.status).toBe(413)
+    const form = await request('/api/waitlist/add', {
+      method: 'POST', raw: `name=${'a'.repeat(101 * 1024)}`, headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    })
+    expect(form.status).toBe(413)
+    expect(await WaitlistUser.countDocuments()).toBe(0)
+  })
+
+  it('allows a catalog upload larger than the form limit', async () => {
+    const seller = await Brand.create(brandInput())
+    const products = Array.from({ length: 300 }, (_, i) => productInput({ productId: `KS-${i}`, description: 'd'.repeat(500) }))
+    const body = { sellerId: seller.id, products }
+    expect(JSON.stringify(body).length).toBeGreaterThan(100 * 1024)
+    const response = await post('/api/upload/products', body)
+    expect(response.status).toBe(200)
+    expect(await Product.countDocuments()).toBe(300)
+  })
 })
 
 describe('waitlist persistence and duplicates', () => {
@@ -563,6 +583,19 @@ describe('upload limits', () => {
     const files = Array.from({ length: MAX_IMAGES_PER_REQUEST + 1 }, (_, i) => [`image ${i}`, `${i}.png`])
     const response = await fetch(`${baseUrl}/api/upload/images`, { method: 'POST', body: imageForm(files) })
     expect(response.status).toBe(413)
+    expect(upload).not.toHaveBeenCalled()
+  })
+
+  it('answers a truncated multipart body with 400, not 500', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const upload = vi.spyOn(cloudinary.uploader, 'upload_stream')
+    const response = await request('/api/upload/images', {
+      method: 'POST',
+      headers: { 'Content-Type': 'multipart/form-data; boundary=edge' },
+      raw: '--edge\r\nContent-Disposition: form-data; name="images"; filename="a.png"\r\nContent-Type: image/png\r\n\r\nabc',
+    })
+    expect(response.status).toBe(400)
+    expect(json(response)).toEqual({ message: 'Malformed multipart body' })
     expect(upload).not.toHaveBeenCalled()
   })
 

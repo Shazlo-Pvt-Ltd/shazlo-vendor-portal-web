@@ -128,4 +128,8 @@ describe('TRUST_PROXY parsing', () => {
   it.each(['true', 'TRUE'])('refuses %s, which would trust a client-supplied X-Forwarded-For', (value) => {
     expect(() => parseTrustProxy(value)).toThrow(/number of proxy hops/)
   })
+
+  it.each(['0.0.0.0/0', '::/0', 'loopback, 0.0.0.0/00'])('refuses %s, a subnet that matches every address', (value) => {
+    expect(() => parseTrustProxy(value)).toThrow(/would trust every address/)
+  })
 })

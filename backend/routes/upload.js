@@ -60,7 +60,10 @@ function images(req, res, next) {
       }
       return res.status(400).json({ message: "Invalid upload: send images in the multipart field \"images\"" });
     }
-    next(error);
+    // Anything else comes from the multipart parser (a truncated body, a missing boundary or a
+    // malformed part header): the client's fault, and memory storage itself cannot fail.
+    console.error("Malformed multipart upload:", error.message);
+    res.status(400).json({ message: "Malformed multipart body" });
   });
 }
 
