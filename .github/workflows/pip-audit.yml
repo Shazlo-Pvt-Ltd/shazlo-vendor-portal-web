@@ -1,0 +1,100 @@
+name: pip-audit
+
+# Audits what each Python service and package really installs (its runtime and dev dependencies,
+# resolved the way services-ci installs them) against the PyPI/OSV advisories.
+# Like apps-ci's npm audit: a PR that changes a Python manifest must leave the audit clean; every
+# other run (PRs that do not touch them, main, the weekly run) reports findings without failing,
+# so an advisory published after a merge never fails an unrelated PR.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "15 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pip-audit-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      pull-requests: read # lists the files the PR changes
+    outputs:
+      python: ${{ steps.diff.outputs.python }}
+    steps:
+      - id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -z "$PR" ]; then
+            echo "python=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename')
+          python=$(printf '%s\n' "$files" | grep -E '^(services/[^/]+|packages/py-[^/]+)/(pyproject\.toml|requirements[^/]*\.txt)$|^\.github/workflows/pip-audit\.yml$' || true)
+          printf '%s\n' "$python"
+          echo "python=$([ -n "$python" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  audit:
+    name: pip-audit (${{ matrix.project }})
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [identity-api, vendor-api, central-stub, py-auth, py-security]
+    env:
+      PROJECT_DIR: ${{ startsWith(matrix.project, 'py-') && format('packages/{0}', matrix.project) || format('services/{0}', matrix.project) }}
+      PIP_AUDIT_VERSION: 2.10.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      # The same install as services-ci, into an environment of its own, so the audit sees the
+      # project's dependencies and nothing of pip-audit's.
+      - name: Install the project
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          python -m venv "$RUNNER_TEMP/project"
+          "$RUNNER_TEMP/project/bin/python" -m pip install --quiet --disable-pip-version-check --upgrade pip
+          if [ -f requirements-shared.txt ]; then
+            "$RUNNER_TEMP/project/bin/python" -m pip install --quiet --disable-pip-version-check -r requirements-shared.txt
+          fi
+          "$RUNNER_TEMP/project/bin/python" -m pip install --quiet --disable-pip-version-check -e '.[dev]'
+      - name: Install pip-audit
+        run: |
+          python -m venv "$RUNNER_TEMP/pip-audit"
+          "$RUNNER_TEMP/pip-audit/bin/python" -m pip install --quiet --disable-pip-version-check "pip-audit==${PIP_AUDIT_VERSION}"
+      # Editable installs are this repository's own code (the project and the shared packages).
+      - name: Audit
+        continue-on-error: ${{ needs.changes.outputs.python != 'true' }}
+        env:
+          PIPAPI_PYTHON_LOCATION: ${{ runner.temp }}/project/bin/python
+        run: |
+          set +e
+          "$RUNNER_TEMP/pip-audit/bin/pip-audit" --skip-editable --desc on --format markdown \
+            --output "$RUNNER_TEMP/pip-audit.md"
+          status=$?
+          cat "$RUNNER_TEMP/pip-audit.md"
+          {
+            echo "### pip-audit: $PROJECT_DIR"
+            cat "$RUNNER_TEMP/pip-audit.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -ne 0 ]; then
+            echo "::warning::pip-audit found vulnerable dependencies in $PROJECT_DIR (see the run summary)"
+          fi
+          exit "$status"
