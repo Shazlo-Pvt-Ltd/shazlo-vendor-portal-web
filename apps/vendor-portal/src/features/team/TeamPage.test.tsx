@@ -154,6 +154,20 @@ describe('the team page', () => {
     expect(calls.patches[1]).toEqual({ id: 's2', body: { disabled: false } })
   })
 
+  it('asks for a new invitation after enabling someone who never accepted one', async () => {
+    // vendor-api puts a user without a password back to `invited`, and disabling ended their link.
+    const { user } = await open('owner', { patch: () => HttpResponse.json(member('s2', 'zara@brand.test', { status: 'invited', last_login_at: null })) })
+    await user.click(await screen.findByRole('button', { name: 'Enable zara@brand.test' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Enable zara@brand.test?' })
+    expect(within(dialog).getByText(/never accepted their invitation needs a new one/)).toBeTruthy()
+    await user.click(within(dialog).getByRole('button', { name: 'Enable' }))
+    expect(await screen.findByText('zara@brand.test is enabled. Resend the invitation so they can choose a password.')).toBeTruthy()
+    // The closing dialog hides the page from role queries until its transition ends.
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull(), { timeout: 10_000 })
+    expect(within(row('zara@brand.test')).getByText('Invited')).toBeTruthy()
+    expect(within(row('zara@brand.test')).getByRole('button', { name: 'Resend the invitation to zara@brand.test' })).toBeTruthy()
+  })
+
   it('changes nothing when the confirmation is declined', async () => {
     const { calls, user } = await open()
     await user.click(await screen.findByRole('button', { name: 'Disable bina@brand.test' }))

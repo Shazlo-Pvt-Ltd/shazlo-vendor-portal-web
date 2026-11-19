@@ -170,7 +170,8 @@ export default function TeamPage() {
             }
           : {
               title: `Enable ${member.email}?`,
-              message: 'They can sign in again with their password.',
+              message:
+                'They can sign in again with their password. Someone who never accepted their invitation needs a new one: disabling ended the old link, so resend it afterwards.',
               confirmLabel: 'Enable',
             },
       )
@@ -186,7 +187,10 @@ export default function TeamPage() {
         queryClient.setQueryData<Member[]>(api.queryOptions('get', USERS_PATH).queryKey, (current) =>
           current?.map((item) => (item.id === updated.id ? updated : item)),
         )
-        toast.success(action === 'disable' ? `${member.email} is disabled` : `${member.email} is enabled`)
+        if (action === 'disable') toast.success(`${member.email} is disabled`)
+        // vendor-api puts someone who never set a password back to `invited`; their old link no longer works.
+        else if (updated.status === 'invited') toast.success(`${member.email} is enabled. Resend the invitation so they can choose a password.`)
+        else toast.success(`${member.email} is enabled`)
       }
     } catch (caught) {
       setActionError(teamErrorMessage(caught, action))

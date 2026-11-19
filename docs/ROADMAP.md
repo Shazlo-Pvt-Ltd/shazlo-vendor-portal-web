@@ -62,7 +62,7 @@ These are used as reference only. None of the code is reused.
 ## Phases
 Each phase matches a milestone in this repo. The bullets are the proposed scope; the actual issues are filed when the phase starts.
 
-Status (2026-11-19): Phases 0 to 4 are delivered, and Phase 5 (the vendor portal) is in progress (its sign-in, dashboard, brand page editor, products list and product form are merged). Phases 6 to 8 have not started. One decision is still open from Phase 4: the central-app team has not signed off [ADR 0003](adr/0003-central-app-publishing-contract.md), so it is still `proposed` (issue #179).
+Status (2026-11-19): Phases 0 to 4 are delivered, and Phase 5 (the vendor portal) is in progress (its sign-in, dashboard, brand page editor, products list, product form, bulk import, and team and account pages are merged). Phases 6 to 8 have not started. One decision is still open from Phase 4: the central-app team has not signed off [ADR 0003](adr/0003-central-app-publishing-contract.md), so it is still `proposed` (issue #179).
 
 ### Phase 0: Foundation & security hygiene
 - Repo hygiene: untrack local env files and `node_modules`, fix `.gitignore`, and add `.env.example` files.
@@ -140,7 +140,7 @@ Delivered (as the issues #179 to #189), with these differences from the list abo
 - The end-to-end test (`tests/test_e2e_publishing.py`) runs the whole flow against Postgres, Redis and the real stub: publish, withdraw, restore, the stub failing, a refused signature, one aggregate failing, a worker that crashes mid-send and a duplicate delivery. Operating it is in [runbooks/central-publishing.md](runbooks/central-publishing.md).
 
 ### Phase 5: Vendor Portal web
-Status (2026-11-19): in progress. Merged so far: the scaffold (Vite, React Router, TanStack Query, the shared theme, `VITE_VENDOR_API_URL`), the typed API client generated from `openapi.json`, the security baseline (CSP and headers, safe rendering), the session (in-memory access token, silent renewal, route guards, blocked page), signup and email verification, sign in, forgot, set and reset password and accepting an invite (the emailed links carry the token in the URL fragment), sign out, the dashboard shell with an overview, the image uploader, the brand page editor with live preview and submit for review, the products list, and the product create/edit form (variants, images, live and working versions, submit for review). On the API side, `GET /v1/vendor/submissions` and the `review` block on brand-page outputs give the portal the outcome of each submission. Not merged yet: bulk import with an error report, and the submission-status screen that shows the admin's reasons. Where the code and this list differ, the code is right; `apps/vendor-portal/README.md` describes what the app does today.
+Status (2026-11-19): in progress. Merged so far: the scaffold (Vite, React Router, TanStack Query, the shared theme, `VITE_VENDOR_API_URL`), the typed API client generated from `openapi.json`, the security baseline (CSP and headers, safe rendering), the session (in-memory access token, silent renewal, route guards, blocked page), signup and email verification, sign in, forgot, set and reset password and accepting an invite (the emailed links carry the token in the URL fragment), sign out, the dashboard shell with an overview, the image uploader, the brand page editor with live preview and submit for review, the products list, the product create/edit form (variants, images, live and working versions, submit for review), the bulk import (template, validate first, a per-row report with a downloadable error CSV, then import), and the team and account pages (the owner invites, resends, disables and enables staff; everyone sees their profile and changes their password). On the API side, `GET /v1/vendor/submissions` and the `review` block on brand-page outputs give the portal the outcome of each submission. Not merged yet: the submission-status screen that shows the admin's reasons, and the end-to-end test and accessibility checks (#223). Where the code and this list differ, the code is right; `apps/vendor-portal/README.md` describes what the app does today.
 
 Planned scope:
 
@@ -150,6 +150,7 @@ Planned scope:
 - Brand page editor with live preview and submit for review.
 - Products: list, create/edit form, image upload, and bulk import with an error report.
 - Submission status, showing the admin's reasons.
+- Team (owner only: invite, resend, disable and enable staff) and account (profile, password change).
 
 ### Phase 6: Shazlo-One shell
 Status: not started (`apps/shazlo-one` holds only a README).
