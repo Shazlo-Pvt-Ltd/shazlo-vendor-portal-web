@@ -64,10 +64,10 @@ src/
   api/                the typed vendor-api client, its hooks and error model (generated types in schema.d.ts)
   session/            the session store (token in memory), AuthProvider and useSession, the route guards, the blocked page
   config/             the typed environment, the support address and the website links
-  features/           one folder per feature (signup and email verification, sign-in and passwords so far) and the helpers they share
+  features/           one folder per feature (signup and email verification, sign-in and passwords, the image uploader, the brand page editor, the products list and the product form) and the helpers they share
   components/         shared pieces (error boundary and screens, not found, misconfigured)
   ui/                 patterns every screen shares: page header, loading, empty, error, toast, confirm
-  pages/              one module per route (a placeholder until its feature arrives)
+  pages/              one module per route (Account, Import, Submissions and Team are still the placeholder page until their features arrive)
   security/           the headers (one definition for vercel.json, dev and preview), SafeLink,
                       SafeImage, PasswordField, and the tests of the security rules
   test/               test setup
@@ -359,9 +359,34 @@ host with progress (`XMLHttpRequest`: `fetch` cannot report upload progress), re
 
 - **Edit, preview, save, submit.** The form sends the whole draft on every save (the API replaces it). Prices are typed in rupees and converted to paise with integer arithmetic (`99.90` is exactly 9990). The Instagram box takes `@name`, a name or a profile address and shows the handle it will save.
 - **Live preview** beside the form (below it on a phone): the shopper's brand card and page header at a phone or a desktop width. It only reads the form's values, so it updates as the vendor types. Text is rendered as text, links go through `SafeLink` and pictures through `SafeImage`, and a missing logo falls back to an initial.
-- **Unsaved changes** are tracked by comparing what would be saved: leaving the page asks first (`useBlocker`), and closing the tab warns.
+- **Unsaved changes** are tracked by comparing what would be saved: leaving the page asks first, and closing the tab warns (`useUnsavedChanges`, shared with the product form).
 - **A version in review is locked.** It says since when (from `GET /v1/vendor/submissions`), and editing a new draft is a deliberate button. Submitting is off until the decision, because the API allows one version in review (`409 review_pending` is explained if it happens anyway). A version that was not approved shows the admin's reason.
 - **Submitting** needs a category (checked before the call), asks for confirmation that says what happens next, and saves unsaved changes first. The **Published version** tab shows what shoppers see now, or that nothing is published yet.
+
+## The product form
+
+`src/features/products/ProductEditor.tsx` is both `/products/new` and `/products/:id`.
+
+- **The whole revision on every save.** `PUT` replaces it, so the form sends every field, every variant and every image
+  (`toBody` in `form.ts`). Creating sends the same body plus the product's SKU, then moves to the product's own page.
+  The product SKU cannot change afterwards.
+- **Prices** are typed in rupees and sent as whole paise with integer arithmetic (`rupeesToPaise` / `paiseToRupees` in
+  `features/signup/money.ts`): `0.10` is exactly 10 paise and `1999.99` is 199999, and both read back the same. An empty
+  MRP means the same as the price; the MRP cannot be below it.
+- **Variants** mirror the API's rules before sending: SKU format, SKUs unique within the product (letter case ignored),
+  no two variants with the same size and colour. A saved variant keeps its SKU, size and colour (they are its identity on
+  the server, `422 variant_identity_changed`); to sell another size or colour, add a variant. vendor-api returns variants
+  in SKU order, so the form does not offer to reorder them. A SKU used by another product is the server's `409 sku_taken`.
+- **Images** come from the shared uploader. The first is the cover. They are ordered by dragging or with the Move up,
+  Move down and Make cover buttons; a move is announced and focus stays with the image that moved. Each has its own
+  description (alt text). At most 10: files beyond that are not added and the form says so. Only the picture is draggable, so text in the description field stays selectable.
+- **Live and working versions.** For an approved product the live version is shown beside the form, with "Editing creates
+  a new version. The live product does not change until it is approved." A version in review, and an archived product,
+  are read-only; a rejected version shows the admin's reason (as plain text) and the form starts from it.
+- **Submit** asks for confirmation and saves unsaved changes first. It needs an active variant and an image, checked
+  before the call; `422 product_incomplete`, `409 product_in_review`, `409 product_archived` and `409 nothing_to_submit`
+  are explained in words, and `422` field messages go next to their fields (including `variants.N.price_paise`).
+- **Unsaved changes** are guarded by `useUnsavedChanges` (`src/hooks/`), shared with the brand page editor.
 
 ## Team and account
 

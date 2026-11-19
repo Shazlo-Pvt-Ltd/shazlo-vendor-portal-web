@@ -1,6 +1,1 @@
-import { PlaceholderPage } from './PlaceholderPage'
-
-/** Replaced by its own issue; until then the section is reachable and has its page header. */
-export default function NewProductPage() {
-  return <PlaceholderPage title="New product" />
-}
+export { default } from '../features/products/NewProductPage'
