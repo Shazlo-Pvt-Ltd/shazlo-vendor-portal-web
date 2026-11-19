@@ -362,3 +362,24 @@ host with progress (`XMLHttpRequest`: `fetch` cannot report upload progress), re
 - **Unsaved changes** are tracked by comparing what would be saved: leaving the page asks first (`useBlocker`), and closing the tab warns.
 - **A version in review is locked.** It says since when (from `GET /v1/vendor/submissions`), and editing a new draft is a deliberate button. Submitting is off until the decision, because the API allows one version in review (`409 review_pending` is explained if it happens anyway). A version that was not approved shows the admin's reason.
 - **Submitting** needs a category (checked before the call), asks for confirmation that says what happens next, and saves unsaved changes first. The **Published version** tab shows what shoppers see now, or that nothing is published yet.
+
+## Team and account
+
+`src/features/team/` is `/team` (owner only); `src/features/account/` is `/account` (everyone).
+
+- **Owner only.** Team is in the navigation for the owner alone, and `RequireRole` shows staff who open `/team` by its address a
+  "You don't have access to this page" page (error 403) inside the frame. The team list is never requested for them.
+- **The list** (`GET /v1/vendor/users`): the owner first, then active, invited and disabled staff, with role and status chips and
+  the last sign-in (relative, with the exact time). Nobody can act on the owner or on themselves.
+- **Inviting** (`POST /v1/vendor/users`) shows the API's one answer, "If this address can be invited, we have sent an invitation",
+  whatever the address: vendor-api does not say whether an address is already registered, so neither does the portal.
+  **Resend** is offered for invited people; `409 not_invited` is explained. **Disable** and **Enable** ask first (disabling signs
+  the person out everywhere at once); `cannot_disable_self`, `owner_cannot_be_disabled`, `user_not_found` and `429` (20 invitations
+  an hour) have their own words.
+- **Account** shows the profile from the session (email, role, vendor name and status, last sign-in). vendor-api has no user name,
+  so there is none to show.
+- **Changing the password** (`POST /v1/auth/change-password`) needs the current one. The API ends every session of the user and
+  returns a new one, which the portal adopts (`session.signIn`), so this tab stays signed in and every other device is signed
+  out; the page says so. A wrong current password (`400 invalid_current_password`) is shown next to that field, a `422
+  weak_password` next to the new one, and `429` counts down. Like the other password forms, the mutation keeps no copy of the
+  passwords (`gcTime: 0` and `reset()`), and signing out clears the fields.
