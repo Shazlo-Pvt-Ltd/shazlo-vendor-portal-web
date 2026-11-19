@@ -1,6 +1,7 @@
 import { QueryClient } from '@tanstack/react-query'
 import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { countdownClock } from '../../test/countdown'
 import { typeFast } from '../../test/typeFast'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
@@ -155,10 +156,11 @@ describe('the signup form', () => {
     )
     const user = await open()
     await fillValid(user)
+    const countdown = countdownClock(42)
     await submit(user)
-    expect(await screen.findByText(/Try again in (42|41) s\./)).toBeTruthy()
+    countdown((await screen.findByText(/Try again in \d+ s\./)).textContent, /Try again in (\d+) s\./)
     expect((screen.getByRole('button', { name: 'Create account' }) as HTMLButtonElement).disabled).toBe(true)
-    expect(screen.getByText(/Try again in about (42|41) seconds/)).toBeTruthy()
+    countdown(screen.getByText(/Try again in about \d+ seconds/).textContent, /Try again in about (\d+) seconds/)
   })
 
   it('says so, in plain words, when the server cannot be reached', async () => {
