@@ -39,7 +39,7 @@ Plan, phases and decisions: [docs/ROADMAP.md](docs/ROADMAP.md). Architecture dec
 | `test/contracts/` | JavaScript contract tests for the ADR 0003 schemas and the shared-package install files |
 | `app/`, `backend/` | **Legacy** consumer landing/waitlist, Express + MongoDB. Untouched until Phase 8 |
 
-The three Python services and the two Python packages are built. Of the web apps, `apps/shazlo-one/` and `apps/vendor-admin/` are placeholders until their phase starts, and `apps/vendor-portal/` is being built (Phase 5: sign-in, the dashboard, the brand page editor, the products list and the product form are merged); see the roadmap and the app's README.
+The three Python services and the two Python packages are built. Of the web apps, `apps/shazlo-one/` and `apps/vendor-admin/` are placeholders until their phase starts, and `apps/vendor-portal/` is being built (Phase 5: sign-in, the dashboard, the brand page editor, the products list, the product form and the bulk import are merged); see the roadmap and the app's README.
 
 ## Local development
 
