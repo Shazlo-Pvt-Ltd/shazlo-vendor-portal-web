@@ -4,7 +4,9 @@ What scans this repository in GitHub Actions, when, where the results appear, an
 finding. Every action is pinned to the full commit SHA of a released tag, and every downloaded
 binary is checked against the SHA-256 published with its release. None of the workflows needs a
 secret, so pull requests from forks run them too, and none depends on Dependabot alerts or GitHub
-secret scanning being enabled.
+secret scanning being enabled. `dependency-review` does need the repository's **Dependency graph**
+(Settings > Code security): without it, that job fails on every pull request with "Dependency
+review is not supported on this repository".
 
 ## What runs
 
@@ -95,8 +97,13 @@ repository setting (branch protection, code review) are fixed in Settings, not i
 
 ## Repository settings
 
-These workflows deliberately do not depend on them, but enabling them in Settings > Code security
-adds coverage the workflows cannot give:
+`dependency-review` needs one of them:
+
+- **Dependency graph**: the dependency review API it calls compares the graphs of the PR's base
+  and head, and answers only when the graph is enabled.
+
+The other workflows deliberately do not depend on these settings, but enabling them in Settings >
+Code security adds coverage the workflows cannot give:
 
 - **Dependabot alerts** and **Dependabot security updates**: alerts for vulnerable dependencies on
   `main` as advisories are published, and fix PRs that skip the cooldown.
