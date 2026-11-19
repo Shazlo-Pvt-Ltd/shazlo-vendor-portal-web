@@ -1,8 +1,17 @@
 import type { Schemas } from '../api/client'
+import { sizeCode } from '../lib/catalog'
 import { swatch } from './swatch'
 
 // In-memory stand-in for vendor-api, seeded with the wireframe's seller (Kalki Studio).
 // Delete with src/mocks once vendor-api serves these routes.
+//
+// Demo facts the screens and tests rely on:
+// - Store details are complete except payouts: missing = ['payout'], so setup.store_details is
+//   false and no product can be sent for review until a payout is saved.
+// - Commission is agreed at 12% (1200 bps); nothing is proposed.
+// - Live, in-review and the sent-back jacket have all 4 named photos and 5 try-on photos. The
+//   sent-back Ajrakh kurta (p_001) has no back photo and only 2 try-on photos. Drafts are incomplete.
+// - A size chart is saved for 'dresses' (kurtas, kurtis, dresses, co-ords and lehengas).
 
 export const DEMO_LOGIN = { identifier: 'kiran@kalkistudio.in', password: 'ajrakh-indigo-26' }
 export const DEMO_INVITE = 'invite-kalki-demo'
@@ -20,27 +29,49 @@ export interface ProductRecord extends Product {
 
 export type ImportRecord = Schemas['ImportJob'] & { rows: ImportRow[] }
 
+// One ready spreadsheet row: one product with all its sizes.
 export interface ImportRow {
-  product_id: string
+  row: number
   name: string
-  category: string
-  description: string
+  gender: Schemas['Gender']
+  category: Schemas['ProductType']
+  main_colour: string
+  other_colours: string[]
   price_paise: number
-  mrp_paise: number
-  stock: number
-  size: string
-  gender: string
-  fabric: string
+  mrp_paise: number | null
+  variants: { size: string; stock: number }[]
+  description: string
+  material: string
 }
+
+// The server's own copy of the store details: the payout keeps the full account number, which the
+// API only ever returns masked.
+export interface StoreRecord {
+  sells: Schemas['Sells'] | null
+  city: string | null
+  instagram_or_website: string | null
+  contact: Schemas['Contact'] | null
+  delivery: Schemas['Delivery'] | null
+  returns: Schemas['Returns'] | null
+  pay_on_delivery: Schemas['PayOnDelivery'] | null
+  payout: Schemas['PayoutInput'] | null
+  business: Schemas['BusinessDetails']
+  updated_at: string | null
+}
+
+export type SizeChartRecord = Omit<Schemas['SizeChart'], 'group'>
 
 export interface MockDb {
   now: () => Date
-  vendor: Schemas['Me']['vendor']
+  vendor: Omit<Schemas['Me']['vendor'], 'commission_bps' | 'commission'>
   user: Schemas['Me']['user'] & { password: string }
   passwordSet: boolean
   sessions: { access: Map<string, number>; refresh: Set<string> }
   invites: Map<string, { email: string; brand_name: string; owner_name: string }>
   applications: (Schemas['VendorApplication'] & { id: string })[]
+  store: StoreRecord
+  commission: Schemas['Commission']
+  sizeCharts: Partial<Record<Schemas['SizeChartGroup'], SizeChartRecord>>
   products: ProductRecord[]
   brand: { live: BrandProfile | null; live_since: string | null; draft: BrandProfile | null; draft_saved_at: string | null; review: Schemas['ReviewState']; submitted_at: string | null }
   uploads: Map<string, string>
@@ -49,15 +80,10 @@ export interface MockDb {
   failNext: { path: string; status: number; code: string; message: string } | null
 }
 
-export const CATEGORIES = ['Kurtas', 'Kurtis', 'Sarees', 'Dupattas', 'Stoles', 'Jackets', 'Shirts', 'Skirts', 'Co-ords', 'Dresses', 'Palazzos']
-export const GENDERS = ['Women', 'Men', 'Unisex']
-export const FABRICS = ['Cotton (mul)', 'Cotton', 'Linen', 'Silk', 'Mashru silk', 'Kala cotton', 'Khadi', 'Chanderi']
-export const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'One size']
-
 const H = 3_600_000
 const D = 24 * H
 
-type Seed = [title: string, sku: string, category: string, rupees: number | null, mrp: number | null, stock: number[] | null, status: Product['status'], ageHours: number]
+type Seed = [title: string, sku: string, category: Schemas['ProductType'], rupees: number | null, mrp: number | null, stock: number[] | null, status: Product['status'], ageHours: number]
 
 // Wireframe rows first (V-04, V-06, V-09), then the rest of the 27-product catalogue.
 const CATALOGUE: Seed[] = [
@@ -90,26 +116,74 @@ const CATALOGUE: Seed[] = [
   ['Indigo Dabu Co-ord', 'KS-DAB-042', 'Co-ords', 2699, 2999, [2, 2, 2], 'draft', 2 * 24],
 ]
 
+// Main colour, other colours and material, as the seller wrote them.
+const LOOKS: Record<string, [main: string | null, others: string[], material: string]> = {
+  'KS-AJR-014': ['Indigo', ['Red', 'Black'], 'Cotton mul'],
+  'KS-KMJ-007': ['Black', ['Red', 'Mustard'], 'Cotton with mirror work'],
+  'KS-BDN-022': ['Red', ['Yellow'], 'Gajji silk'],
+  'KS-HCS-003': ['Rust', [], 'Handloom cotton'],
+  'KS-LCS-031': ['Indigo', [], '100% linen'],
+  'KS-CHK-018': ['Ivory', [], 'Cotton mul'],
+  'KS-DAB-040': ['Indigo', ['Beige'], 'Cotton'],
+  'KS-KAL-011': [null, [], ''],
+  'KS-PIK-027': ['Maroon', ['Ivory', 'Black'], 'Handloom ikat cotton'],
+  'KS-LHR-019': ['Pink', ['Orange'], 'Cotton voile'],
+  'KS-BGR-033': ['Beige', ['Black'], 'Cotton'],
+  'KS-SNG-008': ['White', ['Pink', 'Green'], 'Cotton cambric'],
+  'KS-MSH-041': ['Mustard', ['Maroon'], 'Mashru silk'],
+  'KS-KLM-002': ['Multicolour', [], 'Cotton'],
+  'KS-SHB-036': ['Indigo', ['White'], 'Cotton mul'],
+  'KS-KNT-012': ['Multicolour', [], 'Upcycled cotton with kantha stitching'],
+  'KS-JMD-005': ['White', ['Gold'], 'Handloom Jamdani cotton'],
+  'KS-PHK-021': ['Orange', ['Pink', 'Yellow'], 'Cotton with silk-thread embroidery'],
+  'KS-KHD-015': ['Grey', [], 'Khadi cotton'],
+  'KS-AJR-020': ['Indigo', ['Red'], 'Cotton mul'],
+  'KS-IKT-029': ['Teal', ['Ivory'], 'Handloom ikat cotton'],
+  'KS-CHN-010': ['Sage', [], 'Chanderi silk-cotton'],
+  'KS-DAB-016': ['Indigo', ['Ivory'], 'Cotton'],
+  'KS-BDJ-024': ['Green', ['Red'], 'Modal silk'],
+  'KS-BTK-037': ['Rust', ['Black'], 'Cotton'],
+  'KS-MHS-038': ['Purple', [], 'Maheshwari silk-cotton'],
+  'KS-DAB-042': ['Indigo', [], 'Cotton'],
+}
+
+// The overshirt draft has no gender yet; everything else follows its product type.
+const GENDER: Record<string, Schemas['Gender'] | null> = { 'KS-KAL-011': null }
+
 const REASONS: Record<string, string> = {
-  'KS-AJR-014': 'Back photo is missing. Add front, back and a fabric close-up so shoppers can see the print.',
+  'KS-AJR-014': 'Back photo is missing, and there are only 2 try-on photos. Add the back photo and 3 more try-on photos so shoppers can see the print and the fit.',
   'KS-KMJ-007': 'Price ₹3,999 does not match the MRP on the tag (₹3,499).',
 }
 
 const DEFAULT_SIZES = ['XS', 'S', 'M', 'L', 'XL']
+
+type Image = Product['images'][number]
+
+function photos(sku: string, angles: readonly ('front' | 'back' | 'detail' | 'worn' | 'extra')[], tryons: number): Image[] {
+  const named = angles.map((angle) => ({ id: `${sku}-${angle}`, url: swatch(sku, angle), angle }))
+  const tryon = Array.from({ length: tryons }, (_, i) => ({ id: `${sku}-tryon-${i + 1}`, url: swatch(sku, 'tryon', i + 1), angle: 'tryon' as const }))
+  return [...named, ...tryon]
+}
+
+// Drafts stay incomplete: the overshirt has only a name and type, the Maheshwari stole a front
+// photo and no price, the co-ord everything but its try-on photos.
+function seedImages(sku: string, status: Product['status']): Image[] {
+  if (sku === 'KS-AJR-014') return photos(sku, ['front', 'detail', 'worn', 'extra'], 2)
+  if (sku === 'KS-KAL-011') return []
+  if (sku === 'KS-MHS-038') return photos(sku, ['front'], 0)
+  if (status === 'draft') return photos(sku, ['front', 'back', 'detail', 'worn'], 0)
+  return photos(sku, ['front', 'back', 'detail', 'worn'], 5)
+}
 
 function seedProduct([title, sku, category, rupees, mrp, stock, status, ageHours]: Seed, now: number, index: number): ProductRecord {
   const at = (ms: number) => new Date(now - ms).toISOString()
   const updated = at(ageHours * H)
   const created = at(ageHours * H + 9 * D)
   const sizes = stock?.length === 1 ? ['One size'] : DEFAULT_SIZES
-  const variants = (stock ?? []).map((n, i) => ({ size: sizes[i]!, sku: `${sku}-${sizes[i] === 'One size' ? 'OS' : sizes[i]}`, stock: n }))
-  const missingBack = sku === 'KS-AJR-014'
-  const images: Product['images'] = status === 'draft' && rupees === null
-    ? []
-    : (['front', 'back', 'closeup'] as const)
-        .filter((angle) => !(missingBack && angle === 'back'))
-        .map((angle) => ({ id: `${sku}-${angle}`, url: swatch(sku, angle), angle }))
-  if (missingBack) images.push({ id: `${sku}-extra`, url: swatch(sku, 'extra'), angle: 'extra' as const })
+  const variants = (stock ?? []).map((n, i) => ({ size: sizes[i]!, sku: sizeCode(sku, sizes[i]!), stock: n }))
+  const images = seedImages(sku, status)
+  const [main_colour, other_colours, material] = LOOKS[sku] ?? [null, [], '']
+  const gender = GENDER[sku]
 
   const submitted = status === 'draft' ? null : at(ageHours * H + (status === 'pending_review' ? 0 : 2 * H + 28 * 60_000))
   const decided = status === 'approved' || status === 'rejected' ? updated : null
@@ -121,17 +195,18 @@ function seedProduct([title, sku, category, rupees, mrp, stock, status, ageHours
   return {
     id: `p_${String(index + 1).padStart(3, '0')}`,
     title,
-    description: status === 'draft' && rupees === null ? '' : `${title} in hand block-printed cotton, dyed with indigo and madder. Hand wash cold.`,
+    description: rupees === null ? '' : `${title} in ${material.toLowerCase()}, hand block-printed and dyed with indigo and madder. Hand wash cold.`,
     category,
-    gender: category === 'Shirts' || category === 'Jackets' ? 'Unisex' : 'Women',
-    fabric: category === 'Sarees' || category === 'Stoles' ? 'Silk' : 'Cotton (mul)',
+    gender: gender !== undefined ? gender : category === 'Shirts' || category === 'Jackets' ? 'Unisex' : 'Women',
+    material,
+    main_colour,
+    other_colours,
     sku,
     status,
     price_paise: rupees === null ? null : rupees * 100,
     mrp_paise: mrp === null ? null : mrp * 100,
     images,
     variants,
-    returns_use_default: true,
     review: status === 'rejected'
       ? { state: 'rejected', reason: REASONS[sku] ?? 'Photos need a plain background.', at: updated }
       : status === 'approved'
@@ -142,7 +217,7 @@ function seedProduct([title, sku, category, rupees, mrp, stock, status, ageHours
     history,
     updated_at: updated,
     edit_in_review: sku === 'KS-HCS-003',
-    thumbnail_url: images[0]?.url ?? null,
+    thumbnail_url: images.find((i) => i.angle === 'front')?.url ?? null,
     submitted_at: submitted,
     decided_at: decided,
     publishing: sku === 'KS-LCS-031',
@@ -156,11 +231,29 @@ const LIVE_BRAND: BrandProfile = {
   tagline: 'Hand block-printed, naturally dyed.',
   story: 'We work with Ajrakh printers in Kutch and dye every metre with indigo, madder and pomegranate rind.',
   logo_url: null,
-  cover_url: swatch('kalki-cover-live', 'closeup'),
+  cover_url: swatch('kalki-cover-live', 'detail'),
   return_policy: '7_day',
   dispatch_time: '2_3_days',
   instagram: '@kalki.studio',
   website: 'kalkistudio.in',
+}
+
+// GSTIN 24AAKFK1234L1ZD: Gujarat (24), a firm's PAN, check character D.
+export const KALKI_GSTIN = '24AAKFK1234L1ZD'
+
+function seedStore(updatedAt: string): StoreRecord {
+  return {
+    sells: 'women',
+    city: 'Ahmedabad, Gujarat',
+    instagram_or_website: '@kalki.studio',
+    contact: { name: 'Kiran Shah', phone: '9825012345', email: DEMO_LOGIN.identifier },
+    delivery: { mode: 'shazlo', pickup_address: { line1: '14 Sahjanand Society, near Polytechnic', area: 'Ambawadi', city: 'Ahmedabad', pin: '380015' } },
+    returns: { window_days: 7, condition: 'unworn_with_tags', refund_days: 5 },
+    pay_on_delivery: { cash: true, upi: true },
+    payout: null,
+    business: { legal_name: 'Kalki Studio LLP', gstin: KALKI_GSTIN },
+    updated_at: updatedAt,
+  }
 }
 
 export function createDb({ now = () => new Date() }: { now?: () => Date } = {}): MockDb {
@@ -168,19 +261,32 @@ export function createDb({ now = () => new Date() }: { now?: () => Date } = {}):
   const at = (ms: number) => new Date(t - ms).toISOString()
   return {
     now,
-    vendor: { id: 'v_kalki', brand_name: 'Kalki Studio', status: 'approved', approved_at: at(17 * D), commission_bps: 1500 },
+    vendor: { id: 'v_kalki', brand_name: 'Kalki Studio', status: 'approved', approved_at: at(17 * D) },
     user: { id: 'u_kiran', name: 'Kiran Shah', email: DEMO_LOGIN.identifier, password: DEMO_LOGIN.password },
     passwordSet: true,
     sessions: { access: new Map(), refresh: new Set() },
     invites: new Map([[DEMO_INVITE, { email: DEMO_LOGIN.identifier, brand_name: 'Kalki Studio', owner_name: 'Kiran Shah' }]]),
     applications: [],
+    store: seedStore(at(17 * D)),
+    commission: { state: 'agreed', agreed_bps: 1200, proposed_bps: null, note: null, updated_at: at(17 * D) },
+    sizeCharts: {
+      dresses: {
+        measurements: {
+          S: { bust: 86, waist: 72, hip: 94, length: 112 },
+          M: { bust: 91, waist: 77, hip: 99, length: 113 },
+          L: { bust: 96, waist: 82, hip: 104, length: 114 },
+        },
+        photo_url: null,
+        updated_at: at(9 * D),
+      },
+    },
     products: CATALOGUE.map((s, i) => seedProduct(s, t, i)),
     brand: {
       live: LIVE_BRAND,
       live_since: at(11 * D),
       draft: {
         ...LIVE_BRAND,
-        cover_url: swatch('kalki-cover-draft', 'closeup'),
+        cover_url: swatch('kalki-cover-draft', 'detail'),
         story: `${LIVE_BRAND.story} Small batches, made to last.`,
       },
       draft_saved_at: at(40 * 60_000),

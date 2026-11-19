@@ -4,7 +4,8 @@ import { createHandlers } from './handlers'
 
 // Browser copy of the mock API. Its data survives reloads (localStorage), so a reviewer can
 // sign in, edit and refresh. Clear the key, or call window.shazloResetDemo(), to start over.
-const KEY = 'shazlo.seller.mock-db.v1'
+// v2: Build 2 data (store details, commission, size charts, new product fields).
+const KEY = 'shazlo.seller.mock-db.v2'
 
 type Stored = Omit<MockDb, 'now' | 'sessions' | 'invites' | 'uploads' | 'imports'> & {
   sessions: { access: [string, number][]; refresh: string[] }
@@ -16,6 +17,7 @@ type Stored = Omit<MockDb, 'now' | 'sessions' | 'invites' | 'uploads' | 'imports
 function load(): MockDb {
   const fresh = createDb()
   try {
+    localStorage.removeItem('shazlo.seller.mock-db.v1')
     const raw = localStorage.getItem(KEY)
     if (!raw) return fresh
     const s = JSON.parse(raw) as Stored

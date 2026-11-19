@@ -1,14 +1,57 @@
 import { http, HttpResponse, type HttpResponseResolver } from 'msw'
 import type { Schemas } from '../api/client'
-import { CATEGORIES, nextId, SIZES, type ImportRecord, type ImportRow, type MockDb, type ProductRecord } from './db'
+import { catalogCopy } from '../copy/catalog'
+import {
+  isColour,
+  isGender,
+  isNamedAngle,
+  isProductType,
+  isSize,
+  isSizeChartGroup,
+  MAX_EXTRA_PHOTOS,
+  MAX_OTHER_COLOURS,
+  MAX_TRYON_PHOTOS,
+  productProblems,
+  sizeCode,
+} from '../lib/catalog'
+import { checkCommissionBps } from '../lib/commission'
+import {
+  checkApplication,
+  checkBrand,
+  checkBusiness,
+  checkContact,
+  checkDelivery,
+  checkPayOnDelivery,
+  checkPayout,
+  checkReturns,
+  checkSizeChart,
+  maskPayout,
+  normaliseBrand,
+  normaliseBusiness,
+  normaliseContact,
+  normaliseDelivery,
+  normalisePayOnDelivery,
+  normalisePayout,
+  normaliseReturns,
+  normaliseSizeChart,
+  storeDetailsMissing,
+  type FieldErrors,
+} from '../lib/storeDetails'
+import { normalisePhone } from '../lib/validators'
+import { nextId, type ImportRow, type MockDb, type ProductRecord, type StoreRecord } from './db'
+import { lookupIfsc } from './ifsc'
+import { checkCsv, exampleJob, IMPORT_TEMPLATE } from './imports'
 import { swatch } from './swatch'
 
 // Mock vendor-api routes, matching openapi/vendor-portal.yaml. `*` matches any origin, so the same
-// handlers serve the browser worker and the Node test server.
+// handlers serve the browser worker and the Node test server. Validation comes from src/lib, so
+// the mock answers exactly what the screens check.
 const API = '*/api/v1'
 const ACCESS_TTL_MS = 15 * 60_000
 const MAX_UPLOAD = 10 * 1024 * 1024
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const CHECK_FIELDS = 'Check the highlighted fields.'
+const pe = catalogCopy.errors.product
 
 type GetDb = () => MockDb
 
@@ -16,12 +59,16 @@ function fail(status: number, code: string, message: string, fields?: Record<str
   return HttpResponse.json({ message, extra: fields ? { code, fields } : { code } }, { status })
 }
 
+const invalid = (fields: FieldErrors, message = CHECK_FIELDS) => fail(422, 'validation_error', message, fields)
+const hasErrors = (fields: FieldErrors) => Object.keys(fields).length > 0
+
 function summaryOf(p: ProductRecord): Schemas['ProductSummary'] {
   return {
     id: p.id,
     title: p.title,
     sku: p.sku,
     category: p.category,
+    main_colour: p.main_colour,
     status: p.status,
     price_paise: p.price_paise,
     mrp_paise: p.mrp_paise,
@@ -95,16 +142,55 @@ function reviewItems(db: MockDb): Schemas['ReviewItem'][] {
   return items.sort((a, b) => time(b) - time(a))
 }
 
+// ---- store details and commission -----------------------------------------------------------
+
+function storeComplete(db: MockDb): boolean {
+  return storeDetailsMissing(db.store).length === 0
+}
+
+function storeOut(db: MockDb): Schemas['StoreDetails'] {
+  const s = db.store
+  const missing = storeDetailsMissing(s)
+  const bank = s.payout?.method === 'bank' ? lookupIfsc(s.payout.ifsc) : null
+  return {
+    brand_name: db.vendor.brand_name,
+    sells: s.sells,
+    city: s.city,
+    instagram_or_website: s.instagram_or_website,
+    contact: s.contact,
+    delivery: s.delivery,
+    returns: s.returns,
+    pay_on_delivery: s.pay_on_delivery,
+    payout: s.payout ? maskPayout(s.payout, bank?.ok ? bank.bank.bank : 'Bank') : null,
+    business: s.business,
+    missing,
+    complete: missing.length === 0,
+    updated_at: s.updated_at,
+  }
+}
+
 function setupOf(db: MockDb): Schemas['Me']['setup'] {
   return {
     password_set: db.passwordSet,
     brand_page: db.brand.live !== null,
     first_product: db.products.length > 0,
-    return_policy: false,
+    store_details: storeComplete(db),
     live_products: db.products.filter((p) => p.status === 'approved').length,
     live_target: 10,
   }
 }
+
+function meOut(db: MockDb): Schemas['Me'] {
+  const { password: _p, ...user } = db.user
+  return {
+    vendor: { ...db.vendor, commission_bps: db.commission.agreed_bps, commission: db.commission },
+    user,
+    role: 'vendor_owner',
+    setup: setupOf(db),
+  }
+}
+
+// ---- auth ---------------------------------------------------------------------------------
 
 function issueTokens(db: MockDb): Schemas['TokenPair'] {
   const access = nextId(db, 'access')
@@ -130,166 +216,169 @@ function authed(getDb: GetDb, resolver: HttpResponseResolver): HttpResponseResol
   }
 }
 
+// ---- products -----------------------------------------------------------------------------
+
 function findProduct(db: MockDb, id: string | readonly string[] | undefined): ProductRecord | undefined {
   return db.products.find((p) => p.id === id)
 }
 
+function newProductCode(db: MockDb): string {
+  return `KS-NEW-${String(db.products.length + 1).padStart(3, '0')}`
+}
+
+function blankProduct(db: MockDb, now: string): ProductRecord {
+  return {
+    id: nextId(db, 'p'),
+    title: '',
+    description: '',
+    category: null,
+    gender: null,
+    material: '',
+    main_colour: null,
+    other_colours: [],
+    sku: newProductCode(db),
+    status: 'draft',
+    price_paise: null,
+    mrp_paise: null,
+    images: [],
+    variants: [],
+    review: { state: 'none' },
+    history: [{ at: now, event: 'created' }],
+    updated_at: now,
+    edit_in_review: false,
+    thumbnail_url: null,
+    submitted_at: null,
+    decided_at: null,
+    publishing: false,
+    edit_submitted_at: null,
+  }
+}
+
+// What a PATCH may not save. Missing fields are fine on a draft; submit lists those.
+function inputProblems(p: ProductRecord, input: Schemas['ProductInput']): FieldErrors {
+  const out: FieldErrors = {}
+  if (input.category != null && !isProductType(input.category)) out.category = pe.categoryUnknown
+  if (input.gender != null && !isGender(input.gender)) out.gender = pe.genderUnknown
+  if (input.main_colour != null && !isColour(input.main_colour)) out.main_colour = pe.colourUnknown(String(input.main_colour))
+  if (input.other_colours !== undefined) {
+    const others = Array.isArray(input.other_colours) ? input.other_colours : []
+    const main = input.main_colour !== undefined ? input.main_colour : p.main_colour
+    const unknown = others.find((c) => !isColour(c))
+    if (unknown !== undefined) out.other_colours = pe.colourUnknown(String(unknown))
+    else if (others.length > MAX_OTHER_COLOURS) out.other_colours = pe.otherColoursMax
+    else if (new Set(others).size < others.length || (main && others.includes(main))) out.other_colours = pe.otherColoursRepeat
+  }
+  if (input.material !== undefined && String(input.material).trim().length > 120) out.material = pe.materialLong
+  if (input.price_paise != null && !(Number.isInteger(input.price_paise) && input.price_paise > 0)) out.price_paise = pe.priceZero
+  if (input.mrp_paise != null && !(Number.isInteger(input.mrp_paise) && input.mrp_paise > 0)) out.mrp_paise = pe.priceZero
+  const badSize = input.variants?.find((v) => !isSize(v.size))
+  if (badSize) out.variants = pe.sizeUnknown(String(badSize.size))
+  return out
+}
+
 function applyInput(p: ProductRecord, input: Schemas['ProductInput'], now: string): void {
-  const { variants, ...rest } = input
-  Object.assign(p, Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)))
-  if (variants) {
-    p.variants = variants.map((v) => ({ size: v.size, sku: v.sku || `${p.sku}-${v.size === 'One size' ? 'OS' : v.size}`, stock: Math.max(0, Math.trunc(v.stock)) }))
+  if (input.title !== undefined) p.title = input.title
+  if (input.description !== undefined) p.description = input.description
+  if (input.category !== undefined) p.category = input.category
+  if (input.gender !== undefined) p.gender = input.gender
+  if (input.material !== undefined) p.material = String(input.material ?? '').trim()
+  if (input.price_paise !== undefined) p.price_paise = input.price_paise
+  if (input.mrp_paise !== undefined) p.mrp_paise = input.mrp_paise
+  if (input.main_colour !== undefined) {
+    p.main_colour = input.main_colour
+    // A new main colour drops out of the other colours rather than appearing twice.
+    if (input.other_colours === undefined) p.other_colours = p.other_colours.filter((c) => c !== input.main_colour)
+  }
+  if (input.other_colours !== undefined) p.other_colours = [...input.other_colours]
+  if (input.variants) {
+    p.variants = input.variants.map((v) => ({ size: v.size, sku: v.sku || sizeCode(p.sku, v.size), stock: Math.max(0, Math.trunc(v.stock)) }))
   }
   p.updated_at = now
 }
 
-function submitProblems(p: ProductRecord): Record<string, string> {
-  const problems: Record<string, string> = {}
-  if (!p.title.trim()) problems.title = 'Add a title.'
-  if (!p.category) problems.category = 'Choose a product type.'
-  if (!p.price_paise) problems.price_paise = 'Add a selling price.'
-  if (p.price_paise && p.mrp_paise && p.price_paise > p.mrp_paise) problems.price_paise = 'Selling price cannot be above the MRP.'
-  const angles = new Set(p.images.map((i) => i.angle))
-  const missing = (['front', 'back', 'closeup'] as const).filter((a) => !angles.has(a))
-  if (missing.length) problems.images = `Add the ${missing.map((a) => (a === 'closeup' ? 'fabric close-up' : a)).join(' and ')} photo${missing.length > 1 ? 's' : ''}.`
-  if (!p.variants.some((v) => v.stock > 0)) problems.variants = 'Add at least one size with stock.'
-  return problems
-}
-
-// ---- bulk import --------------------------------------------------------------------------
-
-const TEMPLATE_COLUMNS = ['product_id', 'product_name', 'category', 'description', 'price', 'mrp', 'stock_qty', 'size', 'gender', 'material', 'image_1', 'image_2', 'image_3', 'returnable']
-
-export const IMPORT_TEMPLATE = `${TEMPLATE_COLUMNS.join(',')}\nKS-NEW-001,Ajrakh Cotton Kurta,Kurtas,Hand block-printed mul cotton,2499,2999,6,M,Women,Cotton (mul),https://…/front.jpg,https://…/back.jpg,https://…/closeup.jpg,yes\n`
-
-function splitCsvLine(line: string): string[] {
-  const out: string[] = []
-  let cell = ''
-  let quoted = false
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i]
-    if (ch === '"') {
-      if (quoted && line[i + 1] === '"') {
-        cell += '"'
-        i += 1
-      } else quoted = !quoted
-    } else if (ch === ',' && !quoted) {
-      out.push(cell)
-      cell = ''
-    } else cell += ch
+function sendForReview(p: ProductRecord, now: string): void {
+  // An edit to a live product is reviewed while the live version stays up (V-06, V-07).
+  if (p.status === 'approved') {
+    p.edit_in_review = true
+    p.edit_submitted_at = now
+  } else {
+    p.status = 'pending_review'
+    p.submitted_at = now
+    p.review = { state: 'waiting', at: now }
   }
-  out.push(cell)
-  return out.map((c) => c.trim())
+  p.history.unshift({ at: now, event: 'submitted' })
 }
 
-function closestCategory(value: string): string | null {
-  const v = value.toLowerCase().replace(/s$/, '')
-  return CATEGORIES.find((c) => c.toLowerCase().startsWith(v.slice(0, 3))) ?? null
+const locked = () => fail(409, 'product_not_editable', 'This product is in review. You can edit it again once we have decided.')
+
+// Room for one more photo in a slot that holds several (extra, tryon), not counting `except`.
+function slotFull(p: ProductRecord, angle: Schemas['PhotoAngle'], except?: string): string | null {
+  const used = p.images.filter((i) => i.angle === angle && i.id !== except).length
+  if (angle === 'extra' && used >= MAX_EXTRA_PHOTOS) return pe.extraFull
+  if (angle === 'tryon' && used >= MAX_TRYON_PHOTOS) return pe.tryonFull
+  return null
 }
 
-function checkCsv(text: string, fileName: string, id: string): ImportRecord {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim())
-  const header = splitCsvLine(lines[0] ?? '').map((h) => h.toLowerCase())
-  const col = (cells: string[], name: string) => cells[header.indexOf(name)] ?? ''
-  const errors: ImportRecord['errors'] = []
-  const rows: ImportRow[] = []
-  let imageErrors = 0
-  lines.slice(1).forEach((line, i) => {
-    const row = i + 2
-    const cells = splitCsvLine(line)
-    const name = col(cells, 'product_name')
-    const product = name || null
-    const before = errors.length
-    const price = col(cells, 'price')
-    const size = col(cells, 'size')
-    const category = col(cells, 'category')
-    if (!name) errors.push({ row, product, column: 'Product name', message: 'Required. Add a product name.' })
-    if (!/^\d+(\.\d{1,2})?$/.test(price) || Number(price) <= 0) errors.push({ row, product, column: 'Price', message: `Must be a number above 0. Found "${price}"; use ${price.replace(/[^\d.]/g, '') || '1299'}.` })
-    if (!SIZES.includes(size)) errors.push({ row, product, column: 'Size', message: `"${size}" is not supported. Use XS–XXL or One size.` })
-    if (!CATEGORIES.includes(category)) {
-      const match = closestCategory(category)
-      errors.push({ row, product, column: 'Category', message: `"${category}" is not a category.${match ? ` Closest match: ${match}.` : ''}` })
-    }
-    const blocking = errors.length
-    const image = col(cells, 'image_1')
-    if (image && !/^https:\/\//.test(image)) {
-      imageErrors += 1
-      errors.push({ row, product, column: 'Image 1', message: 'Link could not be opened. Use a public https link, or add the photo in the editor.' })
-    }
-    // A bad image link is reported, but the product is still created (V-08).
-    if (blocking === before) {
-      rows.push({
-        product_id: col(cells, 'product_id'),
-        name,
-        category,
-        description: col(cells, 'description'),
-        price_paise: Math.round(Number(price) * 100),
-        mrp_paise: Math.round(Number(col(cells, 'mrp') || price) * 100),
-        stock: Number(col(cells, 'stock_qty')) || 0,
-        size,
-        gender: col(cells, 'gender') || 'Women',
-        fabric: col(cells, 'material') || 'Cotton',
-      })
-    }
-  })
-  const total = lines.length - 1
-  const products = new Set(rows.map((r) => r.product_id || r.name)).size
-  return { id, status: 'ready', file_name: fileName, total_rows: total, ok_rows: rows.length, ok_products: products, error_rows: total - rows.length, image_errors: imageErrors, errors, rows }
-}
-
-// A spreadsheet the mock cannot read gets the wireframe's example result (V-08).
-function exampleJob(fileName: string, id: string): ImportRecord {
-  const rows: ImportRow[] = Array.from({ length: 47 }, (_, i) => ({
-    product_id: `KS-IMP-${String(i + 1).padStart(3, '0')}`,
-    name: ['Indigo Dabu Kurta', 'Bagru Print Palazzo', 'Kala Cotton Jacket', 'Mashru Silk Stole'][i % 4]!,
-    category: ['Kurtas', 'Palazzos', 'Jackets', 'Stoles'][i % 4]!,
-    description: '',
-    price_paise: 149_900,
-    mrp_paise: 169_900,
-    stock: 4,
-    size: ['S', 'M'][i % 2]!,
-    gender: 'Women',
-    fabric: 'Cotton',
-  }))
-  return {
-    id,
-    status: 'ready',
-    file_name: fileName,
-    total_rows: 52,
-    ok_rows: 47,
-    ok_products: 47,
-    error_rows: 5,
-    image_errors: 3,
-    rows,
-    errors: [
-      { row: 12, product: 'Bagru Print Palazzo', column: 'Price', message: 'Must be a number above 0. Found "1,299/-"; use 1299.' },
-      { row: 19, product: 'Indigo Dabu Kurta', column: 'Size', message: '"Free size" is not supported. Use XS–XXL or One size.' },
-      { row: 27, product: 'Kala Cotton Jacket', column: 'Image 1', message: 'Link could not be opened (access denied). Make the file public or upload it in the editor.' },
-      { row: 33, product: null, column: 'Product name', message: 'Required. Add a product name.' },
-      { row: 41, product: 'Mashru Silk Stole', column: 'Category', message: '"Stoles" is not a category. Closest match: Dupattas.' },
-    ],
-  }
-}
+const ANGLES: readonly Schemas['PhotoAngle'][] = ['front', 'back', 'detail', 'worn', 'extra', 'tryon']
 
 // ---- handlers ------------------------------------------------------------------------------
 
 export function createHandlers(getDb: GetDb) {
   const iso = () => getDb().now().toISOString()
 
+  // PUT store-details/{section}: check, normalise, save, answer with the whole StoreDetails.
+  function section<T>(path: string, check: (body: unknown) => FieldErrors, save: (store: StoreRecord, body: T) => FieldErrors | void) {
+    return http.put(`${API}/vendor/store-details/${path}`, authed(getDb, async ({ request }) => {
+      const db = getDb()
+      const body = (await request.json()) as T
+      const problems = check(body)
+      if (hasErrors(problems)) return invalid(problems)
+      const late = save(db.store, body)
+      if (late && hasErrors(late)) return invalid(late)
+      db.store.updated_at = iso()
+      return HttpResponse.json(storeOut(db))
+    }))
+  }
+
   return [
     http.post(`${API}/public/vendor-applications`, async ({ request }) => {
       const db = getDb()
       const body = (await request.json()) as Schemas['VendorApplication']
-      const fields: Record<string, string> = {}
-      if (!body.brand_name?.trim()) fields.brand_name = 'Add your brand name.'
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.email ?? '')) fields.email = 'Enter an email like name@brand.in.'
-      if (!/^[6-9]\d{9}$/.test((body.phone ?? '').replace(/\D/g, '').slice(-10))) fields.phone = 'Enter a 10-digit Indian mobile number.'
-      if (Object.keys(fields).length) return fail(422, 'validation_error', 'Check the highlighted fields.', fields)
-      const existing = db.applications.find((a) => a.email.toLowerCase() === body.email.toLowerCase())
+      const fields = checkApplication(body)
+      const payoutChecked = !Object.keys(fields).some((k) => k.startsWith('payout.'))
+      if (payoutChecked && body.payout?.method === 'bank' && !lookupIfsc(body.payout.ifsc).ok) fields['payout.ifsc'] = catalogCopy.errors.payout.ifscUnknown
+      if (hasErrors(fields)) return invalid(fields)
+      const existing = db.applications.find((a) => a.email.toLowerCase() === body.email.trim().toLowerCase())
       if (existing) return HttpResponse.json({ id: existing.id, status: 'applied' }, { status: 201 })
       const id = nextId(db, 'app')
-      db.applications.push({ ...body, id })
+      const contact = normaliseContact({ name: body.owner_name, phone: body.phone, email: body.email })
+      const business = normaliseBusiness({ legal_name: body.legal_name ?? null, gstin: body.gstin ?? null })
+      const { legal_name: _legal, gstin: _gstin, instagram_or_website: link, ...rest } = body
+      db.applications.push({
+        ...rest,
+        id,
+        brand_name: body.brand_name.trim(),
+        city: body.city.trim(),
+        ...(link?.trim() ? { instagram_or_website: link.trim() } : {}),
+        owner_name: contact.name,
+        phone: normalisePhone(body.phone) ?? body.phone,
+        email: contact.email,
+        delivery: normaliseDelivery(body.delivery),
+        returns: normaliseReturns(body.returns),
+        pay_on_delivery: normalisePayOnDelivery(body.pay_on_delivery),
+        payout: normalisePayout(body.payout),
+        ...(business.legal_name ? { legal_name: business.legal_name } : {}),
+        ...(business.gstin ? { gstin: business.gstin } : {}),
+      })
       return HttpResponse.json({ id, status: 'applied' }, { status: 201 })
+    }),
+
+    http.get(`${API}/public/ifsc/:code`, ({ params }) => {
+      const found = lookupIfsc(String(params.code))
+      if (found.ok) return HttpResponse.json(found.bank satisfies Schemas['IfscBank'])
+      return found.reason === 'format'
+        ? invalid({ ifsc: catalogCopy.errors.payout.ifscFormat }, catalogCopy.errors.payout.ifscFormat)
+        : fail(404, 'not_found', catalogCopy.errors.payout.ifscUnknown)
     }),
 
     http.post(`${API}/vendor/auth/login`, async ({ request }) => {
@@ -332,11 +421,7 @@ export function createHandlers(getDb: GetDb) {
 
     http.post(`${API}/vendor/auth/password/forgot`, () => new HttpResponse(null, { status: 202 })),
 
-    http.get(`${API}/vendor/me`, authed(getDb, () => {
-      const db = getDb()
-      const { password: _p, ...user } = db.user
-      return HttpResponse.json({ vendor: db.vendor, user, role: 'vendor_owner', setup: setupOf(db) } satisfies Schemas['Me'])
-    })),
+    http.get(`${API}/vendor/me`, authed(getDb, () => HttpResponse.json(meOut(getDb())))),
 
     http.get(`${API}/vendor/summary`, authed(getDb, () => {
       const db = getDb()
@@ -351,6 +436,68 @@ export function createHandlers(getDb: GetDb) {
         oldest_waiting_hours: oldest === null ? null : Math.floor((db.now().getTime() - oldest) / 3_600_000),
         sent_back: db.products.filter((p) => p.status === 'rejected').length,
       } satisfies Schemas['Summary'])
+    })),
+
+    http.get(`${API}/vendor/store-details`, authed(getDb, () => HttpResponse.json(storeOut(getDb())))),
+
+    section<Schemas['StoreBrandInput']>('brand', checkBrand, (store, body) => {
+      const brand = normaliseBrand(body)
+      store.sells = brand.sells
+      store.city = brand.city
+      store.instagram_or_website = brand.instagram_or_website
+    }),
+    section<Schemas['Contact']>('contact', checkContact, (store, body) => {
+      store.contact = normaliseContact(body)
+    }),
+    section<Schemas['Delivery']>('delivery', checkDelivery, (store, body) => {
+      store.delivery = normaliseDelivery(body)
+    }),
+    section<Schemas['Returns']>('returns', checkReturns, (store, body) => {
+      store.returns = normaliseReturns(body)
+    }),
+    section<Schemas['PayOnDelivery']>('payment', checkPayOnDelivery, (store, body) => {
+      store.pay_on_delivery = normalisePayOnDelivery(body)
+    }),
+    section<Schemas['PayoutInput']>('payout', checkPayout, (store, body) => {
+      if (body.method === 'bank' && !lookupIfsc(body.ifsc).ok) return { ifsc: catalogCopy.errors.payout.ifscUnknown }
+      store.payout = normalisePayout(body)
+    }),
+    section<Schemas['BusinessDetails']>('business', checkBusiness, (store, body) => {
+      store.business = normaliseBusiness(body)
+    }),
+
+    http.post(`${API}/vendor/commission/proposal`, authed(getDb, async ({ request }) => {
+      const db = getDb()
+      const { rate_bps } = (await request.json()) as { rate_bps: number }
+      const problem = checkCommissionBps(rate_bps)
+      if (problem) return invalid({ rate_bps: problem })
+      if (rate_bps === db.commission.agreed_bps) return invalid({ rate_bps: catalogCopy.errors.commission.sameAsAgreed })
+      // The agreed rate stays in force until Shazlo approves the new one.
+      db.commission = { state: 'proposed', agreed_bps: db.commission.agreed_bps, proposed_bps: rate_bps, note: null, updated_at: iso() }
+      return HttpResponse.json(db.commission satisfies Schemas['Commission'])
+    })),
+
+    http.get(`${API}/vendor/size-charts/:group`, authed(getDb, ({ params }) => {
+      const group = String(params.group)
+      if (!isSizeChartGroup(group)) return fail(404, 'not_found', 'There is no size chart for that group.')
+      const saved = getDb().sizeCharts[group]
+      return HttpResponse.json({ group, ...(saved ?? { measurements: {}, photo_url: null, updated_at: null }) } satisfies Schemas['SizeChart'])
+    })),
+
+    http.put(`${API}/vendor/size-charts/:group`, authed(getDb, async ({ request, params }) => {
+      const db = getDb()
+      const group = String(params.group)
+      if (!isSizeChartGroup(group)) return fail(404, 'not_found', 'There is no size chart for that group.')
+      const body = (await request.json()) as Schemas['SizeChartInput']
+      const problems = checkSizeChart(group, body)
+      if (hasErrors(problems)) return invalid(problems)
+      const measurements = normaliseSizeChart(group, body.measurements ?? {})
+      const photo_url = body.photo_url ?? null
+      // An empty chart is the same as none saved.
+      if (Object.keys(measurements).length === 0 && !photo_url) delete db.sizeCharts[group]
+      else db.sizeCharts[group] = { measurements, photo_url, updated_at: iso() }
+      const saved = db.sizeCharts[group]
+      return HttpResponse.json({ group, ...(saved ?? { measurements: {}, photo_url: null, updated_at: null }) } satisfies Schemas['SizeChart'])
     })),
 
     http.get(`${API}/vendor/brand-page`, authed(getDb, () => HttpResponse.json(brandPage(getDb())))),
@@ -451,32 +598,10 @@ export function createHandlers(getDb: GetDb) {
     http.post(`${API}/vendor/products`, authed(getDb, async ({ request }) => {
       const db = getDb()
       const input = (await request.json()) as Schemas['ProductInput']
-      if (!input.title?.trim()) return fail(422, 'validation_error', 'Check the highlighted fields.', { title: 'Add a title.' })
-      const n = db.products.length + 1
-      const product: ProductRecord = {
-        id: nextId(db, 'p'),
-        title: '',
-        description: '',
-        category: '',
-        gender: 'Women',
-        fabric: '',
-        sku: `KS-NEW-${String(n).padStart(3, '0')}`,
-        status: 'draft',
-        price_paise: null,
-        mrp_paise: null,
-        images: [],
-        variants: [],
-        returns_use_default: true,
-        review: { state: 'none' },
-        history: [{ at: iso(), event: 'created' }],
-        updated_at: iso(),
-        edit_in_review: false,
-        thumbnail_url: null,
-        submitted_at: null,
-        decided_at: null,
-        publishing: false,
-        edit_submitted_at: null,
-      }
+      if (!input.title?.trim()) return invalid({ title: pe.titleRequired })
+      const product = blankProduct(db, iso())
+      const problems = inputProblems(product, input)
+      if (hasErrors(problems)) return invalid(problems)
       applyInput(product, input, iso())
       db.products.unshift(product)
       return HttpResponse.json(productOut(product), { status: 201 })
@@ -485,6 +610,7 @@ export function createHandlers(getDb: GetDb) {
     http.post(`${API}/vendor/products/bulk`, authed(getDb, async ({ request }) => {
       const db = getDb()
       const { action, ids } = (await request.json()) as { action: 'submit' | 'archive'; ids: string[] }
+      const complete = storeComplete(db)
       const results = ids.map((id) => {
         const p = findProduct(db, id)
         if (!p) return { id, ok: false, code: 'not_found', message: 'Not found.' }
@@ -494,17 +620,9 @@ export function createHandlers(getDb: GetDb) {
           return { id, ok: true }
         }
         if (p.status === 'pending_review' || p.edit_in_review) return { id, ok: false, code: 'invalid_transition', message: `${p.title} is already in review.` }
-        const problems = submitProblems(p)
-        if (Object.keys(problems).length) return { id, ok: false, code: 'validation_error', message: `${p.title}: ${Object.values(problems)[0]}` }
-        if (p.status === 'approved') {
-          p.edit_in_review = true
-          p.edit_submitted_at = iso()
-        } else {
-          p.status = 'pending_review'
-          p.submitted_at = iso()
-          p.review = { state: 'waiting', at: iso() }
-        }
-        p.history.unshift({ at: iso(), event: 'submitted' })
+        const problems = productProblems(p, { storeDetailsComplete: complete })
+        if (hasErrors(problems)) return { id, ok: false, code: 'validation_error', message: `${p.title}: ${Object.values(problems)[0]}` }
+        sendForReview(p, iso())
         return { id, ok: true }
       })
       return HttpResponse.json({ results })
@@ -519,9 +637,10 @@ export function createHandlers(getDb: GetDb) {
       const db = getDb()
       const p = findProduct(db, params.id)
       if (!p) return fail(404, 'not_found', 'We could not find that product.')
-      if (p.status === 'pending_review') return fail(409, 'product_not_editable', 'This product is in review. You can edit it again once we have decided.')
+      if (p.status === 'pending_review') return locked()
       const input = (await request.json()) as Schemas['ProductInput']
-      if (input.price_paise != null && input.price_paise <= 0) return fail(422, 'validation_error', 'Check the highlighted fields.', { price_paise: 'Enter a price above ₹0.' })
+      const problems = inputProblems(p, input)
+      if (hasErrors(problems)) return invalid(problems)
       applyInput(p, input, iso())
       return HttpResponse.json(productOut(p))
     })),
@@ -531,18 +650,9 @@ export function createHandlers(getDb: GetDb) {
       const p = findProduct(db, params.id)
       if (!p) return fail(404, 'not_found', 'We could not find that product.')
       if (p.status === 'pending_review' || p.edit_in_review) return fail(409, 'invalid_transition', 'This product is already in review.')
-      const problems = submitProblems(p)
-      if (Object.keys(problems).length) return fail(422, 'validation_error', 'Fix these before sending for review.', problems)
-      // An edit to a live product is reviewed while the live version stays up (V-06, V-07).
-      if (p.status === 'approved') {
-        p.edit_in_review = true
-        p.edit_submitted_at = iso()
-      } else {
-        p.status = 'pending_review'
-        p.submitted_at = iso()
-        p.review = { state: 'waiting', at: iso() }
-      }
-      p.history.unshift({ at: iso(), event: 'submitted' })
+      const problems = productProblems(p, { storeDetailsComplete: storeComplete(db) })
+      if (hasErrors(problems)) return invalid(problems, catalogCopy.errors.product.submitProblems)
+      sendForReview(p, iso())
       p.updated_at = iso()
       return HttpResponse.json(productOut(p))
     })),
@@ -560,21 +670,53 @@ export function createHandlers(getDb: GetDb) {
       const db = getDb()
       const p = findProduct(db, params.id)
       if (!p) return fail(404, 'not_found', 'We could not find that product.')
+      if (p.status === 'pending_review') return locked()
       const { key, angle } = (await request.json()) as { key: string; angle: Schemas['PhotoAngle'] }
+      if (!ANGLES.includes(angle)) return invalid({ angle: 'Choose where this photo goes.' })
       const url = db.uploads.get(key)
       if (!url) return fail(422, 'validation_error', 'That upload did not finish. Try adding the photo again.')
-      if (angle !== 'extra') p.images = p.images.filter((i) => i.angle !== angle)
-      if (p.images.length >= 8) return fail(422, 'validation_error', 'A product can have up to 8 photos.')
+      // A named slot holds one photo, so a new one replaces it.
+      if (isNamedAngle(angle)) p.images = p.images.filter((i) => i.angle !== angle)
+      const full = slotFull(p, angle)
+      if (full) return invalid({ [angle === 'tryon' ? 'tryon' : 'photos']: full }, full)
       p.images.push({ id: nextId(db, 'img'), url, angle })
+      p.thumbnail_url = p.images.find((i) => i.angle === 'front')?.url ?? null
       p.updated_at = iso()
       return HttpResponse.json(productOut(p), { status: 201 })
+    })),
+
+    http.patch(`${API}/vendor/products/:id/images/:imageId`, authed(getDb, async ({ request, params }) => {
+      const db = getDb()
+      const p = findProduct(db, params.id)
+      if (!p) return fail(404, 'not_found', 'We could not find that product.')
+      if (p.status === 'pending_review') return locked()
+      const image = p.images.find((i) => i.id === params.imageId)
+      if (!image) return fail(404, 'not_found', 'We could not find that photo. It may have been removed.')
+      const { angle } = (await request.json()) as { angle: Schemas['PhotoAngle'] }
+      if (!ANGLES.includes(angle)) return invalid({ angle: 'Choose where this photo goes.' })
+      if (angle !== image.angle) {
+        const taken = isNamedAngle(angle) ? p.images.find((i) => i.angle === angle) : undefined
+        if (taken) {
+          // Swap: the photo in the target slot takes this photo's old place.
+          taken.angle = image.angle
+        } else {
+          const full = slotFull(p, angle, image.id)
+          if (full) return invalid({ [angle === 'tryon' ? 'tryon' : 'photos']: full }, full)
+        }
+        image.angle = angle
+        p.thumbnail_url = p.images.find((i) => i.angle === 'front')?.url ?? null
+        p.updated_at = iso()
+      }
+      return HttpResponse.json(productOut(p))
     })),
 
     http.delete(`${API}/vendor/products/:id/images/:imageId`, authed(getDb, ({ params }) => {
       const db = getDb()
       const p = findProduct(db, params.id)
       if (!p) return fail(404, 'not_found', 'We could not find that product.')
+      if (p.status === 'pending_review') return locked()
       p.images = p.images.filter((i) => i.id !== params.imageId)
+      p.thumbnail_url = p.images.find((i) => i.angle === 'front')?.url ?? null
       p.updated_at = iso()
       return HttpResponse.json(productOut(p))
     })),
@@ -619,38 +761,28 @@ export function createHandlers(getDb: GetDb) {
       const job = db.imports.get(String(params.jobId))
       if (!job) return fail(404, 'not_found', 'We could not find that import.')
       if (job.status === 'committed') return fail(409, 'invalid_transition', 'These drafts were already created.')
-      const groups = new Map<string, ImportRow[]>()
-      for (const row of job.rows) groups.set(row.product_id || row.name, [...(groups.get(row.product_id || row.name) ?? []), row])
-      for (const [key, rows] of groups) {
-        const first = rows[0]!
-        const p: ProductRecord = {
-          id: nextId(db, 'p'),
-          title: first.name,
-          description: first.description,
-          category: first.category,
-          gender: first.gender,
-          fabric: first.fabric,
-          sku: key,
-          status: 'draft',
-          price_paise: first.price_paise,
-          mrp_paise: first.mrp_paise,
-          images: [],
-          variants: rows.map((r) => ({ size: r.size, sku: `${key}-${r.size === 'One size' ? 'OS' : r.size}`, stock: r.stock })),
-          returns_use_default: true,
-          review: { state: 'none' },
+      if (job.status !== 'ready') return fail(409, 'invalid_transition', 'This file could not be read. Fix it and upload it again.')
+      const created = job.rows.map((row: ImportRow) => {
+        const p = blankProduct(db, iso())
+        Object.assign(p, {
+          title: row.name,
+          description: row.description,
+          category: row.category,
+          gender: row.gender,
+          material: row.material,
+          main_colour: row.main_colour,
+          other_colours: row.other_colours,
+          price_paise: row.price_paise,
+          mrp_paise: row.mrp_paise,
+          variants: row.variants.map((v) => ({ size: v.size, sku: sizeCode(p.sku, v.size), stock: v.stock })),
           history: [{ at: iso(), event: 'created', note: `Imported from ${job.file_name}` }],
-          updated_at: iso(),
-          edit_in_review: false,
-          thumbnail_url: null,
-          submitted_at: null,
-          decided_at: null,
-          publishing: false,
-          edit_submitted_at: null,
-        }
+        } satisfies Partial<ProductRecord>)
         db.products.unshift(p)
-      }
+        return { id: p.id, title: p.title }
+      })
       job.status = 'committed'
-      return HttpResponse.json({ created: groups.size })
+      return HttpResponse.json({ created: created.length, products: created } satisfies Schemas['ImportCommit'])
     })),
   ]
 }
+

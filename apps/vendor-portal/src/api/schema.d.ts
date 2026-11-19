@@ -13,7 +13,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description Changed in Build 2 - sign-up now collects the store details (delivery, returns, payment on delivery, payouts, business, proposed commission); 422 field keys are dot paths into the body, like delivery.pickup_address.pin. */
         post: operations["applyToSell"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/ifsc/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Bank and branch for an IFSC code, so payout forms can show the bank name; public because sign-up asks for it. 422 when the code is not in the IFSC format, 404 when no bank has it. */
+        get: operations["lookupIfsc"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -124,6 +142,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @description Changed in Build 2 - vendor.commission (per-brand Commission; commission_bps is now nullable and equals the agreed rate) and setup.store_details replaces setup.return_policy. */
         get: operations["getMe"];
         put?: never;
         post?: never;
@@ -143,6 +162,179 @@ export interface paths {
         /** @description Counts for the sidebar, the overview figures and the review banner. */
         get: operations["getSummary"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vendor/store-details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The brand's sign-up details, editable after approval, with the required topics still missing; products cannot be sent for review until complete is true. */
+        get: operations["getStoreDetails"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vendor/store-details/brand": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Saves the brand topic (who it sells for, ship-from city, Instagram or website); the store name itself changes only through Shazlo. */
+        put: operations["saveStoreBrand"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vendor/store-details/contact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Saves the contact person, mobile number and email. */
+        put: operations["saveStoreContact"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vendor/store-details/delivery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Saves who delivers (Shazlo picks up from the pickup address, or the brand delivers to its areas in the stated time). */
+        put: operations["saveStoreDelivery"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vendor/store-details/returns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Saves the return window, the condition and the refund time; with window_days 0 the other two are stored as null. */
+        put: operations["saveStoreReturns"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vendor/store-details/payment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Saves how shoppers can pay on delivery (the pay_on_delivery topic); at least one of cash and UPI. */
+        put: operations["saveStorePayment"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vendor/store-details/payout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Saves where Shazlo pays the brand; takes the full account number, which is only ever returned masked. 422 when the IFSC is unknown. */
+        put: operations["saveStorePayout"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vendor/store-details/business": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Saves the optional legal business name and GST number (null or empty clears them). */
+        put: operations["saveStoreBusiness"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vendor/commission/proposal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description The brand proposes a commission rate in basis points (0-4000); an agreed rate stays in force (agreed_bps) while Shazlo decides. 422 outside the range or when it equals the agreed rate. */
+        post: operations["proposeCommission"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vendor/size-charts/{group}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group: components["schemas"]["SizeChartGroup"];
+            };
+            cookie?: never;
+        };
+        /** @description The brand's size chart for one group of product types (src/lib/catalog.ts maps types to groups); an empty chart when none is saved. */
+        get: operations["getSizeChart"];
+        /** @description Replaces the brand's size chart for the group (centimetres, every value optional) and/or a photo of the brand's own chart. */
+        put: operations["saveSizeChart"];
         post?: never;
         delete?: never;
         options?: never;
@@ -207,7 +399,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Signed Cloudinary upload for brand images and product photos (docs/adr/0005). */
+        /** @description Signed Cloudinary upload for brand images, product photos and size-chart photos (docs/adr/0005); size_chart is new in Build 2. */
         post: operations["presignUpload"];
         delete?: never;
         options?: never;
@@ -222,8 +414,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @description Changed in Build 2 - ProductSummary.category is a ProductType or null and main_colour is added. */
         get: operations["listProducts"];
         put?: never;
+        /** @description Changed in Build 2 - Product has material, main_colour and other_colours (fabric and returns_use_default are gone); gender and category may be null on a draft. */
         post: operations["createProduct"];
         delete?: never;
         options?: never;
@@ -256,12 +450,14 @@ export interface paths {
             };
             cookie?: never;
         };
+        /** @description Changed in Build 2 - see Product (material, main_colour, other_colours; photo slots front, back, detail, worn, extra, tryon). */
         get: operations["getProduct"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
+        /** @description Changed in Build 2 - takes material, main_colour and other_colours; 422 for an unknown product type, colour or size. */
         patch: operations["updateProduct"];
         trace?: never;
     };
@@ -276,6 +472,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description Changed in Build 2 - 422 lists every missing requirement in extra.fields under stable keys (SubmitRequirement), including store_details while the store details are incomplete. */
         post: operations["submitProduct"];
         delete?: never;
         options?: never;
@@ -312,6 +509,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description Changed in Build 2 - attaches an uploaded photo (presign key) to a slot; a named slot (front, back, detail, worn) replaces its photo, extra holds up to 4 and tryon up to 5. Also used after bulk import, with the product id from the commit response. */
         post: operations["addProductImage"];
         delete?: never;
         options?: never;
@@ -335,7 +533,8 @@ export interface paths {
         delete: operations["removeProductImage"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** @description Moves a photo to another slot without uploading again ("Make main photo" moves it to front); a taken named slot swaps the two photos. 422 when extra or tryon is full. */
+        patch: operations["moveProductImage"];
         trace?: never;
     };
     "/api/v1/vendor/reviews": {
@@ -362,6 +561,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @description Changed in Build 2 - one row per product with exactly these columns - product_name, gender, product_type, main_colour, other_colours (optional), selling_price, sizes_stock (like "S:4, M:6, L:3, XL:0"), description, material, mrp (optional). */
         get: operations["importTemplate"];
         put?: never;
         post?: never;
@@ -396,6 +596,7 @@ export interface paths {
             };
             cookie?: never;
         };
+        /** @description Changed in Build 2 - errors name the new template columns (field) and image_errors is gone. */
         get: operations["getImport"];
         put?: never;
         post?: never;
@@ -416,6 +617,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description Creates the ready rows as drafts and lists them (id and name), so photos picked afterwards can be matched to products by name and attached with POST products/{id}/images. */
         post: operations["commitImport"];
         delete?: never;
         options?: never;
@@ -441,22 +643,203 @@ export interface components {
             refresh_token: string;
             expires_in: number;
         };
+        /** @description Sign-up (V-02), one topic per page. Required unless marked optional; the same topics become StoreDetails after approval. */
         VendorApplication: {
+            /** @description The store name shoppers see. */
             brand_name: string;
+            sells: components["schemas"]["Sells"];
+            /** @description City or area the brand ships from. */
+            city: string;
+            /** @description Optional. An Instagram handle or a website. */
+            instagram_or_website?: string;
             owner_name: string;
+            /** @description Indian mobile number; +91, spaces and dashes are accepted. */
             phone: string;
             email: string;
-            city: string;
-            instagram_or_website?: string;
-            product_types: string[];
-            price_min_paise: number;
-            price_max_paise: number;
-            about: string;
+            delivery: components["schemas"]["Delivery"];
+            returns: components["schemas"]["Returns"];
+            pay_on_delivery: components["schemas"]["PayOnDelivery"];
+            payout: components["schemas"]["PayoutInput"];
+            /** @description Optional legal business name. */
+            legal_name?: string;
+            /** @description Optional GST number (15 characters, checked with its check character). */
+            gstin?: string;
+            /** @description Optional. The commission the brand proposes, in basis points (1200 = 12%). Leave out when a rate was agreed with the team. */
+            proposed_commission_bps?: number;
+            /**
+             * @description I agree to the seller terms.
+             * @enum {boolean}
+             */
+            agreed_terms: true;
+            /**
+             * @description My price on Shazlo will never be higher than anywhere else.
+             * @enum {boolean}
+             */
+            agreed_price_rule: true;
         };
         ApplicationReceipt: {
             id: string;
             /** @enum {string} */
             status: "applied";
+        };
+        /**
+         * @description Who the brand sells for.
+         * @enum {string}
+         */
+        Sells: "women" | "men" | "both";
+        /**
+         * @description Delivery time in days when the brand delivers itself (1_2 = 1-2 days).
+         * @enum {string}
+         */
+        DeliveryDays: "1_2" | "2_3" | "3_5" | "5_7";
+        PickupAddress: {
+            /** @description House or shop number, building and street. */
+            line1: string;
+            area: string;
+            city: string;
+            pin: string;
+        };
+        /** @description Shazlo's delivery service picks up orders from the pickup address. */
+        DeliveryByShazlo: {
+            /** @enum {string} */
+            mode: "shazlo";
+            pickup_address: components["schemas"]["PickupAddress"];
+        };
+        /** @description The brand delivers itself, to all of India or to the listed cities and PIN codes. */
+        DeliveryByBrand: {
+            /** @enum {string} */
+            mode: "own";
+            areas: {
+                all_india: boolean;
+                /** @description Cities or 6-digit PIN codes; empty when all_india is true. */
+                places: string[];
+            };
+            delivery_days: components["schemas"]["DeliveryDays"];
+        };
+        Delivery: components["schemas"]["DeliveryByShazlo"] | components["schemas"]["DeliveryByBrand"];
+        /**
+         * @description Days a shopper has to ask for a return; 0 means no returns.
+         * @enum {integer}
+         */
+        ReturnWindowDays: 0 | 7 | 14 | 30;
+        /** @enum {string} */
+        ReturnCondition: "unworn_with_tags" | "any_reason" | "damaged_or_wrong";
+        /**
+         * @description Working days after pickup until the refund.
+         * @enum {integer}
+         */
+        RefundDays: 2 | 5 | 7;
+        /** @description With window_days 0 (no returns) condition and refund_days do not apply - send null, and the server stores and returns null whatever is sent. With 7, 14 or 30 both are required. */
+        Returns: {
+            window_days: components["schemas"]["ReturnWindowDays"];
+            condition: components["schemas"]["ReturnCondition"] | null;
+            refund_days: components["schemas"]["RefundDays"] | null;
+        };
+        /** @description How shoppers can pay on delivery. At least one must be true (422 key pay_on_delivery). */
+        PayOnDelivery: {
+            cash: boolean;
+            upi: boolean;
+        };
+        BankPayoutInput: {
+            /** @enum {string} */
+            method: "bank";
+            holder_name: string;
+            /** @description 9 to 18 digits; spaces are ignored. Never returned. */
+            account_number: string;
+            /** @description Like HDFC0001234 (^[A-Z]{4}0[A-Z0-9]{6}$ after upper-casing); must belong to a known bank. */
+            ifsc: string;
+        };
+        UpiPayoutInput: {
+            /** @enum {string} */
+            method: "upi";
+            /** @description Like name@okhdfcbank. */
+            upi_id: string;
+        };
+        PayoutInput: components["schemas"]["BankPayoutInput"] | components["schemas"]["UpiPayoutInput"];
+        /** @description A saved bank account, masked. */
+        BankPayout: {
+            /** @enum {string} */
+            method: "bank";
+            holder_name: string;
+            /** @description From the IFSC, like HDFC Bank. */
+            bank_name: string;
+            /** @description Shown as "•••• 4821". */
+            account_last4: string;
+            ifsc: string;
+        };
+        /** @description A saved UPI ID, masked. */
+        UpiPayout: {
+            /** @enum {string} */
+            method: "upi";
+            /** @description Masked, like "ka•••@okhdfcbank". */
+            upi_id: string;
+        };
+        Payout: components["schemas"]["BankPayout"] | components["schemas"]["UpiPayout"];
+        Contact: {
+            name: string;
+            /** @description Stored as 10 digits. */
+            phone: string;
+            email: string;
+        };
+        /** @description Optional. Empty strings are stored as null. */
+        BusinessDetails: {
+            legal_name: string | null;
+            gstin: string | null;
+        };
+        StoreBrandInput: {
+            sells: components["schemas"]["Sells"];
+            city: string;
+            /** @description Optional; null or empty clears it. */
+            instagram_or_website: string | null;
+        };
+        /**
+         * @description A required store-details topic. pay_on_delivery is saved with PUT store-details/payment; business details are optional and never missing.
+         * @enum {string}
+         */
+        StoreTopic: "brand" | "contact" | "delivery" | "returns" | "pay_on_delivery" | "payout";
+        StoreDetails: {
+            /** @description Read-only here; Shazlo changes the store name on request. */
+            brand_name: string;
+            sells: components["schemas"]["Sells"] | null;
+            city: string | null;
+            instagram_or_website: string | null;
+            contact: components["schemas"]["Contact"] | null;
+            delivery: components["schemas"]["Delivery"] | null;
+            returns: components["schemas"]["Returns"] | null;
+            pay_on_delivery: components["schemas"]["PayOnDelivery"] | null;
+            payout: components["schemas"]["Payout"] | null;
+            business: components["schemas"]["BusinessDetails"];
+            /** @description Required topics not yet complete, in page order. */
+            missing: components["schemas"]["StoreTopic"][];
+            /** @description True when missing is empty. */
+            complete: boolean;
+            /** Format: date-time */
+            updated_at: string | null;
+        };
+        IfscBank: {
+            /** @description The code in upper case. */
+            ifsc: string;
+            /** @description Like HDFC Bank. */
+            bank: string;
+            /** @description Like Navrangpura, Ahmedabad. */
+            branch: string;
+        };
+        /**
+         * @description not_set - no rate yet; proposed - the brand's rate waits for Shazlo; sent_back - Shazlo sent the proposal back with a note; agreed - a rate is in force.
+         * @enum {string}
+         */
+        CommissionState: "not_set" | "proposed" | "sent_back" | "agreed";
+        /** @description Per-brand commission; there is no default rate. agreed_bps can be set in every state (a new proposal does not replace the agreed rate until Shazlo approves it). */
+        Commission: {
+            state: components["schemas"]["CommissionState"];
+            /** @description The rate in force, in basis points (1200 = 12%). */
+            agreed_bps: number | null;
+            /** @description The brand's latest proposal while proposed or sent_back; null otherwise. */
+            proposed_bps: number | null;
+            /** @description Shazlo's note when it sent the proposal back. */
+            note: string | null;
+            /** Format: date-time */
+            updated_at: string | null;
         };
         Me: {
             vendor: {
@@ -466,7 +849,9 @@ export interface components {
                 status: "approved" | "suspended";
                 /** Format: date-time */
                 approved_at: string | null;
-                commission_bps: number;
+                /** @description Same as commission.agreed_bps; null until a rate is agreed. */
+                commission_bps: number | null;
+                commission: components["schemas"]["Commission"];
             };
             user: {
                 id: string;
@@ -479,7 +864,8 @@ export interface components {
                 password_set: boolean;
                 brand_page: boolean;
                 first_product: boolean;
-                return_policy: boolean;
+                /** @description Every required store-details topic is complete (StoreDetails.complete). */
+                store_details: boolean;
                 live_products: number;
                 live_target: number;
             };
@@ -505,9 +891,17 @@ export interface components {
             story: string;
             logo_url: string | null;
             cover_url: string | null;
-            /** @enum {string} */
+            /**
+             * @deprecated
+             * @description Superseded by StoreDetails.returns (Build 2): the brand page no longer edits returns and its preview reads store details. Kept until the brand editor stops sending it.
+             * @enum {string}
+             */
             return_policy: "no_returns" | "7_day" | "14_day";
-            /** @enum {string} */
+            /**
+             * @deprecated
+             * @description Superseded by StoreDetails.delivery (Build 2). Kept until the brand editor stops sending it.
+             * @enum {string}
+             */
             dispatch_time: "1_2_days" | "2_3_days" | "3_5_days" | "5_7_days";
             instagram: string;
             website: string;
@@ -538,13 +932,29 @@ export interface components {
         };
         /** @enum {string} */
         ProductStatus: "draft" | "pending_review" | "approved" | "rejected" | "archived";
+        /**
+         * @description front, back, detail and worn are the 4 required product photos (one each); extra holds up to 4 more; tryon holds the 5 required try-on photos of real people wearing it.
+         * @enum {string}
+         */
+        PhotoAngle: "front" | "back" | "detail" | "worn" | "extra" | "tryon";
         /** @enum {string} */
-        PhotoAngle: "front" | "back" | "closeup" | "extra";
+        Gender: "Women" | "Men" | "Unisex";
+        /**
+         * @description The product type, shown to sellers as is. src/lib/catalog.ts maps each to its size-chart group and sizes.
+         * @enum {string}
+         */
+        ProductType: "Kurtas" | "Kurtis" | "Sarees" | "Lehengas" | "Dupattas" | "Stoles" | "Shirts" | "T-shirts" | "Tops" | "Dresses" | "Co-ords" | "Skirts" | "Jeans" | "Trousers" | "Palazzos" | "Jackets" | "Blazers";
+        /**
+         * @description Keys in a submit 422's extra.fields, in this order. photos - fewer than the 4 named photos; tryon - fewer than 5 try-on photos; variants - no size; price_paise - no selling price or above the MRP; store_details - store details incomplete.
+         * @enum {string}
+         */
+        SubmitRequirement: "title" | "gender" | "category" | "main_colour" | "material" | "description" | "photos" | "tryon" | "variants" | "price_paise" | "store_details";
         ProductSummary: {
             id: string;
             title: string;
             sku: string;
-            category: string;
+            category: components["schemas"]["ProductType"] | null;
+            main_colour: string | null;
             status: components["schemas"]["ProductStatus"];
             price_paise: number | null;
             mrp_paise: number | null;
@@ -562,28 +972,40 @@ export interface components {
             counts: components["schemas"]["StatusCounts"];
         };
         Variant: {
+            /** @description XS, S, M, L, XL, XXL, 3XL, One size, or a waist size 26-40 (src/lib/catalog.ts ALL_SIZES). */
             size: string;
+            /** @description Automatic product code for the size; never called SKU in seller text. */
             sku: string;
+            /** @description 0 means sold out. */
             stock: number;
         };
+        /** @description Every field is optional on PATCH; only the ones sent change. Returns and delivery come from store details, not the product. */
         ProductInput: {
             title?: string;
             description?: string;
-            category?: string;
-            gender?: string;
-            fabric?: string;
+            category?: components["schemas"]["ProductType"] | null;
+            gender?: components["schemas"]["Gender"] | null;
+            /** @description Free text, like "100% linen" or "Cotton mul". */
+            material?: string;
+            /** @description One of the named colours in src/lib/catalog.ts COLOURS, including Multicolour. */
+            main_colour?: string | null;
+            /** @description Up to 2 more named colours, different from the main colour. */
+            other_colours?: string[];
             price_paise?: number | null;
+            /** @description Optional. The selling price cannot be above it. */
             mrp_paise?: number | null;
             variants?: components["schemas"]["Variant"][];
-            returns_use_default?: boolean;
         };
         Product: {
             id: string;
             title: string;
             description: string;
-            category: string;
-            gender: string;
-            fabric: string;
+            category: components["schemas"]["ProductType"] | null;
+            gender: components["schemas"]["Gender"] | null;
+            /** @description Empty until the seller adds it. */
+            material: string;
+            main_colour: string | null;
+            other_colours: string[];
             sku: string;
             status: components["schemas"]["ProductStatus"];
             price_paise: number | null;
@@ -594,7 +1016,6 @@ export interface components {
                 angle: components["schemas"]["PhotoAngle"];
             }[];
             variants: components["schemas"]["Variant"][];
-            returns_use_default: boolean;
             review: components["schemas"]["ReviewState"];
             history: {
                 /** Format: date-time */
@@ -637,23 +1058,71 @@ export interface components {
                 approved: number;
             };
         };
+        /**
+         * @description The template's columns, in order (PDF section 4). other_colours and mrp are optional.
+         * @enum {string}
+         */
+        ImportColumn: "product_name" | "gender" | "product_type" | "main_colour" | "other_colours" | "selling_price" | "sizes_stock" | "description" | "material" | "mrp";
+        /** @description Changed in Build 2 - one row per product, no image columns (photos are added by product name after import), so image_errors is gone and ok_products equals ok_rows. */
         ImportJob: {
             id: string;
-            /** @enum {string} */
+            /**
+             * @description failed when the header is missing a required column (errors then name the columns, row 1).
+             * @enum {string}
+             */
             status: "checking" | "ready" | "committed" | "failed";
             file_name: string;
             total_rows: number;
             ok_rows: number;
-            /** @description Products the ready rows become (rows sharing a Product ID are one product with several sizes) */
+            /** @description Drafts the ready rows become (one per row). */
             ok_products: number;
             error_rows: number;
-            image_errors: number;
             errors: {
+                /** @description Spreadsheet row number; the header is row 1. */
                 row: number;
+                /** @description The row's product name, if it has one. */
                 product: string | null;
+                /** @description The column in plain words, like "Sizes and stock". */
                 column: string;
+                /** @description The template column, or null for a problem with the whole row. */
+                field: components["schemas"]["ImportColumn"] | null;
+                /** @description What to fix, in plain words. */
                 message: string;
             }[];
+        };
+        ImportCommit: {
+            created: number;
+            /** @description The drafts just created, in file order. */
+            products: {
+                id: string;
+                title: string;
+            }[];
+        };
+        /**
+         * @description Product types share a chart by group (src/lib/catalog.ts SIZE_CHART_GROUP); sarees, dupattas and stoles have none.
+         * @enum {string}
+         */
+        SizeChartGroup: "bottoms" | "tops" | "dresses" | "jackets";
+        /** @description Centimetres by size, then by measurement: { "M": { "bust": 96, "waist": 84, "hip": null, "length": 112 } }. Measurements are the group's (bottoms - waist, hip, inseam, length; tops and jackets - chest, shoulder, sleeve, length; dresses - bust, waist, hip, length). Saved sizes come back with every measurement of the group (null when blank); sizes left wholly blank are dropped. */
+        SizeChartMeasurements: {
+            [key: string]: {
+                [key: string]: number | null;
+            };
+        };
+        SizeChart: {
+            group: components["schemas"]["SizeChartGroup"];
+            measurements: components["schemas"]["SizeChartMeasurements"];
+            /** @description A photo of the brand's own chart (upload with purpose size_chart). */
+            photo_url: string | null;
+            /**
+             * Format: date-time
+             * @description Null when nothing is saved yet.
+             */
+            updated_at: string | null;
+        };
+        SizeChartInput: {
+            measurements: components["schemas"]["SizeChartMeasurements"];
+            photo_url: string | null;
         };
     };
     responses: {
@@ -698,6 +1167,30 @@ export interface operations {
             };
             422: components["responses"]["Error"];
             429: components["responses"]["Error"];
+        };
+    };
+    lookupIfsc: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bank branch */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IfscBank"];
+                };
+            };
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     login: {
@@ -851,7 +1344,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Always accepted */
+            /** @description Always accepted, so accounts are not revealed */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -899,6 +1392,279 @@ export interface operations {
                     "application/json": components["schemas"]["Summary"];
                 };
             };
+        };
+    };
+    getStoreDetails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Store details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreDetails"];
+                };
+            };
+        };
+    };
+    saveStoreBrand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoreBrandInput"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreDetails"];
+                };
+            };
+            422: components["responses"]["Error"];
+        };
+    };
+    saveStoreContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Contact"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreDetails"];
+                };
+            };
+            422: components["responses"]["Error"];
+        };
+    };
+    saveStoreDelivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Delivery"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreDetails"];
+                };
+            };
+            422: components["responses"]["Error"];
+        };
+    };
+    saveStoreReturns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Returns"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreDetails"];
+                };
+            };
+            422: components["responses"]["Error"];
+        };
+    };
+    saveStorePayment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayOnDelivery"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreDetails"];
+                };
+            };
+            422: components["responses"]["Error"];
+        };
+    };
+    saveStorePayout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayoutInput"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreDetails"];
+                };
+            };
+            422: components["responses"]["Error"];
+        };
+    };
+    saveStoreBusiness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BusinessDetails"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreDetails"];
+                };
+            };
+            422: components["responses"]["Error"];
+        };
+    };
+    proposeCommission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    rate_bps: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Proposal waiting for Shazlo */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Commission"];
+                };
+            };
+            422: components["responses"]["Error"];
+        };
+    };
+    getSizeChart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group: components["schemas"]["SizeChartGroup"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Size chart */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SizeChart"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    saveSizeChart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group: components["schemas"]["SizeChartGroup"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SizeChartInput"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SizeChart"];
+                };
+            };
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     getBrandPage: {
@@ -1000,7 +1766,7 @@ export interface operations {
             content: {
                 "application/json": {
                     /** @enum {string} */
-                    purpose: "logo" | "cover" | "product";
+                    purpose: "logo" | "cover" | "product" | "size_chart";
                     content_type: string;
                     size_bytes: number;
                 };
@@ -1233,6 +1999,9 @@ export interface operations {
                     "application/json": components["schemas"]["Product"];
                 };
             };
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     removeProductImage: {
@@ -1256,6 +2025,38 @@ export interface operations {
                     "application/json": components["schemas"]["Product"];
                 };
             };
+        };
+    };
+    moveProductImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                image_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    angle: components["schemas"]["PhotoAngle"];
+                };
+            };
+        };
+        responses: {
+            /** @description Moved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Product"];
+                };
+            };
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     listReviews: {
@@ -1372,9 +2173,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        created: number;
-                    };
+                    "application/json": components["schemas"]["ImportCommit"];
                 };
             };
             409: components["responses"]["Error"];
