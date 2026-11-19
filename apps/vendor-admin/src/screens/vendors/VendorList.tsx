@@ -13,7 +13,7 @@ import { useModuleTitle, useRuntime } from '../../runtime/runtime'
 import { VendorActionDialog, type DialogKind } from './dialogs'
 import { downloadCsv, vendorsCsv } from './list/csv'
 import { VendorFilters } from './list/Filters'
-import { toFilters, useVendorParams, type VendorParams } from './list/useVendorParams'
+import { tabOf, tabPatch, toFilters, useVendorParams, type VendorParams } from './list/useVendorParams'
 import { VendorCards } from './list/VendorCards'
 import { VendorTable } from './list/VendorTable'
 
@@ -73,14 +73,15 @@ function ListEmpty({ params, onClearFilters, onShowAll }: { params: VendorParams
       />
     )
   }
-  const tab = copy.emptyTab[params.status ?? 'all']
+  const key = tabOf(params)
+  const tab = copy.emptyTab[key]
   return (
     <EmptyState
       illustration="box"
       title={tab.title}
       body={tab.body}
       action={
-        params.status ? (
+        key !== 'all' ? (
           <Button variant="outlined" onClick={onShowAll}>
             {copy.emptyTab.showAll}
           </Button>
@@ -171,7 +172,7 @@ export default function VendorList() {
   if (query.isError && !data) {
     body = null
   } else if (data && data.items.length === 0) {
-    body = <ListEmpty params={params} onClearFilters={clearFilters} onShowAll={() => update({ status: undefined })} />
+    body = <ListEmpty params={params} onClearFilters={clearFilters} onShowAll={() => update(tabPatch('all'))} />
   } else {
     body = compact ? <VendorCards items={data?.items} fetching={query.isFetching} onMenu={onMenu} /> : <VendorTable items={data?.items} fetching={query.isFetching} onOpen={openVendor} onMenu={onMenu} />
   }
@@ -190,7 +191,7 @@ export default function VendorList() {
       />
       <Stack spacing={2}>
         {errorBanner}
-        <StatusTabs value={params.status ?? 'all'} counts={data?.counts} onChange={(key) => update({ status: key === 'all' ? undefined : key })} />
+        <StatusTabs value={tabOf(params)} counts={data?.counts} onChange={(key) => update(tabPatch(key))} />
         <VendorFilters params={params} update={update} cities={data?.cities ?? []} onSearch={onSearch} />
         {body}
       </Stack>

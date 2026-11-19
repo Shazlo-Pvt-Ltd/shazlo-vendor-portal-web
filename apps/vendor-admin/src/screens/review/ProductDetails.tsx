@@ -1,5 +1,5 @@
 import { Box, Button, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material'
-import { fontFamily, neutral, SectionCard, StatusPill } from '@shazlo/ui'
+import { fontFamily, neutral, radius, SectionCard, status, StatusPill } from '@shazlo/ui'
 import { useState, type ReactNode } from 'react'
 import type { components } from '../../api/schema'
 import { reviewCopy } from '../../copy/review'
@@ -8,19 +8,27 @@ import { usePhone } from '../../lib/responsive'
 import { photoNames } from './ProductPhotos'
 
 const copy = reviewCopy.product
-type Version = components['schemas']['ProductVersion']
+type S = components['schemas']
+type Version = S['ProductVersion']
 const CLIP = 80
 
 const num = { textAlign: 'right', fontVariantNumeric: 'tabular-nums' } as const
+const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1)
 
 function photosLine(v: Version): string {
-  const names = photoNames(v.images)
+  const names = photoNames(v.photos)
   if (names.length === 0) return copy.compare.noPhotos
-  const text = names.join(', ')
+  const text = names.map(lowerFirst).join(', ')
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
 export const sizesLine = (v: Version) => v.variants.map((x) => `${x.size} ${formatCount(x.stock)}`).join(' · ')
+const priceLine = (v: Version) => `${formatINR(v.price_paise)} / ${v.mrp_paise == null ? copy.compare.noMrp : formatINR(v.mrp_paise)}`
+const coloursLine = (v: Version) =>
+  copy.compare.colours(
+    v.main_colour.name,
+    v.other_colours.map((c) => c.name),
+  )
 
 function clip(text: string): string {
   if (text.length <= CLIP) return text
@@ -32,11 +40,14 @@ function clip(text: string): string {
 type Row = { key: keyof typeof copy.compare.rows; before: string; after: string }
 
 function rowsOf(before: Version, after: Version): Row[] {
-  const line = (v: Version) => ({
+  const line = (v: Version): Record<Row['key'], string> => ({
     photos: photosLine(v),
+    tryOn: copy.compare.tryOnCount(v.try_on_photos.length),
     title: v.title,
-    price: `${formatINR(v.price_paise)} / ${formatINR(v.mrp_paise)}`,
-    type: `${v.category} · ${v.gender} · ${v.fabric}`,
+    price: priceLine(v),
+    type: `${copy.about.genders[v.gender]} · ${v.product_type}`,
+    colours: coloursLine(v),
+    material: v.material,
     sizes: sizesLine(v),
     description: v.description,
   })
@@ -157,18 +168,127 @@ export function CompareCard({ label, before, after }: { label: 'sent_back' | 'li
   )
 }
 
-export function DescriptionCard({ text }: { text: string }) {
+function Row({ term, children }: { term: string; children: ReactNode }) {
   return (
-    <SectionCard title={copy.description}>
-      <Typography variant="body1" sx={{ whiteSpace: 'pre-line', maxWidth: '70ch', overflowWrap: 'anywhere' }}>
-        {text || '—'}
+    <>
+      <Typography component="dt" variant="body2" color="text.secondary" sx={{ pt: '1px' }}>
+        {term}
+      </Typography>
+      <Typography component="dd" variant="body1" sx={{ m: 0, minWidth: 0, maxWidth: '70ch', overflowWrap: 'anywhere' }}>
+        {children}
+      </Typography>
+    </>
+  )
+}
+
+const dlSx = { display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '160px 1fr' }, columnGap: 3, rowGap: { xs: 0.5, sm: 1.5 }, m: 0, '& dd': { mb: { xs: 1.25, sm: 0 } } } as const
+
+// Multicolour has no single colour: four solid quarters, never a gradient.
+const MULTI = ['#8C2F25', '#C99A2E', '#2E3F6E', '#5C6B4E']
+
+function Swatch({ colour }: { colour: S['Colour'] }) {
+  const ring = { width: 14, height: 14, borderRadius: '50%', border: `1px solid ${neutral.lineStrong}`, flexShrink: 0, display: 'inline-block', overflow: 'hidden' } as const
+  if (colour.hex == null) {
+    return (
+      <Box component="span" aria-hidden="true" data-swatch="multicolour" sx={{ ...ring, display: 'inline-grid', gridTemplateColumns: '1fr 1fr' }}>
+        {MULTI.map((hex) => (
+          <Box key={hex} component="span" sx={{ bgcolor: hex }} />
+        ))}
+      </Box>
+    )
+  }
+  return <Box component="span" aria-hidden="true" data-swatch={colour.hex} sx={{ ...ring, bgcolor: colour.hex }} />
+}
+
+function Colour({ colour }: { colour: S['Colour'] }) {
+  return (
+    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75, whiteSpace: 'nowrap' }}>
+      <Swatch colour={colour} />
+      {colour.name}
+    </Box>
+  )
+}
+
+// What the product is (spec §7): gender, product type, colours with small swatches, material and
+// the description shoppers read.
+export function AboutCard({ version }: { version: Version }) {
+  const c = copy.about
+  const others = version.other_colours
+  return (
+    <SectionCard title={c.title}>
+      <Box component="dl" sx={dlSx}>
+        <Row term={c.gender}>{c.genders[version.gender]}</Row>
+        <Row term={c.type}>{version.product_type}</Row>
+        <Row term={c.mainColour}>
+          <Colour colour={version.main_colour} />
+        </Row>
+        <Row term={c.otherColours}>
+          {others.length === 0 ? (
+            <Box component="span" sx={{ color: 'text.secondary' }}>
+              {c.none}
+            </Box>
+          ) : (
+            others.map((colour, i) => (
+              <Box component="span" key={colour.name}>
+                {i > 0 && ', '}
+                <Colour colour={colour} />
+              </Box>
+            ))
+          )}
+        </Row>
+        <Row term={c.material}>{version.material}</Row>
+        <Row term={c.description}>
+          <Box component="span" sx={{ whiteSpace: 'pre-line' }}>
+            {version.description || '—'}
+          </Box>
+        </Row>
+      </Box>
+    </SectionCard>
+  )
+}
+
+// Selling price and the optional MRP. The app shows the lower of the two, so a price above the MRP
+// is called out.
+export function PriceCard({ version }: { version: Version }) {
+  const c = copy.price
+  const { price_paise: price, mrp_paise: mrp } = version
+  const above = mrp != null && price > mrp
+  let note: string
+  if (above) note = c.aboveMrp(formatINR(mrp))
+  else if (mrp != null) note = c.shows(formatINR(price))
+  else note = c.showsOnly(formatINR(price))
+  return (
+    <SectionCard title={c.title}>
+      <Box component="dl" sx={dlSx}>
+        <Row term={c.selling}>
+          <Box component="span" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+            {formatINR(price)}
+          </Box>
+        </Row>
+        <Row term={c.mrp}>
+          {mrp == null ? (
+            <Box component="span" sx={{ color: 'text.secondary' }}>
+              {c.noMrp}
+            </Box>
+          ) : (
+            <Box component="span" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+              {formatINR(mrp)}
+            </Box>
+          )}
+        </Row>
+      </Box>
+      <Typography variant="body2" sx={{ mt: 2, color: above ? status.error : 'text.secondary' }}>
+        {note}
       </Typography>
     </SectionCard>
   )
 }
 
-export function SizesCard({ variants }: { variants: Version['variants'] }) {
+export function SizesCard({ version }: { version: Version }) {
+  const { variants } = version
   const total = variants.reduce((sum, v) => sum + v.stock, 0)
+  // One-size pieces (dupattas, sarees, bags) need no size chart, so none is missed for them.
+  const noChart = version.size_chart === null && variants.length > 1
   return (
     <SectionCard title={copy.sizes.title} padded={false}>
       <Box sx={{ overflowX: 'auto' }}>
@@ -179,7 +299,7 @@ export function SizesCard({ variants }: { variants: Version['variants'] }) {
                 {copy.sizes.size}
               </TableCell>
               <TableCell component="th" scope="col">
-                {copy.sizes.sku}
+                {copy.sizes.code}
               </TableCell>
               <TableCell component="th" scope="col" sx={num}>
                 {copy.sizes.stock}
@@ -203,6 +323,63 @@ export function SizesCard({ variants }: { variants: Version['variants'] }) {
               <TableCell sx={{ borderBottom: 0 }} />
               <TableCell sx={{ ...num, borderBottom: 0 }}>{formatCount(total)}</TableCell>
             </TableRow>
+          </TableBody>
+        </Table>
+      </Box>
+      {noChart && (
+        <Typography variant="body2" color="text.secondary" sx={{ px: { xs: 2, sm: 3 }, pb: 2.5 }}>
+          {copy.sizeChart.none(version.product_type)}
+        </Typography>
+      )}
+    </SectionCard>
+  )
+}
+
+// The brand's own chart for this product type: measurements in cm (any may be blank), or a photo.
+export function SizeChartCard({ chart }: { chart: NonNullable<Version['size_chart']> }) {
+  const c = copy.sizeChart
+  if (chart.kind === 'photo') {
+    return (
+      <SectionCard title={c.title}>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          {c.forTypePhoto(chart.product_type)}
+        </Typography>
+        <Box component="img" src={chart.url} alt={c.photoAlt(chart.product_type)} sx={{ display: 'block', width: '100%', maxWidth: 320, borderRadius: `${radius.card}px`, border: `1px solid ${neutral.line}` }} />
+      </SectionCard>
+    )
+  }
+  return (
+    <SectionCard title={c.title} padded={false}>
+      <Typography variant="body2" color="text.secondary" sx={{ px: { xs: 2, sm: 3 }, pb: 1 }}>
+        {c.forType(chart.product_type)}
+      </Typography>
+      <Box sx={{ overflowX: 'auto' }}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell component="th" scope="col">
+                {c.size}
+              </TableCell>
+              {chart.measurements.map((m) => (
+                <TableCell key={m} component="th" scope="col" sx={num}>
+                  {m}
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {chart.rows.map((row, i) => (
+              <TableRow key={row.size} sx={i === chart.rows.length - 1 ? { '& > *': { borderBottom: 0 } } : undefined}>
+                <TableCell component="th" scope="row">
+                  {row.size}
+                </TableCell>
+                {chart.measurements.map((m, j) => (
+                  <TableCell key={m} sx={num}>
+                    {row.cm[j] == null ? '—' : row.cm[j]!.toLocaleString('en-IN')}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
           </TableBody>
         </Table>
       </Box>

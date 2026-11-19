@@ -3,19 +3,15 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import type { components } from '../../../api/schema'
 import { vendorDetailCopy } from '../../../copy/vendors'
+import { rateField, rateText, toBps, waitingProposal } from '../../../lib/commission'
 
 const e = vendorDetailCopy.approval.errors
-export const DEFAULT_COMMISSION = '15'
 export const AGREEMENT_REF = 'signed_offline'
 
-// Commission is typed as text (the API takes basis points), so "12.5" stays exact.
+// Commission is typed as a percentage (the API takes basis points), so "12.5" stays exact.
+// There is no default rate: the field starts from the brand's proposal, or empty.
 export const approvalSchema = z.object({
-  commission: z
-    .string()
-    .trim()
-    .min(1, e.commissionRequired)
-    .regex(/^\d+(\.\d{1,2})?$/, e.commissionNumber)
-    .refine((v) => Number(v) <= 40, e.commissionRange),
+  commission: rateField,
   owner_email: z.string().trim().min(1, e.emailRequired).email(e.emailFormat),
   agreement: z.boolean().refine((v) => v, e.agreement),
 })
@@ -30,13 +26,13 @@ export const apiFieldToForm: Record<string, keyof ApprovalValues> = {
 }
 
 export function toApproveBody(values: ApprovalValues) {
-  return { commission_bps: Math.round(Number(values.commission) * 100), agreement_ref: AGREEMENT_REF, owner_email: values.owner_email.trim() }
+  return { commission_bps: toBps(values.commission), agreement_ref: AGREEMENT_REF, owner_email: values.owner_email.trim() }
 }
 
 export function useApprovalForm(vendor: components['schemas']['VendorDetail']) {
   return useForm<ApprovalValues>({
     resolver: zodResolver(approvalSchema),
-    defaultValues: { commission: DEFAULT_COMMISSION, owner_email: vendor.email, agreement: false },
+    defaultValues: { commission: rateText(waitingProposal(vendor.commission)), owner_email: vendor.email, agreement: false },
     mode: 'onChange',
   })
 }

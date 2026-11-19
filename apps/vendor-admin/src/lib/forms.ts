@@ -12,3 +12,6 @@ export function fieldProps(registration: UseFormRegisterReturn, error?: FieldErr
     fullWidth: true,
   }
 }
+
+// Required fields carry no asterisk (design rule); the input keeps `required` for assistive tech.
+export const noAsterisk = { inputLabel: { required: false } } as const

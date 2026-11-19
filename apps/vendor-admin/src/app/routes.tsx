@@ -18,6 +18,8 @@ export const modulePaths = {
   brand: (vendorId: string) => `/review/brand/${vendorId}`,
   vendors: '/vendors',
   vendor: (id: string) => `/vendors/${id}`,
+  // Vendors whose proposed commission waits for Shazlo.
+  rates: '/vendors?commission=proposed',
   publishing: '/publishing',
 } as const
 

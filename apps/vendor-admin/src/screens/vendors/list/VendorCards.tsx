@@ -6,10 +6,10 @@ import { Link as RouterLink } from 'react-router'
 import type { components } from '../../../api/schema'
 import { modulePaths } from '../../../app/routes'
 import { aboveStretch, CardList, ListCard, stretchSx } from '../../../components/CardList'
-import { vendorsCopy } from '../../../copy/vendors'
+import { sellsLabel, vendorsCopy } from '../../../copy/vendors'
 import { formatCount, formatDate } from '../../../lib/format'
 import { vendorPill } from '../../../lib/status'
-import { formatCommission } from './csv'
+import { CommissionValue } from './CommissionValue'
 import { BrandAvatar, isApplication } from './VendorTable'
 
 const copy = vendorsCopy.table
@@ -17,7 +17,8 @@ type Vendor = components['schemas']['VendorSummary']
 
 const tabular = { fontVariantNumeric: 'tabular-nums' } as const
 
-// A label over its value, for the three small facts along the bottom of a card.
+// A label over its value, for the three small facts along the bottom of a card. Live products and
+// commission take their own width (a proposal is a pill); sells takes the rest.
 function Fact({ term, children }: { term: string; children: ReactNode }) {
   return (
     <Box sx={{ minWidth: 0 }}>
@@ -33,7 +34,6 @@ function Fact({ term, children }: { term: string; children: ReactNode }) {
 
 function VendorCard({ vendor, onMenu }: { vendor: Vendor; onMenu: (anchor: HTMLElement, vendor: Vendor) => void }) {
   const pill = vendorPill[vendor.status]
-  const sells = vendor.sells.length === 0 ? '—' : vendor.sells.slice(0, 2).join(', ') + (vendor.sells.length > 2 ? ` ${copy.more(vendor.sells.length - 2)}` : '')
   return (
     <ListCard>
       <Stack direction="row" spacing={1.5} sx={{ alignItems: 'flex-start' }}>
@@ -69,17 +69,15 @@ function VendorCard({ vendor, onMenu }: { vendor: Vendor; onMenu: (anchor: HTMLE
           {vendor.phone}
         </Typography>
       </Typography>
-      <Box component="dl" sx={{ m: 0, mt: 1.25, pt: 1.25, borderTop: `1px solid ${neutral.line}`, display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr)', gap: 1.5 }}>
-        <Fact term={copy.sells}>{sells}</Fact>
+      <Box component="dl" sx={{ m: 0, mt: 1.25, pt: 1.25, borderTop: `1px solid ${neutral.line}`, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto auto', gap: 1.5 }}>
+        <Fact term={copy.sells}>{sellsLabel[vendor.sells]}</Fact>
         <Fact term={copy.liveProducts}>
           <Box component="span" sx={tabular}>
             {formatCount(vendor.live_products)}
           </Box>
         </Fact>
         <Fact term={copy.commission}>
-          <Box component="span" sx={tabular}>
-            {formatCommission(vendor.commission_bps)}
-          </Box>
+          <CommissionValue commission={vendor.commission} />
         </Fact>
       </Box>
     </ListCard>

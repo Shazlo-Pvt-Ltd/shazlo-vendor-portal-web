@@ -2,7 +2,8 @@ import type { components } from '../api/schema'
 
 type S = components['schemas']
 export type ReasonCode = S['RejectBody']['reason_code']
-export type Angle = S['ProductVersion']['images'][number]['angle']
+export type Slot = S['ProductPhoto']['slot']
+export type Gender = S['ProductVersion']['gender']
 type Event = S['History'][number]['event']
 
 const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1)
@@ -45,6 +46,10 @@ export const reviewCopy = {
       suspended: 'Suspended by',
       reactivated: 'Reactivated by',
       invited: 'Invited by',
+      commission_proposed: 'Commission proposed by',
+      commission_approved: 'Commission approved by',
+      commission_sent_back: 'Commission sent back by',
+      commission_set: 'Commission set by',
     } satisfies Record<Event, string>,
   },
 
@@ -76,16 +81,17 @@ export const reviewCopy = {
 
   // reason_code → label and the message it starts the seller's note with.
   reasons: {
-    photos: { label: 'Photos', message: 'Photos are missing or unclear. Add front, back and a fabric close-up on a plain background.' },
-    price: { label: 'Price or MRP', message: 'The selling price or MRP does not match the tag. Check both and resubmit.' },
-    category: { label: 'Category or fabric', message: 'The category or fabric looks wrong. Check them against the product.' },
+    photos: { label: 'Product photos', message: 'Product photos are missing or unclear. Add front, back, detail and worn photos on a plain background.' },
+    try_on_photos: { label: 'Try-on photos', message: 'Add 5 try-on photos of real people wearing it, so shoppers see the true fit.' },
+    price: { label: 'Price or MRP', message: 'The selling price is above the MRP or does not match the tag. Check both and resubmit.' },
+    category: { label: 'Product type, colours or material', message: 'The product type, colours or material look wrong. Check them against the product.' },
     prohibited: { label: 'Prohibited item', message: 'This item is not allowed on Shazlo.' },
-    description: { label: 'Description', message: 'The description needs more detail: fabric, fit, size and care.' },
+    description: { label: 'Description', message: 'The description needs more detail: material, fit, size and care.' },
     brand_images: { label: 'Images', message: 'Use your own photos for the cover and logo, with no text on them.' },
     contact_details: { label: 'Contact details in the text', message: 'Remove the phone number from your story; shoppers contact you through Shazlo.' },
     other: { label: 'Something else', message: '' },
   } satisfies Record<ReasonCode, { label: string; message: string }>,
-  productReasons: ['photos', 'price', 'category', 'prohibited', 'description', 'other'] as ReasonCode[],
+  productReasons: ['photos', 'try_on_photos', 'price', 'category', 'prohibited', 'description', 'other'] as ReasonCode[],
   brandReasons: ['brand_images', 'contact_details', 'other'] as ReasonCode[],
 
   product: {
@@ -101,23 +107,23 @@ export const reviewCopy = {
       approved: (title: string) => `Approved ${title}. Publishing to the app.`,
       sentBack: (title: string, seller: string) => `Sent back ${title}. ${seller} will see your message.`,
     },
-    checks: [
-      'Front, back and close-up photos',
-      'Price matches the MRP on the tag',
-      'Category and fabric are right',
-      'Not on the prohibited list',
-      'Description is accurate',
-    ],
+    checks: ['4 product photos and 5 try-on photos', 'Price is not above MRP', 'Product type, colours and material are right', 'Not on the prohibited list', 'Description is accurate'],
     photos: {
       title: 'Photos',
-      angle: { front: 'front', back: 'back', closeup: 'close-up', extra: 'extra' } satisfies Record<Angle, string>,
-      angleTitle: { front: 'Front', back: 'Back', closeup: 'Close-up', extra: 'Extra' } satisfies Record<Angle, string>,
-      show: (angle: string) => `Show ${angle} photo`,
-      alt: (angle: string, title: string) => `${angle.charAt(0).toUpperCase()}${angle.slice(1)} photo of ${title}`,
+      product: 'Product photos',
+      tryOn: 'Try-on photos',
+      tryOnHint: 'Real people wearing it, so shoppers see the true fit.',
+      slot: { front: 'Front', back: 'Back', detail: 'Detail', worn: 'Worn', extra: 'Extra' } satisfies Record<Slot, string>,
+      tryOnName: (n: number) => `Try-on ${n}`,
+      count: (have: number, need: number) => `${have} of ${need}`,
+      extras: (n: number) => ` · ${n} extra`,
+      show: (name: string) => `Show ${lowerFirst(name)} photo`,
+      alt: (name: string, title: string) => `${name} photo of ${title}`,
       newTag: 'New',
       newDescription: 'New in this submission',
-      missing: (angle: string) => `${angle.charAt(0).toUpperCase()}${angle.slice(1)} photo missing`,
-      missingNote: (angles: string[]) => `Missing ${angles.join(', ')} ${angles.length === 1 ? 'photo' : 'photos'}. Every product needs a front, back and close-up.`,
+      missing: (name: string) => `${name} photo missing`,
+      missingProduct: (names: string[]) => `Missing ${names.map(lowerFirst).join(', ')} ${names.length === 1 ? 'photo' : 'photos'}. Every product needs front, back, detail and worn photos.`,
+      missingTryOn: (n: number) => `${n} of 5 try-on photos missing. Every product needs 5 photos of real people wearing it.`,
       none: 'No photos in this submission.',
     },
     compare: {
@@ -130,24 +136,57 @@ export const reviewCopy = {
       changed: 'Changed',
       same: 'Same',
       rows: {
-        photos: 'Photos',
+        photos: 'Product photos',
+        tryOn: 'Try-on photos',
         title: 'Title',
         price: 'Selling price / MRP',
-        type: 'Type · gender · fabric',
+        type: 'Gender · product type',
+        colours: 'Colours',
+        material: 'Material',
         sizes: 'Sizes and stock',
         description: 'Description',
       },
+      noMrp: 'no MRP',
+      tryOnCount: (n: number) => (n === 0 ? 'No photos' : n === 1 ? '1 photo' : `${n} photos`),
+      colours: (main: string, others: string[]) => (others.length ? `${main}, also ${others.join(' and ')}` : main),
       showFull: 'Show full description',
       showLess: 'Show less',
       noPhotos: 'No photos',
     },
-    description: 'Description',
+    about: {
+      title: 'About the product',
+      gender: 'Gender',
+      genders: { women: 'Women', men: 'Men', unisex: 'Unisex' } satisfies Record<Gender, string>,
+      type: 'Product type',
+      mainColour: 'Main colour',
+      otherColours: 'Other colours',
+      none: 'None',
+      material: 'Material',
+      description: 'Description',
+    },
+    price: {
+      title: 'Price',
+      selling: 'Selling price',
+      mrp: 'MRP',
+      noMrp: 'Not given',
+      shows: (price: string) => `Shoppers see ${price}, the lower of the two.`,
+      showsOnly: (price: string) => `Shoppers see ${price}.`,
+      aboveMrp: (mrp: string) => `The selling price is above the MRP. The app shows the lower price, ${mrp}.`,
+    },
     sizes: {
       title: 'Sizes and stock',
       size: 'Size',
-      sku: 'SKU',
+      code: 'Code',
       stock: 'Stock',
       total: 'Total',
+    },
+    sizeChart: {
+      title: 'Size chart',
+      forType: (type: string) => `Used for all their ${type.toLowerCase()}. Measurements in cm.`,
+      forTypePhoto: (type: string) => `Used for all their ${type.toLowerCase()}. A photo of their own chart.`,
+      size: 'Size',
+      none: (type: string) => `No size chart for ${type.toLowerCase()}.`,
+      photoAlt: (type: string) => `The brand’s size chart for ${type.toLowerCase()}`,
     },
   },
 

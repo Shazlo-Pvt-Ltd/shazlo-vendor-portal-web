@@ -51,8 +51,11 @@ describe('Phone layout', { timeout: 40_000 }, () => {
     expect(within(kalki).getByRole('link', { name: 'Kalki Studio' })).toHaveAttribute('href', '/vendors/v_kalki')
     expect(within(kalki).getByText('Kiran Shah')).toBeInTheDocument()
     expect(within(kalki).getByText('Approved')).toBeInTheDocument()
-    expect(within(kalki).getByText('15%')).toBeInTheDocument()
+    expect(within(kalki).getByText('12%')).toBeInTheDocument()
     expect(within(kalki).getByText('18')).toBeInTheDocument()
+    expect(within(kalki).getByText('Women')).toBeInTheDocument()
+    expect(within(card(list, 'Indigo Loom')).getByText('10% proposed')).toHaveAttribute('data-status', 'pending')
+    expect(within(card(list, 'Rann Weaves')).getByText('Not set')).toBeInTheDocument()
 
     // An approved vendor's menu offers suspend; an application is opened from its card.
     await user.click(within(kalki).getByRole('button', { name: 'Actions for Kalki Studio' }))
@@ -84,6 +87,28 @@ describe('Phone layout', { timeout: 40_000 }, () => {
     await user.click(within(dialog).getByRole('button', { name: 'Close details' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(new URLSearchParams(router.state.location.search).get('event')).toBeNull()
+  })
+
+  it('puts the commission card first on a brand’s page, with its actions full width, and opens its dialogs full screen', async () => {
+    const { user } = renderModule({ route: '/vendors/v_indigo' })
+    await screen.findByRole('heading', { level: 1, name: 'Indigo Loom' }, { timeout: 10_000 })
+    const commission = screen.getByRole('region', { name: 'Commission' })
+    const application = screen.getByRole('region', { name: 'Application' })
+    // Above the long application, so a rate to review is the first thing on the page.
+    expect(commission.compareDocumentPosition(application) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(commission).getByText('Indigo Loom proposed 10%.')).toBeInTheDocument()
+    const actions = within(commission).getByRole('group', { name: 'Commission actions' })
+    expect(within(actions).getAllByRole('button').map((b) => b.textContent)).toEqual(['Approve 10%', 'Send back', 'Set a different rate'])
+    expect(actions).toHaveAttribute('data-layout', 'stacked')
+
+    await user.click(within(actions).getByRole('button', { name: 'Send back' }))
+    const sendBack = await screen.findByRole('dialog', { name: 'Send back Indigo Loom’s proposed rate' })
+    expect(sendBack).toHaveClass('MuiDialog-paperFullScreen')
+    await user.click(within(sendBack).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    await user.click(within(actions).getByRole('button', { name: 'Set a different rate' }))
+    expect(await screen.findByRole('dialog', { name: 'Change the commission for Indigo Loom' })).toHaveClass('MuiDialog-paperFullScreen')
   })
 
   it('keeps the review decision in a bar at the bottom of a product review', async () => {

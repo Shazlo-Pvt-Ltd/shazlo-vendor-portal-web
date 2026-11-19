@@ -7,11 +7,11 @@ import { useMemo, type MouseEvent } from 'react'
 import { Link as RouterLink } from 'react-router'
 import type { components } from '../../../api/schema'
 import { modulePaths } from '../../../app/routes'
-import { vendorsCopy } from '../../../copy/vendors'
+import { sellsLabel, vendorsCopy } from '../../../copy/vendors'
 import { srOnly } from '../../../lib/a11y'
 import { formatCount, formatDate } from '../../../lib/format'
 import { vendorPill } from '../../../lib/status'
-import { formatCommission } from './csv'
+import { CommissionValue } from './CommissionValue'
 
 const copy = vendorsCopy.table
 type Vendor = components['schemas']['VendorSummary']
@@ -62,22 +62,6 @@ function BrandCell({ vendor }: { vendor: Vendor }) {
   )
 }
 
-function Sells({ sells }: { sells: string[] }) {
-  if (sells.length === 0) return <>—</>
-  const extra = sells.length - 2
-  return (
-    <Typography variant="body2" component="span">
-      {sells.slice(0, 2).join(', ')}
-      {extra > 0 && (
-        <Box component="span" sx={{ color: 'text.secondary' }}>
-          {' '}
-          {copy.more(extra)}
-        </Box>
-      )}
-    </Typography>
-  )
-}
-
 function SkeletonRows({ columns }: { columns: number }) {
   return Array.from({ length: SKELETON_ROWS }, (_, i) => (
     <TableRow key={i} sx={{ height: 56 }}>
@@ -124,7 +108,15 @@ export function VendorTable({ items, fetching, onOpen, onMenu }: Props) {
           </>
         ),
       },
-      { id: 'sells', header: copy.sells, cell: ({ row }) => <Sells sells={row.original.sells} /> },
+      {
+        id: 'sells',
+        header: copy.sells,
+        cell: ({ row }) => (
+          <Typography variant="body2" component="span" sx={{ whiteSpace: 'nowrap' }}>
+            {sellsLabel[row.original.sells]}
+          </Typography>
+        ),
+      },
       { id: 'live', header: copy.liveProducts, cell: ({ row }) => formatCount(row.original.live_products) },
       {
         id: 'status',
@@ -143,7 +135,7 @@ export function VendorTable({ items, fetching, onOpen, onMenu }: Props) {
           </Typography>
         ),
       },
-      { id: 'commission', header: copy.commission, cell: ({ row }) => formatCommission(row.original.commission_bps) },
+      { id: 'commission', header: copy.commission, cell: ({ row }) => <CommissionValue commission={row.original.commission} /> },
       {
         id: 'actions',
         header: () => <Box sx={srOnly}>{copy.actionsHeader}</Box>,

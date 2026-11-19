@@ -34,7 +34,7 @@ describe('A-07 Brand page review: an edit to a live page', () => {
     expect(within(live).getByText('Handloom from Karnataka.')).toBeInTheDocument()
     expect(within(live).getByText('Ships in 2–3 days')).toBeInTheDocument()
     expect(within(draft).getByText('Handloom sarees from the Deccan, woven to order.')).toBeInTheDocument()
-    expect(within(draft).getByText('Ships in 3–5 days')).toBeInTheDocument()
+    expect(within(draft).getByText('Ships in 2–3 days')).toBeInTheDocument()
     expect(within(draft).getByText('Nila Handloom')).toBeInTheDocument()
     expect(within(draft).getByText('Bengaluru')).toBeInTheDocument()
     expect(within(draft).getByText('7-day returns')).toBeInTheDocument()
@@ -46,15 +46,11 @@ describe('A-07 Brand page review: an edit to a live page', () => {
     await open('v_nila', 'Nila Handloom · brand page')
     const changes = screen.getByRole('region', { name: 'Changes from the live page' })
     const fields = within(changes).getAllByRole('rowheader').map((c) => c.textContent)
-    expect(fields).toEqual(['Tagline', 'Story', 'Cover image', 'Dispatch time', 'Instagram', 'Website'])
+    expect(fields).toEqual(['Tagline', 'Story', 'Cover image', 'Instagram', 'Website'])
 
     const tagline = changeRow(changes, 'Tagline')
     expect(within(tagline).getByText('Handloom from Karnataka.').closest('del')).not.toBeNull()
     expect(within(tagline).getByText('Handloom sarees from the Deccan, woven to order.').closest('ins')).not.toBeNull()
-
-    const dispatch = changeRow(changes, 'Dispatch time')
-    expect(within(dispatch).getByText('Ships in 2–3 days').closest('del')).not.toBeNull()
-    expect(within(dispatch).getByText('Ships in 3–5 days').closest('ins')).not.toBeNull()
 
     const cover = changeRow(changes, 'Cover image')
     expect(within(cover).getByRole('img', { name: 'Cover image before' })).toBeInTheDocument()

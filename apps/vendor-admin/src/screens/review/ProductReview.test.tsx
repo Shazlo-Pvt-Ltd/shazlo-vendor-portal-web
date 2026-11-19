@@ -7,7 +7,7 @@ import { server } from '../../test/server'
 // Monday 9 Nov 2026, 13:40 IST. The seed is built relative to it: the Ajrakh kurta came in at 11:40.
 const NOW = new Date('2026-11-09T13:40:00+05:30')
 const AJRAKH = 'Ajrakh Block-Print Kurta'
-const CHECKS = ['Front, back and close-up photos', 'Price matches the MRP on the tag', 'Category and fabric are right', 'Not on the prohibited list', 'Description is accurate']
+const CHECKS = ['4 product photos and 5 try-on photos', 'Price is not above MRP', 'Product type, colours and material are right', 'Not on the prohibited list', 'Description is accurate']
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
@@ -46,11 +46,14 @@ describe('A-05 Product review: a resubmission', () => {
     await open('p_ajrakh', AJRAKH)
     const table = compareTable()
     expect(within(table).getAllByRole('columnheader').map((c) => c.textContent)).toEqual(['Field', 'Sent-back version', 'This submission'])
-    expect(within(table).getAllByText('Changed')).toHaveLength(2)
+    expect(within(table).getAllByText('Changed')).toHaveLength(3)
 
-    const photos = rowOf(table, /^Photos/)
+    const photos = rowOf(table, /^Product photos/)
     expect(within(photos).getByText('Changed')).toBeInTheDocument()
-    expect(cells(photos)).toEqual(['Front, close-up, extra', 'Front, back, close-up, extra'])
+    expect(cells(photos)).toEqual(['Front, detail, worn, extra', 'Front, back, detail, worn, extra'])
+    const tryOn = rowOf(table, /^Try-on photos/)
+    expect(within(tryOn).getByText('Changed')).toBeInTheDocument()
+    expect(cells(tryOn)).toEqual(['3 photos', '5 photos'])
 
     const sizes = rowOf(table, /^Sizes and stock/)
     expect(within(sizes).getByText('Changed')).toBeInTheDocument()
@@ -58,7 +61,9 @@ describe('A-05 Product review: a resubmission', () => {
 
     expect(cells(rowOf(table, /^Title/))).toEqual([AJRAKH, 'Same'])
     expect(cells(rowOf(table, /^Selling price/))).toEqual(['₹2,499 / ₹2,999', 'Same'])
-    expect(cells(rowOf(table, /^Type · gender · fabric/))).toEqual(['Kurtas · Women · Cotton (mul)', 'Same'])
+    expect(cells(rowOf(table, /^Gender · product type/))).toEqual(['Women · Kurtas', 'Same'])
+    expect(cells(rowOf(table, /^Colours/))).toEqual(['Indigo, also Madder red', 'Same'])
+    expect(cells(rowOf(table, /^Material/))).toEqual(['Cotton (mul)', 'Same'])
     expect(within(rowOf(table, /^Title/)).queryByText('Changed')).toBeNull()
   })
 
@@ -71,21 +76,88 @@ describe('A-05 Product review: a resubmission', () => {
     expect(within(row).getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true')
   })
 
-  it('tags the new back photo and switches the main photo from the thumbnails', async () => {
+  it('shows the product photos and the try-on photos by name, tags new ones and switches the main photo', async () => {
     const { user } = await open('p_ajrakh', AJRAKH)
     const photos = screen.getByRole('region', { name: 'Photos' })
     expect(within(photos).getByRole('img', { name: `Front photo of ${AJRAKH}` })).toBeInTheDocument()
-    const front = within(photos).getByRole('button', { name: 'Show front photo' })
-    const back = within(photos).getByRole('button', { name: 'Show back photo' })
+
+    const product = within(photos).getByRole('group', { name: 'Product photos' })
+    expect(within(product).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Show front photo', 'Show back photo', 'Show detail photo', 'Show worn photo', 'Show extra photo'])
+    expect(within(product).getByText('4 of 4 · 1 extra')).toBeInTheDocument()
+    const front = within(product).getByRole('button', { name: 'Show front photo' })
+    const back = within(product).getByRole('button', { name: 'Show back photo' })
     expect(front).toHaveAttribute('aria-pressed', 'true')
     expect(back).toHaveAccessibleDescription('New in this submission')
     expect(within(back).getByText('New')).toBeInTheDocument()
-    expect(within(photos).getByRole('button', { name: 'Show close-up photo' })).not.toHaveAccessibleDescription()
+    expect(within(product).getByRole('button', { name: 'Show detail photo' })).not.toHaveAccessibleDescription()
+
+    const tryOn = within(photos).getByRole('group', { name: 'Try-on photos' })
+    expect(within(tryOn).getByText('Real people wearing it, so shoppers see the true fit.')).toBeInTheDocument()
+    expect(within(tryOn).getByText('5 of 5')).toBeInTheDocument()
+    expect(within(tryOn).getAllByRole('button')).toHaveLength(5)
+    expect(within(tryOn).getByRole('button', { name: 'Show try-on 3 photo' })).not.toHaveAccessibleDescription()
+    expect(within(tryOn).getByRole('button', { name: 'Show try-on 4 photo' })).toHaveAccessibleDescription('New in this submission')
+    expect(within(photos).queryByText(/missing/)).toBeNull()
 
     await user.click(back)
     expect(within(photos).getByRole('img', { name: `Back photo of ${AJRAKH}` })).toBeInTheDocument()
     expect(back).toHaveAttribute('aria-pressed', 'true')
     expect(front).toHaveAttribute('aria-pressed', 'false')
+    await user.click(within(tryOn).getByRole('button', { name: 'Show try-on 2 photo' }))
+    expect(within(photos).getByRole('img', { name: `Try-on 2 photo of ${AJRAKH}` })).toBeInTheDocument()
+    expect(back).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('shows what the product is: gender, type, colours with swatches, material and description', async () => {
+    await open('p_pochampally', 'Pochampally Ikat Kurta')
+    const about = screen.getByRole('region', { name: 'About the product' })
+    const value = (term: string) => within(about).getByText(term, { selector: 'dt' }).nextElementSibling as HTMLElement
+    expect(value('Gender')).toHaveTextContent('Women')
+    expect(value('Product type')).toHaveTextContent('Kurtas')
+    expect(value('Main colour')).toHaveTextContent('Maroon')
+    expect(value('Main colour').querySelector('[data-swatch="#6B1F2A"]')).not.toBeNull()
+    expect(value('Other colours')).toHaveTextContent('Ivory, Mustard')
+    expect(value('Other colours').querySelectorAll('[data-swatch]')).toHaveLength(2)
+    expect(value('Material')).toHaveTextContent('Cotton ikat, handwoven')
+    expect(value('Description')).toHaveTextContent('Pochampally Ikat Kurta in hand block-printed cotton')
+  })
+
+  it('shows a multicolour swatch and no other colours', async () => {
+    await open('p_potli', 'Mirror-Work Potli Bag')
+    const about = screen.getByRole('region', { name: 'About the product' })
+    const value = (term: string) => within(about).getByText(term, { selector: 'dt' }).nextElementSibling as HTMLElement
+    expect(value('Gender')).toHaveTextContent('Unisex')
+    expect(value('Main colour')).toHaveTextContent('Multicolour')
+    expect(value('Main colour').querySelector('[data-swatch="multicolour"]')).not.toBeNull()
+    expect(value('Other colours')).toHaveTextContent('None')
+  })
+
+  it('shows the price with MRP, and that the app shows the lower one', async () => {
+    await open('p_ajrakh', AJRAKH)
+    const price = screen.getByRole('region', { name: 'Price' })
+    const value = (term: string) => within(price).getByText(term, { selector: 'dt' }).nextElementSibling as HTMLElement
+    expect(value('Selling price')).toHaveTextContent('₹2,499')
+    expect(value('MRP')).toHaveTextContent('₹2,999')
+    expect(within(price).getByText('Shoppers see ₹2,499, the lower of the two.')).toBeInTheDocument()
+  })
+
+  it('shows the size chart the brand saved for kurtas, in cm', async () => {
+    await open('p_ajrakh', AJRAKH)
+    const chart = screen.getByRole('region', { name: 'Size chart' })
+    expect(within(chart).getByText('Used for all their kurtas. Measurements in cm.')).toBeInTheDocument()
+    const table = within(chart).getByRole('table')
+    expect(within(table).getAllByRole('columnheader').map((c) => c.textContent)).toEqual(['Size', 'Chest', 'Waist', 'Length', 'Shoulder'])
+    const xs = within(table).getByRole('rowheader', { name: 'XS' }).closest('tr')!
+    expect(within(xs).getAllByRole('cell').map((c) => c.textContent)).toEqual(['86', '76', '104', '—'])
+    const m = within(table).getByRole('rowheader', { name: 'M' }).closest('tr')!
+    expect(within(m).getAllByRole('cell').map((c) => c.textContent)).toEqual(['96', '86', '106', '36.5'])
+  })
+
+  it('shows a size chart photo, or says there is none', async () => {
+    await open('p_handloom', 'Handloom Cotton Shirt — Rust')
+    const chart = screen.getByRole('region', { name: 'Size chart' })
+    expect(within(chart).getByRole('img', { name: 'The brand’s size chart for shirts' })).toBeInTheDocument()
+    expect(within(chart).getByText('Used for all their shirts. A photo of their own chart.')).toBeInTheDocument()
   })
 
   it('lists sizes and stock, and the history with the reason quoted', async () => {
@@ -98,7 +170,7 @@ describe('A-05 Product review: a resubmission', () => {
     const items = within(history).getAllByRole('listitem')
     expect(items[0]).toHaveTextContent('Submitted by Kiran Shah · Today, 11:40')
     expect(items[1]).toHaveTextContent('Sent back by Priya Mehta · Today, 03:40')
-    expect(within(items[1]!).getByText('Back photo is missing. Add front, back and a fabric close-up so shoppers can see the print.').closest('blockquote')).not.toBeNull()
+    expect(within(items[1]!).getByText('The back photo is missing and there are only 3 try-on photos. Add the back photo and 5 try-on photos so shoppers can see the print and the fit.').closest('blockquote')).not.toBeNull()
   })
 })
 
@@ -178,8 +250,11 @@ describe('A-06 Send back', () => {
     const message = within(dialog).getByRole('textbox', { name: 'Message to the seller' })
     expect(message).toHaveAccessibleDescription(/The seller sees this word for word\./)
 
-    await user.click(within(dialog).getByRole('radio', { name: 'Photos' }))
-    const template = 'Photos are missing or unclear. Add front, back and a fabric close-up on a plain background.'
+    expect(within(dialog).getAllByRole('radio').map((r) => r.closest('label')!.textContent)).toEqual(['Product photos', 'Try-on photos', 'Price or MRP', 'Product type, colours or material', 'Prohibited item', 'Description', 'Something else'])
+    await user.click(within(dialog).getByRole('radio', { name: 'Try-on photos' }))
+    expect(message).toHaveValue('Add 5 try-on photos of real people wearing it, so shoppers see the true fit.')
+    await user.click(within(dialog).getByRole('radio', { name: 'Product photos' }))
+    const template = 'Product photos are missing or unclear. Add front, back, detail and worn photos on a plain background.'
     expect(message).toHaveValue(template)
     await user.click(message)
     await user.keyboard('{End}')
@@ -203,7 +278,7 @@ describe('A-06 Send back', () => {
     const dialog = await screen.findByRole('dialog', { name: `Send back ${AJRAKH}` })
     await user.click(within(dialog).getByRole('button', { name: 'Send back to seller' }))
     expect(await within(dialog).findByText('Choose a reason.')).toBeInTheDocument()
-    expect(within(dialog).getByRole('radio', { name: 'Photos' })).toHaveFocus()
+    expect(within(dialog).getByRole('radio', { name: 'Product photos' })).toHaveFocus()
 
     await user.click(within(dialog).getByRole('radio', { name: 'Something else' }))
     const message = within(dialog).getByRole('textbox', { name: 'Message to the seller' })
@@ -221,7 +296,7 @@ describe('A-06 Send back', () => {
     const { user } = await open('p_ajrakh', AJRAKH)
     await user.click(screen.getByRole('button', { name: 'Send back' }))
     const dialog = await screen.findByRole('dialog')
-    await user.click(within(dialog).getByRole('radio', { name: 'Photos' }))
+    await user.click(within(dialog).getByRole('radio', { name: 'Product photos' }))
     await user.click(within(dialog).getByRole('button', { name: 'Send back to seller' }))
     expect(await within(dialog).findByText('Say which photo is missing.')).toBeInTheDocument()
     expect(within(dialog).getByRole('textbox', { name: 'Message to the seller' })).toHaveFocus()
@@ -254,17 +329,47 @@ describe('A-05 Product review: other kinds of submission', () => {
     await open('p_dabu_skirt', 'Dabu Print Wrap Skirt')
     expect(screen.queryByRole('region', { name: /^Compared with the/ })).toBeNull()
     expect(screen.queryByText('New')).toBeNull()
-    expect(screen.getByRole('region', { name: 'Description' })).toHaveTextContent('Dabu Print Wrap Skirt in hand block-printed cotton')
+    expect(screen.getByRole('region', { name: 'About the product' })).toHaveTextContent('Dabu Print Wrap Skirt in hand block-printed cotton')
+    expect(screen.queryByRole('region', { name: 'Size chart' })).toBeNull()
+    expect(screen.getByRole('region', { name: 'Sizes and stock' })).toHaveTextContent('No size chart for skirts.')
+    expect(screen.getByRole('region', { name: 'Price' })).toHaveTextContent('Shoppers see ₹1,450, the lower of the two.')
   })
 
   it('flags a missing required photo', async () => {
     const view = renderModule({ route: '/review/product/p_dabu_skirt' })
     const p = view.db.products.find((x) => x.id === 'p_dabu_skirt')!
-    p.submitted.images = p.submitted.images.filter((i) => i.angle !== 'back')
+    p.submitted.photos = p.submitted.photos.filter((i) => i.slot !== 'back')
     await screen.findByRole('heading', { level: 1, name: 'Dabu Print Wrap Skirt' })
     const photos = screen.getByRole('region', { name: 'Photos' })
     expect(within(photos).getByText('Back photo missing')).toBeInTheDocument()
-    expect(within(photos).getByText('Missing back photo. Every product needs a front, back and close-up.')).toBeInTheDocument()
+    expect(within(photos).getByText('3 of 4')).toBeInTheDocument()
+    expect(within(photos).getByText('Missing back photo. Every product needs front, back, detail and worn photos.')).toBeInTheDocument()
+  })
+
+  it('flags missing try-on photos', async () => {
+    await open('p_dabu_set', 'Indigo Dabu Kurta Set')
+    const tryOn = within(screen.getByRole('region', { name: 'Photos' })).getByRole('group', { name: 'Try-on photos' })
+    expect(within(tryOn).getByText('2 of 5')).toBeInTheDocument()
+    expect(within(tryOn).getAllByRole('button')).toHaveLength(2)
+    for (const n of [3, 4, 5]) expect(within(tryOn).getByText(`Try-on ${n} photo missing`)).toBeInTheDocument()
+    expect(within(tryOn).getByText('3 of 5 try-on photos missing. Every product needs 5 photos of real people wearing it.')).toBeInTheDocument()
+  })
+
+  it('says when the selling price is above the MRP, and shows a missing MRP', async () => {
+    const view = renderModule({ route: '/review/product/p_patola' })
+    view.db.products.find((x) => x.id === 'p_patola')!.submitted.price_paise = 5999_00
+    await screen.findByRole('heading', { level: 1, name: 'Patola Silk Stole' }, { timeout: 10_000 })
+    const price = screen.getByRole('region', { name: 'Price' })
+    expect(within(price).getByText('The selling price is above the MRP. The app shows the lower price, ₹5,499.')).toBeInTheDocument()
+    expect(cells(rowOf(compareTable(), /^Selling price/))).toEqual(['₹5,999 / ₹5,499', 'Same'])
+    expect(cells(rowOf(compareTable(), /^Material/))).toEqual(['Silk', 'Pure silk, double ikat'])
+  })
+
+  it('shows an MRP that was not given', async () => {
+    await open('p_pochampally', 'Pochampally Ikat Kurta')
+    const price = screen.getByRole('region', { name: 'Price' })
+    expect(within(price).getByText('MRP', { selector: 'dt' }).nextElementSibling).toHaveTextContent('Not given')
+    expect(within(price).getByText('Shoppers see ₹2,299.')).toBeInTheDocument()
   })
 
   it('shows a decided product read-only', async () => {

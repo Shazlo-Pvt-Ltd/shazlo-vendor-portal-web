@@ -29,7 +29,7 @@ paths:
     get:
       x-proposal: true
       responses:
-        '200': { description: Submitted version, the one to compare with, and history, content: { application/json: { schema: { $ref: '#/components/schemas/ProductReview' } } } }
+        '200': { description: 'Submitted version, the one to compare with, and history', content: { application/json: { schema: { $ref: '#/components/schemas/ProductReview' } } } }
         '404': { $ref: '#/components/responses/Error' }
   /api/v1/admin/products/{id}/approve:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
@@ -73,6 +73,7 @@ paths:
         - { name: q, in: query, schema: { type: string } }
         - { name: city, in: query, schema: { type: string } }
         - { name: sort, in: query, schema: { type: string, enum: [name, newest, products] } }
+        - { name: commission, in: query, description: Only vendors whose commission is in this state; proposed lists the rates to review, schema: { $ref: '#/components/schemas/CommissionState' } }
       responses:
         '200': { description: Vendors, content: { application/json: { schema: { $ref: '#/components/schemas/VendorPage' } } } }
   /api/v1/admin/vendors/{id}:
@@ -80,12 +81,13 @@ paths:
     get:
       x-proposal: true
       responses:
-        '200': { description: Vendor with application, checks and activity, content: { application/json: { schema: { $ref: '#/components/schemas/VendorDetail' } } } }
+        '200': { description: 'Vendor with application, checks and activity', content: { application/json: { schema: { $ref: '#/components/schemas/VendorDetail' } } } }
         '404': { $ref: '#/components/responses/Error' }
   /api/v1/admin/vendors/{id}/approve:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     post:
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [commission_bps, agreement_ref], properties: { commission_bps: { type: integer }, agreement_ref: { type: string }, owner_email: { type: string } } } } } }
+      description: There is no default rate. The reviewer enters the agreed rate (the screen starts from the brand's proposal, if any) and the vendor's commission becomes agreed.
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [commission_bps, agreement_ref], properties: { commission_bps: { type: integer, minimum: 0, maximum: 4000 }, agreement_ref: { type: string }, owner_email: { type: string } } } } } }
       responses:
         '200': { description: Approved; owner invited, content: { application/json: { schema: { $ref: '#/components/schemas/VendorDetail' } } } }
         '409': { $ref: '#/components/responses/Error' }
@@ -114,6 +116,37 @@ paths:
     post:
       responses:
         '200': { description: Reactivated, content: { application/json: { schema: { $ref: '#/components/schemas/VendorDetail' } } } }
+  /api/v1/admin/vendors/{id}/commission/approve:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      x-proposal: true
+      description: Agree the rate the brand proposed. Recorded in the vendor's history (commission_approved) and sent to the app as vendor.commission_changed.
+      responses:
+        '200': { description: Rate agreed, content: { application/json: { schema: { $ref: '#/components/schemas/VendorDetail' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /api/v1/admin/vendors/{id}/commission/send-back:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      x-proposal: true
+      description: Send the brand's proposal back with a note the brand reads; the agreed rate (if any) stays. Recorded in the history (commission_sent_back).
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [note], properties: { note: { type: string, minLength: 10, maxLength: 600 } } } } } }
+      responses:
+        '200': { description: Sent back, content: { application/json: { schema: { $ref: '#/components/schemas/VendorDetail' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/admin/vendors/{id}/commission/set:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      x-proposal: true
+      description: Shazlo enters the agreed rate itself (for example after a call), in any state; a waiting proposal is closed. Recorded in the history (commission_set) and sent to the app as vendor.commission_changed.
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [commission_bps], properties: { commission_bps: { type: integer, minimum: 0, maximum: 4000 }, note: { type: string, maxLength: 600 } } } } } }
+      responses:
+        '200': { description: Rate set, content: { application/json: { schema: { $ref: '#/components/schemas/VendorDetail' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
   /api/v1/admin/outbox:
     get:
       parameters:
@@ -145,18 +178,90 @@ components:
     ItemKind: { type: string, enum: [product, brand_page, application] }
     VendorStatus: { type: string, enum: [applied, under_review, approved, rejected, suspended] }
     OutboxStatus: { type: string, enum: [waiting, retrying, failed, delivered] }
+    Sells: { type: string, enum: [women, men, both] }
+    CommissionState: { type: string, enum: [not_set, proposed, sent_back, agreed] }
+    Commission:
+      type: object
+      description: "Per brand; there is no default rate. agreed_bps is the rate in force; proposed_bps is the brand's proposal while it waits, and after it was sent back."
+      required: [state, agreed_bps, proposed_bps, note, updated_at]
+      properties:
+        state: { $ref: '#/components/schemas/CommissionState' }
+        agreed_bps: { type: [integer, 'null'] }
+        proposed_bps: { type: [integer, 'null'] }
+        note: { type: [string, 'null'], description: "Shazlo's note to the brand: required when sent back, optional when Shazlo set the rate" }
+        updated_at: { type: [string, 'null'], format: date-time }
+    PickupAddress:
+      type: object
+      required: [line, area, city, pin]
+      properties: { line: { type: string }, area: { type: string }, city: { type: string }, pin: { type: string } }
+    Delivery:
+      oneOf:
+        - type: object
+          description: "Shazlo's delivery service picks up from the brand"
+          required: [by, pickup_address]
+          properties:
+            by: { type: string, enum: [shazlo] }
+            pickup_address: { $ref: '#/components/schemas/PickupAddress' }
+        - type: object
+          description: The brand delivers itself
+          required: [by, all_india, places, days]
+          properties:
+            by: { type: string, enum: [own] }
+            all_india: { type: boolean }
+            places: { type: array, items: { type: string }, description: 'Cities or PIN codes, when not all of India' }
+            days: { type: string, enum: ['1_2', '2_3', '3_5', '5_7'] }
+    Returns:
+      type: object
+      required: [window_days, condition, refund_days]
+      properties:
+        window_days: { type: integer, enum: [0, 7, 14, 30], description: 0 means no returns }
+        condition: { type: [string, 'null'], enum: [unworn_with_tags, any_reason, damaged_or_wrong, null] }
+        refund_days: { type: [integer, 'null'], enum: [2, 5, 7, null], description: Working days after pickup }
+    Payout:
+      description: Masked. The admin API never returns a full account number or UPI ID.
+      oneOf:
+        - type: object
+          required: [method, account_holder, account_last4, ifsc, bank_name]
+          properties:
+            method: { type: string, enum: [bank] }
+            account_holder: { type: string }
+            account_last4: { type: string }
+            ifsc: { type: string }
+            bank_name: { type: string, description: Looked up from the IFSC }
+        - type: object
+          required: [method, upi_masked]
+          properties:
+            method: { type: string, enum: [upi] }
+            upi_masked: { type: string, description: 'For example ki••••@okhdfc' }
+    Application:
+      type: object
+      description: What the brand gave at sign-up (docs/ui-plan/vendor-requirements-and-phone-ux.md section 5). Contact name, mobile, email and ship-from city are on the vendor.
+      required: [instagram_or_website, delivery, returns, pay_on_delivery, payout, legal_name, gst_number, proposed_commission_bps, agreed_terms, agreed_price_rule, applied_at]
+      properties:
+        instagram_or_website: { type: [string, 'null'] }
+        delivery: { $ref: '#/components/schemas/Delivery' }
+        returns: { $ref: '#/components/schemas/Returns' }
+        pay_on_delivery: { type: object, required: [cash, upi], properties: { cash: { type: boolean }, upi: { type: boolean } } }
+        payout: { $ref: '#/components/schemas/Payout' }
+        legal_name: { type: [string, 'null'] }
+        gst_number: { type: [string, 'null'] }
+        proposed_commission_bps: { type: [integer, 'null'], description: "The rate the brand proposed at sign-up; the current state is the vendor's commission" }
+        agreed_terms: { type: boolean, description: Agreed to the seller terms }
+        agreed_price_rule: { type: boolean, description: Agreed that their price on Shazlo will never be higher than anywhere else }
+        applied_at: { type: string, format: date-time }
     VendorRef:
       type: object
       required: [id, name]
       properties: { id: { type: string }, name: { type: string } }
     Summary:
       type: object
-      required: [queue, decided_today, median_minutes, resubmissions, publishing, recent]
+      required: [queue, decided_today, median_minutes, resubmissions, commission_proposals, publishing, recent]
       properties:
         queue: { type: object, required: [all, product, brand_page, application, over_24h], properties: { all: { type: integer }, product: { type: integer }, brand_page: { type: integer }, application: { type: integer }, over_24h: { type: integer } } }
         decided_today: { type: integer }
         median_minutes: { type: [integer, 'null'] }
         resubmissions: { type: integer }
+        commission_proposals: { type: integer, description: Vendors whose proposed commission waits for Shazlo }
         publishing: { type: object, required: [waiting, retrying, failed, delivered_24h], properties: { waiting: { type: integer }, retrying: { type: integer }, failed: { type: integer }, delivered_24h: { type: integer } } }
         recent:
           type: array
@@ -165,7 +270,7 @@ components:
             required: [id, kind, subject_id, title, vendor, decision, at, reviewer]
             properties:
               id: { type: string }
-              subject_id: { type: string, description: Product id, or the vendor id for brand pages and applications }
+              subject_id: { type: string, description: 'Product id, or the vendor id for brand pages and applications' }
               kind: { $ref: '#/components/schemas/ItemKind' }
               title: { type: string }
               vendor: { $ref: '#/components/schemas/VendorRef' }
@@ -193,19 +298,59 @@ components:
         items: { type: array, items: { $ref: '#/components/schemas/QueueItem' } }
         counts: { type: object, required: [all, product, brand_page, application], properties: { all: { type: integer }, product: { type: integer }, brand_page: { type: integer }, application: { type: integer } } }
         vendors: { type: array, items: { $ref: '#/components/schemas/VendorRef' } }
+    Colour:
+      type: object
+      required: [name, hex]
+      properties:
+        name: { type: string }
+        hex: { type: [string, 'null'], description: 'null for Multicolour' }
+    ProductPhoto:
+      type: object
+      required: [id, url, slot]
+      properties:
+        id: { type: string }
+        url: { type: string }
+        slot: { type: string, enum: [front, back, detail, worn, extra], description: 'Four named slots are required; up to four extras' }
+    TryOnPhoto:
+      type: object
+      description: Real people wearing it, so shoppers see the true fit. Five are required.
+      required: [id, url]
+      properties:
+        id: { type: string }
+        url: { type: string }
+    SizeChart:
+      description: "The brand's chart for a product type, saved once and used for all its products of that type: measurements in cm (each optional), or a photo of the brand's own chart."
+      oneOf:
+        - type: object
+          required: [kind, product_type, measurements, rows]
+          properties:
+            kind: { type: string, enum: [table] }
+            product_type: { type: string }
+            measurements: { type: array, items: { type: string }, description: 'Column names, e.g. Chest, Waist, Length' }
+            rows: { type: array, items: { type: object, required: [size, cm], properties: { size: { type: string }, cm: { type: array, items: { type: [number, 'null'] } } } } }
+        - type: object
+          required: [kind, product_type, url]
+          properties:
+            kind: { type: string, enum: [photo] }
+            product_type: { type: string }
+            url: { type: string }
     ProductVersion:
       type: object
-      required: [title, description, category, gender, fabric, price_paise, mrp_paise, variants, images]
+      required: [title, description, gender, product_type, main_colour, other_colours, material, price_paise, mrp_paise, variants, photos, try_on_photos, size_chart]
       properties:
         title: { type: string }
         description: { type: string }
-        category: { type: string }
-        gender: { type: string }
-        fabric: { type: string }
-        price_paise: { type: integer }
-        mrp_paise: { type: integer }
-        variants: { type: array, items: { type: object, required: [size, sku, stock], properties: { size: { type: string }, sku: { type: string }, stock: { type: integer } } } }
-        images: { type: array, items: { type: object, required: [id, url, angle], properties: { id: { type: string }, url: { type: string }, angle: { type: string, enum: [front, back, closeup, extra] } } } }
+        gender: { type: string, enum: [women, men, unisex] }
+        product_type: { type: string, description: 'As the brand picked it, e.g. Kurtas, Shirts, Sarees' }
+        main_colour: { $ref: '#/components/schemas/Colour' }
+        other_colours: { type: array, maxItems: 2, items: { $ref: '#/components/schemas/Colour' } }
+        material: { type: string, description: 'e.g. 100% linen' }
+        price_paise: { type: integer, description: Selling price }
+        mrp_paise: { type: [integer, 'null'], description: 'Optional. The app shows the lower of the two.' }
+        variants: { type: array, items: { type: object, required: [size, sku, stock], properties: { size: { type: string }, sku: { type: string, description: Automatic product code }, stock: { type: integer } } } }
+        photos: { type: array, items: { $ref: '#/components/schemas/ProductPhoto' } }
+        try_on_photos: { type: array, items: { $ref: '#/components/schemas/TryOnPhoto' } }
+        size_chart: { oneOf: [{ $ref: '#/components/schemas/SizeChart' }, { type: 'null' }] }
     ProductReview:
       type: object
       required: [id, sku, status, vendor, submitted_at, resubmission, submitted, compare_to, compare_label, history, prev_id, next_id]
@@ -229,7 +374,7 @@ components:
         required: [at, event, by]
         properties:
           at: { type: string, format: date-time }
-          event: { type: string, enum: [submitted, approved, rejected, published, applied, info_requested, suspended, reactivated, invited] }
+          event: { type: string, enum: [submitted, approved, rejected, published, applied, info_requested, suspended, reactivated, invited, commission_proposed, commission_approved, commission_sent_back, commission_set] }
           by: { type: string }
           note: { type: string }
     BrandProfile:
@@ -261,7 +406,7 @@ components:
       type: object
       required: [reason_code, reason]
       properties:
-        reason_code: { type: string, enum: [photos, price, category, prohibited, description, brand_images, contact_details, other] }
+        reason_code: { type: string, enum: [photos, try_on_photos, price, category, prohibited, description, brand_images, contact_details, other] }
         reason: { type: string, minLength: 10, maxLength: 600 }
     Decision:
       type: object
@@ -273,25 +418,26 @@ components:
         next_id: { type: [string, 'null'], description: The next item waiting in the queue }
     VendorSummary:
       type: object
-      required: [id, brand_name, owner_name, email, phone, city, sells, status, live_products, since, commission_bps]
+      required: [id, brand_name, owner_name, email, phone, city, sells, status, live_products, since, commission_bps, commission]
       properties:
         id: { type: string }
         brand_name: { type: string }
-        owner_name: { type: string }
+        owner_name: { type: string, description: The contact person from sign-up }
         email: { type: string }
-        phone: { type: string }
-        city: { type: string }
-        sells: { type: array, items: { type: string } }
+        phone: { type: string, description: Mobile number }
+        city: { type: string, description: City or area the brand ships from }
+        sells: { $ref: '#/components/schemas/Sells' }
         status: { $ref: '#/components/schemas/VendorStatus' }
         live_products: { type: integer }
         since: { type: string, format: date-time }
-        commission_bps: { type: [integer, 'null'] }
+        commission_bps: { type: [integer, 'null'], description: The agreed rate (the same as commission.agreed_bps) }
+        commission: { $ref: '#/components/schemas/Commission' }
     VendorPage:
       type: object
       required: [items, counts, cities]
       properties:
         items: { type: array, items: { $ref: '#/components/schemas/VendorSummary' } }
-        counts: { type: object, required: [all, applied, under_review, approved, rejected, suspended], properties: { all: { type: integer }, applied: { type: integer }, under_review: { type: integer }, approved: { type: integer }, rejected: { type: integer }, suspended: { type: integer } } }
+        counts: { type: object, required: [all, applied, under_review, approved, rejected, suspended, rate_to_review], properties: { all: { type: integer }, applied: { type: integer }, under_review: { type: integer }, approved: { type: integer }, rejected: { type: integer }, suspended: { type: integer }, rate_to_review: { type: integer, description: Vendors whose commission is proposed } } }
         cities: { type: array, items: { type: string } }
     VendorDetail:
       allOf:
@@ -299,16 +445,7 @@ components:
         - type: object
           required: [application, checks, products, brand_live, history]
           properties:
-            application:
-              type: object
-              required: [instagram_or_website, product_types, price_min_paise, price_max_paise, about, applied_at]
-              properties:
-                instagram_or_website: { type: string }
-                product_types: { type: array, items: { type: string } }
-                price_min_paise: { type: integer }
-                price_max_paise: { type: integer }
-                about: { type: string }
-                applied_at: { type: string, format: date-time }
+            application: { $ref: '#/components/schemas/Application' }
             checks: { type: array, items: { type: object, required: [label, ok, note], properties: { label: { type: string }, ok: { type: boolean }, note: { type: string } } } }
             products: { type: array, items: { type: object, required: [id, title, status, price_paise, thumbnail_url], properties: { id: { type: string }, title: { type: string }, status: { type: string }, price_paise: { type: integer }, thumbnail_url: { type: [string, 'null'] } } } }
             brand_live: { type: boolean }
@@ -318,7 +455,7 @@ components:
       required: [id, event, subject, vendor, status, tries, created_at, last_attempt_at, next_attempt_at, last_error, payload]
       properties:
         id: { type: string }
-        event: { type: string, enum: [product.published, product.updated, product.unpublished, brand_profile.published, vendor.status_changed] }
+        event: { type: string, enum: [product.published, product.updated, product.unpublished, brand_profile.published, vendor.status_changed, vendor.commission_changed] }
         subject: { type: string }
         vendor: { $ref: '#/components/schemas/VendorRef' }
         status: { $ref: '#/components/schemas/OutboxStatus' }

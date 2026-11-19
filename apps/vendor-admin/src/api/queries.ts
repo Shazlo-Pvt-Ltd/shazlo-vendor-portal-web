@@ -5,7 +5,7 @@ import type { components } from './schema'
 type S = components['schemas']
 
 export type QueueFilters = { kind?: S['ItemKind']; vendor?: string; q?: string; submitted?: 'today' | '24h' | 'older'; resubmissions?: boolean; sort?: 'oldest' | 'newest' }
-export type VendorFilters = { status?: S['VendorStatus']; q?: string; city?: string; sort?: 'name' | 'newest' | 'products' }
+export type VendorFilters = { status?: S['VendorStatus']; q?: string; city?: string; sort?: 'name' | 'newest' | 'products'; commission?: S['CommissionState'] }
 
 export const keys = {
   summary: ['summary'] as const,
@@ -135,6 +135,32 @@ export function useVendorAction(id: string) {
           return api.call((c) => c.POST('/api/v1/admin/vendors/{id}/suspend', { ...path, body: a.body }))
         case 'reactivate':
           return api.call((c) => c.POST('/api/v1/admin/vendors/{id}/reactivate', path))
+      }
+    },
+    onSuccess: (vendor) => {
+      qc.setQueryData(keys.vendor(id), vendor)
+      invalidate()
+    },
+  })
+}
+
+export type CommissionAction = { step: 'approve' } | { step: 'send-back'; body: { note: string } } | { step: 'set'; body: { commission_bps: number; note?: string } }
+
+// Approve a brand's proposed rate, send it back with a note, or set the rate directly.
+export function useCommissionAction(id: string) {
+  const { api } = useRuntime()
+  const invalidate = useInvalidateAfterDecision()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (a: CommissionAction) => {
+      const path = { params: { path: { id } } }
+      switch (a.step) {
+        case 'approve':
+          return api.call((c) => c.POST('/api/v1/admin/vendors/{id}/commission/approve', path))
+        case 'send-back':
+          return api.call((c) => c.POST('/api/v1/admin/vendors/{id}/commission/send-back', { ...path, body: a.body }))
+        case 'set':
+          return api.call((c) => c.POST('/api/v1/admin/vendors/{id}/commission/set', { ...path, body: a.body }))
       }
     },
     onSuccess: (vendor) => {

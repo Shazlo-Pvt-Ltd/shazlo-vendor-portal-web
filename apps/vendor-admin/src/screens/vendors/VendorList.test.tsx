@@ -75,7 +75,8 @@ const ALL = [
 describe('A-08 Vendors', () => {
   it('lists the 15 seed vendors with owner, status, since and commission', async () => {
     const { shell } = renderModule({ route: '/vendors' })
-    expect(await screen.findByRole('heading', { level: 1, name: 'Vendors' })).toBeInTheDocument()
+    // The first screen in a file compiles on demand; give it room on a busy machine.
+    expect(await screen.findByRole('heading', { level: 1, name: 'Vendors' }, { timeout: 10_000 })).toBeInTheDocument()
     const t = await waitForBrands(ALL)
     expect(await screen.findByText('15 brands · 3 applications waiting')).toBeInTheDocument()
     await waitFor(() => expect(shell.titles()).toContainEqual({ path: '/vendors', title: 'Vendors' }))
@@ -83,16 +84,17 @@ describe('A-08 Vendors', () => {
     const kalki = row(t, 'Kalki Studio')
     expect(within(kalki).getByText('Ahmedabad, Gujarat')).toBeInTheDocument()
     expect(within(kalki).getByText('Kiran Shah')).toBeInTheDocument()
-    expect(within(kalki).getByText('Kurtas, Dupattas')).toBeInTheDocument()
+    expect(within(kalki).getByText('Women')).toBeInTheDocument()
     expect(within(kalki).getByText('18')).toBeInTheDocument()
     expect(within(kalki).getByText('Approved')).toBeInTheDocument()
-    expect(within(kalki).getByText('15%')).toBeInTheDocument()
+    expect(within(kalki).getByText('12%')).toBeInTheDocument()
     expect(within(kalki).getByRole('button', { name: 'Actions for Kalki Studio' })).toBeInTheDocument()
 
     expect(within(row(t, 'Bandhej House')).getByText('12%')).toBeInTheDocument()
     const rann = row(t, 'Rann Weaves')
     expect(within(rann).getByText('Applied')).toBeInTheDocument()
-    expect(within(rann).getByText('—')).toBeInTheDocument()
+    expect(within(rann).getByText('Not set')).toBeInTheDocument()
+    expect(within(rann).getByText('Women and men')).toBeInTheDocument()
     expect(within(rann).getByRole('link', { name: "Review Rann Weaves's application" })).toBeInTheDocument()
     expect(within(rann).queryByRole('button', { name: /Actions for/ })).not.toBeInTheDocument()
     expect(within(row(t, 'Kaaya Ethnic')).getByText('More info asked')).toBeInTheDocument()
@@ -103,6 +105,10 @@ describe('A-08 Vendors', () => {
     expect(within(tabs).getByRole('tab', { name: 'All 15' })).toHaveAttribute('aria-selected', 'true')
     expect(within(tabs).getByRole('tab', { name: 'Applied 2' })).toBeInTheDocument()
     expect(within(tabs).getByRole('tab', { name: 'More info asked 1' })).toBeInTheDocument()
+    expect(within(tabs).getByRole('tab', { name: 'Rate to review 3' })).toBeInTheDocument()
+    const proposal = within(row(t, 'Indigo Loom')).getByText('10% proposed')
+    expect(proposal).toHaveAttribute('data-status', 'pending')
+    expect(within(row(t, 'Sutra Collective')).getByText('15%')).toBeInTheDocument()
     expect(within(tabs).getByRole('tab', { name: 'Approved 10' })).toBeInTheDocument()
   })
 
@@ -117,6 +123,27 @@ describe('A-08 Vendors', () => {
     await user.click(screen.getByRole('tab', { name: 'All 15' }))
     await waitForBrands(ALL)
     expect(params(router).has('status')).toBe(false)
+  })
+
+  it('finds the brands whose proposed rate waits, through the URL', async () => {
+    const { user, router } = renderModule({ route: '/vendors?status=approved' })
+    await waitForBrands(['Ambar Textiles', 'Bandhej House', 'Indigo Loom', 'Kalki Studio', 'Kesariya Prints', 'Kutch Kala', 'Mor Pankh Clothing', 'Nila Handloom', 'Rangrez Studio', 'Sutra Collective'])
+    await user.click(screen.getByRole('tab', { name: 'Rate to review 3' }))
+    const t = await waitForBrands(['Indigo Loom', 'Rangrez Studio', 'Saanjh Label'])
+    expect(params(router).get('commission')).toBe('proposed')
+    expect(params(router).has('status')).toBe(false)
+    expect(screen.getByRole('tab', { name: 'Rate to review 3' })).toHaveAttribute('aria-selected', 'true')
+    expect(within(row(t, 'Rangrez Studio')).getByText('12% proposed')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Approved 10' }))
+    await waitFor(() => expect(params(router).get('status')).toBe('approved'))
+    expect(params(router).has('commission')).toBe(false)
+  })
+
+  it('says when no rate waits', async () => {
+    server.use(http.get(LIST, () => HttpResponse.json({ items: [], counts: { all: 12, applied: 0, under_review: 0, approved: 12, rejected: 0, suspended: 0, rate_to_review: 0 }, cities: [] })))
+    renderModule({ route: '/vendors?commission=proposed' })
+    expect(await screen.findByRole('heading', { name: 'No rates to review' })).toBeInTheDocument()
   })
 
   // Starts inside one city so each re-render stays small on a busy machine.
@@ -239,7 +266,9 @@ describe('A-08 Vendors', () => {
     const lines = new TextDecoder().decode(bytes).trim().split('\r\n')
     expect(lines[0]).toBe('Brand,Owner,Email,Phone,City,Sells,Status,Live products,Since,Commission')
     expect(lines).toHaveLength(16)
-    expect(lines.find((l) => l.startsWith('Kalki Studio'))).toMatch(/^Kalki Studio,Kiran Shah,kiran@kalkistudio\.in,.*,"Ahmedabad, Gujarat","Kurtas, Dupattas, Co-ords",Approved,18,.*,15%$/)
+    expect(lines.find((l) => l.startsWith('Kalki Studio'))).toMatch(/^Kalki Studio,Kiran Shah,kiran@kalkistudio\.in,.*,"Ahmedabad, Gujarat",Women,Approved,18,.*,12%$/)
+    expect(lines.find((l) => l.startsWith('Indigo Loom'))).toMatch(/,Women and men,Approved,12,.*,12% · 10% proposed$/)
+    expect(lines.find((l) => l.startsWith('Rann Weaves'))).toMatch(/,Applied,0,.*,Not set$/)
     expect(shell.toasts()).toContainEqual({ level: 'success', message: 'Exported 15 vendors' })
   })
 
@@ -252,7 +281,7 @@ describe('A-08 Vendors', () => {
   })
 
   it('shows an empty state for a quiet tab', async () => {
-    server.use(http.get(LIST, () => HttpResponse.json({ items: [], counts: { all: 12, applied: 0, under_review: 0, approved: 12, rejected: 0, suspended: 0 }, cities: [] })))
+    server.use(http.get(LIST, () => HttpResponse.json({ items: [], counts: { all: 12, applied: 0, under_review: 0, approved: 12, rejected: 0, suspended: 0, rate_to_review: 0 }, cities: [] })))
     renderModule({ route: '/vendors?status=applied' })
     expect(await screen.findByRole('heading', { name: 'No new applications' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Show all vendors' })).toBeInTheDocument()

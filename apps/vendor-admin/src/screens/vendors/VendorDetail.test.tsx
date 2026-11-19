@@ -6,8 +6,9 @@ import { server } from '../../test/server'
 
 type User = ReturnType<typeof renderModule>['user']
 
+// The first screen in a file compiles on demand; give it room on a busy machine.
 async function heading(name: string) {
-  return screen.findByRole('heading', { level: 1, name })
+  return screen.findByRole('heading', { level: 1, name }, { timeout: 10_000 })
 }
 
 // The title row: the h1 and the status pill beside it.
@@ -34,27 +35,113 @@ describe('A-09 Vendor detail', () => {
     const app = screen.getByRole('region', { name: 'Application' })
     expect(within(app).getByText('Aarti Chauhan')).toBeInTheDocument()
     expect(within(app).getByText('aarti@rannweaves.in')).toBeInTheDocument()
-    expect(within(app).getByText('Shawls')).toBeInTheDocument()
-    expect(within(app).getByText('₹999 – ₹6,499')).toBeInTheDocument()
-    expect(within(app).getByText(/Hand-woven Kala cotton/)).toBeInTheDocument()
+    expect(within(app).getByText('Women and men')).toBeInTheDocument()
 
     const checks = screen.getByRole('region', { name: 'Automatic checks' })
     expect(within(checks).getByText('All passed')).toBeInTheDocument()
+    expect(within(checks).getByText('GST number format')).toBeInTheDocument()
 
     const approval = screen.getByRole('region', { name: 'Approval settings' })
-    expect(within(approval).getByRole('spinbutton', { name: 'Commission %' })).toHaveValue(15)
+    expect(within(approval).getByRole('textbox', { name: 'Commission' })).toHaveValue('')
     expect(within(approval).getByRole('textbox', { name: 'Owner login email' })).toHaveValue('aarti@rannweaves.in')
     expect(screen.getByRole('button', { name: 'Ask for more info' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Approve and invite' })).toBeDisabled()
-    expect(screen.getByText('Tick “Vendor agreement signed” below to approve.')).toBeInTheDocument()
+    expect(screen.getByText('Enter the commission below to approve.')).toBeInTheDocument()
+  })
+
+  it('shows everything the brand gave at sign-up: Shazlo delivery and a bank account', async () => {
+    renderModule({ route: '/vendors/v_kalki' })
+    await heading('Kalki Studio')
+    const app = screen.getByRole('region', { name: 'Application' })
+    const value = (term: string) => within(app).getByText(term, { selector: 'dt' }).nextElementSibling as HTMLElement
+    for (const name of ['Brand', 'Contact', 'Delivery', 'Returns', 'Payment on delivery', 'Payouts', 'Business details and commission']) {
+      expect(within(app).getByRole('heading', { level: 3, name })).toBeInTheDocument()
+    }
+    expect(value('Sells')).toHaveTextContent('Women')
+    expect(value('Ships from')).toHaveTextContent('Ahmedabad, Gujarat')
+    expect(within(value('Instagram or website')).getByRole('link', { name: /instagram\.com\/kalkistudio/ })).toHaveAttribute('href', 'https://instagram.com/kalkistudio')
+    expect(value('Name')).toHaveTextContent('Kiran Shah')
+    expect(value('Mobile')).toHaveTextContent(/^\+91 /)
+    expect(value('Email')).toHaveTextContent('kiran@kalkistudio.in')
+    expect(value('Who delivers')).toHaveTextContent('Shazlo delivery service, picked up from them')
+    expect(value('Pickup address')).toHaveTextContent('14 Pol Road, near Manek Chowk, Khadia, Ahmedabad 380001')
+    expect(value('Return window')).toHaveTextContent('7 days')
+    expect(value('Conditions')).toHaveTextContent('Unworn with tags')
+    expect(value('Refund time')).toHaveTextContent('5 working days after pickup')
+    expect(value('Takes')).toHaveTextContent('Cash and UPI')
+    expect(value('Paid to')).toHaveTextContent('Bank account')
+    expect(value('Account')).toHaveTextContent('HDFC Bank · •••• 4821')
+    expect(value('IFSC')).toHaveTextContent('HDFC0000146')
+    expect(value('Account holder')).toHaveTextContent('Kalki Studio LLP')
+    expect(value('Legal business name')).toHaveTextContent('Kalki Studio LLP')
+    expect(value('GST number')).toHaveTextContent('24AAQFK3912M1Z6')
+    expect(value('Proposed commission')).toHaveTextContent('None. They will agree a rate with our team.')
+    expect(value('Seller terms')).toHaveTextContent('Agreed')
+    expect(value('Price rule')).toHaveTextContent('Agreed. Their price on Shazlo will never be higher than anywhere else.')
+    // No full account number anywhere on the page.
+    expect(document.body.textContent).not.toMatch(/\d{9,}/)
+    // Price range, about and product categories are no longer asked.
+    expect(within(app).queryByText('Typical price range')).not.toBeInTheDocument()
+    expect(within(app).queryByText('About', { selector: 'dt' })).not.toBeInTheDocument()
+  })
+
+  it('shows own delivery, a UPI payout and a proposed rate', async () => {
+    renderModule({ route: '/vendors/v_nila' })
+    await heading('Nila Handloom')
+    const app = screen.getByRole('region', { name: 'Application' })
+    const value = (term: string) => within(app).getByText(term, { selector: 'dt' }).nextElementSibling as HTMLElement
+    expect(value('Who delivers')).toHaveTextContent('They deliver themselves')
+    const areas = value('Areas they deliver to')
+    for (const place of ['Bengaluru', 'Mysuru', 'Hubballi', '560001']) expect(within(areas).getByText(place)).toBeInTheDocument()
+    expect(value('Delivery time')).toHaveTextContent('2–3 days')
+    expect(value('Return window')).toHaveTextContent('14 days')
+    expect(value('Conditions')).toHaveTextContent('Any reason')
+    expect(value('Refund time')).toHaveTextContent('7 working days after pickup')
+    expect(value('Takes')).toHaveTextContent('UPI only')
+    expect(value('Paid to')).toHaveTextContent('UPI ID')
+    expect(value('UPI ID')).toHaveTextContent('nila••••@okaxis')
+    expect(value('Proposed commission')).toHaveTextContent('10%')
+  })
+
+  it('says what a brand did not give, and keeps no returns plain', async () => {
+    renderModule({ route: '/vendors/v_kutch' })
+    await heading('Kutch Kala')
+    const app = screen.getByRole('region', { name: 'Application' })
+    const value = (term: string) => within(app).getByText(term, { selector: 'dt' }).nextElementSibling as HTMLElement
+    expect(value('Legal business name')).toHaveTextContent('Not given')
+    expect(value('GST number')).toHaveTextContent('Not given')
+    expect(value('Areas they deliver to')).toHaveTextContent('All of India')
+    expect(value('Return window')).toHaveTextContent('No returns')
+    expect(within(app).queryByText('Conditions', { selector: 'dt' })).not.toBeInTheDocument()
+    const checks = screen.getByRole('region', { name: 'Automatic checks' })
+    expect(within(checks).queryByText('GST number format')).not.toBeInTheDocument()
+  })
+
+  it('flags a GST number in the wrong format', async () => {
+    renderModule({ route: '/vendors/v_quick' })
+    await heading('QuickFashion Hub')
+    const checks = screen.getByRole('region', { name: 'Automatic checks' })
+    const gst = within(checks).getByText('GST number format').closest('li')!
+    expect(gst).toHaveAttribute('data-state', 'fail')
+    expect(within(gst).getByText('07AAACQ123 is not a GST number. It should be 15 characters, like 24AAQFK3912M1Z6.')).toBeInTheDocument()
+  })
+
+  it('flags a brand that gave no Instagram or website', async () => {
+    renderModule({ route: '/vendors/v_saanjh' })
+    await heading('Saanjh Label')
+    const app = screen.getByRole('region', { name: 'Application' })
+    expect(within(app).getByText('Instagram or website', { selector: 'dt' }).nextElementSibling).toHaveTextContent('Not given')
+    const checks = screen.getByRole('region', { name: 'Automatic checks' })
+    const link = within(checks).getByText('Instagram or website shows their own work').closest('li')!
+    expect(link).toHaveAttribute('data-state', 'fail')
+    expect(within(link).getByText('No link given. Ask for photos of pieces they made.')).toBeInTheDocument()
   })
 
   it('approves an application with a commission of 12% once the agreement is ticked', async () => {
     const { user, db, shell } = renderModule({ route: '/vendors/v_rann' })
     await heading('Rann Weaves')
-    const commission = screen.getByRole('spinbutton', { name: 'Commission %' })
-    await user.clear(commission)
+    const commission = screen.getByRole('textbox', { name: 'Commission' })
     await user.type(commission, '12')
     await user.click(screen.getByRole('checkbox', { name: 'Vendor agreement signed (offline)' }))
     const approve = screen.getByRole('button', { name: 'Approve and invite' })
@@ -64,8 +151,8 @@ describe('A-09 Vendor detail', () => {
     expect(await screen.findByText('Approved Rann Weaves. Aarti Chauhan has been sent an invite to set a password.')).toBeInTheDocument()
     const rann = db.vendors.find((v) => v.id === 'v_rann')!
     expect(rann.status).toBe('approved')
-    expect(rann.commission_bps).toBe(1200)
-    expect(rann.history[0]).toMatchObject({ event: 'invited', by: 'Priya Mehta' })
+    expect(rann.commission.agreed_bps).toBe(1200)
+    expect(rann.history[0]).toMatchObject({ event: 'invited', by: 'Priya Mehta', note: 'Commission 12% · invite sent to aarti@rannweaves.in' })
     expect(shell.toasts()).toContainEqual({ level: 'success', message: 'Approved Rann Weaves' })
     await waitFor(() => expect(within(header()).getByText('Approved')).toBeInTheDocument())
     expect(screen.getByRole('button', { name: 'Suspend' })).toBeInTheDocument()
@@ -74,13 +161,13 @@ describe('A-09 Vendor detail', () => {
   })
 
   it('keeps Approve disabled until the settings are valid, and explains why', async () => {
-    const { user, db } = renderModule({ route: '/vendors/v_rann' })
-    await heading('Rann Weaves')
+    const { user, db } = renderModule({ route: '/vendors/v_saanjh' })
+    await heading('Saanjh Label')
     const approve = screen.getByRole('button', { name: 'Approve and invite' })
     expect(approve).toBeDisabled()
     expect(approve).toHaveAccessibleDescription('Tick “Vendor agreement signed” below to approve.')
 
-    const commission = screen.getByRole('spinbutton', { name: 'Commission %' })
+    const commission = screen.getByRole('textbox', { name: 'Commission' })
     await user.clear(commission)
     await user.type(commission, '50')
     expect(await screen.findByText('Enter a commission between 0% and 40%.')).toBeInTheDocument()
@@ -94,7 +181,7 @@ describe('A-09 Vendor detail', () => {
     await waitFor(() => expect(approve).toBeEnabled())
     await user.click(screen.getByRole('checkbox', { name: 'Vendor agreement signed (offline)' }))
     await waitFor(() => expect(approve).toBeDisabled())
-    expect(db.vendors.find((v) => v.id === 'v_rann')!.status).toBe('applied')
+    expect(db.vendors.find((v) => v.id === 'v_saanjh')!.status).toBe('applied')
   })
 
   it('puts field errors from the API on the matching fields', async () => {
@@ -105,8 +192,7 @@ describe('A-09 Vendor detail', () => {
     )
     const { user } = renderModule({ route: '/vendors/v_rann' })
     await heading('Rann Weaves')
-    const commission = screen.getByRole('spinbutton', { name: 'Commission %' })
-    await user.clear(commission)
+    const commission = screen.getByRole('textbox', { name: 'Commission' })
     await user.type(commission, '30')
     await user.click(screen.getByRole('checkbox', { name: 'Vendor agreement signed (offline)' }))
     await user.click(screen.getByRole('button', { name: 'Approve and invite' }))
@@ -116,8 +202,8 @@ describe('A-09 Vendor detail', () => {
 
   it('shows a 409 from the API in an error banner', async () => {
     server.use(http.post('*/api/v1/admin/vendors/:id/approve', () => HttpResponse.json({ message: 'Only applications can be approved.', extra: { code: 'invalid_transition' } }, { status: 409 })))
-    const { user } = renderModule({ route: '/vendors/v_rann' })
-    await heading('Rann Weaves')
+    const { user } = renderModule({ route: '/vendors/v_saanjh' })
+    await heading('Saanjh Label')
     await user.click(screen.getByRole('checkbox', { name: 'Vendor agreement signed (offline)' }))
     await user.click(screen.getByRole('button', { name: 'Approve and invite' }))
     const alert = await screen.findByRole('alert')

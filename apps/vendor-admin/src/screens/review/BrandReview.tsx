@@ -12,14 +12,15 @@ import { useModuleTitle } from '../../runtime/runtime'
 import { DecisionBar, DecisionCard, useChecklist } from './DecisionCard'
 import { StackedCompare } from './ProductDetails'
 import { decisionIn, HistoryCard, LoadError, NotFound, OutcomeBanner, QueueNav, ReviewColumns, ReviewSkeleton, submittedLine, submitterOf } from './parts'
-import { dispatchLabel, PhonePreview, returnsLabel } from './PhonePreview'
+import { PhonePreview } from './PhonePreview'
 import { SendBackDialog } from './SendBackDialog'
 import { useDecision } from './useDecision'
 
 const copy = reviewCopy.brand
 type Profile = components['schemas']['BrandProfile']
 type Field = keyof Profile
-const FIELDS = Object.keys(copy.fields) as Field[]
+// Returns and delivery now live in the seller's store details, so the brand page no longer changes them.
+const FIELDS = (Object.keys(copy.fields) as Field[]).filter((f) => f !== 'return_policy' && f !== 'dispatch_time')
 const isField = (key: string): key is Field => (FIELDS as string[]).includes(key)
 
 // A-07: a brand page submission beside the live page, with what changed, the checklist and the decision.
@@ -37,8 +38,6 @@ function valueOf(field: Field, profile: Profile, when: 'before' | 'after'): Reac
   const label = `${copy.fields[field]} ${when === 'before' ? copy.changes.before.toLowerCase() : copy.changes.after.toLowerCase()}`
   if (field === 'cover_url' || field === 'logo_url') return <Thumb url={profile[field]} alt={label} />
   const raw = profile[field]
-  if (field === 'return_policy') return returnsLabel(raw)
-  if (field === 'dispatch_time') return dispatchLabel(raw)
   return raw || '—'
 }
 

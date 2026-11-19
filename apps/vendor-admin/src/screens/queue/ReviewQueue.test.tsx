@@ -80,7 +80,8 @@ function trackQueueRequests() {
 describe('A-04 Review queue', { timeout: 40_000 }, () => {
   it('names itself to the shell and shows the queue with its figures', async () => {
     const { shell, db } = renderModule({ route: '/queue' })
-    expect(await screen.findByRole('heading', { level: 1, name: 'Review queue' })).toBeInTheDocument()
+    // The first screen in a file compiles on demand; give it room on a busy machine.
+    expect(await screen.findByRole('heading', { level: 1, name: 'Review queue' }, { timeout: 10_000 })).toBeInTheDocument()
     await waitFor(() => expect(shell.titles()).toContainEqual({ path: '/queue', title: 'Review queue' }))
     expect(await screen.findByText('14 waiting · oldest has waited 4 d 0 h')).toBeInTheDocument()
 
@@ -123,6 +124,25 @@ describe('A-04 Review queue', { timeout: 40_000 }, () => {
     expect(within(kaaya).getByText('Application')).toBeInTheDocument()
     expect(within(kaaya).getByText('Vendor application · Hyderabad, Telangana')).toBeInTheDocument()
     expect(within(kaaya).getByText('KE')).toBeInTheDocument()
+  })
+
+  it('points to the commission rates brands proposed, which are decided on the vendor', async () => {
+    const { user, router } = renderModule({ route: '/queue' })
+    const line = await screen.findByText('3 brands proposed a commission rate.', undefined, { timeout: 10_000 })
+    const link = within(line.parentElement!).getByRole('link', { name: 'Review rates' })
+    expect(link).toHaveAttribute('href', '/vendors?commission=proposed')
+    await user.click(link)
+    await waitFor(() => expect(router.state.location.pathname).toBe('/vendors'))
+    expect(new URLSearchParams(router.state.location.search).get('commission')).toBe('proposed')
+
+  })
+
+  it('has no rates line when no proposal waits', async () => {
+    const { db } = renderModule({ route: '/queue' })
+    for (const v of db.vendors) if (v.commission.state === 'proposed') v.commission.state = 'agreed'
+    const waiting = await screen.findByRole('group', { name: 'Waiting' }, { timeout: 10_000 })
+    await waitFor(() => expect(within(waiting).getByText('14')).toBeInTheDocument())
+    expect(screen.queryByText(/proposed a commission rate/)).not.toBeInTheDocument()
   })
 
   it('switches type tabs through the URL, so back and links keep them', async () => {

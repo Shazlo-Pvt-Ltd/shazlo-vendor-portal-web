@@ -1,10 +1,11 @@
-import { Box, Button, Skeleton, Stack, Tab, Tabs } from '@mui/material'
+import { Box, Button, Link, Skeleton, Stack, Tab, Tabs, Typography } from '@mui/material'
 import { Banner, brand, EmptyState, neutral, PageHeader, StatFigure } from '@shazlo/ui'
 import { Download } from 'lucide-react'
 import { useCallback, type ReactNode } from 'react'
-import { useNavigate } from 'react-router'
+import { Link as RouterLink, useNavigate } from 'react-router'
 import { useQueue, useSummary } from '../../api/queries'
 import type { components } from '../../api/schema'
+import { modulePaths } from '../../app/routes'
 import { queueCopy as copy, type KindKey } from '../../copy/queue'
 import { formatCount } from '../../lib/format'
 import { phoneFullWidth, scrollingTabs, statGrid, useCompact } from '../../lib/responsive'
@@ -73,6 +74,20 @@ function Figures() {
       <StatFigure label={copy.figures.median} value={value(s?.median_minutes == null ? '—' : formatWait(s.median_minutes * 60_000))} baseline={copy.figures.medianBaseline} />
       <StatFigure label={copy.figures.resubmissions} value={value(formatCount(s?.resubmissions))} baseline={copy.figures.resubmissionsBaseline} />
     </Box>
+  )
+}
+
+// Commission proposals are decided on the vendor; one quiet line points there while any wait.
+function RatesLine() {
+  const n = useSummary().data?.commission_proposals ?? 0
+  if (n === 0) return null
+  return (
+    <Typography variant="body2" color="text.secondary">
+      <span>{copy.rates.text(n)}</span>{' '}
+      <Link component={RouterLink} to={modulePaths.rates}>
+        {copy.rates.link}
+      </Link>
+    </Typography>
   )
 }
 
@@ -163,7 +178,10 @@ export default function ReviewQueue() {
         }
       />
       <Stack spacing={3}>
-        <Figures />
+        <Stack spacing={1.5}>
+          <Figures />
+          <RatesLine />
+        </Stack>
         <Stack spacing={2}>
           {errorBanner}
           <KindTabs value={params.kind ?? 'all'} counts={data?.counts} onChange={(key) => update({ kind: key === 'all' ? undefined : (key as KindKey) })} />

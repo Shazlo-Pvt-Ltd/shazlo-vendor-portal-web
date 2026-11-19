@@ -24,6 +24,12 @@ export const queueCopy = {
     label: 'Queue figures',
   },
 
+  // Commission proposals are decided on the vendor, not in the queue; this line points there.
+  rates: {
+    text: (n: number) => `${plural(n, 'brand', 'brands')} proposed a commission rate.`,
+    link: 'Review rates',
+  },
+
   tabsLabel: 'Item type',
   tabs: [
     { key: 'all', label: 'All' },

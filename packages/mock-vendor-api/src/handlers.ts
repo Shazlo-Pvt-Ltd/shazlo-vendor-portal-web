@@ -1,10 +1,12 @@
 import { http, HttpResponse, type HttpResponseResolver } from 'msw'
-import type { BrandRecord, MockVendorApi, ProductRecord, VendorRecord } from './db'
+import { checksFor, percent, type BrandRecord, type MockVendorApi, type ProductRecord, type VendorRecord } from './db'
 import type { components } from './schema'
 
 type S = components['schemas']
 const API = '*/api/v1/admin'
 const REASON_MIN = 10
+const NOTE_MAX = 600
+const MAX_BPS = 4000
 
 // Tokens come from the identity mock's token exchange: mock.vendor-api.<adminId>.<name>.<expEpochSeconds>
 export function mockModuleToken(admin: { id: string; name: string }, expiresAt: number) {
@@ -24,6 +26,18 @@ function fail(status: number, code: string, message: string, fields?: Record<str
 
 const ref = (v: VendorRecord): S['VendorRef'] => ({ id: v.id, name: v.brand_name })
 
+function summaryOf(v: VendorRecord): S['VendorSummary'] {
+  const { application: _a, history: _h, ...rest } = v
+  return { ...rest, commission_bps: v.commission.agreed_bps }
+}
+
+// A rate from the admin: whole basis points from 0 to 40%.
+function rateProblem(bps: unknown) {
+  const n = Number(bps)
+  if (bps === undefined || bps === null || bps === '' || !Number.isInteger(n) || n < 0 || n > MAX_BPS) return fail(422, 'validation_error', 'Check the commission.', { commission_bps: 'Enter a commission between 0% and 40%.' })
+  return null
+}
+
 export function createVendorApiHandlers(getDb: () => MockVendorApi) {
   const iso = () => getDb().now().toISOString()
   const vendorOf = (id: string) => getDb().vendors.find((v) => v.id === id)!
@@ -39,7 +53,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
     const items: S['QueueItem'][] = []
     for (const p of db.products.filter((x) => x.status === 'pending_review')) {
       const v = vendorOf(p.vendorId)
-      items.push({ id: `q_${p.id}`, kind: 'product', subject_id: p.id, title: p.submitted.title, detail: p.sku, vendor: ref(v), submitted_at: p.submittedAt, change: p.change, resubmission: p.resubmission, thumbnail_url: p.submitted.images[0]?.url ?? null })
+      items.push({ id: `q_${p.id}`, kind: 'product', subject_id: p.id, title: p.submitted.title, detail: p.sku, vendor: ref(v), submitted_at: p.submittedAt, change: p.change, resubmission: p.resubmission, thumbnail_url: p.submitted.photos[0]?.url ?? null })
     }
     for (const b of db.brands.filter((x) => x.status === 'pending_review')) {
       const v = vendorOf(b.vendorId)
@@ -65,15 +79,20 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
     return items[0]?.subject_id ?? null
   }
 
-  function publish(db: MockVendorApi, event: S['OutboxEvent']['event'], subject: string, vendor: VendorRecord) {
+  function publish(db: MockVendorApi, event: S['OutboxEvent']['event'], subject: string, vendor: VendorRecord, extra: Record<string, unknown> = {}) {
     db.seq += 1
-    db.outbox.unshift({ id: `evt_${db.seq}`, event, subject, vendor: ref(vendor), status: 'waiting', tries: 0, created_at: iso(), last_attempt_at: null, next_attempt_at: iso(), last_error: null, payload: { event, idempotency_key: `idem_${db.seq}`, vendor_id: vendor.id, subject, occurred_at: iso(), schema: 'docs/adr/0003-contract' } })
+    db.outbox.unshift({ id: `evt_${db.seq}`, event, subject, vendor: ref(vendor), status: 'waiting', tries: 0, created_at: iso(), last_attempt_at: null, next_attempt_at: iso(), last_error: null, payload: { event, idempotency_key: `idem_${db.seq}`, vendor_id: vendor.id, subject, occurred_at: iso(), schema: 'docs/adr/0003-contract', ...extra } })
+  }
+
+  // The agreed rate changed: the central app needs it to work out payouts.
+  function agree(db: MockVendorApi, v: VendorRecord, bps: number, note: string | null) {
+    v.commission = { state: 'agreed', agreed_bps: bps, proposed_bps: null, note, updated_at: iso() }
+    publish(db, 'vendor.commission_changed', v.brand_name, v, { commission_bps: bps })
   }
 
   function detail(v: VendorRecord, db: MockVendorApi): S['VendorDetail'] {
-    const products = db.products.filter((p) => p.vendorId === v.id).map((p) => ({ id: p.id, title: p.submitted.title, status: p.status, price_paise: p.submitted.price_paise, thumbnail_url: p.submitted.images[0]?.url ?? null }))
-    const { application, checks, history, ...summary } = v
-    return { ...summary, application, checks, products, brand_live: db.brands.some((b) => b.vendorId === v.id && b.live !== null) || v.status === 'approved', history }
+    const products = db.products.filter((p) => p.vendorId === v.id).map((p) => ({ id: p.id, title: p.submitted.title, status: p.status, price_paise: p.submitted.price_paise, thumbnail_url: p.submitted.photos[0]?.url ?? null }))
+    return { ...summaryOf(v), application: v.application, checks: checksFor(v), products, brand_live: db.brands.some((b) => b.vendorId === v.id && b.live !== null) || v.status === 'approved', history: v.history }
   }
 
   function decide(db: MockVendorApi, kind: S['ItemKind'], id: string, title: string, vendorId: string, decision: 'approved' | 'rejected', reviewer: string) {
@@ -98,6 +117,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
         decided_today: db.decisions.filter((d) => d.at.slice(0, 10) === day).length,
         median_minutes: 320,
         resubmissions: items.filter((i) => i.resubmission > 0).length,
+        commission_proposals: db.vendors.filter((v) => v.commission.state === 'proposed').length,
         publishing: {
           waiting: db.outbox.filter((e) => e.status === 'waiting').length,
           retrying: db.outbox.filter((e) => e.status === 'retrying').length,
@@ -207,11 +227,15 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       const text = q.get('q')?.trim().toLowerCase()
       if (text) items = items.filter((v) => `${v.brand_name} ${v.owner_name} ${v.email} ${v.phone}`.toLowerCase().includes(text))
       if (q.get('city')) items = items.filter((v) => v.city === q.get('city'))
+      if (q.get('commission')) items = items.filter((v) => v.commission.state === q.get('commission'))
       const sort = q.get('sort') ?? 'name'
       items = [...items].sort((a, b) => (sort === 'newest' ? Date.parse(b.since) - Date.parse(a.since) : sort === 'products' ? b.live_products - a.live_products : a.brand_name.localeCompare(b.brand_name)))
-      const c = { all: db.vendors.length, applied: 0, under_review: 0, approved: 0, rejected: 0, suspended: 0 }
-      for (const v of db.vendors) c[v.status] += 1
-      return HttpResponse.json({ items: items.map(({ application: _a, checks: _c, history: _h, ...v }) => v), counts: c, cities: [...new Set(db.vendors.map((v) => v.city))].sort() } satisfies S['VendorPage'])
+      const c = { all: db.vendors.length, applied: 0, under_review: 0, approved: 0, rejected: 0, suspended: 0, rate_to_review: 0 }
+      for (const v of db.vendors) {
+        c[v.status] += 1
+        if (v.commission.state === 'proposed') c.rate_to_review += 1
+      }
+      return HttpResponse.json({ items: items.map(summaryOf), counts: c, cities: [...new Set(db.vendors.map((v) => v.city))].sort() } satisfies S['VendorPage'])
     })),
 
     http.get(`${API}/vendors/:id`, guarded(({ params }) => {
@@ -229,19 +253,23 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       const open = v.status === 'applied' || v.status === 'under_review'
       if (action === 'approve') {
         if (!open) return fail(409, 'invalid_transition', 'Only applications can be approved.')
-        const bps = Number(body.commission_bps)
-        if (!Number.isInteger(bps) || bps < 0 || bps > 4000) return fail(422, 'validation_error', 'Check the commission.', { commission_bps: 'Enter a commission between 0% and 40%.' })
+        // There is no default rate: the reviewer always sends the agreed one.
+        const problem = rateProblem(body.commission_bps)
+        if (problem) return problem
         if (!body.agreement_ref) return fail(422, 'validation_error', 'Confirm the agreement.', { agreement_ref: 'Tick this once the vendor agreement is signed.' })
+        const bps = Number(body.commission_bps)
         v.status = 'approved'
-        v.commission_bps = bps
         if (typeof body.owner_email === 'string' && body.owner_email) v.email = body.owner_email
-        v.history.unshift({ at: iso(), event: 'invited', by: reviewer, note: `Commission ${bps / 100}% · invite sent to ${v.email}` })
+        v.history.unshift({ at: iso(), event: 'invited', by: reviewer, note: `Commission ${percent(bps)} · invite sent to ${v.email}` })
         publish(db, 'vendor.status_changed', v.brand_name, v)
+        agree(db, v, bps, null)
         decide(db, 'application', v.id, v.brand_name, v.id, 'approved', reviewer)
       } else if (action === 'reject') {
         if (!open) return fail(409, 'invalid_transition', 'Only applications can be rejected.')
         if (String(body.reason ?? '').trim().length < REASON_MIN) return fail(422, 'validation_error', 'Give a reason.', { reason: `Write at least ${REASON_MIN} characters; the applicant sees this.` })
         v.status = 'rejected'
+        // Rejecting the application closes any rate the brand proposed with it.
+        v.commission = { state: 'not_set', agreed_bps: null, proposed_bps: null, note: null, updated_at: iso() }
         v.history.unshift({ at: iso(), event: 'rejected', by: reviewer, note: String(body.reason).trim() })
         decide(db, 'application', v.id, v.brand_name, v.id, 'rejected', reviewer)
       } else if (action === 'request-info') {
@@ -260,6 +288,42 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
         v.status = 'approved'
         v.history.unshift({ at: iso(), event: 'reactivated', by: reviewer })
         publish(db, 'vendor.status_changed', v.brand_name, v)
+      } else {
+        return fail(404, 'not_found', 'Unknown action.')
+      }
+      return HttpResponse.json(detail(v, db))
+    })),
+
+    // Commission for approved (and suspended) brands. An application's rate is set when it is approved.
+    http.post(`${API}/vendors/:id/commission/:step`, guarded(async ({ params, request }, reviewer) => {
+      const db = getDb()
+      const v = db.vendors.find((x) => x.id === params.id)
+      if (!v) return fail(404, 'not_found', 'We could not find that vendor.')
+      if (v.status !== 'approved' && v.status !== 'suspended') return fail(409, 'invalid_transition', v.status === 'rejected' ? 'This application was rejected.' : 'Set the rate when you approve the application.')
+      const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
+      const before = v.commission.agreed_bps
+      const was = before == null ? '' : ` (was ${percent(before)})`
+      const step = String(params.step)
+      if (step === 'approve') {
+        const proposed = v.commission.proposed_bps
+        if (v.commission.state !== 'proposed' || proposed == null) return fail(409, 'invalid_transition', 'There is no proposed rate waiting.')
+        agree(db, v, proposed, null)
+        v.history.unshift({ at: iso(), event: 'commission_approved', by: reviewer, note: `${percent(proposed)}${was}` })
+      } else if (step === 'send-back') {
+        if (v.commission.state !== 'proposed') return fail(409, 'invalid_transition', 'There is no proposed rate waiting.')
+        const note = String(body.note ?? '').trim()
+        if (note.length < REASON_MIN) return fail(422, 'validation_error', 'Write a note to the brand.', { note: `Write at least ${REASON_MIN} characters so the brand knows what to propose.` })
+        if (note.length > NOTE_MAX) return fail(422, 'validation_error', 'Shorten the note.', { note: `Keep the note to ${NOTE_MAX} characters.` })
+        v.commission = { ...v.commission, state: 'sent_back', note, updated_at: iso() }
+        v.history.unshift({ at: iso(), event: 'commission_sent_back', by: reviewer, note })
+      } else if (step === 'set') {
+        const problem = rateProblem(body.commission_bps)
+        if (problem) return problem
+        const note = typeof body.note === 'string' && body.note.trim() ? body.note.trim() : null
+        if (note && note.length > NOTE_MAX) return fail(422, 'validation_error', 'Shorten the note.', { note: `Keep the note to ${NOTE_MAX} characters.` })
+        const bps = Number(body.commission_bps)
+        agree(db, v, bps, note)
+        v.history.unshift({ at: iso(), event: 'commission_set', by: reviewer, note: `${percent(bps)}${was}${note ? ` · ${note}` : ''}` })
       } else {
         return fail(404, 'not_found', 'Unknown action.')
       }

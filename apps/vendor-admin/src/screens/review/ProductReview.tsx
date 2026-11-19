@@ -9,7 +9,7 @@ import { usePhone } from '../../lib/responsive'
 import { decisionPill, queuePill } from '../../lib/status'
 import { useModuleTitle } from '../../runtime/runtime'
 import { DecisionBar, DecisionCard, useChecklist } from './DecisionCard'
-import { CompareCard, DescriptionCard, SizesCard } from './ProductDetails'
+import { AboutCard, CompareCard, PriceCard, SizeChartCard, SizesCard } from './ProductDetails'
 import { ProductPhotos } from './ProductPhotos'
 import { HistoryCard, LoadError, NotFound, OutcomeBanner, QueueNav, ReviewColumns, ReviewSkeleton, submittedLine, submitterOf } from './parts'
 import { SendBackDialog } from './SendBackDialog'
@@ -18,7 +18,8 @@ import { useDecision } from './useDecision'
 const copy = reviewCopy.product
 
 // A-05: one product submission, compared with what the reviewer saw before, with the checklist,
-// approve and send back (A-06).
+// approve and send back (A-06). The main column follows the seller's form: photos, about the
+// product, sizes and stock (with the brand's size chart), price.
 export default function ProductReview() {
   const { id = '' } = useParams()
   // A new id is a new review: the checklist and any outcome start again.
@@ -70,8 +71,10 @@ function Review({ id }: { id: string }) {
             <>
               <ProductPhotos title={title} version={data.submitted} compareTo={data.compare_to} />
               {data.compare_to && data.compare_label && <CompareCard label={data.compare_label} before={data.compare_to} after={data.submitted} />}
-              <DescriptionCard text={data.submitted.description} />
-              <SizesCard variants={data.submitted.variants} />
+              <AboutCard version={data.submitted} />
+              <SizesCard version={data.submitted} />
+              {data.submitted.size_chart && <SizeChartCard chart={data.submitted.size_chart} />}
+              <PriceCard version={data.submitted} />
             </>
           }
           side={

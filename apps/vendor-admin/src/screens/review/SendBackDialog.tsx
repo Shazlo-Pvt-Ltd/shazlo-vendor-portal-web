@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { ApiError } from '../../api/http'
 import type { components } from '../../api/schema'
 import { reviewCopy, type ReasonCode } from '../../copy/review'
-import { fieldProps } from '../../lib/forms'
+import { fieldProps, noAsterisk } from '../../lib/forms'
 import { usePhone } from '../../lib/responsive'
 
 const copy = reviewCopy.sendBack
@@ -96,7 +96,7 @@ function SendBackForm({ subject, reasons, onClose, onSubmit, titleId, bodyId, on
           </DialogContentText>
           {failure && <Banner tone="error" title={failure} />}
           <FormControl component="fieldset" error={Boolean(reasonError)} required>
-            <FormLabel component="legend" id={reasonId} sx={{ mb: 0.5 }}>
+            <FormLabel component="legend" id={reasonId} required={false} sx={{ mb: 0.5 }}>
               {copy.reason}
             </FormLabel>
             <RadioGroup name={reasonField.name} value={reasonField.value} onChange={(_, v) => pick(v as ReasonCode)} onBlur={reasonField.onBlur} aria-labelledby={reasonId} aria-describedby={reasonError ? reasonErrorId : undefined}>
@@ -111,6 +111,7 @@ function SendBackForm({ subject, reasons, onClose, onSubmit, titleId, bodyId, on
             multiline
             minRows={4}
             required
+            slotProps={noAsterisk}
             {...message}
             helperText={
               <Box component="span" sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>

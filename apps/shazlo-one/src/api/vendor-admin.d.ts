@@ -101,7 +101,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Submitted version */
+                /** @description Submitted version, the one to compare with, and history */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -343,6 +343,8 @@ export interface paths {
                     q?: string;
                     city?: string;
                     sort?: "name" | "newest" | "products";
+                    /** @description Only vendors whose commission is in this state; proposed lists the rates to review */
+                    commission?: components["schemas"]["CommissionState"];
                 };
                 header?: never;
                 path?: never;
@@ -389,7 +391,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Vendor with application */
+                /** @description Vendor with application, checks and activity */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -420,6 +422,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description There is no default rate. The reviewer enters the agreed rate (the screen starts from the brand's proposal, if any) and the vendor's commission becomes agreed. */
         post: {
             parameters: {
                 query?: never;
@@ -632,6 +635,147 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/vendors/{id}/commission/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Agree the rate the brand proposed. Recorded in the vendor's history (commission_approved) and sent to the app as vendor.commission_changed. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Rate agreed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VendorDetail"];
+                    };
+                };
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/vendors/{id}/commission/send-back": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Send the brand's proposal back with a note the brand reads; the agreed rate (if any) stays. Recorded in the history (commission_sent_back). */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        note: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Sent back */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VendorDetail"];
+                    };
+                };
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/vendors/{id}/commission/set": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Shazlo enters the agreed rate itself (for example after a call), in any state; a waiting proposal is closed. Recorded in the history (commission_set) and sent to the app as vendor.commission_changed. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        commission_bps: number;
+                        note?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Rate set */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VendorDetail"];
+                    };
+                };
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/outbox": {
         parameters: {
             query?: never;
@@ -764,6 +908,89 @@ export interface components {
         VendorStatus: "applied" | "under_review" | "approved" | "rejected" | "suspended";
         /** @enum {string} */
         OutboxStatus: "waiting" | "retrying" | "failed" | "delivered";
+        /** @enum {string} */
+        Sells: "women" | "men" | "both";
+        /** @enum {string} */
+        CommissionState: "not_set" | "proposed" | "sent_back" | "agreed";
+        /** @description Per brand; there is no default rate. agreed_bps is the rate in force; proposed_bps is the brand's proposal while it waits, and after it was sent back. */
+        Commission: {
+            state: components["schemas"]["CommissionState"];
+            agreed_bps: number | null;
+            proposed_bps: number | null;
+            /** @description Shazlo's note to the brand: required when sent back, optional when Shazlo set the rate */
+            note: string | null;
+            /** Format: date-time */
+            updated_at: string | null;
+        };
+        PickupAddress: {
+            line: string;
+            area: string;
+            city: string;
+            pin: string;
+        };
+        Delivery: {
+            /** @enum {string} */
+            by: "shazlo";
+            pickup_address: components["schemas"]["PickupAddress"];
+        } | {
+            /** @enum {string} */
+            by: "own";
+            all_india: boolean;
+            /** @description Cities or PIN codes, when not all of India */
+            places: string[];
+            /** @enum {string} */
+            days: "1_2" | "2_3" | "3_5" | "5_7";
+        };
+        Returns: {
+            /**
+             * @description 0 means no returns
+             * @enum {integer}
+             */
+            window_days: 0 | 7 | 14 | 30;
+            /** @enum {string|null} */
+            condition: "unworn_with_tags" | "any_reason" | "damaged_or_wrong" | null;
+            /**
+             * @description Working days after pickup
+             * @enum {integer|null}
+             */
+            refund_days: 2 | 5 | 7 | null;
+        };
+        /** @description Masked. The admin API never returns a full account number or UPI ID. */
+        Payout: {
+            /** @enum {string} */
+            method: "bank";
+            account_holder: string;
+            account_last4: string;
+            ifsc: string;
+            /** @description Looked up from the IFSC */
+            bank_name: string;
+        } | {
+            /** @enum {string} */
+            method: "upi";
+            /** @description For example ki••••@okhdfc */
+            upi_masked: string;
+        };
+        /** @description What the brand gave at sign-up (docs/ui-plan/vendor-requirements-and-phone-ux.md section 5). Contact name, mobile, email and ship-from city are on the vendor. */
+        Application: {
+            instagram_or_website: string | null;
+            delivery: components["schemas"]["Delivery"];
+            returns: components["schemas"]["Returns"];
+            pay_on_delivery: {
+                cash: boolean;
+                upi: boolean;
+            };
+            payout: components["schemas"]["Payout"];
+            legal_name: string | null;
+            gst_number: string | null;
+            /** @description The rate the brand proposed at sign-up; the current state is the vendor's commission */
+            proposed_commission_bps: number | null;
+            /** @description Agreed to the seller terms */
+            agreed_terms: boolean;
+            /** @description Agreed that their price on Shazlo will never be higher than anywhere else */
+            agreed_price_rule: boolean;
+            /** Format: date-time */
+            applied_at: string;
+        };
         VendorRef: {
             id: string;
             name: string;
@@ -779,6 +1006,8 @@ export interface components {
             decided_today: number;
             median_minutes: number | null;
             resubmissions: number;
+            /** @description Vendors whose proposed commission waits for Shazlo */
+            commission_proposals: number;
             publishing: {
                 waiting: number;
                 retrying: number;
@@ -787,7 +1016,7 @@ export interface components {
             };
             recent: {
                 id: string;
-                /** @description Product id */
+                /** @description Product id, or the vendor id for brand pages and applications */
                 subject_id: string;
                 kind: components["schemas"]["ItemKind"];
                 title: string;
@@ -824,25 +1053,66 @@ export interface components {
             };
             vendors: components["schemas"]["VendorRef"][];
         };
+        Colour: {
+            name: string;
+            /** @description null for Multicolour */
+            hex: string | null;
+        };
+        ProductPhoto: {
+            id: string;
+            url: string;
+            /**
+             * @description Four named slots are required; up to four extras
+             * @enum {string}
+             */
+            slot: "front" | "back" | "detail" | "worn" | "extra";
+        };
+        /** @description Real people wearing it, so shoppers see the true fit. Five are required. */
+        TryOnPhoto: {
+            id: string;
+            url: string;
+        };
+        /** @description The brand's chart for a product type, saved once and used for all its products of that type: measurements in cm (each optional), or a photo of the brand's own chart. */
+        SizeChart: {
+            /** @enum {string} */
+            kind: "table";
+            product_type: string;
+            /** @description Column names, e.g. Chest, Waist, Length */
+            measurements: string[];
+            rows: {
+                size: string;
+                cm: (number | null)[];
+            }[];
+        } | {
+            /** @enum {string} */
+            kind: "photo";
+            product_type: string;
+            url: string;
+        };
         ProductVersion: {
             title: string;
             description: string;
-            category: string;
-            gender: string;
-            fabric: string;
+            /** @enum {string} */
+            gender: "women" | "men" | "unisex";
+            /** @description As the brand picked it, e.g. Kurtas, Shirts, Sarees */
+            product_type: string;
+            main_colour: components["schemas"]["Colour"];
+            other_colours: components["schemas"]["Colour"][];
+            /** @description e.g. 100% linen */
+            material: string;
+            /** @description Selling price */
             price_paise: number;
-            mrp_paise: number;
+            /** @description Optional. The app shows the lower of the two. */
+            mrp_paise: number | null;
             variants: {
                 size: string;
+                /** @description Automatic product code */
                 sku: string;
                 stock: number;
             }[];
-            images: {
-                id: string;
-                url: string;
-                /** @enum {string} */
-                angle: "front" | "back" | "closeup" | "extra";
-            }[];
+            photos: components["schemas"]["ProductPhoto"][];
+            try_on_photos: components["schemas"]["TryOnPhoto"][];
+            size_chart: components["schemas"]["SizeChart"] | null;
         };
         ProductReview: {
             id: string;
@@ -865,7 +1135,7 @@ export interface components {
             /** Format: date-time */
             at: string;
             /** @enum {string} */
-            event: "submitted" | "approved" | "rejected" | "published" | "applied" | "info_requested" | "suspended" | "reactivated" | "invited";
+            event: "submitted" | "approved" | "rejected" | "published" | "applied" | "info_requested" | "suspended" | "reactivated" | "invited" | "commission_proposed" | "commission_approved" | "commission_sent_back" | "commission_set";
             by: string;
             note?: string;
         }[];
@@ -893,7 +1163,7 @@ export interface components {
         };
         RejectBody: {
             /** @enum {string} */
-            reason_code: "photos" | "price" | "category" | "prohibited" | "description" | "brand_images" | "contact_details" | "other";
+            reason_code: "photos" | "try_on_photos" | "price" | "category" | "prohibited" | "description" | "brand_images" | "contact_details" | "other";
             reason: string;
         };
         Decision: {
@@ -908,16 +1178,21 @@ export interface components {
         VendorSummary: {
             id: string;
             brand_name: string;
+            /** @description The contact person from sign-up */
             owner_name: string;
             email: string;
+            /** @description Mobile number */
             phone: string;
+            /** @description City or area the brand ships from */
             city: string;
-            sells: string[];
+            sells: components["schemas"]["Sells"];
             status: components["schemas"]["VendorStatus"];
             live_products: number;
             /** Format: date-time */
             since: string;
+            /** @description The agreed rate (the same as commission.agreed_bps) */
             commission_bps: number | null;
+            commission: components["schemas"]["Commission"];
         };
         VendorPage: {
             items: components["schemas"]["VendorSummary"][];
@@ -928,19 +1203,13 @@ export interface components {
                 approved: number;
                 rejected: number;
                 suspended: number;
+                /** @description Vendors whose commission is proposed */
+                rate_to_review: number;
             };
             cities: string[];
         };
         VendorDetail: components["schemas"]["VendorSummary"] & {
-            application: {
-                instagram_or_website: string;
-                product_types: string[];
-                price_min_paise: number;
-                price_max_paise: number;
-                about: string;
-                /** Format: date-time */
-                applied_at: string;
-            };
+            application: components["schemas"]["Application"];
             checks: {
                 label: string;
                 ok: boolean;
@@ -959,7 +1228,7 @@ export interface components {
         OutboxEvent: {
             id: string;
             /** @enum {string} */
-            event: "product.published" | "product.updated" | "product.unpublished" | "brand_profile.published" | "vendor.status_changed";
+            event: "product.published" | "product.updated" | "product.unpublished" | "brand_profile.published" | "vendor.status_changed" | "vendor.commission_changed";
             subject: string;
             vendor: components["schemas"]["VendorRef"];
             status: components["schemas"]["OutboxStatus"];

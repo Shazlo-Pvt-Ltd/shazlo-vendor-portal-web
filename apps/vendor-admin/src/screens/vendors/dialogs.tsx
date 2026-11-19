@@ -7,7 +7,7 @@ import { ApiError } from '../../api/http'
 import { useVendorAction } from '../../api/queries'
 import type { components } from '../../api/schema'
 import { REASON_MIN, vendorActionsCopy } from '../../copy/vendors'
-import { fieldProps } from '../../lib/forms'
+import { fieldProps, noAsterisk } from '../../lib/forms'
 import { usePhone } from '../../lib/responsive'
 
 const copy = vendorActionsCopy
@@ -56,7 +56,7 @@ export function ReasonDialog({ open, title, body, label, confirm, pending, onCan
             <DialogContentText id={bodyId} variant="body1">
               {body}
             </DialogContentText>
-            <TextField {...fieldProps(register('text'), formState.errors.text, copy.reasonHint)} label={label} multiline minRows={3} required autoFocus disabled={busy} />
+            <TextField {...fieldProps(register('text'), formState.errors.text, copy.reasonHint)} label={label} multiline minRows={3} required autoFocus disabled={busy} slotProps={noAsterisk} />
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>

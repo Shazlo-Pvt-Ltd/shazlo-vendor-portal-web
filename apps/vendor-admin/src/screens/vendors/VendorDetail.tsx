@@ -100,7 +100,7 @@ function VendorView({ vendor }: { vendor: Vendor }) {
   const closeDialog = () => setDialog((d) => d && { ...d, open: false })
   const approveAction = useVendorAction(vendor.id)
   const form = useApprovalForm(vendor)
-  const agreement = useWatch({ control: form.control, name: 'agreement' })
+  const [agreement, commission] = useWatch({ control: form.control, name: ['agreement', 'commission'] })
   const { isValid } = form.formState
 
   const open = isApplication(vendor)
@@ -153,6 +153,15 @@ function VendorView({ vendor }: { vendor: Vendor }) {
     setDialog({ kind, open: true })
   }
 
+  // The first thing that stops approval, in the order the card asks for it.
+  const blockedReason = !commission.trim() ? vendorActionsCopy.approve.blockedCommission : !agreement ? vendorActionsCopy.approve.blockedAgreement : vendorActionsCopy.approve.blockedFields
+
+  const onCommissionDone = (banner: string, message: string) => {
+    setOutcome({ tone: 'success', text: banner })
+    toast('success', message)
+  }
+  const onCommissionFailed = (error: Error) => setOutcome({ tone: 'error', text: error.message || vendorActionsCopy.failed })
+
   let actions: ReactNode = null
   if (open) {
     const blocked = !isValid
@@ -171,7 +180,7 @@ function VendorView({ vendor }: { vendor: Vendor }) {
         </Stack>
         {blocked && (
           <Typography id={hintId} variant="caption" color="text.secondary">
-            {agreement ? vendorActionsCopy.approve.blockedFields : vendorActionsCopy.approve.blockedAgreement}
+            {blockedReason}
           </Typography>
         )}
       </Stack>
@@ -194,8 +203,13 @@ function VendorView({ vendor }: { vendor: Vendor }) {
   const site = vendor.application.instagram_or_website
   const subtitle = (
     <>
-      {`${copy.applied(days, formatDate(vendor.application.applied_at))} · ${vendor.city} · `}
-      <ExternalLink href={site}>{site}</ExternalLink>
+      {`${copy.applied(days, formatDate(vendor.application.applied_at))} · ${vendor.city}`}
+      {site && (
+        <>
+          {' · '}
+          <ExternalLink href={site}>{site}</ExternalLink>
+        </>
+      )}
     </>
   )
 
@@ -237,7 +251,9 @@ function VendorView({ vendor }: { vendor: Vendor }) {
           ))}
         </Tabs>
         <Box role="tabpanel" id={`${tabsId}-panel-${tab}`} aria-labelledby={`${tabsId}-tab-${tab}`}>
-          {tab === 'application' && <ApplicationTab vendor={vendor} open={open} form={form} onApprove={(event) => void approve(event)} approving={approveAction.isPending} />}
+          {tab === 'application' && (
+            <ApplicationTab vendor={vendor} open={open} form={form} onApprove={(event) => void approve(event)} approving={approveAction.isPending} onCommissionDone={onCommissionDone} onCommissionFailed={onCommissionFailed} />
+          )}
           {tab === 'products' && <ProductsTab vendor={vendor} />}
           {tab === 'brand' && <BrandTab vendor={vendor} />}
           {tab === 'activity' && <ActivityTab vendor={vendor} />}
