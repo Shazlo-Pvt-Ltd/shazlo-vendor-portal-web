@@ -1,6 +1,1 @@
-import { PlaceholderPage } from './PlaceholderPage'
-
-/** Replaced by its own issue; until then the section is reachable and has its page header. */
-export default function SubmissionsPage() {
-  return <PlaceholderPage title="Submissions" />
-}
+export { default } from '../features/submissions/SubmissionsPage'
