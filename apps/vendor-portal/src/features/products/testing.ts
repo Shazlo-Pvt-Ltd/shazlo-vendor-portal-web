@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import { BASE, apiErrorResponse } from '../../test/msw'
+import type { Revision } from './form'
 import type { ProductDetail, ProductSummary } from './status'
 
 export function product(n: number, overrides: Partial<ProductSummary> = {}): ProductSummary {
@@ -49,3 +50,25 @@ export const detailHandler = (byId: Record<string, ProductDetail>, seen: string[
     const found = byId[String(params.id)]
     return found ? HttpResponse.json(found) : apiErrorResponse(404, 'not_found')
   })
+
+/** A whole revision, as `GET /v1/vendor/products/{id}` returns it. */
+export const fullRevision = (overrides: Partial<Revision> = {}): Revision => ({
+  id: 'r1',
+  version: 1,
+  state: 'editing',
+  title: 'Block-print kurta',
+  description: null,
+  category: 'kurtas',
+  subcategory: null,
+  gender: 'women',
+  fabric: null,
+  weight_grams: null,
+  returnable: false,
+  return_window_days: null,
+  variants: [{ id: 'v1', sku: 'K-M', size: 'M', color: 'Indigo', price_paise: 149900, mrp_paise: 199900, is_active: true }],
+  images: [],
+  submitted_at: null,
+  review: null,
+  updated_at: '2026-11-10T09:30:00Z',
+  ...overrides,
+})
