@@ -1,5 +1,5 @@
 import type { components } from '../../api'
-import { MAX_PAISE, rupeesToPaise } from '../signup/money'
+import { MAX_PAISE, paiseToRupees, rupeesToPaise } from '../signup/money'
 
 export type BrandDraft = components['schemas']['DraftOut']
 export type BrandVersion = components['schemas']['BrandProfileOut']
@@ -68,12 +68,7 @@ export const EMPTY_BRAND: BrandValues = {
   bannerUrl: null,
 }
 
-/** Whole paise as the rupees a vendor types: 99900 is "999", 99950 is "999.50". */
-export function paiseToRupees(paise: number): string {
-  const whole = Math.trunc(paise / 100)
-  const rest = paise % 100
-  return rest === 0 ? String(whole) : `${whole}.${String(rest).padStart(2, '0')}`
-}
+export { paiseToRupees }
 
 /** The form's starting values for a version from the API. */
 export function toValues(version: BrandVersion | BrandDraft): BrandValues {

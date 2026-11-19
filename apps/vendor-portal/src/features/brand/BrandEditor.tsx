@@ -1,9 +1,9 @@
 import { Alert, Autocomplete, Box, Button, Chip, InputAdornment, Stack, TextField, Typography } from '@mui/material'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { useBlocker } from 'react-router'
 import { api, apiQueryKey } from '../../api'
 import { ApiError } from '../../api/errors'
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { useConfirm } from '../../ui/ConfirmDialog'
 import { useToast } from '../../ui/Toast'
 import { friendlyError } from '../errors'
@@ -71,23 +71,7 @@ export function BrandEditor({ draft, latest }: Props) {
   const busy = save.isPending || submit.isPending
 
   // Leaving with unsaved edits: in the app (a link, back) and out of it (closing the tab).
-  const blocker = useBlocker(({ currentLocation, nextLocation }) => dirty && currentLocation.pathname !== nextLocation.pathname)
-  useEffect(() => {
-    if (blocker.state !== 'blocked') return
-    void confirm({
-      title: 'Leave without saving?',
-      message: 'You have changes to your brand page that are not saved. If you leave now, they are lost.',
-      confirmLabel: 'Leave and lose changes',
-      cancelLabel: 'Keep editing',
-      destructive: true,
-    }).then((leave) => (leave ? blocker.proceed() : blocker.reset()))
-  }, [blocker, confirm])
-  useEffect(() => {
-    if (!dirty) return
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault()
-    window.addEventListener('beforeunload', warn)
-    return () => window.removeEventListener('beforeunload', warn)
-  }, [dirty])
+  useUnsavedChanges(dirty, 'You have changes to your brand page that are not saved. If you leave now, they are lost.')
 
   useEffect(() => {
     if (focusRequest === 0) return
