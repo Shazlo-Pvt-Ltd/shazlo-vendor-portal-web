@@ -23,6 +23,9 @@ export default defineConfig({
           include: ['test/**/*.test.{js,jsx}'],
           environment: 'jsdom',
           setupFiles: ['./test/setup.js'],
+          // The form tests type through MUI in jsdom; with coverage on a busy runner one can take
+          // longer than the 5 s default (the vendor-portal project allows 30 s for the same reason).
+          testTimeout: 30_000,
           restoreMocks: true,
           unstubGlobals: true,
           unstubEnvs: true,
