@@ -11,12 +11,18 @@ const signedOut = [
 ]
 
 const signedIn = [
-  { name: 'v04-overview', path: '/', heading: 'Overview' },
+  // Phones get the calmer Home (spec §4); 1440 px keeps the Build 2 Overview.
+  { name: 'v04-overview', path: '/', heading: /^(Overview|Home)$/ },
   { name: 'v05-brand-page', path: '/brand', heading: 'Brand page' },
   { name: 'v06-products', path: '/products', heading: 'Products' },
-  { name: 'v07-product-editor', path: '/products/p_001', heading: 'Ajrakh Block-Print Kurta' },
+  // Phones edit one step at a time, so the heading there is the first step.
+  { name: 'v07-product-editor', path: '/products/p_001', heading: /^(Ajrakh Block-Print Kurta|Photos)$/ },
   { name: 'v08-bulk-import', path: '/products/import', heading: 'Bulk import' },
   { name: 'v09-review-status', path: '/review', heading: 'Review status' },
+  { name: 'store', path: '/store', heading: 'Store' },
+  { name: 'store-details', path: '/store/details', heading: 'Store details' },
+  { name: 'store-details-payout', path: '/store/details/payout', heading: 'Payouts' },
+  { name: 'account', path: '/account', heading: 'Account' },
 ]
 
 for (const screen of signedOut) {

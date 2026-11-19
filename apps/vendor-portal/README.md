@@ -11,7 +11,9 @@ npm run dev -w @shazlo/vendor-portal
 ```
 
 The app starts with a **mock API** in the browser (Mock Service Worker), seeded with the wireframes' seller,
-Kalki Studio: 27 products, two sent back, a brand-page draft. Demo sign-in, mock data only:
+Kalki Studio: 27 products, two sent back, a brand-page draft, store details complete except payouts (so
+products cannot be sent for review until a payout is saved), commission agreed at 12%, and a size chart for
+dresses and kurtas. The seed is described at the top of `src/mocks/db.ts`. Demo sign-in, mock data only:
 
 | Email | Password |
 |---|---|
@@ -30,6 +32,7 @@ To use a real vendor-api instead: `VITE_MOCK_API=off VITE_VENDOR_API_URL=http://
 | Generated types | `npm run api:types -w @shazlo/vendor-portal` → `src/api/schema.d.ts` |
 | Client | `src/api/client.ts` (openapi-fetch; one shared token refresh; error envelope → `ApiError`) |
 | Reads and writes | `src/api/queries.ts` (TanStack Query hooks; every cache key and invalidation) |
+| Option lists and rules | `src/lib/catalog.ts` (product types, size-chart groups, sizes, colours, photo slots, submit check, import parsing), `src/lib/storeDetails.ts` (store-details checks and completeness), `src/lib/validators.ts` (IFSC, GSTIN, UPI, PIN, phone), `src/lib/commission.ts`; labels and messages in `src/copy/catalog.ts`. Screens and the mock API both use them |
 | Mock API | `src/mocks` (handlers follow the contract; delete each handler when its endpoint ships) |
 | Session | `src/auth` ("Keep me signed in" uses localStorage, otherwise the tab's sessionStorage) |
 | Shell | `src/shell` (desktop sidebar, phone tab bar, setup banner, notifications) |
