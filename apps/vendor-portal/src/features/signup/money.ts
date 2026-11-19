@@ -21,3 +21,10 @@ export function rupeesToPaise(input: string): number | null {
   }
   return Number(paise)
 }
+
+/** Whole paise as the rupees a vendor types: 99900 is "999", 99950 is "999.50", 10 is "0.10". */
+export function paiseToRupees(paise: number): string {
+  const whole = Math.trunc(paise / 100)
+  const rest = paise % 100
+  return rest === 0 ? String(whole) : `${whole}.${String(rest).padStart(2, '0')}`
+}
