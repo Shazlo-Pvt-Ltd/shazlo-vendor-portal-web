@@ -74,9 +74,11 @@ jobs:
       - name: Scan
         run: |
           set +e
-          "$RUNNER_TEMP/osv-scanner" scan source --recursive --format sarif --output osv.sarif ./
+          "$RUNNER_TEMP/osv-scanner" scan source --recursive --format sarif --output-file osv.sarif ./
           status=$?
-          "$RUNNER_TEMP/osv-scanner" scan source --recursive --format markdown ./ >> "$GITHUB_STEP_SUMMARY" 2>/dev/null
+          "$RUNNER_TEMP/osv-scanner" scan source --recursive --format markdown \
+            --output-file "$RUNNER_TEMP/osv.md" ./ > /dev/null 2>&1
+          cat "$RUNNER_TEMP/osv.md" >> "$GITHUB_STEP_SUMMARY" || true
           # 0: nothing found, 1: vulnerabilities found (reported, not failed). Anything else is an error.
           if [ "$status" -gt 1 ]; then
             echo "::error::osv-scanner exited with $status"
