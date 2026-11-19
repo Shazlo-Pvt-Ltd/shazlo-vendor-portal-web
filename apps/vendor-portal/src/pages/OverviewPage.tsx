@@ -3,7 +3,8 @@ import { useId, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { api } from '../api'
 import { ApiError } from '../api/errors'
-import { REFRESH_MS, STATUS_COLOR, fixLink, itemName, relativeTime, statusLabel } from '../features/submissions/rules'
+import { REFRESH_MS, STATUS_COLOR, fixLink, itemName, statusLabel } from '../features/submissions/rules'
+import { relativeTime } from '../features/time'
 import { useSession } from '../session/AuthProvider'
 import { ErrorState } from '../ui/ErrorState'
 import { LoadingState } from '../ui/LoadingState'
@@ -114,7 +115,11 @@ function SubmissionsCard() {
   const pending = api.useQuery('get', '/v1/vendor/submissions', { params: { query: { status: 'pending', limit: 1 } } }, refresh)
   const recent = api.useQuery('get', '/v1/vendor/submissions', { params: { query: { status: 'all', limit: 10 } } }, refresh)
   const failed = pending.isError ? pending : recent.isError ? recent : undefined
-  const decided = (recent.data?.items ?? []).filter((item) => item.decided_at !== null).slice(0, LATEST_DECISIONS)
+  // The list is newest submitted first; among those, show the newest decisions first.
+  const decided = (recent.data?.items ?? [])
+    .filter((item) => item.decided_at !== null)
+    .sort((a, b) => Date.parse(b.decided_at ?? '') - Date.parse(a.decided_at ?? ''))
+    .slice(0, LATEST_DECISIONS)
   return (
     <SectionCard title="Submissions" to="/submissions" action="See submissions">
       {failed ? <ErrorState error={failed.error} title="We couldn't load your submissions" onRetry={() => void failed.refetch()} /> : null}

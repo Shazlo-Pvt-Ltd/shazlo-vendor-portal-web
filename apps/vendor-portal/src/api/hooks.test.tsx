@@ -88,21 +88,21 @@ describe('typed hooks', () => {
 })
 
 describe('bulk import helpers', () => {
-  it('posts the file itself as the body with its content type', async () => {
-    let received: { type: string | null; body: string } | undefined
+  it('posts the file itself as the body with its content type and the mode', async () => {
+    let received: { type: string | null; body: string; mode: string | null } | undefined
     server.use(
       http.post(`${BASE}/v1/vendor/products/import`, async ({ request }) => {
-        received = { type: request.headers.get('Content-Type'), body: await request.text() }
+        received = { type: request.headers.get('Content-Type'), body: await request.text(), mode: new URL(request.url).searchParams.get('mode') }
         return HttpResponse.json({ imported: 1 })
       }),
     )
     const file = new File(['sku,name\nA1,Kurta'], 'products.csv', { type: 'text/csv' })
-    await importProducts(file)
-    expect(received).toEqual({ type: 'text/csv', body: 'sku,name\nA1,Kurta' })
+    await importProducts(file, { mode: 'validate' })
+    expect(received).toEqual({ type: 'text/csv', body: 'sku,name\nA1,Kurta', mode: 'validate' })
   })
 
   it('refuses a file that is neither CSV nor XLSX before sending anything', async () => {
-    await expect(importProducts(new File(['x'], 'notes.txt', { type: 'text/plain' }))).rejects.toBeInstanceOf(TypeError)
+    await expect(importProducts(new File(['x'], 'notes.txt', { type: 'text/plain' }), { mode: 'validate' })).rejects.toBeInstanceOf(TypeError)
     expect(importContentType(new File([''], 'sheet.XLSX'))).toBe(
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     )

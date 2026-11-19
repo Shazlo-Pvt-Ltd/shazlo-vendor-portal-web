@@ -39,7 +39,7 @@ async function open(path = '/submissions') {
   return { router, user: userEvent.setup() }
 }
 
-const card = (name: string) => screen.getByRole('heading', { level: 3, name }).closest('li') as HTMLElement
+const card = (name: string) => screen.getByRole('heading', { level: 2, name }).closest('li') as HTMLElement
 
 beforeEach(() => resetLastVisit())
 
@@ -52,7 +52,7 @@ describe('the submissions page', () => {
       submission({ id: 'd', title: 'Withdrawn kurta', status: 'withdrawn' }),
     ])
     await open()
-    await screen.findByRole('heading', { level: 3, name: 'Waiting kurta' })
+    await screen.findByRole('heading', { level: 2, name: 'Waiting kurta' })
     expect(within(card('Waiting kurta')).getByText('In review')).toBeTruthy()
     expect(within(card('Waiting kurta')).getByText('Waiting for a decision')).toBeTruthy()
     expect(within(card('Approved kurta')).getByText('Approved')).toBeTruthy()
@@ -67,7 +67,7 @@ describe('the submissions page', () => {
   it("shows a rejected brand page's reason as plain text, line breaks kept, with a link to fix it", async () => {
     serve([submission({ subject: 'brand_profile', id: 'b1', sku: null, title: null, status: 'rejected', reason: '<b>Logo</b> is blurry.\n<script>alert(1)</script>' })])
     await open()
-    await screen.findByRole('heading', { level: 3, name: 'Brand page' })
+    await screen.findByRole('heading', { level: 2, name: 'Brand page' })
     const item = card('Brand page')
     const reason = within(item).getByTestId('review-reason')
     expect(reason.textContent).toBe('<b>Logo</b> is blurry.\n<script>alert(1)</script>')
@@ -79,7 +79,7 @@ describe('the submissions page', () => {
     serve([submission({ id: 'p5', version: 2, status: 'rejected', reason: 'Wrong price' })])
     server.use(http.get(`${BASE}/v1/vendor/products/p5`, () => HttpResponse.json(detail('p5', { status: 'approved', live: fullRevision({ version: 1 }) }))))
     await open()
-    await screen.findByRole('heading', { level: 3, name: 'Indigo kurta' })
+    await screen.findByRole('heading', { level: 2, name: 'Indigo kurta' })
     const item = card('Indigo kurta')
     expect(within(item).getByRole('link', { name: 'Fix and resubmit: Indigo kurta' }).getAttribute('href')).toBe('/products/p5')
     expect(await within(item).findByText('The live version (version 1) is unchanged: shoppers still see it.')).toBeTruthy()
@@ -88,7 +88,7 @@ describe('the submissions page', () => {
   it('does not offer to fix a rejection that a later version replaced', async () => {
     serve([submission({ version: 2, status: 'pending', decided_at: null }), submission({ version: 1, status: 'rejected', reason: 'Too dark' })])
     await open()
-    await screen.findAllByRole('heading', { level: 3, name: 'Indigo kurta' })
+    await screen.findAllByRole('heading', { level: 2, name: 'Indigo kurta' })
     expect(screen.getByText('A newer version was submitted after this one.')).toBeTruthy()
     expect(screen.queryByRole('link', { name: /Fix and resubmit/ })).toBeNull()
   })
@@ -96,11 +96,11 @@ describe('the submissions page', () => {
   it('filters by status and type through the address', async () => {
     const state = serve([submission(), submission({ subject: 'brand_profile', id: 'b1', title: null, sku: null, status: 'rejected' })])
     const { router, user } = await open()
-    await screen.findByRole('heading', { level: 3, name: 'Indigo kurta' })
+    await screen.findByRole('heading', { level: 2, name: 'Indigo kurta' })
     await user.click(screen.getByRole('combobox', { name: 'Status' }))
     await user.click(await screen.findByRole('option', { name: 'Not approved' }))
     await waitFor(() => expect(router.state.location.search).toBe('?status=rejected'))
-    expect(await screen.findByText('1 submission match, newest first.')).toBeTruthy()
+    expect(await screen.findByText('1 submission matches, newest first.')).toBeTruthy()
     expect(state.queries.at(-1)?.get('status')).toBe('rejected')
     await user.click(screen.getByRole('combobox', { name: 'Type' }))
     await user.click(await screen.findByRole('option', { name: 'Product' }))
@@ -128,7 +128,7 @@ describe('the submissions page', () => {
     try {
       const state = serve([submission()])
       await open()
-      await screen.findByRole('heading', { level: 3, name: 'Indigo kurta' })
+      await screen.findByRole('heading', { level: 2, name: 'Indigo kurta' })
       const before = state.queries.length
       await act(async () => {
         await vi.advanceTimersByTimeAsync(59_000)
@@ -150,7 +150,7 @@ describe('the submissions page', () => {
     ])
     endVisit(Date.parse('2026-11-12T00:00:00Z'))
     await open()
-    await screen.findByRole('heading', { level: 3, name: 'New kurta' })
+    await screen.findByRole('heading', { level: 2, name: 'New kurta' })
     expect(within(card('New kurta')).getByText('New since your last visit')).toBeTruthy()
     expect(within(card('Old kurta')).queryByText('New since your last visit')).toBeNull()
   })
@@ -158,8 +158,24 @@ describe('the submissions page', () => {
   it('marks nothing as new on the first visit', async () => {
     serve([submission({ decided_at: '2026-11-13T12:00:00Z' })])
     await open()
-    await screen.findByRole('heading', { level: 3, name: 'Indigo kurta' })
+    await screen.findByRole('heading', { level: 2, name: 'Indigo kurta' })
     expect(screen.queryByText('New since your last visit')).toBeNull()
+  })
+
+  it('offers the first page when the address points past the last one', async () => {
+    const state = serve([submission()])
+    server.use(
+      http.get(LIST, ({ request }) => {
+        const offset = Number(new URL(request.url).searchParams.get('offset'))
+        return HttpResponse.json({ items: offset === 0 ? state.items : [], total: state.items.length, limit: 20, offset })
+      }),
+    )
+    const { router, user } = await open('/submissions?page=4')
+    expect(await screen.findByRole('heading', { name: 'Nothing on this page' })).toBeTruthy()
+    expect(screen.queryByText('Nothing submitted yet')).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Go to the first page' }))
+    await waitFor(() => expect(router.state.location.search).toBe(''))
+    expect(await screen.findByRole('heading', { level: 2, name: 'Indigo kurta' })).toBeTruthy()
   })
 
   it('tells a vendor who has submitted nothing what to do next', async () => {

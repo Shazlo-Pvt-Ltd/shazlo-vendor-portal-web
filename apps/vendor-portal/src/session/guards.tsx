@@ -1,6 +1,7 @@
 import { Box, Button, CircularProgress, Typography } from '@mui/material'
 import type { ReactNode } from 'react'
-import { Navigate, Outlet, useLocation } from 'react-router'
+import { Link, Navigate, Outlet, useLocation } from 'react-router'
+import { PageHeader } from '../ui/PageHeader'
 import { useSession } from './AuthProvider'
 import { BlockedPage } from './BlockedPage'
 import { safeReturnTo } from './returnTo'
@@ -66,17 +67,21 @@ export function PublicOnly({ children }: { children?: ReactNode }) {
   return children ?? <Outlet />
 }
 
-/** Pages only the vendor's owner may open. Staff see a plain "not allowed" page, not a redirect. */
+/**
+ * Pages only the vendor's owner may open. Staff who open one by its address see a "not allowed"
+ * page (a 403) inside the frame, never the page itself, an empty list or a redirect.
+ */
 export function RequireRole({ role, children }: { role: Role; children?: ReactNode }) {
   const session = useSession()
   if (session.role !== role) {
     return (
-      <Box component="main" sx={{ p: 3, maxWidth: 560, mx: 'auto', mt: 8 }}>
-        <Typography component="h1" variant="h4" gutterBottom>
-          You don't have access to this page
-        </Typography>
-        <Typography>Ask the owner of your vendor account to do this for you.</Typography>
-      </Box>
+      <>
+        <PageHeader title="You don't have access to this page" description="Only the owner of your vendor account can open it (error 403)." />
+        <Typography sx={{ mb: 3 }}>If you need something done here, ask the owner of your vendor account.</Typography>
+        <Button component={Link} to="/" variant="contained">
+          Go to the overview
+        </Button>
+      </>
     )
   }
   return children ?? <Outlet />

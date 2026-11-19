@@ -151,6 +151,22 @@ describe('the overview', () => {
     expect(within(card).queryByText('Waiting kurta')).toBeNull()
   })
 
+  it('lists the most recent decision first, whenever it was submitted', async () => {
+    server.use(
+      ...brandHandlers(),
+      productsHandler({}),
+      submissionsHandler(0, [
+        decision({ id: 'p1', title: 'Decided first', submitted_at: '2026-11-12T09:00:00Z', decided_at: '2026-11-13T09:00:00Z' }),
+        decision({ id: 'p2', title: 'Decided last', submitted_at: '2026-11-11T09:00:00Z', decided_at: '2026-11-14T09:00:00Z' }),
+      ]),
+    )
+    await open()
+    const card = await screen.findByRole('region', { name: 'Submissions' })
+    await within(card).findByText('Decided last')
+    const items = within(within(card).getByRole('list')).getAllByRole('listitem')
+    expect(items.map((item) => item.textContent)).toEqual([expect.stringContaining('Decided last'), expect.stringContaining('Decided first')])
+  })
+
   it('has a card that links to every section the vendor can open', async () => {
     server.use(...brandHandlers(), productsHandler({}), submissionsHandler())
     await open('owner')

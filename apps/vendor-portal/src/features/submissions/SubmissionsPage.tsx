@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { api } from '../../api'
 import { EmptyState, ErrorState, PageHeader, PageSkeleton } from '../../ui'
+import { exactTime, relativeTime } from '../time'
 import { endVisit, previousVisit } from './lastVisit'
 import { ReviewReason } from './ReviewReason'
 import {
@@ -13,14 +14,12 @@ import {
   SUBJECTS,
   SUBJECT_LABEL,
   SUBMISSION_STATUSES,
-  exactTime,
   filtersFromSearch,
   fixLink,
   isNewSince,
   isSuperseded,
   itemName,
   queryFromFilters,
-  relativeTime,
   reviewKey,
   searchFromFilters,
   statusChanges,
@@ -63,7 +62,7 @@ function Row({ item, items, since }: { item: Submission; items: readonly Submiss
     <Paper component="li" variant="outlined" sx={{ listStyle: 'none', p: 2, borderColor: rejected && !superseded ? 'error.main' : undefined }}>
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'space-between', alignItems: { sm: 'flex-start' } }}>
         <Box sx={{ minWidth: 0 }}>
-          <Typography component="h3" variant="subtitle1" sx={{ overflowWrap: 'anywhere' }}>
+          <Typography component="h2" variant="subtitle1" sx={{ overflowWrap: 'anywhere' }}>
             {name}
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -163,6 +162,20 @@ export default function SubmissionsPage() {
         }
       />
     )
+  } else if (submissions.data.items.length === 0 && submissions.data.total > 0) {
+    // A page past the end (an old or hand-edited address): the list itself is not empty.
+    const { total } = submissions.data
+    body = (
+      <EmptyState
+        title="Nothing on this page"
+        description={`There ${total === 1 ? 'is 1 submission' : `are ${total} submissions`}${filtered ? ' that match' : ''}; this page is past the last one.`}
+        action={
+          <Button onClick={() => setParams(searchFromFilters({ ...filters, page: 1 }), { replace: true })} variant="outlined">
+            Go to the first page
+          </Button>
+        }
+      />
+    )
   } else if (submissions.data.items.length === 0) {
     body = (
       <EmptyState
@@ -182,7 +195,7 @@ export default function SubmissionsPage() {
       <>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
           {total} {total === 1 ? 'submission' : 'submissions'}
-          {filtered ? ' match' : ''}, newest first.
+          {filtered ? (total === 1 ? ' matches' : ' match') : ''}, newest first.
         </Typography>
         <Stack component="ul" aria-label="Submissions" spacing={1.5} sx={{ p: 0, m: 0 }}>
           {items.map((item) => (

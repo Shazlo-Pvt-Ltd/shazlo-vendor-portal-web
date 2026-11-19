@@ -6,7 +6,6 @@ import {
   isSuperseded,
   itemName,
   queryFromFilters,
-  relativeTime,
   reviewKey,
   searchFromFilters,
   statusChanges,
@@ -55,12 +54,5 @@ describe('submission rules', () => {
     expect(filtersFromSearch(new URLSearchParams('status=lost&subject=x&page=-1'))).toEqual({ status: '', subject: '', page: 1 })
     expect(searchFromFilters({ status: '', subject: 'brand_profile', page: 1 }).toString()).toBe('subject=brand_profile')
     expect(queryFromFilters({ status: '', subject: '', page: 3 })).toEqual({ status: 'all', limit: 20, offset: 40 })
-  })
-
-  it('says how long ago', () => {
-    const now = Date.parse('2026-11-19T12:00:00Z')
-    expect(relativeTime('2026-11-19T11:59:30Z', now)).toBe('just now')
-    expect(relativeTime('2026-11-18T12:00:00Z', now)).toBe('yesterday')
-    expect(relativeTime('2026-11-05T12:00:00Z', now)).toBe('2 weeks ago')
   })
 })
