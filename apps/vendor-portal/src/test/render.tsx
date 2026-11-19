@@ -7,12 +7,13 @@ import { routes } from '../app/routes'
 import { DEMO_LOGIN } from '../mocks/db'
 import { resetMockDb } from './server'
 
-export type Viewport = 'desktop' | 'mobile'
-const WIDTH: Record<Viewport, number> = { desktop: 1440, mobile: 390 }
+// Named widths, or a number of CSS pixels (the shell switches at 600 and 1024, src/shell/layout.ts).
+export type Viewport = 'desktop' | 'tablet' | 'mobile' | number
+const WIDTH: Record<Exclude<Viewport, number>, number> = { desktop: 1440, tablet: 768, mobile: 390 }
 
 // MUI's useMediaQuery reads matchMedia; answer min/max-width queries for the chosen width.
 export function setViewport(viewport: Viewport) {
-  const width = WIDTH[viewport]
+  const width = typeof viewport === 'number' ? viewport : WIDTH[viewport]
   window.matchMedia = (query: string) => {
     const min = /min-width:\s*([\d.]+)px/.exec(query)
     const max = /max-width:\s*([\d.]+)px/.exec(query)

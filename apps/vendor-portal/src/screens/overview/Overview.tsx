@@ -8,7 +8,10 @@ import { useMe, useSummary } from '../../api/queries'
 import { paths } from '../../app/paths'
 import { overviewCopy as copy } from '../../copy/overview'
 import { formatCount, formatDate } from '../../lib/format'
+import { useNavMode } from '../../shell/layout'
+import { SetupBanner } from '../../shell/SetupBanner'
 import { BrandCard } from './BrandCard'
+import { PhoneHome } from './PhoneHome'
 import { RecentDecisions } from './RecentDecisions'
 
 const touch = { minHeight: { xs: 44, md: 36 } }
@@ -68,14 +71,17 @@ function Figures({ summary, desktop }: { summary: ReturnType<typeof useSummary>;
   )
 }
 
-// V-04: what needs attention first (sent back), then the catalogue in numbers, then decisions and the brand page.
-export default function Overview() {
+// V-04 on tablets and desktops (Build 2): setup progress, what needs attention first (sent back),
+// then the products in numbers, then decisions and the brand page.
+function WideOverview() {
   const desktop = useMediaQuery((t: Theme) => t.breakpoints.up('md'), { noSsr: true })
   const summary = useSummary()
   const sentBack = summary.data?.sent_back ?? 0
 
   return (
     <>
+      {/* The setup banner lives here only, not on every page (spec §4). */}
+      <SetupBanner />
       <PageHeader
         title={copy.title}
         subtitle={<Subtitle />}
@@ -100,4 +106,9 @@ export default function Overview() {
       </Stack>
     </>
   )
+}
+
+// Home. Phones get the calmer one-column page (spec §4); wider windows keep the Build 2 overview.
+export default function Overview() {
+  return useNavMode() === 'phone' ? <PhoneHome /> : <WideOverview />
 }

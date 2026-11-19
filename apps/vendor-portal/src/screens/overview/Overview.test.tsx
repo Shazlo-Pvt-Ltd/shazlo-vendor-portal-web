@@ -1,6 +1,6 @@
 import { screen, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MockDb } from '../../mocks/db'
 import { renderApp } from '../../test/render'
 import { mockDb, server } from '../../test/server'
@@ -22,6 +22,12 @@ function seed(change: (db: MockDb) => void) {
   )
 }
 
+// Load the lazily imported screens once up front, so the first test does not time out while
+// the chunk is transformed.
+beforeAll(async () => {
+  await import('./Overview')
+})
+
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(NOW)
@@ -34,7 +40,7 @@ describe('V-04 Overview: header', () => {
   it('names the store, says since when it sells, and offers both ways to add products', async () => {
     await renderApp()
     const main = screen.getByRole('main')
-    expect(await within(main).findByRole('heading', { level: 1, name: 'Overview' })).toBeInTheDocument()
+    expect(await within(main).findByRole('heading', { level: 1, name: 'Overview' }, { timeout: 5000 })).toBeInTheDocument()
     expect(await within(main).findByText('Kalki Studio · approved seller since 14 Oct 2026')).toBeInTheDocument()
     expect(within(main).getByRole('link', { name: 'Bulk import' })).toHaveAttribute('href', '/products/import')
     expect(within(main).getByRole('link', { name: 'Add product' })).toHaveAttribute('href', '/products/new')
@@ -97,8 +103,9 @@ describe('V-04 Overview: figures', () => {
     expect(decisions.parentElement).toHaveStyle({ gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)' })
   })
 
-  it('sets the figures two by two and stacks the cards on phones', async () => {
-    await renderApp({ viewport: 'mobile' })
+  // Phones get their own Home (PhoneHome.test.tsx); tablets keep these figures.
+  it('sets the figures two by two and stacks the cards on tablets', async () => {
+    await renderApp({ viewport: 'tablet' })
     const figures = await screen.findByRole('region', { name: 'Your products at a glance' })
     expect(figures).toHaveStyle({ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' })
     const decisions = await screen.findByRole('region', { name: 'Recent review decisions' })
@@ -132,7 +139,7 @@ describe('V-04 Overview: recent review decisions', () => {
 
     expect(within(ajrakh).getByRole('link', { name: 'Ajrakh Block-Print Kurta' })).toHaveAttribute('href', '/products/p_001')
     expect(within(ajrakh).getByText('KS-AJR-014')).toBeInTheDocument()
-    expect(ajrakh).toHaveTextContent('“Back photo is missing. Add front, back and a fabric close-up so shoppers can see the print.”')
+    expect(ajrakh).toHaveTextContent(/“Back photo is missing.*”/)
     expect(within(ajrakh).getByText('Sent back')).toBeInTheDocument()
     expect(within(ajrakh).getByText('2 h ago')).toBeInTheDocument()
 

@@ -6,7 +6,7 @@ import { miscCopy as copy } from '../../copy/misc'
 
 type Page = keyof typeof copy.pages
 
-// Store settings, Team and Help are in the sidebar but not designed yet (no wireframes).
+// Team and Help are in the navigation but not designed yet (no wireframes).
 export function ComingSoon({ page }: { page: Page }) {
   const p = copy.pages[page]
   return (

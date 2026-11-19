@@ -20,4 +20,13 @@ export function useCrumb(label: string | null | undefined) {
 
 export const usePageCrumb = () => useContext(Context).label
 
-export type RouteHandle = { crumbs?: { label: string; to?: string }[] }
+// Where the phone top bar's Back link goes from this page ("Back to Store").
+export type BackLink = { to: string; label: string }
+
+export type RouteHandle = {
+  crumbs?: { label: string; to?: string }[]
+  // Inner pages name their parent; on phones the top bar shows a Back link to it.
+  back?: BackLink
+  // A full-screen task (see src/shell/task.tsx): on phones the tab bar hides and the top bar keeps only Back.
+  fullScreen?: boolean
+}

@@ -26,6 +26,59 @@ export function changedFieldList(fields: string[]): string {
 
 export const overviewCopy = {
   title: 'Overview',
+
+  // Home on phones (spec §4): one next step, the setup tasks, what needs changes, quiet counts.
+  home: {
+    title: 'Home',
+    next: {
+      title: 'What to do next',
+      loading: 'Loading your next step',
+      error: 'Your next step did not load. Check your connection and try again.',
+      store_details: {
+        title: 'Finish your store details',
+        body: 'Pickup address, payouts and returns. We need them before your products can go for review.',
+        action: 'Finish store details',
+      },
+      brand_page: {
+        title: 'Set up your brand page',
+        body: 'Shoppers see it next to every product: your logo, cover photo and story.',
+        action: 'Set up brand page',
+      },
+      first_product: {
+        title: 'Add your first product',
+        body: 'Photos, sizes and price. Our team checks it, usually within a day, and then it goes live.',
+        action: 'Add product',
+      },
+      add_product: {
+        title: 'Add a product',
+        body: 'New products are usually checked within a day.',
+        action: 'Add product',
+      },
+    },
+    tasks: {
+      title: 'Set up your shop',
+      progress: (done: number, total: number) => `${done} of ${total} done`,
+      done: 'Done',
+      todo: 'To do',
+      labels: { store_details: 'Store details', brand_page: 'Brand page', first_product: 'First product' },
+    },
+    changes: {
+      title: 'Needs your changes',
+      loading: 'Loading what needs your changes',
+      error: 'Sent-back items did not load. Check your connection and try again.',
+      fix: 'Fix this',
+      fixLabel: (title: string) => `Fix this: ${title}`,
+      brandPage: 'Brand page',
+      seeAll: (n: number) => `See all ${formatCount(n)}`,
+    },
+    counts: {
+      title: 'Your products',
+      loading: 'Loading product counts',
+      rows: { approved: 'Live', pending_review: 'In review', draft: 'Drafts' },
+    },
+    seeAllDecisions: 'See all review decisions',
+  },
+
   subtitle: (brandName: string, approvedOn: string | null) => (approvedOn ? `${brandName} · approved seller since ${approvedOn}` : brandName),
   bulkImport: 'Bulk import',
   addProduct: 'Add product',

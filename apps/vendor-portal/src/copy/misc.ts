@@ -1,18 +1,11 @@
 export const miscCopy = {
-  backToOverview: 'Back to overview',
+  backToOverview: 'Go to Home',
   notFoundTitle: 'We could not find that page',
-  notFoundBody: 'The link may be old, or the page moved. Everything you manage is in the menu.',
+  notFoundBody: 'The link may be old, or the page moved. Everything you manage is a tap or two from Home.',
   errorTitle: 'This page did not load',
   errorBody: 'Something went wrong on our side. Reload the page; your saved work is safe.',
   reload: 'Reload page',
   pages: {
-    settings: {
-      title: 'Store settings',
-      subtitle: 'Return policy, dispatch time, pickup address and payout details.',
-      emptyTitle: 'Store settings are on the way',
-      emptyBody: 'Until then, email partners@shazlo.store to change your return policy, pickup address or bank details.',
-      illustration: 'store',
-    },
     team: {
       title: 'Team',
       subtitle: 'People who can manage this store with you.',

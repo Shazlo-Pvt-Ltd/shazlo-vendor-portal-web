@@ -2,10 +2,9 @@ import { Box, LinearProgress, Link, Stack, Typography } from '@mui/material'
 import { Banner, brand } from '@shazlo/ui'
 import { useState } from 'react'
 import { Link as RouterLink } from 'react-router'
-import type { Schemas } from '../api/client'
 import { useMe } from '../api/queries'
-import { paths } from '../app/paths'
 import { shellCopy as copy } from '../copy/shell'
+import { setupSteps } from './setup'
 
 const dismissKey = (vendorId: string) => `shazlo.seller.setup-dismissed.${vendorId}`
 
@@ -17,17 +16,8 @@ function readDismissed(vendorId: string): boolean {
   }
 }
 
-export function setupSteps(setup: Schemas['Me']['setup']) {
-  return [
-    { key: 'password_set', done: setup.password_set, label: copy.setupSteps.password_set, to: paths.settings },
-    { key: 'brand_page', done: setup.brand_page, label: copy.setupSteps.brand_page, to: paths.brand },
-    { key: 'first_product', done: setup.first_product, label: copy.setupSteps.first_product, to: paths.newProduct },
-    { key: 'return_policy', done: setup.return_policy, label: copy.setupSteps.return_policy, to: paths.settings },
-    { key: 'live_products', done: setup.live_products >= setup.live_target, label: copy.setupSteps.live_products(setup.live_products, setup.live_target), to: paths.products },
-  ]
-}
-
-// Options board pick: a slim progress banner on every page until setup is done or closed.
+// Setup progress on Home (tablets and desktops) until setup is done or the seller closes it.
+// Phones show the same tasks as Home's "What to do next" card and task list instead.
 export function SetupBanner() {
   const me = useMe().data
   const [dismissed, setDismissed] = useState<string | null>(null)
@@ -59,11 +49,12 @@ export function SetupBanner() {
             <Typography variant="body1" component="span" sx={{ whiteSpace: 'nowrap' }}>
               {copy.setupTitle(done, steps.length)}
             </Typography>
+            {/* Navy, not yellow: amber on the pale banner is too faint to read as progress. */}
             <LinearProgress
               variant="determinate"
               value={(done / steps.length) * 100}
               aria-hidden="true"
-              sx={{ flex: 1, maxWidth: 240, height: 6, borderRadius: 3, bgcolor: 'rgba(255, 252, 227, 0.9)', '& .MuiLinearProgress-bar': { bgcolor: brand.amber, borderRadius: 3 } }}
+              sx={{ flex: 1, maxWidth: 240, height: 6, borderRadius: 3, bgcolor: 'rgba(16, 60, 100, 0.12)', '& .MuiLinearProgress-bar': { bgcolor: brand.navy, borderRadius: 3 } }}
             />
             <Typography variant="body2" component="span" color="text.secondary">
               {copy.setupNext}{' '}

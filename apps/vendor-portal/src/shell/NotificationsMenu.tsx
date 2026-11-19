@@ -25,6 +25,8 @@ function hrefFor(item: Schemas['ReviewItem']) {
 }
 
 // Bell in the top bar (options board pick): the latest review decisions, newest first.
+// The dot is only for what needs the seller: sent-back items they have not seen yet. Approvals
+// are listed but never light the bell (calm rules, spec §8).
 export function NotificationsMenu() {
   const navigate = useNavigate()
   const vendorId = useMe().data?.vendor.id
@@ -36,7 +38,7 @@ export function NotificationsMenu() {
 
   const lastSeen = seenAt ?? (vendorId ? readSeen(vendorId) : 0)
   const since = Math.max(lastSeen, mountedAt - WEEK)
-  const fresh = decided.filter((r) => Date.parse(r.decided_at!) > since).length
+  const fresh = decided.filter((r) => r.state === 'rejected' && Date.parse(r.decided_at!) > since).length
 
   const open = (el: HTMLElement) => {
     setAnchor(el)
@@ -56,7 +58,7 @@ export function NotificationsMenu() {
   return (
     <>
       <IconButton
-        aria-label={fresh ? copy.notificationsNew(fresh) : copy.notifications}
+        aria-label={fresh ? copy.notificationsNeedChanges(fresh) : copy.notifications}
         aria-haspopup="menu"
         aria-expanded={anchor ? 'true' : undefined}
         onClick={(e) => open(e.currentTarget)}
