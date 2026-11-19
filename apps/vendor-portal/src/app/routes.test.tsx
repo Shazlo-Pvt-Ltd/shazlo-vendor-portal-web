@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { RouterProvider, createMemoryRouter } from 'react-router'
 import { describe, expect, it } from 'vitest'
 import { AuthProvider } from '../session/AuthProvider'
@@ -37,7 +37,8 @@ describe('routes', () => {
   it.each(portalRoutes.filter((route) => !built.has(route.path)))('$path shows "$title" and sets the page title', async ({ path, title, access }) => {
     open(path.replace(':productId', '123'), access !== 'public' && access !== 'open')
     expect(await screen.findByRole('heading', { level: 1, name: title })).toBeTruthy()
-    expect(document.title).toBe(`${title} · Shazlo Vendor Portal`)
+    // PageHeader sets the title in an effect, which can run just after the heading is in the DOM.
+    await waitFor(() => expect(document.title).toBe(`${title} · Shazlo Vendor Portal`))
   })
 
   it('shows the not-found page for an unknown address', async () => {
