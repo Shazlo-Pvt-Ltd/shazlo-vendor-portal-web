@@ -1,0 +1,90 @@
+name: osv-scanner
+
+# Reports every known vulnerability (OSV.dev) in the npm lockfiles and the Python services'
+# resolved dependencies to code scanning (Security > Code scanning, tool "osv-scanner").
+# A reporting job: it fails only when the scan itself cannot run. Pull requests are gated on
+# newly added vulnerable dependencies by dependency-review, not here.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Advisories published after a merge show up on main within a week.
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: osv-scanner-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Bump both together (Dependabot does not update release binaries). The SHA-256 is the
+  # linux_amd64 line of osv-scanner_SHA256SUMS in the release.
+  OSV_SCANNER_VERSION: 2.7.1
+  OSV_SCANNER_SHA256: fb7dab19a8bd9bbe5c3189f09d4b7ee1820c9553a23bac202648a56efd2f6ee8
+
+jobs:
+  scan:
+    name: osv-scanner
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write # uploads the SARIF report to code scanning
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Install osv-scanner (checksum verified)
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/osv-scanner" \
+            "https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
+          echo "${OSV_SCANNER_SHA256}  $RUNNER_TEMP/osv-scanner" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+          "$RUNNER_TEMP/osv-scanner" --version
+      # The Python services pin ranges in pyproject.toml and have no lockfile, so there is nothing
+      # for osv-scanner to read. Resolve each one's runtime dependencies (what its image installs)
+      # with pip, without installing, into requirements-resolved.txt next to its pyproject.toml.
+      # The shared packages come from their paths and are left out: they are this repository's code.
+      - name: Resolve the Python dependencies
+        run: |
+          for dir in services/identity-api services/vendor-api services/central-stub packages/py-auth packages/py-security; do
+            (
+              cd "$dir"
+              args=(.)
+              if [ -f requirements-shared.txt ]; then args=(-r requirements-shared.txt .); fi
+              python -m pip install --dry-run --ignore-installed --quiet --disable-pip-version-check \
+                --report "$RUNNER_TEMP/report.json" "${args[@]}"
+              python - "$RUNNER_TEMP/report.json" > requirements-resolved.txt <<'PY'
+          import json, sys
+          for item in json.load(open(sys.argv[1], encoding="utf-8"))["install"]:
+              if not item["download_info"]["url"].startswith("file:"):
+                  print(f'{item["metadata"]["name"]}=={item["metadata"]["version"]}')
+          PY
+              echo "$dir: $(wc -l < requirements-resolved.txt) packages"
+            )
+          done
+      - name: Scan
+        run: |
+          set +e
+          "$RUNNER_TEMP/osv-scanner" scan source --recursive --format sarif --output osv.sarif ./
+          status=$?
+          "$RUNNER_TEMP/osv-scanner" scan source --recursive --format markdown ./ >> "$GITHUB_STEP_SUMMARY" 2>/dev/null
+          # 0: nothing found, 1: vulnerabilities found (reported, not failed). Anything else is an error.
+          if [ "$status" -gt 1 ]; then
+            echo "::error::osv-scanner exited with $status"
+            exit "$status"
+          fi
+      - name: Upload to code scanning
+        if: ${{ !cancelled() && hashFiles('osv.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: osv.sarif
+          category: osv-scanner
