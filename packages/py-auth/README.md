@@ -1,6 +1,6 @@
 # shazlo-auth
 
-Verifies identity-api access tokens the same way in every service, so security code is not copied between them (ADR 0009). Used by `services/identity-api` and, later, `vendor-api` and the vendor-admin backend.
+Verifies identity-api access tokens the same way in every service, so security code is not copied between them (ADR 0009). Used by `services/identity-api` and `services/vendor-api` (for its `/v1/admin/*` group, which accepts only identity-api tokens).
 
 ## Install (path dependency)
 

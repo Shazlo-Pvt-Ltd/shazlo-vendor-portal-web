@@ -119,6 +119,10 @@ The Phase 2 review follow-up changes the shared guard, and both services' login,
 - **Publish the package to a private index.** Needed only for polyrepo; in this repository path dependencies are simpler and keep the PyPI name risk out. Rejected.
 - **Make vendor-api a module of identity-api.** [0009-auth-model.md](0009-auth-model.md) decides on two issuers, each with its own key and JWKS, so that a vendor token can never act as an admin. One service would put both behind one key ring. Out of scope.
 
+## Update 2026-11-19
+
+Implemented as `packages/py-security` (#113, #114) and used by identity-api, vendor-api and, for request verification only, `central-stub`. `shazlo_security.signing` (HMAC request signing, ADR 0003) was added later, outside the scope this ADR describes. The status above is unchanged: this ADR is still `proposed` and has not been marked accepted.
+
 ## Revisit when
 
 A third service needs sessions, tokens or rate limits (check that the package still has the right scope), the package starts to collect code that is not security-related, or vendor sessions need semantics that cannot be expressed as configuration.

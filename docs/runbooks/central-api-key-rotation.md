@@ -17,7 +17,7 @@ One secret (and key id) per environment, never shared across environments. The s
 
 | Environment | vendor-api reads it from | Central app / receiver holds it in | Notes |
 |---|---|---|---|
-| Local development | `services/vendor-api/.env` (git-ignored), or unset: publishing is off | the stub receiver's own environment (`CENTRAL_SIGNING_SECRET` or its documented test secret) | The contract's test secret (`shazlo-contract-test-secret-not-for-production`) is for tests only; never use it outside them |
+| Local development | `.env` at the repository root for docker-compose (`CENTRAL_SIGNING_SECRET`), or `services/vendor-api/.env` when run on the host (git-ignored), or unset: publishing is off | the stub receiver's `STUB_SIGNING_KEYS` (`CENTRAL_STUB_SIGNING_KEYS` in compose; its default is a development secret) | The contract's test secret (`shazlo-contract-test-secret-not-for-production`) is for tests only; never use it outside them |
 | CI | generated per run inside the test, or the contract test vector | n/a | No real secret is stored as a CI secret |
 | Staging | the platform's secret manager, injected as `CENTRAL_SIGNING_SECRET` | the central app's secret manager for staging | Its own secret, not production's |
 | Production | the platform's secret manager, injected as `CENTRAL_SIGNING_SECRET` (`prod` also needs `CENTRAL_API_URL` over https) | the central app's secret manager for production | Exchanged secret-manager to secret-manager, or through a one-time-secret link; never by chat, email or git |
@@ -39,7 +39,7 @@ Call the current key `OLD` (id `k1`) and the new one `NEW` (id `k2`; use a new i
 
 1. Generate `NEW` and add it to the central app (step 1 and 2 above).
 2. Switch vendor-api to `NEW` and roll immediately.
-3. **Remove the leaked key from the central app right away**, without waiting for a retry window: events signed with it fail with `401 unknown_key`, are retried, and go out with `NEW` once their instance has restarted. Nothing is lost; the outbox keeps them.
+3. **Remove the leaked key from the central app right away**, without waiting for a retry window: events signed with it fail with `401 unknown_key`. A `401` does not use up an event's attempts: the event waits (a minute at a time), and five in a row make the worker log `publishing paused` (`alert: true`) and try only one event every 5 minutes, until an instance with `NEW` answers. They go out with `NEW` once their instance has restarted. Nothing is lost; the outbox keeps them.
 4. Look in the central app's logs for requests signed with the leaked key id that vendor-api did not send. Each carries an `event_id`; compare it with the outbox.
 
 The 60-second timestamp window only limits replays of a captured request; it is no defence against a leaked secret.

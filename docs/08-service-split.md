@@ -6,6 +6,8 @@
 | Date | 2026-10-20 |
 | Depends on | `architecture.md`, `adr/0007-core-and-vendor-admin-services.md`, `adr/0008-commerce-in-core.md` |
 
+> **Status note (2026-11-19).** The vendor-admin service of this split is built in this repository as `services/vendor-api` (admin sign-in: `services/identity-api`); `apps/vendor-admin` is the React review module, not this service. See [what is built and how the names differ](README.md#what-is-built-and-what-these-documents-are).
+
 ## 1. The decision in one paragraph
 
 The team agreed that the vendor and admin side is a **separate FastAPI service**. The first draft of that split also put **orders and payments** in it, with Razorpay behind a seller back-office. That was wrong for an e-commerce platform: checkout and payment are part of the customer's buying path. In this version **Core (Django) owns commerce** (cart, checkout, orders, stock, payments, refunds, returns) and the **Vendor-admin service (FastAPI) is only the seller back-office** (vendors, catalog authoring, fulfilment screens, statements, admin tools). See ADR 0008.

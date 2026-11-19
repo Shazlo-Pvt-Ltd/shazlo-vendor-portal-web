@@ -39,7 +39,7 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
-      # identity-api's end-to-end test needs a real Redis (the packages use fakeredis). It empties database 1, never 0.
+      # The end-to-end tests of identity-api and vendor-api need a real Redis (the packages use fakeredis). They empty database 1, never 0.
       redis:
         image: redis:7
         ports:
@@ -70,6 +70,10 @@ jobs:
             pip install -r requirements-shared.txt
           fi
       - run: pip install -e '.[dev]'
+      # vendor-api's publishing end-to-end test talks to the real stub receiver, which is a sibling
+      # service (not a shared package): install it from its path so that test runs instead of skipping.
+      - if: ${{ matrix.service == 'vendor-api' }}
+        run: pip install --config-settings editable_mode=compat -e ../central-stub
       - run: ruff check .
       - run: ruff format --check .
       - run: mypy

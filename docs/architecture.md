@@ -9,6 +9,8 @@
 
 **Legend.** `[Decided]` agreed by the team. `[Assumption]` a proposal that needs confirmation (listed in section 15). `[As-is]` true in today's code. `[MVP]` built by the Oct 30 freeze. `[Target]` after the MVP.
 
+> **Status note (2026-11-19).** This is the design as written on 2026-10-20, for the whole system including Core, which is built in a separate repository. In this repository the seller back-office is `services/vendor-api`, and admin sign-in is `services/identity-api`: admins and vendors do not share one issuer or the `vendor` audience of sections 5 and 8. They follow [ADR 0009](adr/0009-auth-model.md) (identity-api tokens for admins, vendor-api's own tokens for vendors, each with its own key and JWKS, audience `vendor-api`). The events from vendor-api to Core follow [ADR 0003](adr/0003-central-app-publishing-contract.md): five event types pushed from vendor-api's outbox to `POST /internal/v1/events` by a worker, with a nightly reconciliation and a `resync` command; there is no `product.updated` (a new approved version is another `product.published`) and vendor-api has no inbox yet. The [roadmap](ROADMAP.md) says which phases are delivered; see also [what is built and how the names differ](README.md#what-is-built-and-what-these-documents-are).
+
 ## 1. Purpose, scope and constraints
 
 ### 1.1 Purpose
