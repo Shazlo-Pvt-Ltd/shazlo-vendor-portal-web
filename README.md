@@ -131,6 +131,12 @@ workflow files of the other workflows; it also runs weekly. `services-ci` tests 
 local-development steps above against the real compose file. Test results and coverage are kept as
 GitHub Actions artifacts for 14 days.
 
+Security scanning runs alongside them: CodeQL (`security-extended`, including the workflow files),
+dependency review and gitleaks on every pull request, OSV-Scanner and pip-audit on every pull request
+and weekly, zizmor and actionlint on workflow changes, and OpenSSF Scorecard weekly. Findings go to
+Security > Code scanning or the run summary. What each one checks, when it fails a pull request and
+how to triage or allowlist a finding are in [docs/security-scanning.md](docs/security-scanning.md).
+
 ## Workflow
 
 Each roadmap phase is a GitHub milestone. Each issue gets a branch named `phase-N/<issue#>-<slug>` and a PR with `Closes #N`.

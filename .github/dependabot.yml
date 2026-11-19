@@ -1,10 +1,14 @@
 # Dependency updates arrive as PRs that CI tests, instead of CI installing @latest on every run.
+# Every ecosystem waits 7 days after a release before proposing it (cooldown), so a compromised or
+# broken release has time to be noticed and pulled before it reaches a PR.
 version: 2
 updates:
   - package-ecosystem: npm
     directories: ["/", "/app", "/backend"]
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       # @vitest/coverage-v8 pins vitest to its own exact version, so separate PRs fail npm ci.
@@ -24,6 +28,8 @@ updates:
     directories: ["/services/identity-api", "/services/vendor-api", "/services/central-stub", "/packages/py-auth", "/packages/py-security"]
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       pip-minor-and-patch:
@@ -33,3 +39,40 @@ updates:
     directory: "/"
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
+
+  # The services' base images. The Python version is chosen together with services-ci's
+  # python-version and ruff's target-version, so a new Python minor is a deliberate change, not
+  # a Dependabot PR that moves only the Dockerfiles.
+  - package-ecosystem: docker
+    directories: ["/services/identity-api", "/services/vendor-api", "/services/central-stub"]
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+    groups:
+      docker:
+        patterns: ["*"]
+
+  # docker-compose.yml (local development and services-ci's compose job). A Postgres or Redis
+  # major changes the on-disk format of the local volumes, so majors are upgraded by hand.
+  - package-ecosystem: docker-compose
+    directory: "/"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: postgres
+        update-types: ["version-update:semver-major"]
+      - dependency-name: redis
+        update-types: ["version-update:semver-major"]
+    groups:
+      docker-compose:
+        patterns: ["*"]

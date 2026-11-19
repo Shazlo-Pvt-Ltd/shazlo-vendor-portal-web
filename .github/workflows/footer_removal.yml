@@ -6,14 +6,21 @@ on:
   pull_request:
     types: [opened, edited, reopened, synchronize]
 
-permissions:
-  issues: write
-  pull-requests: write
+permissions: {}
+
+concurrency:
+  # One run per issue or PR; a later edit supersedes an earlier one.
+  group: footer-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   strip-footer:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      # Both rewrite the body (a PR's body is updated through the issues API).
+      issues: write # an issue's body
+      pull-requests: write # a PR's body
     steps:
       - name: Strip "Generated with Claude Code" footer
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
