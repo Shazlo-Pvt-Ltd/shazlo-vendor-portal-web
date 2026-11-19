@@ -1,5 +1,6 @@
 import { cleanup, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { countdownClock } from '../../test/countdown'
 import { typeFast } from '../../test/typeFast'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
@@ -66,8 +67,9 @@ describe('forgot password', () => {
   it('counts down on a 429', async () => {
     server.use(http.post(`${BASE}/v1/auth/forgot-password`, () => apiErrorResponse(429, 'rate_limited', 'x', { 'Retry-After': '120' })))
     const user = await open()
+    const countdown = countdownClock(120)
     await send(user, 'asha@kala.example')
-    expect(await screen.findByText(/Try again in (120|119) s\./)).toBeTruthy()
+    countdown((await screen.findByText(/Try again in \d+ s\./)).textContent, /Try again in (\d+) s\./)
     expect((screen.getByRole('button', { name: 'Send the link' }) as HTMLButtonElement).disabled).toBe(true)
   })
 

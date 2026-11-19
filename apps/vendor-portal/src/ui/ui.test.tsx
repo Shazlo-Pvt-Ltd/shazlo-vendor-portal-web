@@ -1,3 +1,4 @@
+import { Chip } from '@mui/material'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
@@ -13,6 +14,26 @@ describe('PageHeader', () => {
     expect(document.title).toBe('Products · Shazlo Vendor Portal')
     expect(screen.getByText('Everything you sell.')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Add product' })).toBeTruthy()
+  })
+
+  it('keeps a text description a paragraph, and puts anything else where a chip may go', () => {
+    const error = vi.spyOn(console, 'error')
+    render(<PageHeader title="Products" description="Everything you sell." />)
+    expect(screen.getByText('Everything you sell.').tagName).toBe('P')
+    // A Chip's root is a <div>, which a <p> cannot hold: React warns, and the HTML is invalid.
+    const { container } = render(
+      <PageHeader
+        title="Kurta"
+        description={
+          <span>
+            SKU K-1 <Chip size="small" label="Draft" />
+          </span>
+        }
+      />,
+    )
+    expect(screen.getByText('Draft')).toBeTruthy()
+    expect(container.querySelector('p div, p p')).toBeNull()
+    expect(error).not.toHaveBeenCalled()
   })
 
   it('takes focus once when the shell asked for it, and not otherwise', () => {

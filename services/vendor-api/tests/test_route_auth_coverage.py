@@ -110,6 +110,38 @@ async def test_an_admin_token_opens_no_vendor_or_auth_route(
     assert {op: status for op, status in answers.items() if status != 401} == {}
 
 
+@pytest.mark.parametrize(
+    ("roles", "pending_password"),
+    [(["support"], False), ([], False), (["super_admin"], True)],
+    ids=["another-role", "no-role", "password-change-pending"],
+)
+async def test_an_admin_token_without_a_reviewer_role_opens_no_admin_route(
+    app: FastAPI, identity: Identity, roles: list[str], pending_password: bool
+) -> None:
+    """A valid identity-api token is not enough: every admin route needs a role that allows it,
+    and a token that only allows a password change opens none. A route mounted under /v1/admin
+    without the group's role check fails here."""
+    token = identity.token(roles, must_change_password=pending_password)
+    admin_ops = [op for op in protected(app) if op[1].startswith("/v1/admin")]
+    assert admin_ops
+    answers = {op: (await call(app, *op, token)).status_code for op in admin_ops}
+    assert {op: status for op, status in answers.items() if status != 403} == {}
+
+
+async def test_a_tampered_or_foreign_token_opens_nothing(app: FastAPI, identity: Identity) -> None:
+    """A vendor token re-signed by another key and an admin token for another audience are both
+    refused everywhere, as if there were no token."""
+    vendor = app.state.vendor_tokens.issue(
+        user_id=uuid.uuid4(), vendor_id=uuid.uuid4(), role=VendorUserRole.OWNER
+    ).token
+    header, payload, signature = vendor.split(".")
+    tampered = f"{header}.{payload}.{signature[::-1]}"
+    foreign = identity.token(["super_admin"], audience="identity-api")
+    for token in (tampered, foreign):
+        answers = {op: (await call(app, *op, token)).status_code for op in protected(app)}
+        assert {op: status for op, status in answers.items() if status != 401} == {}
+
+
 async def test_the_probe_catches_a_nested_router_without_auth(app: FastAPI) -> None:
     """The case the module-router check misses: a router nested inside another, given its
     prefix only when it is mounted."""

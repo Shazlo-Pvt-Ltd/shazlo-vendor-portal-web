@@ -16,6 +16,29 @@ const cases = readdirSync(new URL('examples/', contract)).filter((name) => name.
   name: name.replace('.json', ''), example: JSON.parse(read(`examples/${name}`)),
   validate: ajv.getSchema(`https://schemas.shazlo.store/central-ingest/v1/${name.replace('.json', '.schema.json')}`),
 }))
+const eventSchemas = readdirSync(new URL('schemas/', contract))
+  .filter((name) => name.endsWith('.schema.json') && name !== 'envelope.schema.json')
+  .map((name) => name.replace('.schema.json', ''))
+
+// The suites below are generated from the examples, so an event schema without an example would
+// silently go untested; and an example whose `type` disagrees with its file name would be checked
+// against the wrong schema.
+describe('the contract files', () => {
+  it('has one example for every event schema, and no example without a schema', () => {
+    expect(eventSchemas.length).toBeGreaterThan(0)
+    expect(cases.map(({ name }) => name).sort()).toEqual([...eventSchemas].sort())
+  })
+
+  it.each(cases)('names $name after the event type it holds', ({ name, example }) => {
+    expect(example.type).toBe(name)
+    expect(name.startsWith(`${example.aggregate.type}.`)).toBe(true)
+  })
+
+  it('lists every event type in the envelope, and only those', () => {
+    const envelope = JSON.parse(read('schemas/envelope.schema.json'))
+    expect([...envelope.properties.type.enum].sort()).toEqual([...eventSchemas].sort())
+  })
+})
 
 describe.each(cases)('$name publishing contract', ({ example, validate }) => {
   it('validates the checked-in example, including UUID and timestamp formats', () => {
@@ -46,6 +69,18 @@ describe.each(cases)('$name publishing contract', ({ example, validate }) => {
     invalid.payload[field] = field === 'stock' ? 1 : 'private'
     expect(validate(invalid)).toBe(false)
   })
+
+  it('rejects the example of every other event type', () => {
+    for (const other of cases.filter((c) => c.example.type !== example.type)) {
+      expect(validate(other.example), other.name).toBe(false)
+    }
+  })
+
+  it('rejects its own payload under another event type', () => {
+    for (const { name } of cases.filter((c) => c.example.type !== example.type)) {
+      expect(validate({ ...example, type: name }), name).toBe(false)
+    }
+  })
 })
 
 const exampleFor = (type) => structuredClone(cases.find(({ name }) => name === type).example)
@@ -56,6 +91,24 @@ describe('published product constraints', () => {
     const event = exampleFor('product.published')
     event.payload.variants[0].price_paise = amount
     expect(validateEvent(event)).toBe(false)
+  })
+
+  it.each([0, -1, 1.5, '1599', null])('rejects invalid MRP amount %j', (amount) => {
+    const event = exampleFor('product.published')
+    event.payload.variants[0].mrp_paise = amount
+    expect(validateEvent(event)).toBe(false)
+  })
+
+  it.each(['price_paise', 'mrp_paise', 'variant_id', 'sku'])('requires variant field %s', (field) => {
+    const event = exampleFor('product.published')
+    delete event.payload.variants[0][field]
+    expect(validateEvent(event)).toBe(false)
+  })
+
+  it('accepts one paise, the smallest price', () => {
+    const event = exampleFor('product.published')
+    Object.assign(event.payload.variants[0], { price_paise: 1, mrp_paise: 1 })
+    expect(validateEvent(event)).toBe(true)
   })
 
   it.each([0, 11])('rejects %i images outside the 1–10 boundary', (length) => {
@@ -110,6 +163,34 @@ describe('brand and lifecycle constraints', () => {
     expect(validateEvent(event)).toBe(false)
   })
 
+  it.each([
+    ['min_paise', -1],
+    ['min_paise', 1.5],
+    ['min_paise', '79900'],
+    ['max_paise', -1],
+    ['max_paise', 2999.5],
+    ['max_paise', null],
+  ])('rejects a price range with %s %j', (field, amount) => {
+    const event = exampleFor('brand_profile.published')
+    event.payload.price_range[field] = amount
+    expect(validateEvent(event)).toBe(false)
+  })
+
+  it.each(['min_paise', 'max_paise'])('requires price range field %s and nothing more', (field) => {
+    const event = exampleFor('brand_profile.published')
+    delete event.payload.price_range[field]
+    expect(validateEvent(event)).toBe(false)
+    const extra = exampleFor('brand_profile.published')
+    extra.payload.price_range.currency = 'INR'
+    expect(validateEvent(extra)).toBe(false)
+  })
+
+  it.each(['http://indigolane.example', 'javascript:alert(1)'])('rejects a website that is not https: %s', (url) => {
+    const event = exampleFor('brand_profile.published')
+    event.payload.website_url = url
+    expect(validateEvent(event)).toBe(false)
+  })
+
   it('requires at least one unique category', () => {
     const event = exampleFor('brand_profile.published')
     event.payload.categories = []
@@ -122,6 +203,12 @@ describe('brand and lifecycle constraints', () => {
     const event = exampleFor(type)
     event.payload.reason = 'unknown'
     expect(validateEvent(event)).toBe(false)
+  })
+
+  it.each(['approved', 'rejected', 'suspended'])('accepts vendor status %s', (status) => {
+    const event = exampleFor('vendor.status_changed')
+    event.payload.status = status
+    expect(validateEvent(event)).toBe(true)
   })
 
   it.each(['pending', 'deleted'])('rejects unpublished vendor status %s', (status) => {
