@@ -104,13 +104,12 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-# The ADR's claim, with the clock passed in (tests set it) instead of `now()`.
+# The ADR's claim, with the clock passed in (tests set it) instead of `now()`. The locking select
+# is a MATERIALIZED CTE so Postgres runs it once: as an `id IN (SELECT ... LIMIT n FOR UPDATE SKIP
+# LOCKED)` subquery the planner may re-run it for each row it updates and claim more than `n`.
 CLAIM = text(
     """
-    UPDATE outbox_events o
-    SET status = 'sending', locked_at = :now, claim_token = gen_random_uuid(),
-        attempts = o.attempts + 1
-    WHERE o.id IN (
+    WITH due AS MATERIALIZED (
       SELECT d.id
       FROM outbox_events d
       WHERE d.status = 'pending'
@@ -126,6 +125,11 @@ CLAIM = text(
       LIMIT :limit
       FOR UPDATE SKIP LOCKED
     )
+    UPDATE outbox_events o
+    SET status = 'sending', locked_at = :now, claim_token = gen_random_uuid(),
+        attempts = o.attempts + 1
+    FROM due
+    WHERE o.id = due.id
     RETURNING o.id, o.event_type, o.aggregate_type, o.aggregate_id, o.version, o.payload,
               o.created_at, o.attempts, o.claim_token
     """

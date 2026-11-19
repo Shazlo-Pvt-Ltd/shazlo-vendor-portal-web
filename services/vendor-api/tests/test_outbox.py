@@ -391,10 +391,7 @@ async def test_the_due_index_serves_the_workers_claim(session: AsyncSession) -> 
 # The claim exactly as ADR 0003 (section 5) gives it.
 CLAIM = text(
     """
-    UPDATE outbox_events o
-    SET status = 'sending', locked_at = now(), claim_token = gen_random_uuid(),
-        attempts = attempts + 1
-    WHERE o.id IN (
+    WITH due AS MATERIALIZED (
       SELECT d.id
       FROM outbox_events d
       WHERE d.status = 'pending'
@@ -410,6 +407,11 @@ CLAIM = text(
       LIMIT 20
       FOR UPDATE SKIP LOCKED
     )
+    UPDATE outbox_events o
+    SET status = 'sending', locked_at = now(), claim_token = gen_random_uuid(),
+        attempts = o.attempts + 1
+    FROM due
+    WHERE o.id = due.id
     RETURNING o.id
     """
 )
