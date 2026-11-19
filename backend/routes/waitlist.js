@@ -1,8 +1,16 @@
 import express from "express";
+import rateLimit from "express-rate-limit";
 import { addToWaitlist } from "../controllers/waitlist.js";
+import { rateLimitOptions } from "../lib/rateLimits.js";
 
-const router = express.Router();
+/** `rateLimits` overrides the budgets in lib/rateLimits.js (tests lower them). */
+export function createWaitlistRouter({ rateLimits } = {}) {
+  const router = express.Router();
+  const submitLimiter = rateLimit(rateLimitOptions("publicSubmit", rateLimits));
 
-router.post("/add", addToWaitlist);
+  router.post("/add", submitLimiter, addToWaitlist);
 
-export default router;
+  return router;
+}
+
+export default createWaitlistRouter();
