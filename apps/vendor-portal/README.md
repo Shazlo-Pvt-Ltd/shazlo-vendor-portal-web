@@ -362,3 +362,25 @@ host with progress (`XMLHttpRequest`: `fetch` cannot report upload progress), re
 - **Unsaved changes** are tracked by comparing what would be saved: leaving the page asks first (`useBlocker`), and closing the tab warns.
 - **A version in review is locked.** It says since when (from `GET /v1/vendor/submissions`), and editing a new draft is a deliberate button. Submitting is off until the decision, because the API allows one version in review (`409 review_pending` is explained if it happens anyway). A version that was not approved shows the admin's reason.
 - **Submitting** needs a category (checked before the call), asks for confirmation that says what happens next, and saves unsaved changes first. The **Published version** tab shows what shoppers see now, or that nothing is published yet.
+
+## Bulk import
+
+`src/features/import/` is `/import`.
+
+- **Template first.** The page downloads the template (Excel or CSV, from `GET .../import/template`) and explains each column
+  (`TEMPLATE_COLUMNS` in `rules.ts`, which mirrors vendor-api's `COLUMNS`).
+- **Checked in the browser before sending:** only `.csv` or `.xlsx`, not empty, at most 2 MB (`IMPORT_MAX_BYTES`, vendor-api's
+  default `import_max_bytes`; change both together). The file is sent as the request body with its own content type.
+- **Validate first, always.** "Check the file" runs `mode=validate`, which writes nothing, and shows the report: counts, an errors
+  table (row, column, problem) with a column filter and a search, a notice when the list was cut short, and the ignored columns.
+  The **error report** downloads as a CSV built in the browser (UTF-8 with a byte order mark so Excel reads it; any cell that a
+  spreadsheet would run as a formula is prefixed with an apostrophe).
+- **Import only after a check of the same file**, and only after a confirmation that states what will be written. Choosing another
+  file clears the check. The two modes are explained in plain words: `import` creates the products without problems and skips the
+  rest; `all_or_nothing` writes nothing if any row has a problem. `importProducts` takes the mode as a required argument, because
+  the API's default is `import`.
+- **Result:** created, unchanged and rejected counts, links to the new drafts, and "importing this file again is safe".
+- **Errors:** `413`, `415` and `422` (with the server's reason) and `429` (vendor-api allows 10 imports or checks an hour) have
+  their own messages. A check or an import can be cancelled; a cancelled or timed-out import says that some products may already
+  have been imported and that importing again is safe. There is no upload percentage: `fetch` cannot report one, and the files are
+  small.
