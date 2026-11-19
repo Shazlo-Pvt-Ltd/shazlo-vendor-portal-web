@@ -25,7 +25,10 @@ class RequestIdMiddleware:
             await self.app(scope, receive, send)
             return
 
-        incoming = dict(scope["headers"]).get(REQUEST_ID_HEADER.lower().encode(), b"").decode()
+        # Latin-1 maps every byte, so a header that is not UTF-8 is simply an unusable ID (replaced
+        # below) instead of a UnicodeDecodeError and a 500.
+        raw = dict(scope["headers"]).get(REQUEST_ID_HEADER.lower().encode(), b"")
+        incoming = raw.decode("latin-1")
         request_id = incoming if _VALID_REQUEST_ID.match(incoming) else uuid.uuid4().hex
         scope.setdefault("state", {})["request_id"] = request_id
         token = request_id_var.set(request_id)
