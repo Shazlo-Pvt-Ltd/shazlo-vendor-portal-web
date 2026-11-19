@@ -387,3 +387,24 @@ host with progress (`XMLHttpRequest`: `fetch` cannot report upload progress), re
   before the call; `422 product_incomplete`, `409 product_in_review`, `409 product_archived` and `409 nothing_to_submit`
   are explained in words, and `422` field messages go next to their fields (including `variants.N.price_paise`).
 - **Unsaved changes** are guarded by `useUnsavedChanges` (`src/hooks/`), shared with the brand page editor.
+
+## Submissions
+
+`src/features/submissions/` is `/submissions`; its card is on the Overview.
+
+- **The list** (`GET /v1/vendor/submissions`): the brand page's and the products' reviews, newest first, with a status chip in words
+  (In review, Approved, Not approved, Withdrawn) and the submitted and decided dates, relative with the exact time. Status, type and
+  page live in the address (`?status=rejected&subject=product&page=2`).
+- **A rejection** shows the admin's reason prominently through `ReviewReason`: as text, so a reason that looks like HTML is shown
+  literally, with its line breaks kept. "Fix and resubmit" goes to `/brand` or the product's page; it is replaced by "A newer version
+  was submitted" when a later version of the same thing is on the page. For a product that is already live, the row says the live
+  version is unchanged (it reads the product's detail, for rejected products only). The brand editor and the product form show the
+  same status and reason in a banner, and the brand editor also says when its latest version was approved.
+- **Freshness:** the list (and the Overview card) refetch every 60 s (`REFRESH_MS`) and when the window regains focus. A status that
+  changes while the page is open is announced in a polite live region.
+- **"New since your last visit"** marks decisions made after the vendor last left the page. The time is kept in memory
+  (`lastVisit.ts`), like the session: the portal writes nothing to web storage, so the marker starts over after a reload or a
+  sign-out.
+- **Overview:** how many items (brand page and products together) are in review, and the latest three decisions, a rejected one
+  linking to its fix.
+- **Empty:** a vendor who has submitted nothing is told what to do first (the brand page, then products).

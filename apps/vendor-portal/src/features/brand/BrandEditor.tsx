@@ -7,6 +7,7 @@ import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { useConfirm } from '../../ui/ConfirmDialog'
 import { useToast } from '../../ui/Toast'
 import { friendlyError } from '../errors'
+import { ReviewReason } from '../submissions/ReviewReason'
 import { ImageUploader } from '../uploads/ImageUploader'
 import { BrandPreview } from './BrandPreview'
 import { formatDate, type LatestReview } from './review'
@@ -201,7 +202,14 @@ export function BrandEditor({ draft, latest }: Props) {
           ) : null}
           {!inReview && latest?.status === 'rejected' ? (
             <Alert severity="warning">
-              <strong>Version {latest.version} was not approved.</strong> {latest.reason ?? 'No reason was given.'} Fix it and submit again.
+              <strong>Version {latest.version} was not approved.</strong> <ReviewReason reason={latest.reason} /> Fix it and submit again.
+            </Alert>
+          ) : null}
+          {!inReview && latest?.status === 'approved' ? (
+            <Alert severity="success">
+              <strong>Version {latest.version} was approved</strong>
+              {latest.decided_at ? ` on ${formatDate(latest.decided_at)}` : ''}. It is what shoppers see. Changes you make here go live
+              only after you submit them and they are approved.
             </Alert>
           ) : null}
           {formError ? (

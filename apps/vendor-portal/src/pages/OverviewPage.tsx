@@ -3,6 +3,7 @@ import { useId, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { api } from '../api'
 import { ApiError } from '../api/errors'
+import { REFRESH_MS, STATUS_COLOR, fixLink, itemName, relativeTime, statusLabel } from '../features/submissions/rules'
 import { useSession } from '../session/AuthProvider'
 import { ErrorState } from '../ui/ErrorState'
 import { LoadingState } from '../ui/LoadingState'
@@ -101,18 +102,51 @@ function ProductCounts() {
   )
 }
 
+/** How many decisions the overview lists. */
+const LATEST_DECISIONS = 3
+
+/**
+ * What is waiting for review (the brand page and products together: the submissions list's `total`
+ * with `status=pending`) and the latest decisions. Refreshed like the submissions page.
+ */
 function SubmissionsCard() {
-  const pending = useProductCount('pending_review')
+  const refresh = { refetchInterval: REFRESH_MS, refetchOnWindowFocus: true } as const
+  const pending = api.useQuery('get', '/v1/vendor/submissions', { params: { query: { status: 'pending', limit: 1 } } }, refresh)
+  const recent = api.useQuery('get', '/v1/vendor/submissions', { params: { query: { status: 'all', limit: 10 } } }, refresh)
+  const failed = pending.isError ? pending : recent.isError ? recent : undefined
+  const decided = (recent.data?.items ?? []).filter((item) => item.decided_at !== null).slice(0, LATEST_DECISIONS)
   return (
     <SectionCard title="Submissions" to="/submissions" action="See submissions">
-      {pending.isPending ? <LoadingState label="Loading…" /> : null}
-      {pending.isError ? <ErrorState error={pending.error} title="We couldn't load this" onRetry={() => void pending.refetch()} /> : null}
-      {pending.data ? (
-        <Typography>
-          {pending.data.total === 0
-            ? 'Nothing is waiting for review.'
-            : `${pending.data.total} ${pending.data.total === 1 ? 'product is' : 'products are'} waiting for review.`}
-        </Typography>
+      {failed ? <ErrorState error={failed.error} title="We couldn't load your submissions" onRetry={() => void failed.refetch()} /> : null}
+      {!failed && (pending.isPending || recent.isPending) ? <LoadingState label="Loading…" /> : null}
+      {!failed && pending.data && recent.data ? (
+        <>
+          <Typography sx={{ mb: decided.length > 0 ? 1.5 : 0 }}>
+            {pending.data.total === 0
+              ? 'Nothing is waiting for review.'
+              : `${pending.data.total} ${pending.data.total === 1 ? 'item is' : 'items are'} waiting for review.`}
+          </Typography>
+          {decided.length > 0 ? (
+            <>
+              <Typography component="h3" variant="subtitle2">
+                Latest decisions
+              </Typography>
+              <Box component="ul" sx={{ p: 0, m: 0, mt: 0.5 }}>
+                {decided.map((item) => (
+                  <Stack component="li" key={`${item.subject}:${item.id}:${item.version}`} direction="row" spacing={1} sx={{ listStyle: 'none', alignItems: 'center', py: 0.5, minWidth: 0 }}>
+                    <Chip size="small" label={statusLabel(item.status)} color={STATUS_COLOR[item.status] ?? 'default'} />
+                    <Typography variant="body2" noWrap sx={{ minWidth: 0 }} title={itemName(item)}>
+                      {item.status === 'rejected' ? <Link to={fixLink(item)}>{itemName(item)}</Link> : itemName(item)}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
+                      {item.decided_at ? relativeTime(item.decided_at) : ''}
+                    </Typography>
+                  </Stack>
+                ))}
+              </Box>
+            </>
+          ) : null}
+        </>
       ) : null}
     </SectionCard>
   )
