@@ -153,7 +153,7 @@ Planned scope:
 - Team (owner only: invite, resend, disable and enable staff) and account (profile, password change).
 
 ### Phase 6: Shazlo-One shell
-Status: not started (`apps/shazlo-one` holds only a README).
+Status (2026-11-20): in progress. Merged so far: identity-api's committed `openapi.json` (checked by its tests), and the Shazlo-One scaffold (Vite, the typed identity-api client, the security headers and checks). `apps/shazlo-one/README.md` describes what the app does today.
 
 - Scaffold, admin login against identity-api, and session handling.
 - Module registry and a nav that only shows the modules an admin's roles allow.
