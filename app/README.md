@@ -13,6 +13,6 @@ npm run lint
 npm test            # the legacy-app Vitest project (run `npm ci` at the repository root first)
 ```
 
-`VITE_API_URL` in `.env` is the only variable the code reads: the base URL of the pre-registration client in `src/services/api.js`, which calls the `/preregister` routes that `backend` does not mount. Most other screens call hard-coded hosts. `VITE_APP_NAME` and `VITE_APP_VERSION` in `.env.example` are not read.
+`VITE_API_URL` in `.env` is the only variable the code reads: the host of the waitlist and registration backend, with no trailing slash and no `/api` (for example `http://localhost:5000`). `src/config/apiBase.js` builds every URL from it (`apiUrl("/api/waitlist/add")`), so paths are never joined with a doubled slash; unset, it falls back to the hosted waitlist service. `src/services/api.js` appends `/api` for the pre-registration client, which calls the `/preregister` routes that `backend` does not mount. Some other screens still call hard-coded hosts. `VITE_APP_NAME` and `VITE_APP_VERSION` in `.env.example` are not read.
 
 See [the test strategy](../docs/testing.md) for what the tests cover. `vercel.json` holds the hosting rewrite.
