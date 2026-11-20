@@ -15,7 +15,7 @@ A Node.js/Express backend with MongoDB for the consumer waitlist, brand registra
    npm ci
    ```
 
-2. **Environment setup:** copy `.env.example` to `.env` and set `MONGODB_URI` (the connection string with your credentials) and, for image uploads, the three `CLOUDINARY_*` values. `PORT` defaults to 5000. `LEGACY_ADMIN_ENABLED=true` mounts the unauthenticated `/api/admin` and `/api/upload` routes (needed by the legacy admin screens, which call `http://localhost:5000`). `CORS_ORIGIN` is a comma-separated list of allowed origins (for example `https://shazlo.store,https://www.shazlo.store`); unset, every origin is allowed and the server logs a warning, so set it wherever the service is deployed, or the live site's own origin is not the only one that can call it. `JWT_SECRET` is in the example file but no code reads it.
+2. **Environment setup:** copy `.env.example` to `.env` and set `MONGODB_URI` (the connection string with your credentials) and, for image uploads, the three `CLOUDINARY_*` values. `PORT` defaults to 5000. `LEGACY_ADMIN_ENABLED=true` mounts the unauthenticated `/api/admin` and `/api/upload` routes (needed by the legacy admin screens, which call `http://localhost:5000`). `CORS_ORIGIN` is a comma-separated list of allowed origins (for example `https://shazlo.store,https://www.shazlo.store`); unset, every origin is allowed and the server logs a warning, so set it wherever the service is deployed. `JWT_SECRET` is in the example file but no code reads it.
 
 3. **Database setup:** none. Mongoose creates the collections on first use. With Atlas, allow your IP address in Network Access.
 
