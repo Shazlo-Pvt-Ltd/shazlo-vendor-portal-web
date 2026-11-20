@@ -5,3 +5,8 @@
 # openapi-typescript writes LF. With core.autocrlf on Windows a CRLF checkout of the generated file
 # makes `npm run api:check` report stale types that are not stale.
 apps/vendor-portal/src/api/schema.d.ts text eol=lf
+
+# The committed OpenAPI documents are written with LF by the export commands. With
+# core.autocrlf on Windows a CRLF checkout makes the staleness check report a diff that is
+# not one.
+services/*/openapi.json text eol=lf
