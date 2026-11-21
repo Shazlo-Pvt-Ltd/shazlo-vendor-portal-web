@@ -1,8 +1,9 @@
 import axios from "axios";
+import { apiUrl } from "../config/apiBase";
 
 // Create axios instance with base configuration
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "https://shazlo-waitlist-gtge.onrender.com//api",
+  baseURL: apiUrl("/api"),
   timeout: 10000,
   headers: {
     "Content-Type": "application/json",
