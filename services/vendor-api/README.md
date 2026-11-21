@@ -95,8 +95,9 @@ The live reference is the OpenAPI document at <http://localhost:8002/docs> (dev;
 | Health | `GET /health`, `GET /ready` | anyone |
 | Keys | `GET /.well-known/jwks.json` | anyone |
 | Vendor auth | `POST /v1/auth/signup`, `verify-email`, `resend-verification`, `login`, `refresh`, `logout`, `change-password`, `forgot-password`, `set-password` | anyone, or a vendor token for `change-password` |
-| Vendor | `GET /v1/vendor/me`; `GET`/`PUT /v1/vendor/brand-profile`, `POST /v1/vendor/brand-profile/submit`, `GET /v1/vendor/brand-profile/published`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only); `GET`/`POST /v1/vendor/products`, `GET`/`PUT`/`DELETE /v1/vendor/products/{id}`, `POST /v1/vendor/products/{id}/submit`; `POST /v1/vendor/assets/sign`, `POST /v1/vendor/assets`; `POST /v1/vendor/products/import`, `GET /v1/vendor/products/import/template`; `GET /v1/vendor/submissions` | vendor-api tokens only |
-| Admin | `GET /v1/admin/me`, `GET /v1/admin/reviews`, `GET /v1/admin/reviews/{id}`, `GET /v1/admin/vendors`, `GET /v1/admin/vendors/{id}`, `POST /v1/admin/vendors/{id}/approve`, `POST /v1/admin/vendors/{id}/reject`, `POST /v1/admin/vendors/{id}/suspend`, `POST /v1/admin/reviews/{id}/approve`, `POST /v1/admin/reviews/{id}/reject`; `GET /v1/admin/outbox`, `GET /v1/admin/outbox/stats`, `GET /v1/admin/outbox/{id}`, `POST /v1/admin/outbox/{id}/retry` | identity-api tokens only (`vendor_reviewer` or `super_admin`) |
+| Vendor | `GET /v1/vendor/me`; `GET`/`PUT /v1/vendor/brand-profile`, `POST /v1/vendor/brand-profile/submit`, `GET /v1/vendor/brand-profile/published`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only); `GET`/`POST /v1/vendor/products`, `GET`/`PUT`/`DELETE /v1/vendor/products/{id}`, `POST /v1/vendor/products/{id}/submit`; `POST /v1/vendor/assets/sign`, `POST /v1/vendor/assets`; `POST /v1/vendor/products/import`, `GET /v1/vendor/products/import/template`; `GET /v1/vendor/submissions`; `GET /v1/vendor/store-details`, `PUT /v1/vendor/store-details/{brand,contact,delivery,returns,payment,payout,business}` (`payout` and `business` owner only); `GET /v1/vendor/commission`, `POST /v1/vendor/commission/proposal` (owner only); `GET`/`PUT /v1/vendor/size-charts/{group}` | vendor-api tokens only |
+| Public | `GET /v1/public/ifsc/{code}` | anyone (limited per IP) |
+| Admin | `GET /v1/admin/me`, `GET /v1/admin/reviews`, `GET /v1/admin/reviews/{id}`, `GET /v1/admin/vendors`, `GET /v1/admin/vendors/{id}`, `POST /v1/admin/vendors/{id}/approve`, `POST /v1/admin/vendors/{id}/reject`, `POST /v1/admin/vendors/{id}/suspend`, `POST /v1/admin/reviews/{id}/approve`, `POST /v1/admin/reviews/{id}/reject`; `GET /v1/admin/outbox`, `GET /v1/admin/outbox/stats`, `GET /v1/admin/outbox/{id}`, `POST /v1/admin/outbox/{id}/retry`; `GET /v1/admin/vendors/{id}/store-details`, `GET /v1/admin/vendors/{id}/commission`, `POST /v1/admin/vendors/{id}/commission/{approve,send-back,set}`, and `?commission=` on `GET /v1/admin/vendors` | identity-api tokens only (`vendor_reviewer` or `super_admin`) |
 
 The sections below describe each group.
 
@@ -113,7 +114,7 @@ vendor_api/
   app.py        create_app() factory (settings and readiness checks can be injected in tests)
   main.py       `app = create_app()` for uvicorn
   worker.py     `python -m vendor_api.worker`: the publisher worker (delivery, upkeep, nightly reconciliation)
-  cli.py        generate-key, seed-dev, send-test-email, invite-owner, resync, export-openapi
+  cli.py        generate-key, generate-payout-key, seed-dev, send-test-email, invite-owner, resync, export-openapi
   openapi.py    the OpenAPI document and its examples (committed as ../openapi.json)
   api/          routers: health, jwks, auth, vendor (me), team, brand_profile, products, product_import, assets,
                 submissions (vendor side); admin, admin_reviews, admin_vendors, admin_outbox (admin side);
@@ -425,6 +426,33 @@ A pending vendor is an application: approved or rejected. An approved vendor tha
 
 **The email.** After the commit (so nothing is sent for a change that was rolled back) the vendor's contact address gets `vendor_approved`, `vendor_rejected` or `vendor_suspended`. Rejection and suspension include the reason (escaped in the HTML part, never in a subject or header) and say to contact support if it looks like a mistake.
 
+## Store details, commission and size charts (#265)
+
+What the Build 2 seller portal (`naman/penpot-ui-2`, spec `docs/ui-plan/vendor-requirements-and-phone-ux.md` on that branch) needs beyond the catalog. Its mock contract used `/api/v1/...` paths; here everything follows this service's conventions (`/v1`, the error envelope, 422 `details` with `loc`).
+
+**Store details** (`/v1/vendor/store-details`): the sign-up topics a brand keeps up to date, one row per vendor (`store_details`), saved one section at a time with `PUT .../{section}`. Every response is the whole picture: each topic (null until saved), `missing` (required topics not saved, in page order: brand, contact, delivery, returns, pay_on_delivery, payout) and `complete`. Pending vendors fill them in too.
+- Each request model fixes the shape and refuses unknown fields; the rules a seller can break come back as `422 validation_error` with one `details` entry per field and a message for the seller (`loc: ["body", "pickup_address", "pin"]`). Messages never repeat what was sent.
+- Values are normalised: a 10-digit phone, lower-case email, PIN without spaces, upper-case IFSC and GSTIN. "No returns" (window 0) stores no condition or refund time; delivering to all of India stores no places; places are kept once each.
+- Text people type refuses NUL, control and format characters (bidirectional overrides, zero-width spaces, BOM) and lone surrogates (`VisibleText` in `core/validation.py`): Postgres cannot store some, and the others make a name read differently to a reviewer. Zero-width (non-)joiners stay allowed for Indic scripts.
+- **Payouts** (owner only): a bank account (holder, 9 to 18 digits, IFSC) or a UPI ID. The number is sealed with AES-256-GCM (`services/payout_cipher.py`), bound to the vendor and the field, so a sealed value copied to another row does not open. The API only ever shows the bank's name, the last four digits and the IFSC, or a masked UPI ID (`ka•••@okhdfcbank`), to the vendor and to reviewers alike.
+- Payout keys: `PAYOUT_ENCRYPTION_KEYS` (JSON `{kid: base64 of 32 bytes}`) and `PAYOUT_ENCRYPTION_KID`, required in prod; `python -m vendor_api.cli generate-payout-key` prints a new entry. To rotate, add the new key, point the kid at it, and keep the old key while values sealed with it remain (`store_details.payout_key_id` says which key sealed each). Outside prod an unset key is a random one per process.
+- A well-formed IFSC of a bank the directory does not list is accepted, with `bank_name: null`.
+- Every save is audited in `vendor_change_events` (append-only by trigger): who changed which section. The payout's row holds only the masked parts; contact details are not copied.
+- Reviewers read a vendor's details, masked the same way, at `GET /v1/admin/vendors/{id}/store-details`.
+- Nothing here is published to the central app.
+
+**IFSC lookup** (`GET /v1/public/ifsc/{code}`, no token, 60 per minute per IP): the bank from the code's first four letters, from a bundled list of bank codes (`services/ifsc_directory.py`); nothing is fetched from anywhere. `branch` is always null (RBI's full list is not bundled). `422 ifsc_format` for a code that is not an IFSC, `404 ifsc_unknown` for an unlisted bank.
+
+**Commission** (`commissions`, one row per vendor; no row is `not_set`; there is no default rate). Rates are whole basis points from 0 to 4000 (40%).
+- The owner proposes (`POST /v1/vendor/commission/proposal {"rate_bps": 1000}`, 10 per hour per vendor) from any state. An agreed rate stays in force until a new one is approved; proposing the agreed rate is a 422.
+- Reviewers `approve` (the body names the `proposed_bps` they saw: a different waiting proposal is `409 commission_changed`), `send-back` (a note of 10 to 600 characters the brand sees) or `set` a rate directly (optional note). `409 no_proposal` when nothing waits; `409 vendor_not_eligible` for a rejected application. The admin is the token's subject. The row is locked for the change, and the change and its audit row commit together.
+- `GET /v1/admin/vendors?commission=proposed` lists the rates to review; every vendor in the list and the detail carries its `commission`.
+- Commission is not sent to the central app: ADR 0003 has no event for it yet.
+
+**Size charts** (`/v1/vendor/size-charts/{group}`; groups `bottoms`, `tops`, `dresses`, `jackets`, anything else is 404). Centimetres above 0 and up to 300 with one decimal, by size (letter sizes and One size; bottoms also 26 to 40) and the group's own measurements. A saved size comes back with every measurement of its group (null when blank); blank sizes are dropped; an empty chart without a photo deletes it. The photo is one of the brand's own ready `size_chart` images (sign the upload with kind `size_chart`), held by a composite foreign key, never a URL from the request. Unknown sizes are reported at `measurements`, never echoed.
+
+**Not built yet** (from #265, waiting for decisions): product type, main and other colours and material on products; named photo slots (4 product and 5 try-on photos are more than the 10 images the schema and ADR 0003 allow); stock per size (this service and ADR 0003 keep stock out on purpose); refusing to submit a product until store details are complete (main's portal has no store-details screen, so every submit would fail); the bulk-import columns from the requirements PDF.
+
 ## Team, invites and password reset
 
 Three cases end with "someone gets an email and sets a password": an owner inviting a staff member, a user who forgot their password, and (Phase 8) the owner of a vendor migrated from MongoDB. All use the same one-time token: 256-bit, only its SHA-256 stored, single use, and a newer token for the same purpose ends the older ones.
@@ -461,6 +489,8 @@ Keys are `vendor:rl:<endpoint>:<scope>:<hash>`: the prefix and the `RATE_LIMIT_H
 | `staff_invite` (invite and resend-invite) | vendor | 20 per hour |
 | `asset_sign` (upload signatures) | user | 60 per hour |
 | `bulk_import` (product import and its validation runs) | vendor | 10 per hour |
+| `ifsc_lookup` (public) | IP | 60 per minute |
+| `commission_proposal` | vendor | 10 per hour |
 
 - **Nobody can lock a vendor out.** The checks run in order and stop at the first one that refuses, so a request the per-IP or per-pair counter already refuses never reaches the per-email counter: one attacking IP adds at most 5 per 15 minutes to it. And an email + IP pair that logged in successfully in the last 30 days skips the per-email counter, so a vendor on their usual network gets in even while someone guesses from elsewhere.
 - **Signup and resend are limited on the address as typed**, whether or not it is registered, so the limit looks the same either way and reveals nothing. Per address matters because those endpoints send email (verification, or "you already have an account"): without it they would mail-bomb an inbox.

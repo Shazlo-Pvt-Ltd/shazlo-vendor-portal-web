@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { apiUrl } from "../config/apiBase";
 import {
   Alert,
   ThemeProvider,
@@ -86,7 +87,7 @@ export default function RegisterBrand() {
     };
 
     try {
-      const response = await fetch("https://shazlo-waitlist-gtge.onrender.com/api/register-brand", {
+      const response = await fetch(apiUrl("/api/register-brand"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
