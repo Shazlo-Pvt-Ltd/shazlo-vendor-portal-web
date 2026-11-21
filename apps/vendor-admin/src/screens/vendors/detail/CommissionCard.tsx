@@ -11,7 +11,7 @@ import type { components } from '../../../api/schema'
 import { vendorActionsCopy, vendorDetailCopy } from '../../../copy/vendors'
 import { formatRate, lastSentBack, rateField, rateText, sameCommission, toBps } from '../../../lib/commission'
 import { formatDate } from '../../../lib/format'
-import { fieldProps, noAsterisk } from '../../../lib/forms'
+import { fieldProps, noAsterisk, useFocusOnRefusal } from '../../../lib/forms'
 import { dialogActions, usePhone } from '../../../lib/responsive'
 import { Quote } from '../../review/parts'
 import { ReasonDialog } from '../dialogs'
@@ -54,22 +54,16 @@ function SetRateDialog({ open, title, initial, onCancel, onSubmit, onExited }: {
     if (open) reset({ rate: initial, note: '' })
   }, [open, initial, reset])
 
+  // A refused submit (by the form or by the API) puts focus on the first refused field, once it can take it.
+  const firstRefused = formState.errors.rate ? 'rate' : 'note'
+  const refused = useFocusOnRefusal(busy, () => setFocus(firstRefused))
   const submit = handleSubmit(async ({ rate, note }) => {
     const problems = await onSubmit({ bps: toBps(rate), note: note.trim() })
     if (!problems) return
+    refused()
     if (problems.rate) setError('rate', { type: 'server', message: problems.rate })
     if (problems.note) setError('note', { type: 'server', message: problems.note })
-  })
-
-  // A refused field (by the form or by the API) gets focus once it can take it: the fields are disabled
-  // while the form submits, so react-hook-form's own focus during the submit may find them disabled.
-  const rateRefused = formState.errors.rate
-  const noteRefused = formState.errors.note
-  useEffect(() => {
-    if (busy) return
-    if (rateRefused) setFocus('rate')
-    else if (noteRefused) setFocus('note')
-  }, [rateRefused, noteRefused, busy, setFocus])
+  }, refused)
 
   return (
     // As in ReasonDialog: autoFocus loses to the focus trap, so the rate field is focused on entering.

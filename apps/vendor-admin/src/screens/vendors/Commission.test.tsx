@@ -426,6 +426,30 @@ describe('A-09 Commission card focus after a refusal', { timeout: 30_000 }, () =
     expect(note).toHaveFocus()
   })
 
+  // Only a refused submit moves focus. Fixing one of two refused fields must not send the next
+  // keystrokes into the other.
+  it('leaves focus where the reviewer types while they fix one of two refused fields', async () => {
+    const { user } = await open('v_kesariya', 'Kesariya Prints')
+    await user.click(within(card()).getByRole('button', { name: 'Set rate' }))
+    const dialog = await screen.findByRole('dialog')
+    const rate = within(dialog).getByRole('textbox', { name: 'Commission' })
+    await user.type(rate, '45')
+    const note = within(dialog).getByRole('textbox', { name: 'Note to the brand (optional)' })
+    await user.click(note)
+    await user.paste('a'.repeat(601))
+    await user.click(within(dialog).getByRole('button', { name: 'Save rate' }))
+    await within(dialog).findByText('Enter a commission between 0% and 40%.')
+    await settle()
+    expect(rate).toHaveFocus()
+
+    await user.clear(rate)
+    await user.type(rate, '12')
+    await settle()
+    expect(rate).toHaveFocus()
+    expect(rate).toHaveValue('12')
+    expect(note).toHaveValue('a'.repeat(601))
+  })
+
   it('does not pull focus into the card on a later refresh after a failed approve', async () => {
     server.use(
       http.post('*/api/v1/admin/vendors/:id/commission/approve', () => HttpResponse.json({ message: 'Boom', extra: { code: 'server_error' } }, { status: 500 }), {
