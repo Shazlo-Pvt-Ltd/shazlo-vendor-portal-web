@@ -2,17 +2,17 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { Box, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, InputAdornment, Stack, TextField, Typography, useMediaQuery } from '@mui/material'
 import type { Theme } from '@mui/material/styles'
 import { fontFamily, SectionCard, StatusPill } from '@shazlo/ui'
-import { useEffect, useId, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { ApiError } from '../../../api/http'
 import { useCommissionAction } from '../../../api/queries'
 import type { components } from '../../../api/schema'
 import { vendorActionsCopy, vendorDetailCopy } from '../../../copy/vendors'
-import { formatRate, rateField, rateText, toBps } from '../../../lib/commission'
+import { formatRate, lastSentBack, rateField, rateText, sameCommission, toBps } from '../../../lib/commission'
 import { formatDate } from '../../../lib/format'
 import { fieldProps, noAsterisk } from '../../../lib/forms'
-import { usePhone } from '../../../lib/responsive'
+import { dialogActions, usePhone } from '../../../lib/responsive'
 import { Quote } from '../../review/parts'
 import { ReasonDialog } from '../dialogs'
 
@@ -41,12 +41,12 @@ type SetValues = z.infer<typeof setSchema>
 type SetErrors = Partial<Record<keyof SetValues, string>>
 
 // Shazlo enters the rate itself: the rate in percent and an optional note the brand reads.
-function SetRateDialog({ open, title, initial, onCancel, onSubmit }: { open: boolean; title: string; initial: string; onCancel: () => void; onSubmit: (values: { bps: number; note: string }) => Promise<SetErrors | void> }) {
+function SetRateDialog({ open, title, initial, onCancel, onSubmit, onExited }: { open: boolean; title: string; initial: string; onCancel: () => void; onSubmit: (values: { bps: number; note: string }) => Promise<SetErrors | void>; onExited?: () => void }) {
   const titleId = useId()
   const bodyId = useId()
   // A phone gets the whole screen: the keyboard takes half of it.
   const phone = usePhone()
-  const { register, handleSubmit, reset, setError, formState } = useForm<SetValues>({ resolver: zodResolver(setSchema), defaultValues: { rate: initial, note: '' } })
+  const { register, handleSubmit, reset, setError, setFocus, formState } = useForm<SetValues>({ resolver: zodResolver(setSchema), defaultValues: { rate: initial, note: '' } })
   const busy = formState.isSubmitting
   const w = copy.setDialog
 
@@ -62,7 +62,8 @@ function SetRateDialog({ open, title, initial, onCancel, onSubmit }: { open: boo
   })
 
   return (
-    <Dialog open={open} onClose={busy ? undefined : onCancel} aria-labelledby={titleId} aria-describedby={bodyId} maxWidth="sm" fullWidth fullScreen={phone}>
+    // As in ReasonDialog: autoFocus loses to the focus trap, so the rate field is focused on entering.
+    <Dialog open={open} onClose={busy ? undefined : onCancel} aria-labelledby={titleId} aria-describedby={bodyId} maxWidth="sm" fullWidth fullScreen={phone} slotProps={{ transition: { onEntering: () => setFocus('rate'), onExited } }}>
       <form noValidate onSubmit={submit}>
         <DialogTitle id={titleId} variant="h2" component="h2" sx={{ pb: 1, overflowWrap: 'anywhere' }}>
           {title}
@@ -79,7 +80,8 @@ function SetRateDialog({ open, title, initial, onCancel, onSubmit }: { open: boo
               autoFocus
               autoComplete="off"
               disabled={busy}
-              sx={{ maxWidth: { sm: 240 } }}
+              // The box stays narrow; its hint and errors use the dialog's width.
+              sx={{ '& .MuiInputBase-root': { maxWidth: { sm: 240 } } }}
               slotProps={{
                 ...noAsterisk,
                 htmlInput: { inputMode: 'decimal', enterKeyHint: 'done', style: tabular },
@@ -89,7 +91,7 @@ function SetRateDialog({ open, title, initial, onCancel, onSubmit }: { open: boo
             <TextField {...fieldProps(register('note'), formState.errors.note, w.noteHint)} label={w.note} multiline minRows={2} disabled={busy} />
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ px: { xs: 2, sm: 3 }, pb: 'calc(20px + env(safe-area-inset-bottom, 0px))', gap: 1, flexDirection: { xs: 'column-reverse', sm: 'row' }, alignItems: { xs: 'stretch', sm: 'center' }, '& > :not(style) ~ :not(style)': { ml: { xs: 0, sm: 1 } }, '& .MuiButton-root': { minHeight: { xs: 44, sm: 0 } } }}>
+        <DialogActions sx={dialogActions}>
           <Button variant="text" onClick={onCancel} disabled={busy}>
             {vendorActionsCopy.cancel}
           </Button>
@@ -116,51 +118,103 @@ export function CommissionCard({ vendor, primary, onDone, onFailed }: Props) {
   const action = useCommissionAction(vendor.id)
   // Side by side only where the card is a full-width row (600–899 px); stacked in the side column and on phones.
   const row = useMediaQuery((theme: Theme) => theme.breakpoints.only('sm'), { noSsr: true })
-  // Kept after closing (open: false) so the dialog keeps its words while it fades out.
-  const [dialog, setDialog] = useState<{ kind: 'send-back' | 'set'; open: boolean } | null>(null)
-  const close = () => setDialog((d) => d && { ...d, open: false })
-
   const c = vendor.commission
   const name = vendor.brand_name
   const agreed = c.agreed_bps
   const proposed = c.proposed_bps
   const now = agreed == null ? copy.noneYet : copy.now(formatRate(agreed))
 
-  const approve = async () => {
-    if (proposed == null) return
+  // Kept after closing (open: false) so the dialog keeps its words while it fades out. It also keeps
+  // the rates as they were when it opened: the vendor may refetch while the reviewer writes, and the
+  // note is about the proposal they saw (and the rate field must not reset under them).
+  const [dialog, setDialog] = useState<{ kind: 'send-back' | 'set'; open: boolean; proposed: number | null; agreed: number | null } | null>(null)
+  const close = () => setDialog((d) => d && { ...d, open: false })
+
+  // One decision per commission the reviewer saw. `disabled` only lands on the next render, so a
+  // double click (or Enter pressed twice) would otherwise send a second request: while the first is
+  // still in flight (`busy`), or after it finished but before the new commission is drawn
+  // (`decided`: the commission a handler's render showed, now out of date). That second request was
+  // a duplicate rate change, or a 409 whose error banner hid the success. A decision the API answers
+  // with the commission unchanged (an idempotent save) decides nothing, so it blocks nothing: the
+  // data stays identical and would otherwise leave the card ignoring every later click.
+  const decided = useRef<typeof c | null>(null)
+  const settle = (next: Vendor) => {
+    if (!sameCommission(next.commission, c)) decided.current = c
+  }
+  const busy = useRef(false)
+  // The card's buttons, and whether a decision is waiting to hand focus back to them (below).
+  const actions = useRef<HTMLDivElement>(null)
+  const refocus = useRef(false)
+  const once = async <T,>(run: () => Promise<T>): Promise<T | undefined> => {
+    if (busy.current || decided.current === c) return undefined
+    busy.current = true
     try {
-      await action.mutateAsync({ step: 'approve' })
-      onDone(copy.approveBanner(name, formatRate(proposed)), copy.approveDone(name, formatRate(proposed)))
-    } catch (error) {
-      onFailed(error as Error)
+      return await run()
+    } finally {
+      busy.current = false
     }
   }
 
-  const sendBack = async (note: string) => {
-    try {
-      await action.mutateAsync({ step: 'send-back', body: { note } })
-      close()
-      onDone(copy.sendBackDialog.banner(name, vendor.owner_name), copy.sendBackDialog.done(name))
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 422 && error.fields.note) return error.fields.note
-      close()
-      onFailed(error as Error)
-    }
+  // A decision swaps the card's buttons (Approve becomes Change rate; Send back goes), so the button
+  // that had keyboard focus, or the one a dialog would return focus to, is gone and focus falls to
+  // the page. Put it on the card's first action instead, but only if it was lost (on the page, or
+  // still inside a dialog that is going away): never take it from somewhere the reviewer moved it.
+  const restoreFocus = () => {
+    const doc = actions.current?.ownerDocument
+    const active = doc?.activeElement
+    if (doc && (!active || active === doc.body || active.closest('[role="dialog"]'))) actions.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
   }
+  // Approve has no dialog: once the new card is drawn. A dialog's decision waits until the dialog has
+  // gone (its onExited), as closing returns focus to the button that opened it, if that still exists.
+  useEffect(() => {
+    if (!refocus.current) return
+    refocus.current = false
+    restoreFocus()
+  }, [c])
 
-  const setRate = async ({ bps, note }: { bps: number; note: string }): Promise<SetErrors | void> => {
-    try {
-      await action.mutateAsync({ step: 'set', body: note ? { commission_bps: bps, note } : { commission_bps: bps } })
-      close()
-      onDone(copy.setDialog.banner(name, formatRate(bps)), copy.setDialog.done(name, formatRate(bps)))
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 422 && (error.fields.commission_bps || error.fields.note)) return { rate: error.fields.commission_bps, note: error.fields.note }
-      close()
-      onFailed(error as Error)
-    }
-  }
+  // Approve and send back name the proposal the reviewer saw, so neither lands on a rate the brand changed since.
+  const approve = () =>
+    once(async () => {
+      if (proposed == null) return
+      refocus.current = true
+      try {
+        settle(await action.mutateAsync({ step: 'approve', body: { proposed_bps: proposed } }))
+        onDone(copy.approveBanner(name, formatRate(proposed)), copy.approveDone(name, formatRate(proposed)))
+      } catch (error) {
+        onFailed(error as Error)
+      }
+    })
 
-  const open = (kind: 'send-back' | 'set') => setDialog({ kind, open: true })
+  const sendBack = (note: string) =>
+    once(async () => {
+      // The proposal shown when the dialog opened: the note is about that one.
+      const seen = dialog?.proposed
+      if (seen == null) return
+      try {
+        settle(await action.mutateAsync({ step: 'send-back', body: { note, proposed_bps: seen } }))
+        close()
+        onDone(copy.sendBackDialog.banner(name, vendor.owner_name), copy.sendBackDialog.done(name))
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 422 && error.fields.note) return error.fields.note
+        close()
+        onFailed(error as Error)
+      }
+    })
+
+  const setRate = ({ bps, note }: { bps: number; note: string }): Promise<SetErrors | void> =>
+    once(async () => {
+      try {
+        settle(await action.mutateAsync({ step: 'set', body: note ? { commission_bps: bps, note } : { commission_bps: bps } }))
+        close()
+        onDone(copy.setDialog.banner(name, formatRate(bps)), copy.setDialog.done(name, formatRate(bps)))
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 422 && (error.fields.commission_bps || error.fields.note)) return { rate: error.fields.commission_bps, note: error.fields.note }
+        close()
+        onFailed(error as Error)
+      }
+    })
+
+  const open = (kind: 'send-back' | 'set') => setDialog({ kind, open: true, proposed, agreed })
   const main = primary ? 'contained' : 'outlined'
   const setLabel = agreed == null ? copy.set : copy.change
 
@@ -196,6 +250,7 @@ export function CommissionCard({ vendor, primary, onDone, onFailed }: Props) {
       </>
     )
   } else if (c.state === 'sent_back') {
+    const sentBy = lastSentBack(vendor.history)
     pill = <StatusPill status="sentBack" label={copy.sentBackPill} />
     body = (
       <>
@@ -210,10 +265,16 @@ export function CommissionCard({ vendor, primary, onDone, onFailed }: Props) {
         </Typography>
         {c.note && (
           <Box>
-            {c.updated_at && (
+            {sentBy ? (
               <Typography variant="caption" color="text.secondary">
-                {copy.yourNote(formatDate(c.updated_at))}
+                {copy.noteFrom(sentBy.by, formatDate(sentBy.at))}
               </Typography>
+            ) : (
+              c.updated_at && (
+                <Typography variant="caption" color="text.secondary">
+                  {copy.noteOn(formatDate(c.updated_at))}
+                </Typography>
+              )
             )}
             <Quote>{c.note}</Quote>
           </Box>
@@ -264,6 +325,7 @@ export function CommissionCard({ vendor, primary, onDone, onFailed }: Props) {
         {body}
       </Stack>
       <Stack
+        ref={actions}
         role="group"
         aria-label={copy.actionsLabel}
         data-layout={row ? 'row' : 'stacked'}
@@ -278,21 +340,23 @@ export function CommissionCard({ vendor, primary, onDone, onFailed }: Props) {
         <ReasonDialog
           open={dialog.open}
           title={copy.sendBackDialog.title(name)}
-          body={copy.sendBackDialog.body(agreed == null ? null : formatRate(agreed))}
+          body={copy.sendBackDialog.body(dialog.agreed == null ? null : formatRate(dialog.agreed))}
           label={copy.sendBackDialog.label}
           confirm={copy.sendBackDialog.confirm}
           pending={copy.sendBackDialog.pending}
           onCancel={close}
           onSubmit={sendBack}
+          onExited={restoreFocus}
         />
       )}
       {dialog?.kind === 'set' && (
         <SetRateDialog
           open={dialog.open}
-          title={agreed == null ? copy.setDialog.titleSet(name) : copy.setDialog.titleChange(name)}
-          initial={rateText(agreed)}
+          title={dialog.agreed == null ? copy.setDialog.titleSet(name) : copy.setDialog.titleChange(name)}
+          initial={rateText(dialog.agreed)}
           onCancel={close}
           onSubmit={setRate}
+          onExited={restoreFocus}
         />
       )}
     </SectionCard>

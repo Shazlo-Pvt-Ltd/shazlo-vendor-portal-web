@@ -76,7 +76,7 @@ describe('A-09 Vendor detail', () => {
     expect(value('Account holder')).toHaveTextContent('Kalki Studio LLP')
     expect(value('Legal business name')).toHaveTextContent('Kalki Studio LLP')
     expect(value('GST number')).toHaveTextContent('24AAQFK3912M1Z6')
-    expect(value('Proposed commission')).toHaveTextContent('None. They will agree a rate with our team.')
+    expect(value('Proposed at sign-up')).toHaveTextContent('None. They will agree a rate with our team.')
     expect(value('Seller terms')).toHaveTextContent('Agreed')
     expect(value('Price rule')).toHaveTextContent('Agreed. Their price on Shazlo will never be higher than anywhere else.')
     // No full account number anywhere on the page.
@@ -101,7 +101,7 @@ describe('A-09 Vendor detail', () => {
     expect(value('Takes')).toHaveTextContent('UPI only')
     expect(value('Paid to')).toHaveTextContent('UPI ID')
     expect(value('UPI ID')).toHaveTextContent('nila••••@okaxis')
-    expect(value('Proposed commission')).toHaveTextContent('10%')
+    expect(value('Proposed at sign-up')).toHaveTextContent('10%')
   })
 
   it('says what a brand did not give, and keeps no returns plain', async () => {

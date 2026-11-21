@@ -304,13 +304,25 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       const before = v.commission.agreed_bps
       const was = before == null ? '' : ` (was ${percent(before)})`
       const step = String(params.step)
-      if (step === 'approve') {
+      // Approve and send back name the proposal the reviewer saw; a decision never lands on a rate
+      // the brand changed after the page loaded (like review decisions on a changed item).
+      const seenProblem = () => {
         const proposed = v.commission.proposed_bps
         if (v.commission.state !== 'proposed' || proposed == null) return fail(409, 'invalid_transition', 'There is no proposed rate waiting.')
+        const seen = Number(body.proposed_bps)
+        if (body.proposed_bps === undefined || body.proposed_bps === null || !Number.isInteger(seen)) return fail(422, 'validation_error', 'Say which proposal you are deciding on.', { proposed_bps: 'Send the proposed rate you saw.' })
+        if (seen !== proposed) return fail(409, 'proposal_changed', `${v.brand_name} changed its proposal to ${percent(proposed)}. Check it before you decide.`)
+        return null
+      }
+      if (step === 'approve') {
+        const problem = seenProblem()
+        if (problem) return problem
+        const proposed = v.commission.proposed_bps!
         agree(db, v, proposed, null)
         v.history.unshift({ at: iso(), event: 'commission_approved', by: reviewer, note: `${percent(proposed)}${was}` })
       } else if (step === 'send-back') {
-        if (v.commission.state !== 'proposed') return fail(409, 'invalid_transition', 'There is no proposed rate waiting.')
+        const problem = seenProblem()
+        if (problem) return problem
         const note = String(body.note ?? '').trim()
         if (note.length < REASON_MIN) return fail(422, 'validation_error', 'Write a note to the brand.', { note: `Write at least ${REASON_MIN} characters so the brand knows what to propose.` })
         if (note.length > NOTE_MAX) return fail(422, 'validation_error', 'Shorten the note.', { note: `Keep the note to ${NOTE_MAX} characters.` })
