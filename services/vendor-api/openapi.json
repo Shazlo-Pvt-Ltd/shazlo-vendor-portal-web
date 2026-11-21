@@ -141,6 +141,28 @@
         "title": "AdminReviewOut",
         "type": "object"
       },
+      "ApproveIn": {
+        "additionalProperties": false,
+        "description": "The proposal the reviewer saw: approving a different one is a 409.",
+        "examples": [
+          {
+            "proposed_bps": 1000
+          }
+        ],
+        "properties": {
+          "proposed_bps": {
+            "maximum": 4000.0,
+            "minimum": 0.0,
+            "title": "Proposed Bps",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "proposed_bps"
+        ],
+        "title": "ApproveIn",
+        "type": "object"
+      },
       "ApproveReviewRequest": {
         "additionalProperties": false,
         "examples": [
@@ -187,11 +209,35 @@
         "title": "ApproveVendorRequest",
         "type": "object"
       },
+      "AreasIn": {
+        "additionalProperties": false,
+        "properties": {
+          "all_india": {
+            "title": "All India",
+            "type": "boolean"
+          },
+          "places": {
+            "items": {
+              "maxLength": 200,
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Places",
+            "type": "array"
+          }
+        },
+        "required": [
+          "all_india"
+        ],
+        "title": "AreasIn",
+        "type": "object"
+      },
       "AssetKind": {
         "enum": [
           "brand_logo",
           "brand_banner",
-          "product_image"
+          "product_image",
+          "size_chart"
         ],
         "title": "AssetKind",
         "type": "string"
@@ -296,6 +342,43 @@
           "created_at"
         ],
         "title": "AssetOut",
+        "type": "object"
+      },
+      "BrandIn": {
+        "additionalProperties": false,
+        "properties": {
+          "city": {
+            "maxLength": 400,
+            "title": "City",
+            "type": "string"
+          },
+          "instagram_or_website": {
+            "anyOf": [
+              {
+                "maxLength": 400,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instagram Or Website"
+          },
+          "sells": {
+            "enum": [
+              "women",
+              "men",
+              "both"
+            ],
+            "title": "Sells",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sells",
+          "city"
+        ],
+        "title": "BrandIn",
         "type": "object"
       },
       "BrandProfileBody": {
@@ -658,6 +741,37 @@
         "title": "BrandReviewOut",
         "type": "object"
       },
+      "BusinessIn": {
+        "additionalProperties": false,
+        "properties": {
+          "gstin": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gstin"
+          },
+          "legal_name": {
+            "anyOf": [
+              {
+                "maxLength": 400,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legal Name"
+          }
+        },
+        "title": "BusinessIn",
+        "type": "object"
+      },
       "ChangeOut": {
         "properties": {
           "after": {
@@ -700,6 +814,105 @@
           "new_password"
         ],
         "title": "ChangePasswordRequest",
+        "type": "object"
+      },
+      "CommissionOut": {
+        "properties": {
+          "agreed_bps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agreed Bps"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "proposed_bps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Bps"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "state",
+          "agreed_bps",
+          "proposed_bps",
+          "note",
+          "updated_at"
+        ],
+        "title": "CommissionOut",
+        "type": "object"
+      },
+      "CommissionState": {
+        "enum": [
+          "not_set",
+          "proposed",
+          "sent_back",
+          "agreed"
+        ],
+        "title": "CommissionState",
+        "type": "string"
+      },
+      "ContactIn": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "maxLength": 400,
+            "title": "Email",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 400,
+            "title": "Name",
+            "type": "string"
+          },
+          "phone": {
+            "maxLength": 64,
+            "title": "Phone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "phone",
+          "email"
+        ],
+        "title": "ContactIn",
         "type": "object"
       },
       "CreateProductBody": {
@@ -847,6 +1060,56 @@
           "sku"
         ],
         "title": "CreateProductBody",
+        "type": "object"
+      },
+      "DeliveryIn": {
+        "additionalProperties": false,
+        "properties": {
+          "areas": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AreasIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "delivery_days": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Days"
+          },
+          "mode": {
+            "enum": [
+              "shazlo",
+              "own"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "pickup_address": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PickupAddressIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "DeliveryIn",
         "type": "object"
       },
       "DraftOut": {
@@ -1148,6 +1411,36 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "IfscBankOut": {
+        "properties": {
+          "bank": {
+            "title": "Bank",
+            "type": "string"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "ifsc": {
+            "title": "Ifsc",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ifsc",
+          "bank",
+          "branch"
+        ],
+        "title": "IfscBankOut",
         "type": "object"
       },
       "ImageBody": {
@@ -1782,6 +2075,124 @@
         "title": "OutboxStatsOut",
         "type": "object"
       },
+      "PaymentIn": {
+        "additionalProperties": false,
+        "properties": {
+          "cash": {
+            "title": "Cash",
+            "type": "boolean"
+          },
+          "upi": {
+            "title": "Upi",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "cash",
+          "upi"
+        ],
+        "title": "PaymentIn",
+        "type": "object"
+      },
+      "PayoutIn": {
+        "additionalProperties": false,
+        "properties": {
+          "account_number": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Number"
+          },
+          "holder_name": {
+            "anyOf": [
+              {
+                "maxLength": 400,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder Name"
+          },
+          "ifsc": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ifsc"
+          },
+          "method": {
+            "enum": [
+              "bank",
+              "upi"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "upi_id": {
+            "anyOf": [
+              {
+                "maxLength": 400,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upi Id"
+          }
+        },
+        "required": [
+          "method"
+        ],
+        "title": "PayoutIn",
+        "type": "object"
+      },
+      "PickupAddressIn": {
+        "additionalProperties": false,
+        "properties": {
+          "area": {
+            "maxLength": 400,
+            "title": "Area",
+            "type": "string"
+          },
+          "city": {
+            "maxLength": 400,
+            "title": "City",
+            "type": "string"
+          },
+          "line1": {
+            "maxLength": 400,
+            "title": "Line1",
+            "type": "string"
+          },
+          "pin": {
+            "maxLength": 64,
+            "title": "Pin",
+            "type": "string"
+          }
+        },
+        "required": [
+          "line1",
+          "area",
+          "city",
+          "pin"
+        ],
+        "title": "PickupAddressIn",
+        "type": "object"
+      },
       "ProductContentBody": {
         "additionalProperties": false,
         "description": "The whole content of one revision. A `PUT` replaces it, so a field or list left out is\ncleared. Limits are the ones of the published contract (ADR 0003).",
@@ -2142,6 +2553,27 @@
         "title": "ProductSummaryOut",
         "type": "object"
       },
+      "ProposalIn": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "rate_bps": 1000
+          }
+        ],
+        "properties": {
+          "rate_bps": {
+            "maximum": 4000.0,
+            "minimum": 0.0,
+            "title": "Rate Bps",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rate_bps"
+        ],
+        "title": "ProposalIn",
+        "type": "object"
+      },
       "ReasonRequest": {
         "additionalProperties": false,
         "description": "Rejecting and suspending need a reason, which the vendor is told: a missing, empty or\nwhitespace-only one is a 422.",
@@ -2228,6 +2660,43 @@
           "email"
         ],
         "title": "ResendRequest",
+        "type": "object"
+      },
+      "ReturnsIn": {
+        "additionalProperties": false,
+        "properties": {
+          "condition": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "refund_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refund Days"
+          },
+          "window_days": {
+            "title": "Window Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_days"
+        ],
+        "title": "ReturnsIn",
         "type": "object"
       },
       "ReviewDetailOut": {
@@ -2632,6 +3101,26 @@
         "title": "RowErrorOut",
         "type": "object"
       },
+      "SendBackIn": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "note": "Our rate for kurtas is 12%. Propose again?"
+          }
+        ],
+        "properties": {
+          "note": {
+            "maxLength": 2000,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "note"
+        ],
+        "title": "SendBackIn",
+        "type": "object"
+      },
       "SessionResponse": {
         "description": "The refresh token is never in the body; it is only ever in the HttpOnly cookie.",
         "properties": {
@@ -2685,6 +3174,40 @@
           "password"
         ],
         "title": "SetPasswordRequest",
+        "type": "object"
+      },
+      "SetRateIn": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "commission_bps": 1200,
+            "note": "Agreed on the call."
+          }
+        ],
+        "properties": {
+          "commission_bps": {
+            "maximum": 4000.0,
+            "minimum": 0.0,
+            "title": "Commission Bps",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "commission_bps"
+        ],
+        "title": "SetRateIn",
         "type": "object"
       },
       "SignRequest": {
@@ -2879,6 +3402,93 @@
         "title": "SignupRequest",
         "type": "object"
       },
+      "SizeChartIn": {
+        "additionalProperties": false,
+        "properties": {
+          "measurements": {
+            "additionalProperties": true,
+            "title": "Measurements",
+            "type": "object"
+          },
+          "photo_asset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Asset Id"
+          }
+        },
+        "required": [
+          "measurements"
+        ],
+        "title": "SizeChartIn",
+        "type": "object"
+      },
+      "SizeChartOut": {
+        "properties": {
+          "group": {
+            "title": "Group",
+            "type": "string"
+          },
+          "measurements": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Measurements",
+            "type": "object"
+          },
+          "photo_asset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Asset Id"
+          },
+          "photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Url"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "group",
+          "measurements",
+          "photo_asset_id",
+          "photo_url",
+          "updated_at"
+        ],
+        "title": "SizeChartOut",
+        "type": "object"
+      },
       "StatusEventOut": {
         "properties": {
           "actor_id": {
@@ -2938,6 +3548,170 @@
           "created_at"
         ],
         "title": "StatusEventOut",
+        "type": "object"
+      },
+      "StoreDetailsOut": {
+        "properties": {
+          "brand_name": {
+            "title": "Brand Name",
+            "type": "string"
+          },
+          "business": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Business",
+            "type": "object"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "complete": {
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact"
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery"
+          },
+          "instagram_or_website": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instagram Or Website"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "pay_on_delivery": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "boolean"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pay On Delivery"
+          },
+          "payout": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payout"
+          },
+          "returns": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returns"
+          },
+          "sells": {
+            "anyOf": [
+              {
+                "enum": [
+                  "women",
+                  "men",
+                  "both"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sells"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "brand_name",
+          "sells",
+          "city",
+          "instagram_or_website",
+          "contact",
+          "delivery",
+          "returns",
+          "pay_on_delivery",
+          "payout",
+          "business",
+          "missing",
+          "complete",
+          "updated_at"
+        ],
+        "title": "StoreDetailsOut",
         "type": "object"
       },
       "SubmissionOut": {
@@ -3370,6 +4144,9 @@
       },
       "VendorDetailOut": {
         "properties": {
+          "commission": {
+            "$ref": "#/components/schemas/CommissionOut"
+          },
           "contact_name": {
             "title": "Contact Name",
             "type": "string"
@@ -3486,6 +4263,7 @@
           "status_changed_at",
           "status_changed_by",
           "created_at",
+          "commission",
           "events"
         ],
         "title": "VendorDetailOut",
@@ -3493,6 +4271,9 @@
       },
       "VendorOut": {
         "properties": {
+          "commission": {
+            "$ref": "#/components/schemas/CommissionOut"
+          },
           "contact_name": {
             "title": "Contact Name",
             "type": "string"
@@ -3601,7 +4382,8 @@
           "status_reason",
           "status_changed_at",
           "status_changed_by",
-          "created_at"
+          "created_at",
+          "commission"
         ],
         "title": "VendorOut",
         "type": "object"
@@ -4397,6 +5179,24 @@
             }
           },
           {
+            "description": "Only brands whose commission is in this state (`proposed`: to review)",
+            "in": "query",
+            "name": "commission",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CommissionState"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only brands whose commission is in this state (`proposed`: to review)",
+              "title": "Commission"
+            }
+          },
+          {
             "in": "query",
             "name": "limit",
             "required": false,
@@ -4456,7 +5256,7 @@
     },
     "/v1/admin/vendors/{vendor_id}": {
       "get": {
-        "description": "One vendor with its status history.",
+        "description": "One vendor with its status history and commission.",
         "operationId": "get_vendor_v1_admin_vendors__vendor_id__get",
         "parameters": [
           {
@@ -4562,6 +5362,232 @@
         ]
       }
     },
+    "/v1/admin/vendors/{vendor_id}/commission": {
+      "get": {
+        "description": "A brand's commission. `404` for an unknown vendor.",
+        "operationId": "get_vendor_commission_v1_admin_vendors__vendor_id__commission_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vendor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vendor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommissionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Vendor Commission",
+        "tags": [
+          "admin-commission"
+        ]
+      }
+    },
+    "/v1/admin/vendors/{vendor_id}/commission/approve": {
+      "post": {
+        "description": "Agrees the brand's waiting proposal. `409 no_proposal` when none waits;\n`409 commission_changed` when it is not the `proposed_bps` sent.",
+        "operationId": "approve_commission_v1_admin_vendors__vendor_id__commission_approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vendor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vendor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommissionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Approve Commission",
+        "tags": [
+          "admin-commission"
+        ]
+      }
+    },
+    "/v1/admin/vendors/{vendor_id}/commission/send-back": {
+      "post": {
+        "description": "Sends the waiting proposal back with a note (10 to 600 characters) the brand sees. The\nagreed rate, if any, stays. `409 no_proposal` when none waits.",
+        "operationId": "send_back_commission_v1_admin_vendors__vendor_id__commission_send_back_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vendor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vendor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendBackIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommissionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Send Back Commission",
+        "tags": [
+          "admin-commission"
+        ]
+      }
+    },
+    "/v1/admin/vendors/{vendor_id}/commission/set": {
+      "post": {
+        "description": "Sets the agreed rate directly (for example agreed on a call), whatever was proposed; an\noptional note up to 600 characters. `409 vendor_not_eligible` for a rejected application.",
+        "operationId": "set_commission_v1_admin_vendors__vendor_id__commission_set_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vendor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vendor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetRateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommissionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Commission",
+        "tags": [
+          "admin-commission"
+        ]
+      }
+    },
     "/v1/admin/vendors/{vendor_id}/reject": {
       "post": {
         "description": "Rejects a **pending** vendor (a reason is required, and the vendor is told it). Ends every\nsession of the vendor at once. `409 invalid_status_transition` otherwise: an approved vendor\nis suspended, not rejected.",
@@ -4616,6 +5642,55 @@
           }
         ],
         "summary": "Reject Vendor",
+        "tags": [
+          "admin-vendors"
+        ]
+      }
+    },
+    "/v1/admin/vendors/{vendor_id}/store-details": {
+      "get": {
+        "description": "A vendor's store details as the vendor sees them: payouts masked (bank, last four digits\nor a masked UPI ID), never the number. `404` for an unknown vendor.",
+        "operationId": "get_vendor_store_details_v1_admin_vendors__vendor_id__store_details_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vendor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vendor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreDetailsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Vendor Store Details",
         "tags": [
           "admin-vendors"
         ]
@@ -5054,6 +6129,49 @@
         ]
       }
     },
+    "/v1/public/ifsc/{code}": {
+      "get": {
+        "description": "The bank behind an IFSC (from its first four letters). `422 ifsc_format` for a code that\nis not an IFSC; `404 ifsc_unknown` for a well-formed code of a bank we do not list, which a\npayout may still use. Limited per IP; nothing is looked up anywhere else.",
+        "operationId": "ifsc_lookup_v1_public_ifsc__code__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IfscBankOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ifsc Lookup",
+        "tags": [
+          "public"
+        ]
+      }
+    },
     "/v1/vendor/assets": {
       "post": {
         "description": "Registers an uploaded image: Cloudinary is asked what it stored (never the browser), and\nthe asset becomes `ready` if its real size and format are allowed. Only a `public_id` that was\nsigned for this vendor can be registered (anything else is `404 asset_not_found`).\n`409 upload_not_found` until the file has been uploaded; registering twice is harmless.",
@@ -5271,6 +6389,80 @@
         "summary": "Submit",
         "tags": [
           "brand-profile"
+        ]
+      }
+    },
+    "/v1/vendor/commission": {
+      "get": {
+        "description": "The brand's commission: what is agreed, what it proposed, and Shazlo's note.",
+        "operationId": "get_commission_v1_vendor_commission_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommissionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Commission",
+        "tags": [
+          "commission"
+        ]
+      }
+    },
+    "/v1/vendor/commission/proposal": {
+      "post": {
+        "description": "Owner only. Proposes a rate for Shazlo to approve; an agreed rate stays in force until\nthen. `422` for the rate already agreed. Limited per vendor.",
+        "operationId": "propose_commission_v1_vendor_commission_proposal_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposalIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommissionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Propose Commission",
+        "tags": [
+          "commission"
         ]
       }
     },
@@ -5780,6 +6972,466 @@
         "summary": "Submit Product",
         "tags": [
           "products"
+        ]
+      }
+    },
+    "/v1/vendor/size-charts/{group}": {
+      "get": {
+        "description": "The brand's chart for a group (`bottoms`, `tops`, `dresses`, `jackets`); empty when none\nis saved. `404` for any other group.",
+        "operationId": "get_size_chart_v1_vendor_size_charts__group__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group",
+            "required": true,
+            "schema": {
+              "title": "Group",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SizeChartOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Size Chart",
+        "tags": [
+          "size-charts"
+        ]
+      },
+      "put": {
+        "description": "Replaces the brand's chart for a group. Sizes and measurements must be the group's; values\nare centimetres above 0 and up to 300 with one decimal at most. `photo_asset_id` is one of\nthe brand's own ready `size_chart` images (sign the upload with kind `size_chart`). An empty\nchart without a photo deletes it.",
+        "operationId": "save_size_chart_v1_vendor_size_charts__group__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group",
+            "required": true,
+            "schema": {
+              "title": "Group",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SizeChartIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SizeChartOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save Size Chart",
+        "tags": [
+          "size-charts"
+        ]
+      }
+    },
+    "/v1/vendor/store-details": {
+      "get": {
+        "description": "Every topic, what is still missing, and whether they are complete. A vendor that has\nsaved nothing gets nulls and every required topic in `missing`.",
+        "operationId": "get_store_details_route_v1_vendor_store_details_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreDetailsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Store Details Route",
+        "tags": [
+          "store-details"
+        ]
+      }
+    },
+    "/v1/vendor/store-details/brand": {
+      "put": {
+        "description": "What the brand sells (women, men or both), where it ships from, and an optional\nInstagram handle or website (empty or null clears it).",
+        "operationId": "save_brand_v1_vendor_store_details_brand_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrandIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreDetailsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save Brand",
+        "tags": [
+          "store-details"
+        ]
+      }
+    },
+    "/v1/vendor/store-details/business": {
+      "put": {
+        "description": "Owner only. Optional legal name and GST number (checked, check character included);\nempty values are stored as null.",
+        "operationId": "save_business_v1_vendor_store_details_business_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BusinessIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreDetailsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save Business",
+        "tags": [
+          "store-details"
+        ]
+      }
+    },
+    "/v1/vendor/store-details/contact": {
+      "put": {
+        "description": "Who Shazlo talks to. The phone is stored as ten digits; the email in lower case.",
+        "operationId": "save_contact_v1_vendor_store_details_contact_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreDetailsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save Contact",
+        "tags": [
+          "store-details"
+        ]
+      }
+    },
+    "/v1/vendor/store-details/delivery": {
+      "put": {
+        "description": "`shazlo` (Shazlo picks up from `pickup_address`) or `own` (the brand delivers to all of\nIndia or to up to 50 cities or PIN codes, in `delivery_days`: 1_2, 2_3, 3_5 or 5_7).",
+        "operationId": "save_delivery_v1_vendor_store_details_delivery_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeliveryIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreDetailsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save Delivery",
+        "tags": [
+          "store-details"
+        ]
+      }
+    },
+    "/v1/vendor/store-details/payment": {
+      "put": {
+        "description": "How shoppers can pay on delivery: cash and/or UPI, at least one.",
+        "operationId": "save_payment_v1_vendor_store_details_payment_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreDetailsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save Payment",
+        "tags": [
+          "store-details"
+        ]
+      }
+    },
+    "/v1/vendor/store-details/payout": {
+      "put": {
+        "description": "Owner only. Where Shazlo pays the brand: a bank account (`holder_name`,\n`account_number` of 9 to 18 digits, `ifsc`) or a UPI ID. The number is sealed and never\nreturned; the answer shows the bank (from the IFSC, null for an unlisted bank) and the last\nfour digits, or the masked UPI ID. Every change is audited.",
+        "operationId": "save_payout_v1_vendor_store_details_payout_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayoutIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreDetailsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save Payout",
+        "tags": [
+          "store-details"
+        ]
+      }
+    },
+    "/v1/vendor/store-details/returns": {
+      "put": {
+        "description": "`window_days` 0 (no returns), 7, 14 or 30. With a window, `condition`\n(unworn_with_tags, any_reason, damaged_or_wrong) and `refund_days` (2, 5 or 7) are required;\nwith 0 they are stored as null whatever is sent.",
+        "operationId": "save_returns_v1_vendor_store_details_returns_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreDetailsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save Returns",
+        "tags": [
+          "store-details"
         ]
       }
     },

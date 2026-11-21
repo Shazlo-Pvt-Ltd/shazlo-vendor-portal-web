@@ -1,3 +1,6 @@
+import base64
+import json
+
 import pytest
 from smtp_server import fake_smtp
 
@@ -40,6 +43,8 @@ def test_send_test_email_only_runs_in_dev(
         identity_jwks_url="https://identity.shazlo.store/.well-known/jwks.json",
         identity_issuer="https://identity.shazlo.store",
         jwt_issuer="https://vendor-api.shazlo.store",
+        payout_encryption_keys=json.dumps({"k1": base64.b64encode(b"p" * 32).decode()}),
+        payout_encryption_kid="k1",
     )
     assert cli.main(["send-test-email"]) == 1
     assert "only runs with ENV=dev" in capsys.readouterr().err

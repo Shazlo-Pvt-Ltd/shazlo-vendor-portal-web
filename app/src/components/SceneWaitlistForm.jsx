@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Alert, Box, Typography, TextField, Button, MenuItem } from "@mui/material";
 import { motion } from "framer-motion";
 import logo from "../assets/3a.png";
+import { apiUrl } from "../config/apiBase";
 
 const SceneWaitlistForm = () => {
   const [name, setName] = useState("");
@@ -18,7 +19,7 @@ const SceneWaitlistForm = () => {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("https://shazlo-waitlist-gtge.onrender.com//api/waitlist/add", {
+      const response = await fetch(apiUrl("/api/waitlist/add"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, gender, city }),

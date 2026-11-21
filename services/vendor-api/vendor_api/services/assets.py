@@ -30,6 +30,7 @@ FOLDERS = {
     AssetKind.BRAND_LOGO: "brand",
     AssetKind.BRAND_BANNER: "brand",
     AssetKind.PRODUCT_IMAGE: "products",
+    AssetKind.SIZE_CHART: "size-charts",
 }
 
 UPLOADS_NOT_CONFIGURED = ApiError(

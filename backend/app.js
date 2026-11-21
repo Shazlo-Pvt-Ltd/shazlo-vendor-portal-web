@@ -43,7 +43,8 @@ export function createApp({ env = process.env } = {}) {
     });
   });
 
-  app.use("*", (req, res) => {
+  // Express 5 rejects a bare "*" path; a handler with no path runs for every request that reaches it.
+  app.use((req, res) => {
     res.status(404).json({ message: "Route not found" });
   });
 
