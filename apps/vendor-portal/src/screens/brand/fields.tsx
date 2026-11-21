@@ -1,9 +1,10 @@
 import { Box, Button, FormHelperText, Stack, TextField, Typography } from '@mui/material'
-import { brand, fontFamily, neutral, radius, StatusPill } from '@shazlo/ui'
+import { brand, fontFamily, neutral, radius } from '@shazlo/ui'
 import { ImageIcon, Upload } from 'lucide-react'
 import { memo, useId, useRef, useState, type ChangeEvent, type InputHTMLAttributes, type ReactNode } from 'react'
 import { Controller, type Control } from 'react-hook-form'
 import { useUploadImage } from '../../api/queries'
+import { StatusPill } from '../../components/StatusPill'
 import { brandCopy as copy } from '../../copy/brand'
 import { initials, type BrandValues } from './schema'
 

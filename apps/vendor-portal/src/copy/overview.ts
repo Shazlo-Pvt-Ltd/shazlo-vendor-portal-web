@@ -1,5 +1,6 @@
 // Copy for V-04 Overview. One module per screen keeps a later Hindi translation in one place.
 import { formatCount } from '../lib/format'
+import { statusWords } from './status'
 
 // Brand page fields in the words sellers see on the form, in the order the form shows them.
 const fieldNames: Record<string, string> = {
@@ -63,9 +64,9 @@ export const overviewCopy = {
       labels: { store_details: 'Store details', brand_page: 'Brand page', first_product: 'First product' },
     },
     changes: {
-      title: 'Needs your changes',
-      loading: 'Loading what needs your changes',
-      error: 'Sent-back items did not load. Check your connection and try again.',
+      title: statusWords.needsChanges,
+      loading: 'Loading what needs changes',
+      error: 'Items that need changes did not load. Check your connection and try again.',
       fix: 'Fix this',
       fixLabel: (title: string) => `Fix this: ${title}`,
       brandPage: 'Brand page',
@@ -74,7 +75,7 @@ export const overviewCopy = {
     counts: {
       title: 'Your products',
       loading: 'Loading product counts',
-      rows: { approved: 'Live', pending_review: 'In review', draft: 'Drafts' },
+      rows: { approved: statusWords.live, pending_review: statusWords.inReview, draft: statusWords.drafts },
     },
     seeAllDecisions: 'See all review decisions',
   },
@@ -96,9 +97,9 @@ export const overviewCopy = {
     loading: 'Loading product counts',
     error: 'Your product counts did not load. Check your connection and try again.',
     live: { label: 'Live on Shazlo', baseline: 'Visible in the app feed' },
-    pending: { label: 'Pending review', baseline: 'Usually reviewed within 24 h' },
-    sentBack: { label: 'Sent back', baseline: 'Needs your changes', baselineNone: 'Nothing to fix' },
-    drafts: { label: 'Drafts', baseline: 'Not submitted yet' },
+    inReview: { label: statusWords.inReview, baseline: 'Usually reviewed within 24 h' },
+    needsChanges: { label: statusWords.needsChanges, baseline: 'Fix and resubmit', baselineNone: 'Nothing to fix' },
+    drafts: { label: statusWords.drafts, baseline: 'Not submitted yet' },
   },
 
   decisions: {

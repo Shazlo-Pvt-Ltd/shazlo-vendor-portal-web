@@ -84,10 +84,10 @@ describe('Home on phones: setup tasks', () => {
   })
 })
 
-describe('Home on phones: needs your changes', () => {
+describe('Home on phones: needs changes', () => {
   it('lists sent-back items with the reason and a way to fix each', async () => {
     await renderApp({ viewport: 'mobile' })
-    const changes = await region('Needs your changes')
+    const changes = await region('Needs changes')
     const items = await within(changes).findAllByRole('listitem', {}, SLOW)
     expect(items).toHaveLength(2)
     const [ajrakh, jacket] = items as [HTMLElement, HTMLElement]

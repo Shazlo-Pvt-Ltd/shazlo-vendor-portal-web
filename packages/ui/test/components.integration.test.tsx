@@ -27,6 +27,15 @@ describe('StatusPill', () => {
     expect(pill.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
     expect(statusPillLabel[status]).toBe(label)
   })
+
+  // The defaults are the admin's words; the seller portal names the same states its own way (#267).
+  it('lets an app name the status in its own words and keeps the look', () => {
+    wrap(<StatusPill status="sentBack" label="Needs changes" />)
+    const pill = screen.getByText('Needs changes').closest('[data-status]') as HTMLElement
+    expect(pill).toHaveAttribute('data-status', 'sentBack')
+    expect(pill.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
+    expect(screen.queryByText('Sent back')).toBeNull()
+  })
 })
 
 describe('PageHeader', () => {

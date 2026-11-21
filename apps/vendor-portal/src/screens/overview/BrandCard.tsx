@@ -1,10 +1,12 @@
 import { Box, Button, Skeleton, Stack, Typography } from '@mui/material'
-import { Banner, SectionCard, StatusPill, type PillStatus } from '@shazlo/ui'
+import { Banner, SectionCard, type PillStatus } from '@shazlo/ui'
 import { Link as RouterLink } from 'react-router'
 import type { Schemas } from '../../api/client'
 import { useBrandPage } from '../../api/queries'
 import { paths } from '../../app/paths'
+import { StatusPill } from '../../components/StatusPill'
 import { changedFieldList, overviewCopy } from '../../copy/overview'
+import { brandReviewPill } from '../../lib/status'
 import { onDay, onDayAt } from '../review/when'
 
 const copy = overviewCopy.brand
@@ -15,8 +17,8 @@ function describe(page: Schemas['BrandPage']): { pills: PillStatus[]; lines: str
   const pills: PillStatus[] = []
   const lines: string[] = []
   if (live) pills.push('live')
-  if (review.state === 'waiting') pills.push(live ? 'editInReview' : 'pending')
-  if (review.state === 'rejected') pills.push('sentBack')
+  const reviewing = brandReviewPill(review.state, live != null)
+  if (reviewing) pills.push(reviewing)
 
   if (live) {
     if (live_since) lines.push(copy.published(onDay(live_since)))

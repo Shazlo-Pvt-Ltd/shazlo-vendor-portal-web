@@ -9,6 +9,8 @@ export const shellCopy = {
   bulkImport: 'Bulk import',
   review: 'Review status',
   reviewShort: 'Review',
+  // Read after "Review status" in the sidebar: "Review status, 5 in review".
+  reviewCount: (n: number) => `${n} in review`,
   store: 'Store',
   storeDetails: 'Store details',
   account: 'Account',
@@ -24,7 +26,7 @@ export const shellCopy = {
   viewLivePage: 'View live brand page',
   skipToContent: 'Skip to content',
   notifications: 'Notifications',
-  notificationsNeedChanges: (n: number) => `Notifications, ${n} need${n === 1 ? 's' : ''} your changes`,
+  notificationsNeedChanges: (n: number) => `Notifications, ${n} need${n === 1 ? 's' : ''} changes`,
   noNotifications: 'Nothing new. Review decisions will show up here.',
   seeAllDecisions: 'See all review decisions',
   sentBack: (title: string) => `${title} was sent back`,

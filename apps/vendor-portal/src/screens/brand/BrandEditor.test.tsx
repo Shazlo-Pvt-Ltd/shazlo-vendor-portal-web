@@ -245,7 +245,8 @@ describe('V-05 Brand page', () => {
     expect(banner).toBeInTheDocument()
     expect(db.brand.review.state).toBe('waiting')
     expect(db.brand.draft?.tagline).toBe('Ajrakh from Kutch.')
-    expect(screen.getByText('Pending review', { selector: '[data-status="pending"]' })).toBeInTheDocument()
+    // The page is live, so this is an edit in review: the same words as on Overview (#267).
+    expect(screen.getByText('Changes in review', { selector: '[data-status="editInReview"]' })).toBeInTheDocument()
     expect(tagline).toBeDisabled()
     expect(textbox(/^Story/)).toBeDisabled()
     expect(textbox('Instagram')).toBeDisabled()
@@ -257,11 +258,30 @@ describe('V-05 Brand page', () => {
   it('opens read-only while the page is in review', async () => {
     await openBrandPage({ prepare: (db) => { db.brand.review = { state: 'waiting', at: new Date().toISOString() } } })
     expect(screen.getByText('Your brand page is in review. You can edit it again once our team has decided — usually within 24 hours.')).toBeInTheDocument()
-    expect(screen.getByText('Pending review', { selector: '[data-status="pending"]' })).toBeInTheDocument()
+    expect(screen.getByText('Changes in review', { selector: '[data-status="editInReview"]' })).toBeInTheDocument()
     expect(textbox('Tagline')).toBeDisabled()
     expect(textbox('Instagram')).toBeDisabled()
     expect(screen.queryByRole('button', { name: 'Submit for review' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Discard draft' })).toBeNull()
+  })
+
+  it('calls a first brand page in review "In review"', async () => {
+    await openBrandPage({
+      prepare: (db) => {
+        db.brand.live = null
+        db.brand.live_since = null
+        db.brand.review = { state: 'waiting', at: new Date().toISOString() }
+      },
+    })
+    expect(screen.getByText('In review', { selector: '[data-status="pending"]' })).toBeInTheDocument()
+    expect(screen.queryByText('Pending review')).toBeNull()
+  })
+
+  it('says a sent-back brand page was sent back, without the admin pill', async () => {
+    await openBrandPage({ prepare: (db) => { db.brand.review = { state: 'rejected', at: new Date().toISOString(), reason: 'The cover photo shows another brand’s logo.' } } })
+    // The seller edits the draft here, so its pill is the draft's; the banner says what happened.
+    expect(screen.getByText('Our team sent your brand page back.')).toBeInTheDocument()
+    expect([...document.querySelectorAll('[data-status]')].map((el) => el.textContent)).not.toContain('Sent back')
   })
 
   it('quotes the reviewer when the page was sent back', async () => {

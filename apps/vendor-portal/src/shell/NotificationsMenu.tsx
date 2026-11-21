@@ -1,11 +1,12 @@
 import { Badge, Box, Divider, IconButton, Menu, MenuItem, Typography } from '@mui/material'
-import { neutral, StatusPill } from '@shazlo/ui'
+import { neutral } from '@shazlo/ui'
 import { Bell } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import type { Schemas } from '../api/client'
 import { useMe, useReviews } from '../api/queries'
 import { paths } from '../app/paths'
+import { StatusPill } from '../components/StatusPill'
 import { shellCopy as copy } from '../copy/shell'
 import { formatRelative } from '../lib/format'
 

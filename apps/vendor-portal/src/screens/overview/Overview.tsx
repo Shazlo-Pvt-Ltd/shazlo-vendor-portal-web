@@ -18,8 +18,8 @@ const touch = { minHeight: { xs: 44, md: 36 } }
 
 const FIGURES = [
   { status: 'approved', text: copy.stats.live },
-  { status: 'pending_review', text: copy.stats.pending },
-  { status: 'rejected', text: copy.stats.sentBack },
+  { status: 'pending_review', text: copy.stats.inReview },
+  { status: 'rejected', text: copy.stats.needsChanges },
   { status: 'draft', text: copy.stats.drafts },
 ] as const satisfies readonly { status: Schemas['ProductStatus']; text: { label: string; baseline: string } }[]
 
@@ -63,7 +63,7 @@ function Figures({ summary, desktop }: { summary: ReturnType<typeof useSummary>;
       ) : (
         FIGURES.map(({ status, text }) => {
           const n = summary.data.products[status]
-          const baseline = status === 'rejected' && n === 0 ? copy.stats.sentBack.baselineNone : text.baseline
+          const baseline = status === 'rejected' && n === 0 ? copy.stats.needsChanges.baselineNone : text.baseline
           return <StatFigure key={status} label={text.label} value={formatCount(n)} baseline={baseline} href={`${paths.products}?status=${status}`} linkComponent={RouterLink} />
         })
       )}
