@@ -1,8 +1,13 @@
 import { defineConfig, devices } from '@playwright/test'
 
-// Browser checks against the production build with the mock API (MSW) switched on.
-// Screenshots are compared per platform: CI (Linux) keeps its own baselines.
-const PORT = 4173
+// Browser checks against the production build in demo mode: the mock API (MSW, src/mocks) answers
+// in a service worker. main's preview port, 5174. Screenshots are compared per platform: CI (Linux)
+// keeps its own baselines.
+const PORT = 5174
+
+// Demo builds still need a valid API address (src/config/env.ts); the mocks answer for it, so it is
+// never contacted. `.invalid` can never resolve.
+export const DEMO_API_URL = 'https://demo-api.shazlo.invalid'
 
 export default defineConfig({
   testDir: './e2e',
@@ -25,7 +30,10 @@ export default defineConfig({
   webServer: {
     command: 'npm run build && npm run preview',
     url: `http://localhost:${PORT}`,
+    // Build and preview read these; vite.config.ts relaxes nothing else for the demo.
+    env: { VITE_MOCK_API: 'on', VITE_VENDOR_API_URL: DEMO_API_URL },
     reuseExistingServer: !process.env.CI,
-    timeout: 180_000,
+    // Type-checking and building take several minutes on a slow machine.
+    timeout: 600_000,
   },
 })

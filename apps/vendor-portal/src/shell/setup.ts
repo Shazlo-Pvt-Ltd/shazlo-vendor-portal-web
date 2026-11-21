@@ -1,10 +1,10 @@
-import type { Schemas } from '../api/client'
 import { paths } from '../app/paths'
 import { shellCopy as copy } from '../copy/shell'
 
-type Setup = Schemas['Me']['setup']
+/** Which of the three setup tasks are done (the `setup` part of useMe()). */
+export type Setup = { store_details: boolean; brand_page: boolean; first_product: boolean }
 
-export type SetupStep = { key: 'store_details' | 'brand_page' | 'first_product'; done: boolean; label: string; to: string }
+export type SetupStep = { key: keyof Setup; done: boolean; label: string; to: string }
 
 // The three setup tasks (spec §4), in the order a new seller should do them. Store details come
 // first because products cannot be sent for review without them.

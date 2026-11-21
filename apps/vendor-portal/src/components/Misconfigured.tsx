@@ -1,4 +1,8 @@
-import { Alert, Box, Typography } from '@mui/material'
+import { Box, Link } from '@mui/material'
+import { Banner } from '@shazlo/ui'
+import { SUPPORT_EMAIL } from '../config/support'
+import { frameCopy as copy } from '../copy/frame'
+import { Notice, PlainPage } from './Notice'
 
 interface Props {
   problems: string[]
@@ -7,21 +11,25 @@ interface Props {
 /** Shown instead of a blank page when the build's environment is wrong. */
 export function Misconfigured({ problems }: Props) {
   return (
-    <Box component="main" sx={{ p: 3, maxWidth: 640, mx: 'auto', mt: 8 }}>
-      <Typography component="h1" variant="h4" gutterBottom>
-        The portal is misconfigured
-      </Typography>
-      <Typography sx={{ mb: 2 }}>
-        It cannot reach its server. If you are the developer, fix the setting below and rebuild; if
-        you are a vendor, please tell Shazlo support.
-      </Typography>
-      <Alert severity="error">
-        <ul style={{ margin: 0, paddingLeft: 20 }}>
-          {problems.map((problem) => (
-            <li key={problem}>{problem}</li>
-          ))}
-        </ul>
-      </Alert>
-    </Box>
+    <PlainPage>
+      <Notice
+        title={copy.misconfigured.title}
+        illustration="sheet"
+        actions={<Link href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</Link>}
+      >
+        <p>{copy.misconfigured.body}</p>
+        <Box sx={{ mt: 2, textAlign: 'left' }}>
+          <Banner tone="error" title={problems.length === 1 ? problems[0] : `${problems.length} settings are wrong`}>
+            {problems.length > 1 ? (
+              <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+                {problems.map((problem) => (
+                  <li key={problem}>{problem}</li>
+                ))}
+              </Box>
+            ) : null}
+          </Banner>
+        </Box>
+      </Notice>
+    </PlainPage>
   )
 }

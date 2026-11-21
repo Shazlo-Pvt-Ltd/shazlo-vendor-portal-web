@@ -1,8 +1,8 @@
 import type { ImgHTMLAttributes, ReactNode } from 'react'
-import { safeHttpsUrl } from './safeUrl'
+import { safeImageUrl } from './safeUrl'
 
 interface Props extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src' | 'referrerPolicy' | 'alt'> {
-  /** Comes from a vendor or from vendor-api: only an `https:` address is loaded. */
+  /** Comes from a vendor or from vendor-api: only `https:`, a path of the app itself or a `blob:` the page made is loaded. */
   src: string | null | undefined
   /** Required: describe the image, or pass an empty string for a purely decorative one. */
   alt: string
@@ -12,7 +12,7 @@ interface Props extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src' | 'refer
 
 /** An image from an address a vendor supplied. Sends no referrer and loads lazily. */
 export function SafeImage({ src, alt, fallback = null, ...rest }: Props) {
-  const safe = safeHttpsUrl(src)
+  const safe = safeImageUrl(src)
   if (safe === undefined) {
     return <>{fallback}</>
   }

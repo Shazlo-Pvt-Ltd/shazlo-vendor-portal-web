@@ -3,6 +3,7 @@ import { expect, type Page, type TestInfo } from '@playwright/test'
 
 // The seed data is relative to "now"; freezing the clock keeps dates and screenshots stable.
 export const FROZEN_NOW = new Date('2026-10-31T12:00:00+05:30')
+// The demo seller of the mock API (DEMO_LOGIN in src/mocks/db.ts).
 export const DEMO = { email: 'kiran@kalkistudio.in', password: 'ajrakh-indigo-26' }
 
 export async function freezeTime(page: Page) {
@@ -11,7 +12,7 @@ export async function freezeTime(page: Page) {
 
 export async function signIn(page: Page, next = '/') {
   await freezeTime(page)
-  await page.goto(next === '/' ? '/sign-in' : `/sign-in?next=${encodeURIComponent(next)}`)
+  await page.goto(next === '/' ? '/login' : `/login?next=${encodeURIComponent(next)}`)
   await page.getByLabel('Work email').fill(DEMO.email)
   await page.getByLabel('Password', { exact: true }).fill(DEMO.password)
   await page.getByRole('button', { name: 'Sign in' }).click()

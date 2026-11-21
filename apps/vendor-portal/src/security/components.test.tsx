@@ -65,8 +65,32 @@ describe('SafeImage', () => {
     expect(image.getAttribute('loading')).toBe('lazy')
   })
 
-  it.each(['javascript:alert(1)', 'data:image/svg+xml,<svg onload=alert(1)>', 'http://x.example/a.jpg', ''])(
-    'renders the fallback, not an <img>, for %s',
+  it('loads a blob: preview the page made itself (a chosen file, a demo photo)', () => {
+    render(<SafeImage src="blob:http://localhost:5174/0b7c6e1d-2f2a-4c55-9d1e-8a0f6f1b2c3d" alt="Front" />)
+    expect(screen.getByRole('img', { name: 'Front' }).getAttribute('src')).toBe('blob:http://localhost:5174/0b7c6e1d-2f2a-4c55-9d1e-8a0f6f1b2c3d')
+  })
+
+  it.each(['blob:', 'blob:javascript:alert(1)', 'blob:data:text/html,x', ' blob:http://x/1', 'BLOB:http://x/1\n'])('refuses the odd blob: address %j', (src) => {
+    render(<SafeImage src={src} alt="Front" fallback={<span>No photo</span>} />)
+    expect(screen.queryByRole('img')).toBeNull()
+  })
+
+  it('loads an image the app itself serves (the demo photos), by its path', () => {
+    render(<SafeImage src="/demo/products/kurta-front.jpg" alt="Kurta" />)
+    expect(screen.getByRole('img', { name: 'Kurta' }).getAttribute('src')).toBe('/demo/products/kurta-front.jpg')
+  })
+
+  it.each([
+    'javascript:alert(1)',
+    'data:image/svg+xml,<svg onload=alert(1)>',
+    'http://x.example/a.jpg',
+    '',
+    '//evil.example/a.jpg',
+    '/\\evil.example/a.jpg',
+    'relative/a.jpg',
+    '/a.jpg\n',
+  ])(
+    'renders the fallback, not an <img>, for %j',
     (src) => {
       render(<SafeImage src={src} alt="Logo" fallback={<span>No logo</span>} />)
       expect(screen.queryByRole('img')).toBeNull()

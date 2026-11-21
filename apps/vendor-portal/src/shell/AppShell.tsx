@@ -1,17 +1,21 @@
-import { Avatar, Box, Breadcrumbs, Divider, IconButton, Link, List, ListItemButton, ListItemIcon, ListItemText, Skeleton, Stack, Typography } from '@mui/material'
-import { brand, fontFamily, Logo, neutral, radius } from '@shazlo/ui'
+import { Avatar, Box, Breadcrumbs, Divider, IconButton, Link, List, ListItemButton, ListItemIcon, ListItemText, Stack, Typography } from '@mui/material'
+import { alpha, type Theme } from '@mui/material/styles'
+import { Banner, brand, Logo, neutral, radius } from '@shazlo/ui'
 import { ChevronLeft, CircleUserRound, ExternalLink, FileSpreadsheet, HelpCircle, History, House, LayoutGrid, LogOut, Package, SlidersHorizontal, Store, Users, type LucideIcon } from 'lucide-react'
 import { Suspense, useEffect, useRef, type ReactNode } from 'react'
-import { Link as RouterLink, Outlet, useLocation, useMatches, useNavigate, useNavigationType } from 'react-router'
-import { useMe, useSummary } from '../api/queries'
+import { Link as RouterLink, Outlet, useLocation, useMatches, useNavigationType } from 'react-router'
+import { useSummary } from '../api/queries'
 import { usePageCrumb, type RouteHandle } from '../app/crumbs'
 import { paths } from '../app/paths'
-import { useSession } from '../auth/session'
+import { frameCopy } from '../copy/frame'
 import { shellCopy as copy } from '../copy/shell'
 import { srOnly } from '../lib/a11y'
+import { useSession } from '../session/AuthProvider'
+import { useSignOut } from '../session/useSignOut'
 import { GUTTER, PAGE_END, RAIL_WIDTH, SIDEBAR_WIDTH, TAB_BAR_HEIGHT, useNavMode, type NavMode } from './layout'
 import { NotificationsMenu } from './NotificationsMenu'
 import { PageFallback } from './PageFallback'
+import { SectionBoundary } from './SectionBoundary'
 import { TaskProvider, useTaskState, type ResolvedBack } from './task'
 
 type NavItem = { to: string; label: string; icon: LucideIcon; match: (path: string) => boolean; count?: number; countLabel?: (n: number) => string }
@@ -19,17 +23,27 @@ type NavItem = { to: string; label: string; icon: LucideIcon; match: (path: stri
 const under = (path: string, base: string) => path === base || path.startsWith(`${base}/`)
 const isHome = (p: string) => p === paths.overview
 const isProducts = (p: string) => under(p, paths.products) && p !== paths.bulkImport
-const isStoreDetails = (p: string) => under(p, paths.store) || under(p, paths.settings)
+const isStoreDetails = (p: string) => under(p, paths.store)
 const isAccount = (p: string) => under(p, paths.account) || under(p, paths.team) || under(p, paths.help)
 
 // Active state: a navy marker with the label in ink. Never yellow: cream or amber on the off-white
 // bars is under 1.5:1, so it would not read as "you are here" (WCAG 1.4.11).
-const NAVY_TINT = 'rgba(16, 60, 100, 0.08)'
+const NAVY_TINT = alpha(brand.navy, 0.08)
+const NAVY_HOVER = alpha(brand.navy, 0.05)
+
+// Bodoni (the theme's heading face) at a body size: the current section, the store, the last crumb.
+const display = (size: 'body1' | 'body2') => (t: Theme) => ({
+  fontSize: t.typography[size].fontSize,
+  lineHeight: t.typography[size].lineHeight,
+  fontWeight: 400,
+  letterSpacing: 0,
+})
 
 // ---- desktop (1024 px and wider): the Build 2 sidebar ----------------------------------------
 
 function useSidebarNav() {
   const summary = useSummary().data
+  const { role } = useSession()
   const main: NavItem[] = [
     { to: paths.overview, label: copy.overview, icon: LayoutGrid, match: isHome },
     { to: paths.brand, label: copy.brand, icon: Store, match: (p) => under(p, paths.brand) },
@@ -39,14 +53,21 @@ function useSidebarNav() {
   ]
   const more: NavItem[] = [
     { to: paths.storeDetails, label: copy.storeDetails, icon: SlidersHorizontal, match: isStoreDetails },
-    { to: paths.team, label: copy.team, icon: Users, match: (p) => under(p, paths.team) },
+    // Team is the owner's: staff never see it (the page itself is guarded too).
+    ...(role === 'owner' ? [{ to: paths.team, label: copy.team, icon: Users, match: (p: string) => under(p, paths.team) }] : []),
     { to: paths.help, label: copy.help, icon: HelpCircle, match: (p) => under(p, paths.help) },
   ]
   return { main, more }
 }
 
-function initials(name: string) {
-  return name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()
+function initials(text: string) {
+  return text
+    .split(/[\s._@-]+/)
+    .filter(Boolean)
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
 }
 
 function SideNavItem({ item, active }: { item: NavItem; active: boolean }) {
@@ -65,13 +86,13 @@ function SideNavItem({ item, active }: { item: NavItem; active: boolean }) {
           color: neutral.ink,
           bgcolor: active ? NAVY_TINT : 'transparent',
           boxShadow: active ? `inset 3px 0 0 ${brand.navy}` : 'none',
-          '@media (hover: hover)': { '&:hover': { bgcolor: active ? NAVY_TINT : 'rgba(16, 60, 100, 0.05)' } },
+          '@media (hover: hover)': { '&:hover': { bgcolor: active ? NAVY_TINT : NAVY_HOVER } },
         }}
       >
         <ListItemIcon sx={{ minWidth: 32, color: active ? brand.navy : 'inherit' }}>
           <Icon size={18} strokeWidth={1.5} aria-hidden="true" />
         </ListItemIcon>
-        <ListItemText primary={item.label} slotProps={{ primary: { variant: 'body1', sx: { fontFamily: active ? fontFamily.display : undefined } } }} />
+        <ListItemText primary={item.label} slotProps={{ primary: active ? { variant: 'h3', sx: display('body1') } : { variant: 'body1' } }} />
         {item.count != null && (
           <>
             {/* Read as "Review status, 5 waiting"; the visible number is the short form. */}
@@ -88,39 +109,50 @@ function SideNavItem({ item, active }: { item: NavItem; active: boolean }) {
   )
 }
 
+const avatarSx = { width: 32, height: 32, bgcolor: brand.cream, color: brand.brown, fontSize: 12 } as const
+
+function sellerStatus(status: string | undefined): string {
+  if (status === 'approved') return copy.approvedSeller
+  if (status === 'pending') return copy.pendingSeller
+  return copy.suspendedSeller
+}
+
+// The store the seller works on, from the session (no extra request).
 function StoreCard() {
-  const me = useMe().data
-  if (!me) return <Skeleton variant="rounded" height={58} sx={{ mx: 1.5 }} />
+  const { vendor } = useSession()
+  const name = vendor?.name ?? ''
   return (
     <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mx: 1.5, p: 1.5, border: `1px solid ${neutral.line}`, borderRadius: `${radius.card}px`, bgcolor: neutral.surface }}>
-      <Avatar sx={{ width: 32, height: 32, bgcolor: brand.cream, color: brand.brown, fontSize: 12 }} aria-hidden="true">
-        {initials(me.vendor.brand_name)}
+      <Avatar sx={avatarSx} aria-hidden="true">
+        {initials(name)}
       </Avatar>
       <Box sx={{ minWidth: 0 }}>
-        <Typography variant="body1" noWrap sx={{ fontFamily: fontFamily.display }} title={me.vendor.brand_name}>
-          {me.vendor.brand_name}
+        <Typography variant="h3" component="p" noWrap sx={display('body1')} title={name}>
+          {name}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          {me.vendor.status === 'approved' ? copy.approvedSeller : copy.suspendedSeller}
+          {sellerStatus(vendor?.status)}
         </Typography>
       </Box>
     </Stack>
   )
 }
 
+// Who is signed in, from the session, and Sign out.
 function UserFooter({ onSignOut }: { onSignOut: () => void }) {
-  const me = useMe().data
+  const { user, role } = useSession()
+  const email = user?.email ?? ''
   return (
     <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', px: 2, py: 1.5, borderTop: `1px solid ${neutral.line}` }}>
-      <Avatar sx={{ width: 32, height: 32, bgcolor: brand.cream, color: brand.brown, fontSize: 12 }} aria-hidden="true">
-        {me ? initials(me.user.name) : ''}
+      <Avatar sx={avatarSx} aria-hidden="true">
+        {initials(email.split('@')[0] ?? '')}
       </Avatar>
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography variant="body1" noWrap>
-          {me?.user.name ?? ' '}
+        <Typography variant="body1" noWrap title={email}>
+          {email}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          {me?.role === 'vendor_staff' ? copy.staff : copy.owner}
+          {role === 'owner' ? copy.owner : copy.staff}
         </Typography>
       </Box>
       <IconButton aria-label={copy.signOut} onClick={onSignOut} sx={{ color: neutral.inkSecondary }}>
@@ -309,7 +341,7 @@ function Trail() {
             {c.label}
           </Link>
         ) : (
-          <Typography key={c.label} variant="body2" noWrap aria-current={i === trail.length - 1 ? 'page' : undefined} sx={{ fontFamily: fontFamily.display }}>
+          <Typography key={c.label} variant="h3" component="span" noWrap aria-current={i === trail.length - 1 ? 'page' : undefined} sx={display('body2')}>
             {c.label}
           </Typography>
         ),
@@ -404,12 +436,26 @@ function useScrollToHash() {
   }, [hash, key])
 }
 
+// A vendor whose application is in review can prepare everything; Home says where they stand.
+function PendingNotice() {
+  const { vendor } = useSession()
+  const { pathname } = useLocation()
+  if (vendor?.status !== 'pending' || pathname !== paths.overview) return null
+  return (
+    <Box sx={{ mb: { xs: 2.5, md: 3 } }}>
+      <Banner tone="info" title={frameCopy.pending.title}>
+        {frameCopy.pending.body}
+      </Banner>
+    </Box>
+  )
+}
+
 function Layout({ children }: { children?: ReactNode }) {
   const mode = useNavMode()
   const { fullScreen, back } = useTaskState()
-  const { signOut } = useSession()
-  const navigate = useNavigate()
-  const handleSignOut = () => void signOut().then(() => navigate(paths.signIn, { replace: true }))
+  const signOut = useSignOut()
+  const { pathname } = useLocation()
+  const handleSignOut = () => void signOut()
   const phone = mode === 'phone'
   const tabBar = phone && !fullScreen
   const gutter = GUTTER[mode]
@@ -447,7 +493,11 @@ function Layout({ children }: { children?: ReactNode }) {
           }}
         >
           <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
-            <Suspense fallback={<PageFallback />}>{children ?? <Outlet />}</Suspense>
+            <PendingNotice />
+            {/* One broken page leaves the bars standing; another page clears it. */}
+            <SectionBoundary resetKey={pathname}>
+              <Suspense fallback={<PageFallback />}>{children ?? <Outlet />}</Suspense>
+            </SectionBoundary>
           </Box>
         </Box>
       </Box>
@@ -458,6 +508,7 @@ function Layout({ children }: { children?: ReactNode }) {
 
 // Layout for every signed-in page. Navigation follows the window width (./layout.ts): a bottom tab bar
 // on phones, a rail on tablets, the sidebar on desktops. Full-screen tasks: ./task.tsx.
+// Who is signed in comes from the session (src/session); signing out goes through it too.
 export function AppShell({ children }: { children?: ReactNode }) {
   return (
     <TaskProvider>

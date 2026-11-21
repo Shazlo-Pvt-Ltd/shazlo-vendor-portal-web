@@ -2,7 +2,10 @@
 <html lang="en-IN">
   <head>
     <meta charset="UTF-8" />
+    <!-- viewport-fit=cover lets the bars use the safe areas of notched phones (the shell pads them). -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- A signed-in tool, not a public page: keep it out of search engines. -->
+    <meta name="robots" content="noindex" />
     <title>Shazlo Seller</title>
     <meta name="description" content="Add products, follow reviews and run your store on Shazlo." />
     <!-- Matches the off-white top bar, so the phone's status bar blends into it. -->
@@ -17,7 +20,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <!-- Order and PIN numbers are not phone numbers. -->
     <meta name="format-detection" content="telephone=no" />
-    <!-- The canvas colour before the app's styles load, so there is no white flash. -->
+    <!-- The canvas colour before the app's styles load, so there is no white flash. A style, not a
+         script: the Content-Security-Policy allows inline styles (MUI needs them) but no inline script. -->
     <style>html, body { background-color: #FFF8E1; }</style>
   </head>
   <body>

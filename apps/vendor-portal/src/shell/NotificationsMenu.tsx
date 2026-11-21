@@ -1,42 +1,36 @@
 import { Badge, Box, Divider, IconButton, Menu, MenuItem, Typography } from '@mui/material'
-import { neutral, StatusPill } from '@shazlo/ui'
+import { neutral, shadow, StatusPill } from '@shazlo/ui'
 import { Bell } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import type { Schemas } from '../api/client'
-import { useMe, useReviews } from '../api/queries'
+import { useReviews } from '../api/queries'
 import { paths } from '../app/paths'
 import { shellCopy as copy } from '../copy/shell'
 import { formatRelative } from '../lib/format'
+import { useSession } from '../session/AuthProvider'
+import { markNotificationsSeen, notificationsSeenAt } from './memory'
 
 const WEEK = 7 * 24 * 3_600_000
-const seenKey = (vendorId: string) => `shazlo.seller.notifications-seen.${vendorId}`
 
-function readSeen(vendorId: string): number {
-  try {
-    return Number(localStorage.getItem(seenKey(vendorId))) || 0
-  } catch {
-    return 0
-  }
-}
+type ReviewItem = NonNullable<ReturnType<typeof useReviews>['data']>['items'][number]
 
-function hrefFor(item: Schemas['ReviewItem']) {
+function hrefFor(item: ReviewItem) {
   return item.subject.type === 'product' ? paths.product(item.subject.id) : paths.brand
 }
 
 // Bell in the top bar (options board pick): the latest review decisions, newest first.
 // The dot is only for what needs the seller: sent-back items they have not seen yet. Approvals
-// are listed but never light the bell (calm rules, spec §8).
+// are listed but never light the bell (calm rules, spec §8). "Seen" lasts for the session (./memory.ts).
 export function NotificationsMenu() {
   const navigate = useNavigate()
-  const vendorId = useMe().data?.vendor.id
+  const vendorId = useSession().vendor?.id
   const decided = (useReviews(undefined, 20).data?.items ?? []).filter((r) => r.state !== 'waiting' && r.decided_at).slice(0, 6)
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
   const [seenAt, setSeenAt] = useState<number | null>(null)
   // Decisions older than a week are never "new"; measured from when the shell mounted.
   const [mountedAt] = useState(() => Date.now())
 
-  const lastSeen = seenAt ?? (vendorId ? readSeen(vendorId) : 0)
+  const lastSeen = seenAt ?? (vendorId ? notificationsSeenAt(vendorId) : 0)
   const since = Math.max(lastSeen, mountedAt - WEEK)
   const fresh = decided.filter((r) => r.state === 'rejected' && Date.parse(r.decided_at!) > since).length
 
@@ -44,15 +38,11 @@ export function NotificationsMenu() {
     setAnchor(el)
     const now = Date.now()
     setSeenAt(now)
-    try {
-      if (vendorId) localStorage.setItem(seenKey(vendorId), String(now))
-    } catch {
-      // Unread state then lasts for this visit only.
-    }
+    if (vendorId) markNotificationsSeen(vendorId, now)
   }
   const go = (to: string) => {
     setAnchor(null)
-    navigate(to)
+    void navigate(to)
   }
 
   return (
@@ -74,7 +64,7 @@ export function NotificationsMenu() {
         onClose={() => setAnchor(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-        slotProps={{ paper: { sx: { width: 340, maxWidth: 'calc(100vw - 32px)', border: `1px solid ${neutral.line}`, boxShadow: '0 6px 20px rgba(23, 18, 14, 0.12)' } } }}
+        slotProps={{ paper: { sx: { width: 340, maxWidth: 'calc(100vw - 32px)', border: `1px solid ${neutral.line}`, boxShadow: shadow.overlay } } }}
       >
         {decided.length === 0 && (
           <Box sx={{ px: 2, py: 1.5 }}>
