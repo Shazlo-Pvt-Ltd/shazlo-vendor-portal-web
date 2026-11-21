@@ -35,24 +35,31 @@ paths:
   /api/v1/vendor/auth/login:
     post:
       operationId: login
+      description: Starts a session. The access token comes in the body; the refresh token only ever comes as the HttpOnly vendor_refresh cookie (as vendor-api's POST /v1/auth/login).
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [identifier, password], properties: { identifier: { type: string }, password: { type: string } } } } } }
       responses:
-        '200': { description: Signed in, content: { application/json: { schema: { $ref: '#/components/schemas/TokenPair' } } } }
+        '200': { description: Signed in, headers: { Set-Cookie: { $ref: '#/components/headers/RefreshCookie' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Session' } } } }
         '401': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/Error' }
   /api/v1/vendor/auth/refresh:
     post:
       operationId: refresh
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [refresh_token], properties: { refresh_token: { type: string } } } } } }
+      description: Swaps the refresh cookie for a new access token and rotates the cookie. No body; the browser sends the cookie (fetch with credentials include) and vendor-api checks Origin. 409 refresh_conflict means another tab used the cookie within the last few seconds; retry once, the browser already holds the new cookie. A used cookie coming back later ends every session of that sign-in.
+      security: [{ refreshCookie: [] }]
       responses:
-        '200': { description: New pair, content: { application/json: { schema: { $ref: '#/components/schemas/TokenPair' } } } }
-        '401': { $ref: '#/components/responses/Error' }
+        '200': { description: New access token, headers: { Set-Cookie: { $ref: '#/components/headers/RefreshCookie' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Session' } } } }
+        '401': { description: 'No cookie, or it was revoked or expired; the cookie is cleared', headers: { Set-Cookie: { $ref: '#/components/headers/ClearRefreshCookie' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
   /api/v1/vendor/auth/logout:
     post:
       operationId: logout
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [refresh_token], properties: { refresh_token: { type: string } } } } } }
+      description: Revokes the cookie's session and clears the cookie. No body; vendor-api checks Origin.
+      security: [{ refreshCookie: [] }]
       responses:
-        '204': { description: Signed out }
+        '204': { description: Signed out, headers: { Set-Cookie: { $ref: '#/components/headers/ClearRefreshCookie' } } }
+        '403': { $ref: '#/components/responses/Error' }
   /api/v1/vendor/auth/invites/{token}:
     get:
       operationId: getInvite
@@ -67,7 +74,7 @@ paths:
       operationId: acceptInvite
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [token, password], properties: { token: { type: string }, password: { type: string } } } } } }
       responses:
-        '200': { description: Password set and signed in, content: { application/json: { schema: { $ref: '#/components/schemas/TokenPair' } } } }
+        '200': { description: Password set and signed in, headers: { Set-Cookie: { $ref: '#/components/headers/RefreshCookie' } }, content: { application/json: { schema: { $ref: '#/components/schemas/Session' } } } }
         '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
   /api/v1/vendor/auth/password/forgot:
@@ -375,6 +382,19 @@ paths:
         '409': { $ref: '#/components/responses/Error' }
 
 components:
+  securitySchemes:
+    refreshCookie:
+      type: apiKey
+      in: cookie
+      name: vendor_refresh
+      description: The refresh token. HttpOnly, Secure, SameSite=Strict, host-only, Path scoped to the auth routes (vendor-api uses /v1/auth), 7 days, rotated on every refresh. Page code never reads or sends it itself, and it is never in a response body.
+  headers:
+    RefreshCookie:
+      description: Sets vendor_refresh (see securitySchemes.refreshCookie).
+      schema: { type: string }
+    ClearRefreshCookie:
+      description: Clears vendor_refresh.
+      schema: { type: string }
   responses:
     Error:
       description: Error envelope (docs/05-api-design.md section 2)
@@ -391,13 +411,14 @@ components:
           properties:
             code: { type: string }
             fields: { type: object, additionalProperties: { type: string } }
-    TokenPair:
+    Session:
       type: object
-      required: [access_token, refresh_token, expires_in]
+      description: What login, refresh and accept-invite return (vendor-api's SessionResponse without user and vendor, which come from GET /me here). Keep the access token in memory only. The refresh token is never in this body.
+      required: [access_token, token_type, expires_in]
       properties:
         access_token: { type: string }
-        refresh_token: { type: string }
-        expires_in: { type: integer }
+        token_type: { type: string, enum: [Bearer] }
+        expires_in: { type: integer, description: Seconds the access token lasts (15 minutes) }
     VendorApplication:
       type: object
       description: Sign-up (V-02), one topic per page. Required unless marked optional; the same topics become StoreDetails after approval.

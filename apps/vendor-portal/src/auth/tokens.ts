@@ -1,46 +1,46 @@
-import type { Tokens, TokenStore } from '../api/client'
+import type { TokenStore } from '../api/client'
 
-const KEY = 'shazlo.seller.session'
+// Earlier builds kept the access and refresh tokens in web storage under this key. Any copy left
+// behind is removed, so no refresh token stays where page scripts can read it.
+const LEGACY_KEY = 'shazlo.seller.session'
 
+// `loading` until the first answer after a page load: there is no token in memory yet, and the
+// refresh cookie may still hold a session.
+export type SessionStatus = 'loading' | 'signedIn' | 'signedOut'
+
+/*
+ * The seller's session, as vendor-api and main's portal keep it (ADR 0009): the 15-minute access
+ * token lives in memory only, and the refresh token is the HttpOnly `vendor_refresh` cookie, which
+ * page code never sees. Nothing here touches localStorage or sessionStorage, so a script injected
+ * into the page cannot carry a session away.
+ */
 export interface SessionStore extends TokenStore {
-  // "Keep me signed in" keeps tokens in localStorage; otherwise they end with the tab.
-  set(tokens: Tokens | null, remember?: boolean): void
+  status(): SessionStatus
   subscribe(listener: () => void): () => void
 }
 
-function read(storage: Storage | undefined): Tokens | null {
-  try {
-    const raw = storage?.getItem(KEY)
-    const parsed = raw ? (JSON.parse(raw) as Partial<Tokens>) : null
-    return parsed?.access_token && parsed.refresh_token ? { access_token: parsed.access_token, refresh_token: parsed.refresh_token } : null
-  } catch {
-    return null
-  }
-}
-
-function safe(fn: () => void) {
-  try {
-    fn()
-  } catch {
-    // Storage can be blocked (private mode); the session then lasts for this page only.
+function forgetLegacyTokens() {
+  for (const storage of [() => localStorage, () => sessionStorage]) {
+    try {
+      storage().removeItem(LEGACY_KEY)
+    } catch {
+      // No storage here, or it is blocked: there is nothing to remove.
+    }
   }
 }
 
 export function createSessionStore(): SessionStore {
-  const local = typeof localStorage === 'undefined' ? undefined : localStorage
-  const session = typeof sessionStorage === 'undefined' ? undefined : sessionStorage
-  let remember = read(local) !== null
-  let current = read(local) ?? read(session)
+  forgetLegacyTokens()
+  let token: string | null = null
+  let status: SessionStatus = 'loading'
   const listeners = new Set<() => void>()
 
   return {
-    get: () => current,
-    set(tokens, keep) {
-      if (keep !== undefined) remember = keep
-      current = tokens
-      safe(() => local?.removeItem(KEY))
-      safe(() => session?.removeItem(KEY))
-      if (tokens) safe(() => (remember ? local : session)?.setItem(KEY, JSON.stringify(tokens)))
+    get: () => token,
+    status: () => status,
+    set(next) {
+      token = next
+      status = next === null ? 'signedOut' : 'signedIn'
       listeners.forEach((l) => l())
     },
     subscribe(listener) {

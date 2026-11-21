@@ -53,21 +53,22 @@ describe('V-01 Sign in', () => {
   })
 
   it('signs in and returns to the page the seller asked for', async () => {
-    const { user, router, context } = await renderApp({ route: '/sign-in?next=%2Freview', signedIn: false })
+    const { user, router, context, db } = await renderApp({ route: '/sign-in?next=%2Freview', signedIn: false })
     await fill(user, DEMO_LOGIN.identifier, DEMO_LOGIN.password)
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/review'))
+    // The access token stays in memory and the refresh token in the (modelled) HttpOnly cookie.
     expect(context.session.get()).not.toBeNull()
-    expect(sessionStorage.getItem('shazlo.seller.session')).not.toBeNull()
+    expect(db.sessions.cookie).not.toBeNull()
     expect(localStorage.getItem('shazlo.seller.session')).toBeNull()
+    expect(sessionStorage.getItem('shazlo.seller.session')).toBeNull()
   })
 
-  it('keeps the session across browser restarts only when asked', async () => {
-    const { user } = await renderApp({ route: '/sign-in', signedIn: false })
-    await fill(user, DEMO_LOGIN.identifier, DEMO_LOGIN.password)
-    await user.click(screen.getByRole('checkbox', { name: 'Keep me signed in on this device' }))
-    await user.click(screen.getByRole('button', { name: 'Sign in' }))
-    await waitFor(() => expect(localStorage.getItem('shazlo.seller.session')).not.toBeNull())
+  it('has no "Keep me signed in" option: the refresh cookie keeps the session', async () => {
+    await renderApp({ route: '/sign-in', signedIn: false })
+    await screen.findByRole('button', { name: 'Sign in' })
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(screen.queryByText(/keep me signed in/i)).toBeNull()
   })
 
   it('never follows a next link to another site', async () => {

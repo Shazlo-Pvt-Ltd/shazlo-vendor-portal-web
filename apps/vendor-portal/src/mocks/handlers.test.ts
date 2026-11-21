@@ -1,6 +1,6 @@
 import { File as NodeFile, Blob as NodeBlob } from 'node:buffer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, createApi, type Api, type Schemas, type Tokens } from '../api/client'
+import { ApiError, createApi, type Api, type Schemas } from '../api/client'
 import { IMPORT_COLUMNS, SUBMIT_REQUIREMENTS } from '../lib/catalog'
 import { validApplication } from '../test/fixtures'
 import { resetMockDb } from '../test/server'
@@ -17,14 +17,14 @@ let db: MockDb
 let api: Api
 
 function tokenStore() {
-  let current: Tokens | null = null
-  return { get: () => current, set: (t: Tokens | null) => { current = t } }
+  let current: string | null = null
+  return { get: () => current, set: (t: string | null) => { current = t } }
 }
 
 async function signIn(): Promise<Api> {
   const tokens = tokenStore()
   const client = createApi({ baseUrl: BASE, tokens })
-  tokens.set(await client.call((c) => c.POST('/api/v1/vendor/auth/login', { body: DEMO_LOGIN })))
+  tokens.set((await client.call((c) => c.POST('/api/v1/vendor/auth/login', { body: DEMO_LOGIN }))).access_token)
   return client
 }
 
@@ -55,6 +55,39 @@ async function attach(id: string, angle: Schemas['PhotoAngle']): Promise<Schemas
 beforeEach(async () => {
   db = resetMockDb({ now: () => NOW })
   api = await signIn()
+})
+
+describe('sessions', () => {
+  const anonymous = () => createApi({ baseUrl: BASE, tokens: tokenStore() })
+  const refresh = () => anonymous().client.POST('/api/v1/vendor/auth/refresh')
+
+  it('puts only the access token in the body; the refresh token goes into the cookie', async () => {
+    const started = await anonymous().call((c) => c.POST('/api/v1/vendor/auth/login', { body: DEMO_LOGIN }))
+    expect(Object.keys(started).sort()).toEqual(['access_token', 'expires_in', 'token_type'])
+    expect(started).toMatchObject({ token_type: 'Bearer', expires_in: 900 })
+    expect(db.sessions.cookie).toEqual(expect.any(String))
+    expect(JSON.stringify(started)).not.toContain(db.sessions.cookie)
+  })
+
+  it('rotates the cookie on refresh, and the old one stops working', async () => {
+    const first = db.sessions.cookie!
+    const { data } = await refresh()
+    expect(Object.keys(data!).sort()).toEqual(['access_token', 'expires_in', 'token_type'])
+    expect(db.sessions.cookie).not.toBe(first)
+    expect(db.sessions.refresh.has(first)).toBe(false)
+    db.sessions.cookie = first
+    const { response } = await refresh()
+    expect(response.status).toBe(401)
+    expect(db.sessions.cookie).toBeNull()
+  })
+
+  it('logs out by the cookie: revoked and cleared', async () => {
+    const cookie = db.sessions.cookie!
+    await api.call((c) => c.POST('/api/v1/vendor/auth/logout'))
+    expect(db.sessions.cookie).toBeNull()
+    expect(db.sessions.refresh.has(cookie)).toBe(false)
+    expect((await refresh()).response.status).toBe(401)
+  })
 })
 
 describe('demo seed', () => {

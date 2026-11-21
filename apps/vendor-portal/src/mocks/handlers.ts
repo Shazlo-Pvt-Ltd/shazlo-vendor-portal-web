@@ -192,12 +192,14 @@ function meOut(db: MockDb): Schemas['Me'] {
 
 // ---- auth ---------------------------------------------------------------------------------
 
-function issueTokens(db: MockDb): Schemas['TokenPair'] {
+// As vendor-api: the access token goes in the body, the refresh token only into the cookie.
+function startSession(db: MockDb): Schemas['Session'] {
   const access = nextId(db, 'access')
   const refresh = nextId(db, 'refresh')
   db.sessions.access.set(access, db.now().getTime() + ACCESS_TTL_MS)
   db.sessions.refresh.add(refresh)
-  return { access_token: access, refresh_token: refresh, expires_in: ACCESS_TTL_MS / 1000 }
+  db.sessions.cookie = refresh
+  return { access_token: access, token_type: 'Bearer', expires_in: ACCESS_TTL_MS / 1000 }
 }
 
 function authed(getDb: GetDb, resolver: HttpResponseResolver): HttpResponseResolver {
@@ -387,19 +389,24 @@ export function createHandlers(getDb: GetDb) {
       if (identifier.trim().toLowerCase() !== db.user.email || password !== db.user.password || !db.passwordSet) {
         return fail(401, 'unauthenticated', 'That email and password do not match. Check both and try again.')
       }
-      return HttpResponse.json(issueTokens(db))
+      return HttpResponse.json(startSession(db))
     }),
 
-    http.post(`${API}/vendor/auth/refresh`, async ({ request }) => {
+    // The cookie works once: each refresh replaces it. A rejected one is cleared, as vendor-api does.
+    http.post(`${API}/vendor/auth/refresh`, () => {
       const db = getDb()
-      const { refresh_token } = (await request.json()) as { refresh_token: string }
-      if (!db.sessions.refresh.delete(refresh_token)) return fail(401, 'unauthenticated', 'Your session has ended. Sign in again.')
-      return HttpResponse.json(issueTokens(db))
+      const cookie = db.sessions.cookie
+      if (!cookie || !db.sessions.refresh.delete(cookie)) {
+        db.sessions.cookie = null
+        return fail(401, 'unauthenticated', 'Your session has ended. Sign in again.')
+      }
+      return HttpResponse.json(startSession(db))
     }),
 
-    http.post(`${API}/vendor/auth/logout`, async ({ request }) => {
-      const { refresh_token } = (await request.json()) as { refresh_token: string }
-      getDb().sessions.refresh.delete(refresh_token)
+    http.post(`${API}/vendor/auth/logout`, () => {
+      const db = getDb()
+      if (db.sessions.cookie) db.sessions.refresh.delete(db.sessions.cookie)
+      db.sessions.cookie = null
       return new HttpResponse(null, { status: 204 })
     }),
 
@@ -416,7 +423,7 @@ export function createHandlers(getDb: GetDb) {
       db.invites.delete(token)
       db.user.password = password
       db.passwordSet = true
-      return HttpResponse.json(issueTokens(db))
+      return HttpResponse.json(startSession(db))
     }),
 
     http.post(`${API}/vendor/auth/password/forgot`, () => new HttpResponse(null, { status: 202 })),

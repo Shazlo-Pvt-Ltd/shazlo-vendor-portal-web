@@ -47,6 +47,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description Starts a session. The access token comes in the body; the refresh token only ever comes as the HttpOnly vendor_refresh cookie (as vendor-api's POST /v1/auth/login). */
         post: operations["login"];
         delete?: never;
         options?: never;
@@ -63,6 +64,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description Swaps the refresh cookie for a new access token and rotates the cookie. No body; the browser sends the cookie (fetch with credentials include) and vendor-api checks Origin. 409 refresh_conflict means another tab used the cookie within the last few seconds; retry once, the browser already holds the new cookie. A used cookie coming back later ends every session of that sign-in. */
         post: operations["refresh"];
         delete?: never;
         options?: never;
@@ -79,6 +81,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description Revokes the cookie's session and clears the cookie. No body; vendor-api checks Origin. */
         post: operations["logout"];
         delete?: never;
         options?: never;
@@ -638,9 +641,12 @@ export interface components {
                 };
             };
         };
-        TokenPair: {
+        /** @description What login, refresh and accept-invite return (vendor-api's SessionResponse without user and vendor, which come from GET /me here). Keep the access token in memory only. The refresh token is never in this body. */
+        Session: {
             access_token: string;
-            refresh_token: string;
+            /** @enum {string} */
+            token_type: "Bearer";
+            /** @description Seconds the access token lasts (15 minutes) */
             expires_in: number;
         };
         /** @description Sign-up (V-02), one topic per page. Required unless marked optional; the same topics become StoreDetails after approval. */
@@ -1138,7 +1144,12 @@ export interface components {
     };
     parameters: never;
     requestBodies: never;
-    headers: never;
+    headers: {
+        /** @description Sets vendor_refresh (see securitySchemes.refreshCookie). */
+        RefreshCookie: string;
+        /** @description Clears vendor_refresh. */
+        ClearRefreshCookie: string;
+    };
     pathItems: never;
 }
 export type $defs = Record<string, never>;
@@ -1212,10 +1223,11 @@ export interface operations {
             /** @description Signed in */
             200: {
                 headers: {
+                    "Set-Cookie": components["headers"]["RefreshCookie"];
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TokenPair"];
+                    "application/json": components["schemas"]["Session"];
                 };
             };
             401: components["responses"]["Error"];
@@ -1229,24 +1241,31 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": {
-                    refresh_token: string;
-                };
-            };
-        };
+        requestBody?: never;
         responses: {
-            /** @description New pair */
+            /** @description New access token */
             200: {
                 headers: {
+                    "Set-Cookie": components["headers"]["RefreshCookie"];
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TokenPair"];
+                    "application/json": components["schemas"]["Session"];
                 };
             };
-            401: components["responses"]["Error"];
+            /** @description No cookie, or it was revoked or expired; the cookie is cleared */
+            401: {
+                headers: {
+                    "Set-Cookie": components["headers"]["ClearRefreshCookie"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
     logout: {
@@ -1256,21 +1275,17 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": {
-                    refresh_token: string;
-                };
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Signed out */
             204: {
                 headers: {
+                    "Set-Cookie": components["headers"]["ClearRefreshCookie"];
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            403: components["responses"]["Error"];
         };
     };
     getInvite: {
@@ -1319,10 +1334,11 @@ export interface operations {
             /** @description Password set and signed in */
             200: {
                 headers: {
+                    "Set-Cookie": components["headers"]["RefreshCookie"];
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TokenPair"];
+                    "application/json": components["schemas"]["Session"];
                 };
             };
             404: components["responses"]["Error"];

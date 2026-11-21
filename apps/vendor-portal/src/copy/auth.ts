@@ -2,6 +2,7 @@ export const authCopy = {
   help: 'Need help?',
   helpShort: 'Email us',
   helpEmail: 'partners@shazlo.store',
+  checkingSession: 'Checking your session…',
   footer: [
     { label: 'Seller terms', href: 'https://shazlo.store/seller-terms' },
     { label: 'Privacy', href: 'https://shazlo.store/privacy' },
@@ -14,7 +15,6 @@ export const authCopy = {
     password: 'Password',
     showPassword: 'Show password',
     hidePassword: 'Hide password',
-    remember: 'Keep me signed in on this device',
     forgot: 'Forgot password?',
     submit: 'Sign in',
     submitting: 'Signing in…',

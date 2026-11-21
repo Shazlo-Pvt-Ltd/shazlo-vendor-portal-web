@@ -96,15 +96,19 @@ test('a seller edits the brand page draft and sends it for review', async ({ pag
   await expect(page.getByText('Sent for review. Your live page stays as it is until we approve the changes.')).toBeVisible()
 })
 
-test('"Keep me signed in" survives a reload and sign out ends the session', async ({ page }, testInfo) => {
+test('the refresh cookie survives a reload, no token sits in web storage, and sign out ends the session', async ({ page }, testInfo) => {
   await freezeTime(page)
   await page.goto('/sign-in')
   await page.getByLabel('Work email').fill(DEMO.email)
   await page.getByLabel('Password', { exact: true }).fill(DEMO.password)
-  await page.getByLabel('Keep me signed in on this device').check()
   await page.getByRole('button', { name: 'Sign in' }).click()
   const home = page.getByRole('heading', { level: 1, name: testInfo.project.name === 'mobile' ? 'Home' : 'Overview' })
   await expect(home).toBeVisible()
+  // The portal stores no token. Only the mock API's own data holds its stand-in for the cookie.
+  const stored = await page.evaluate(() =>
+    [localStorage, sessionStorage].flatMap((s) => Object.keys(s).filter((key) => !key.startsWith('shazlo.seller.mock-db.')).map((key) => `${key}=${s.getItem(key)}`)),
+  )
+  expect(stored.filter((entry) => /session|access_|refresh_/.test(entry))).toEqual([])
   await page.reload()
   await expect(home).toBeVisible()
   if (testInfo.project.name === 'mobile') {
