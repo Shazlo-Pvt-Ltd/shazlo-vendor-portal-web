@@ -376,7 +376,7 @@ export interface paths {
         };
         /**
          * Everything the vendor submitted for review, with the product it is about
-         * @description As today, and each product submission names its product (`product_id`), so a decision can link to the product without reading the product list.
+         * @description As today, and each product submission names its product (`product_id`), so a decision can link to the product without reading the product list, and says whether the product was live when it was sent (`was_live`), so a change to a live product can be told from a product that never went live.
          */
         get: operations["listSubmissions"];
         put?: never;
@@ -503,7 +503,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Sends the draft for review (with `based_in`) */
+        /**
+         * Sends the draft for review (with `based_in`)
+         * @description Today vendor-api refuses a draft with no `categories` (422 `profile_incomplete`), and Build 2 no longer asks for them on the brand page: the store details already say who the brand sells for (`sells`). Proposed: when the draft has no categories, take them from `sells` (women → [women], men → [men], both → [women, men]) and answer 422 `profile_incomplete` only when `sells` is not known either. Until then the portal writes them into the draft itself before sending.
+         */
         post: operations["submitBrandDraft"];
         delete?: never;
         options?: never;
@@ -896,13 +899,15 @@ export interface components {
         ProposedProductPageOut: components["schemas"]["ProductPageOut"] & {
             items?: components["schemas"]["ProposedProductSummaryOut"][];
         };
-        /** @description SubmissionOut plus the product it is about. */
+        /** @description SubmissionOut plus the product it is about, and whether that product was live when it was sent. */
         ProposedSubmissionOut: components["schemas"]["SubmissionOut"] & {
             /**
              * Format: uuid
              * @description The product, for a product submission; null for the brand page.
              */
             product_id: string | null;
+            /** @description True when the product already had a live version when this one was sent: the decision is about a change to a live product, and the live version stays as it is while it waits. False for a product that was not live yet. Always false for the brand page, whose edits are told by version. */
+            was_live: boolean;
         };
         /** @description SubmissionPageOut with ProposedSubmissionOut items. */
         ProposedSubmissionPageOut: components["schemas"]["SubmissionPageOut"] & {

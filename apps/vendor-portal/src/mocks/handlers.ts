@@ -927,7 +927,7 @@ export function createHandlers(getDb: GetDb, { base = '*' }: { base?: string } =
       draft.state = 'pending_review'
       draft.submitted_at = now
       draft.updated_at = now
-      db.submissions.push({ id: nextId(db), vendor_id: vendor.id, subject: 'brand_profile', product_id: null, sku: null, title: null, version: draft.version, status: 'pending', reason: null, submitted_at: now, decided_at: null })
+      db.submissions.push({ id: nextId(db), vendor_id: vendor.id, subject: 'brand_profile', product_id: null, was_live: false, sku: null, title: null, version: draft.version, status: 'pending', reason: null, submitted_at: now, decided_at: null })
       return json(db, brandOut(db, vendor.id, draft))
     })),
 
@@ -1134,7 +1134,7 @@ export function createHandlers(getDb: GetDb, { base = '*' }: { base?: string } =
       product.version += 1
       if (!product.live) product.status = 'pending_review'
       product.updated_at = now
-      db.submissions.push({ id: nextId(db), vendor_id: vendor.id, subject: 'product', product_id: product.id, sku: product.sku, title: revision.content.title, version: revision.version, status: 'pending', reason: null, submitted_at: now, decided_at: null })
+      db.submissions.push({ id: nextId(db), vendor_id: vendor.id, subject: 'product', product_id: product.id, was_live: Boolean(product.live), sku: product.sku, title: revision.content.title, version: revision.version, status: 'pending', reason: null, submitted_at: now, decided_at: null })
       return json(db, productOut(db, product))
     })),
 
@@ -1244,7 +1244,7 @@ export function createHandlers(getDb: GetDb, { base = '*' }: { base?: string } =
         .sort((a, b) => Date.parse(b.submitted_at) - Date.parse(a.submitted_at))
       const items = matching
         .slice(offset, offset + limit)
-        .map(({ vendor_id: _v, product_id, ...s }) => (db.proposals.submissionProductIds ? { ...s, product_id } : s))
+        .map(({ vendor_id: _v, product_id, was_live, ...s }) => (db.proposals.submissionProductIds ? { ...s, product_id, was_live } : s))
       return json(db, { items, total: matching.length, limit, offset } satisfies SubmissionPageOut)
     })),
 

@@ -31,7 +31,7 @@ info:
 
     Added after the first review, to replace reads the portal makes today: list rows with price,
     stock, photo, colour, gender and the working state, with list filters and sorts
-    (`GET /v1/vendor/products`); `product_id` on submissions; and a `version` check on the product
+    (`GET /v1/vendor/products`); `product_id` and `was_live` on submissions; and a `version` check on the product
     `PUT` (409 `version_conflict`).
 servers:
   - url: http://localhost:8002
@@ -305,7 +305,7 @@ paths:
       operationId: listSubmissions
       x-proposal: true
       summary: Everything the vendor submitted for review, with the product it is about
-      description: As today, and each product submission names its product (`product_id`), so a decision can link to the product without reading the product list.
+      description: As today, and each product submission names its product (`product_id`), so a decision can link to the product without reading the product list, and says whether the product was live when it was sent (`was_live`), so a change to a live product can be told from a product that never went live.
       parameters:
         - { name: status, in: query, required: false, schema: { type: string, enum: [pending, approved, rejected, withdrawn, all], default: all } }
         - { name: subject, in: query, required: false, schema: { type: [string, 'null'], enum: [brand_profile, product, null] } }
@@ -416,6 +416,7 @@ paths:
       operationId: submitBrandDraft
       x-proposal: true
       summary: Sends the draft for review (with `based_in`)
+      description: 'Today vendor-api refuses a draft with no `categories` (422 `profile_incomplete`), and Build 2 no longer asks for them on the brand page: the store details already say who the brand sells for (`sells`). Proposed: when the draft has no categories, take them from `sells` (women → [women], men → [men], both → [women, men]) and answer 422 `profile_incomplete` only when `sells` is not known either. Until then the portal writes them into the draft itself before sending.'
       responses:
         '200': { description: In review, content: { application/json: { schema: { $ref: '#/components/schemas/ProposedBrandProfileOut' } } } }
         '401': { $ref: '#/components/responses/Error' }
@@ -889,13 +890,14 @@ components:
     ProposedSubmissionOut:
       x-proposal: true
       x-extends: SubmissionOut
-      description: SubmissionOut plus the product it is about.
+      description: SubmissionOut plus the product it is about, and whether that product was live when it was sent.
       allOf:
         - $ref: '../../../services/vendor-api/openapi.json#/components/schemas/SubmissionOut'
         - type: object
-          required: [product_id]
+          required: [product_id, was_live]
           properties:
             product_id: { x-proposal: true, type: [string, 'null'], format: uuid, description: 'The product, for a product submission; null for the brand page.' }
+            was_live: { x-proposal: true, type: boolean, description: 'True when the product already had a live version when this one was sent: the decision is about a change to a live product, and the live version stays as it is while it waits. False for a product that was not live yet. Always false for the brand page, whose edits are told by version.' }
     ProposedSubmissionPageOut:
       x-proposal: true
       x-extends: SubmissionPageOut

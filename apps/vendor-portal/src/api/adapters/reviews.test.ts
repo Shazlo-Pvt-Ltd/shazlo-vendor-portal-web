@@ -46,6 +46,17 @@ describe('reviewItemFromSubmission', () => {
     expect(item).not.toHaveProperty('reason')
   })
 
+  it('calls it an edit only when the product was live, when vendor-api says so (proposed was_live)', () => {
+    // Sent back twice before ever going live: version 3, but nothing in the app to keep.
+    const never = reviewItemFromSubmission({ ...submission({ version: 3 }), product_id: 'p-1', was_live: false }, { products, brandThumbnail: null })
+    expect(never).toMatchObject({ kind: 'new' })
+    const live = reviewItemFromSubmission({ ...submission({ version: 1 }), product_id: 'p-1', was_live: true }, { products, brandThumbnail: null })
+    expect(live).toMatchObject({ kind: 'edit' })
+    // The brand page's edits are still told by version.
+    const brand = reviewItemFromSubmission({ ...submission({ subject: 'brand_profile', sku: null, title: null, version: 2 }), product_id: null, was_live: false }, { products, brandThumbnail: null })
+    expect(brand).toMatchObject({ kind: 'edit' })
+  })
+
   it('names the brand page', () => {
     const item = reviewItemFromSubmission(submission({ subject: 'brand_profile', sku: null, title: null, status: 'approved', reason: null }), { products, brandThumbnail: 'https://res.cloudinary.com/x/cover.jpg' })
     expect(item?.subject).toEqual({ type: 'brand_page', id: 'brand', title: BRAND_PAGE_TITLE, thumbnail_url: 'https://res.cloudinary.com/x/cover.jpg' })

@@ -34,7 +34,8 @@ export function reviewItemFromSubmission(s: SubmissionIn, context: ReviewContext
   return {
     id: String(s.id),
     subject,
-    kind: Number(s.version) > 1 ? 'edit' : 'new',
+    // vendor-api with the proposal says whether a product was live; otherwise (and for the brand page) a later version is an edit.
+    kind: (s.subject !== 'brand_profile' && typeof s.was_live === 'boolean' ? s.was_live : Number(s.version) > 1) ? 'edit' : 'new',
     state,
     submitted_at: String(s.submitted_at ?? ''),
     ...(decided && state !== 'waiting' ? { decided_at: decided } : {}),

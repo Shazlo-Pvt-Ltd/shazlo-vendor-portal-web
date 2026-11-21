@@ -138,6 +138,8 @@ export interface SubmissionRecord {
   vendor_id: string
   subject: 'brand_profile' | 'product'
   product_id: string | null
+  /** Whether the product had a live version when this one was sent (proposed `was_live`). */
+  was_live: boolean
   sku: string | null
   title: string | null
   version: number
@@ -422,6 +424,7 @@ function seedProduct(db: MockDb, vendorId: string, [title, sku, category, rupees
       vendor_id: vendorId,
       subject: 'product',
       product_id: id,
+      was_live: false,
       sku,
       title,
       version: 1,
@@ -438,7 +441,7 @@ function seedProduct(db: MockDb, vendorId: string, [title, sku, category, rupees
     const changed = structuredClone(record.live.content)
     changed.variants = changed.variants.map((v) => ({ ...v, price_paise: 1199 * 100 }))
     record.working = { id: nextId(db), version: 2, state: 'in_review', content: changed, submitted_at: changeAt, review: { status: 'pending', reason: null, decided_at: null }, updated_at: changeAt }
-    db.submissions.push({ id: nextId(db), vendor_id: vendorId, subject: 'product', product_id: id, sku, title, version: 2, status: 'pending', reason: null, submitted_at: changeAt, decided_at: null })
+    db.submissions.push({ id: nextId(db), vendor_id: vendorId, subject: 'product', product_id: id, was_live: true, sku, title, version: 2, status: 'pending', reason: null, submitted_at: changeAt, decided_at: null })
   }
 }
 
@@ -532,7 +535,7 @@ export function createDb({ now = () => new Date() }: { now?: () => Date } = {}):
     { id: nextId(db), version: 1, state: 'published', content: live, submitted_at: at(12 * D), published_at: at(11 * D), updated_at: at(11 * D) },
     { id: nextId(db), version: 2, state: 'draft', content: { ...live, banner_asset_id: coverDraft.id, about: `${live.about} Small batches, made to last.` }, submitted_at: null, published_at: null, updated_at: at(40 * 60_000) },
   ])
-  db.submissions.push({ id: nextId(db), vendor_id: kalki.id, subject: 'brand_profile', product_id: null, sku: null, title: null, version: 1, status: 'approved', reason: null, submitted_at: at(12 * D), decided_at: at(11 * D) })
+  db.submissions.push({ id: nextId(db), vendor_id: kalki.id, subject: 'brand_profile', product_id: null, was_live: false, sku: null, title: null, version: 1, status: 'approved', reason: null, submitted_at: at(12 * D), decided_at: at(11 * D) })
 
   db.sizeCharts.set(kalki.id, {
     dresses: {

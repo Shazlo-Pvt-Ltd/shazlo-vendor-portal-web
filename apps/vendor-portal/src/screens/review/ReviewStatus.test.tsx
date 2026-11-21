@@ -34,7 +34,7 @@ function sendBrandPageForReview(d: MockDb, minutesAgo: number) {
   const at = new Date(Date.now() - minutesAgo * MINUTE).toISOString()
   const draft = d.brands.get(kalki().id)!.find((v) => v.state === 'draft')!
   Object.assign(draft, { state: 'pending_review', submitted_at: at })
-  d.submissions.push({ id: nextId(d), vendor_id: kalki().id, subject: 'brand_profile', product_id: null, sku: null, title: null, version: draft.version, status: 'pending', reason: null, submitted_at: at, decided_at: null })
+  d.submissions.push({ id: nextId(d), vendor_id: kalki().id, subject: 'brand_profile', product_id: null, was_live: false, sku: null, title: null, version: draft.version, status: 'pending', reason: null, submitted_at: at, decided_at: null })
 }
 
 /** A sent-back product fixed and sent again. */
@@ -43,7 +43,7 @@ function resubmit(d: MockDb, sku: string) {
   product.working!.state = 'in_review'
   product.working!.version += 1
   product.status = 'pending_review'
-  d.submissions.push({ id: nextId(d), vendor_id: kalki().id, subject: 'product', product_id: product.id, sku, title: product.working!.content.title, version: product.working!.version, status: 'pending', reason: null, submitted_at: new Date(Date.now() - 30 * MINUTE).toISOString(), decided_at: null })
+  d.submissions.push({ id: nextId(d), vendor_id: kalki().id, subject: 'product', product_id: product.id, was_live: Boolean(product.live), sku, title: product.working!.content.title, version: product.working!.version, status: 'pending', reason: null, submitted_at: new Date(Date.now() - 30 * MINUTE).toISOString(), decided_at: null })
 }
 
 // Load the lazily imported screen once up front, so the first tests do not time out while the
@@ -143,7 +143,7 @@ describe('V-09 Review status: lists', () => {
 
   it('sends a product it cannot find to Products, not to a broken address', async () => {
     db().proposals.submissionProductIds = false
-    db().submissions.push({ id: nextId(db()), vendor_id: kalki().id, subject: 'product', product_id: null, sku: 'KS-OLD-001', title: 'Old kurta', version: 1, status: 'rejected', reason: 'Blurry.', submitted_at: new Date(NOW.getTime() - 60 * MINUTE).toISOString(), decided_at: new Date(NOW.getTime() - 30 * MINUTE).toISOString() })
+    db().submissions.push({ id: nextId(db()), vendor_id: kalki().id, subject: 'product', product_id: null, was_live: false, sku: 'KS-OLD-001', title: 'Old kurta', version: 1, status: 'rejected', reason: 'Blurry.', submitted_at: new Date(NOW.getTime() - 60 * MINUTE).toISOString(), decided_at: new Date(NOW.getTime() - 30 * MINUTE).toISOString() })
     await renderApp({ route: '/review?tab=rejected' })
     const decided = await screen.findByRole('region', { name: 'Recently decided' })
     expect(await within(decided).findByRole('link', { name: 'Fix and resubmit Old kurta' })).toHaveAttribute('href', '/products')

@@ -61,8 +61,8 @@ export type ProductPageOut = Real['ProductPageOut']
 
 // ---- reviews, team, import, uploads --------------------------------------------------------------
 export type SubmissionOut = Real['SubmissionOut']
-/** A submission as it may arrive: with `product_id` once vendor-api sends it (proposed). */
-export type SubmissionIn = SubmissionOut & { product_id?: string | null }
+/** A submission as it may arrive: with `product_id` and `was_live` once vendor-api sends them (proposed). */
+export type SubmissionIn = SubmissionOut & Partial<Pick<Proposed['ProposedSubmissionOut'], 'product_id' | 'was_live'>>
 export type SubmissionPageOut = Real['SubmissionPageOut']
 export type UserOut = Real['UserOut']
 export type ImportReportOut = Real['ImportReportOut']

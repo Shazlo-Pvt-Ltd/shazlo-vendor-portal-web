@@ -157,7 +157,7 @@ describe('V-04 Overview: recent review decisions', () => {
 
   it('shows a brand page decision and links it to the brand editor', async () => {
     const at = new Date(NOW.getTime() - H).toISOString()
-    db().submissions.push({ id: nextId(db()), vendor_id: kalkiOf(db()).id, subject: 'brand_profile', product_id: null, sku: null, title: null, version: 2, status: 'rejected', reason: 'Cover is blurry.', submitted_at: at, decided_at: at })
+    db().submissions.push({ id: nextId(db()), vendor_id: kalkiOf(db()).id, subject: 'brand_profile', product_id: null, was_live: false, sku: null, title: null, version: 2, status: 'rejected', reason: 'Cover is blurry.', submitted_at: at, decided_at: at })
     await renderApp()
     const card = await screen.findByRole('region', { name: 'Recent review decisions' })
     const brand = await within(card).findByRole('link', { name: 'Brand page' })
@@ -213,7 +213,7 @@ describe('V-04 Overview: brand page card', () => {
     const kalki = kalkiOf(db())
     const draft = db().brands.get(kalki.id)!.find((v) => v.state === 'draft')!
     Object.assign(draft, { state: 'pending_review', submitted_at: at })
-    db().submissions.push({ id: nextId(db()), vendor_id: kalki.id, subject: 'brand_profile', product_id: null, sku: null, title: null, version: draft.version, status: 'pending', reason: null, submitted_at: at, decided_at: null })
+    db().submissions.push({ id: nextId(db()), vendor_id: kalki.id, subject: 'brand_profile', product_id: null, was_live: false, sku: null, title: null, version: draft.version, status: 'pending', reason: null, submitted_at: at, decided_at: null })
     await renderApp()
     const card = await screen.findByRole('region', { name: 'Brand page' })
     expect(await within(card).findByText('In review since yesterday, 17:40.')).toBeInTheDocument()
