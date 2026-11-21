@@ -1,3 +1,4 @@
+import type { components } from './schema'
 import { getApiClient } from './instance'
 
 const IMPORT_TYPES = {
@@ -19,8 +20,15 @@ export function importContentType(file: File): ImportContentType | undefined {
   return undefined
 }
 
-/** Posts the spreadsheet as the raw request body (the endpoint is not a multipart form). */
-export async function importProducts(file: File, options: { signal?: AbortSignal } = {}) {
+/** `validate` writes nothing; `import` creates every valid product; `all_or_nothing` creates nothing unless the whole file is valid. */
+export type ImportMode = components['schemas']['ImportMode']
+export type ImportReport = components['schemas']['ImportReportOut']
+
+/**
+ * Posts the spreadsheet as the raw request body (the endpoint is not a multipart form). The mode
+ * is required: the API's default is `import`, and the portal never writes by accident.
+ */
+export async function importProducts(file: File, options: { mode: ImportMode; signal?: AbortSignal }): Promise<ImportReport> {
   const contentType = importContentType(file)
   if (contentType === undefined) {
     throw new TypeError('The import takes a .csv or .xlsx file.')
@@ -29,10 +37,11 @@ export async function importProducts(file: File, options: { signal?: AbortSignal
     // Application-type bodies are not JSON: send the file itself.
     body: file as never,
     bodySerializer: (body: unknown) => body as BodyInit,
+    params: { query: { mode: options.mode } },
     headers: { 'Content-Type': contentType },
     signal: options.signal,
   })
-  return data
+  return data as ImportReport
 }
 
 /** The template for the bulk import (CSV unless asked for `xlsx`), as a Blob the caller can save. */

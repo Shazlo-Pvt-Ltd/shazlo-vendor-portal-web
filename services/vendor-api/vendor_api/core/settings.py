@@ -1,4 +1,6 @@
+import base64
 import ipaddress
+import json
 import re
 import secrets
 from functools import lru_cache
@@ -12,6 +14,7 @@ from shazlo_security.rate_limit import RateRule
 from shazlo_security.signing import check_key_id
 
 from vendor_api.db.session import POSTGRES_SCHEMES
+from vendor_api.services.payout_cipher import parse_keys
 
 # The endpoints that have limits (the names `RATE_LIMIT_FAIL_CLOSED` may list).
 RATE_LIMITED_ENDPOINTS = frozenset(
@@ -27,6 +30,8 @@ RATE_LIMITED_ENDPOINTS = frozenset(
         "staff_invite",
         "asset_sign",
         "bulk_import",
+        "ifsc_lookup",
+        "commission_proposal",
     }
 )
 # HMAC-SHA256 keys shorter than this are guessable enough to reverse the hashed emails in Redis.
@@ -134,6 +139,10 @@ class Settings(BaseSettings):
     # A bulk import (or a validation run of one) parses a whole file, so it is limited per vendor.
     # Not fail-closed by default; add `bulk_import` to RATE_LIMIT_FAIL_CLOSED to make it so.
     rate_limit_bulk_import_vendor: Rule = RateRule(limit=10, window_seconds=3600)
+    # The IFSC lookup needs no account (sign-up uses it), so it is limited per client IP.
+    rate_limit_ifsc_lookup_ip: Rule = RateRule(limit=60, window_seconds=60)
+    # Each proposal lands in the reviewers' queue, so a brand cannot flood it.
+    rate_limit_commission_proposal_vendor: Rule = RateRule(limit=10, window_seconds=3600)
     # What happens when Redis is down. Endpoints listed here answer 503 (fail closed): the ones
     # that check a password (login, change_password) so guessing stays limited, and the ones that
     # send email (signup, resend_verification, forgot_password, staff_invite) so an outage cannot
@@ -222,6 +231,13 @@ class Settings(BaseSettings):
     # app. Turning it on needs the three settings below.
     central_publishing_enabled: bool = False
     # The central app's base URL, without a trailing slash (https outside dev).
+    # Seals payout numbers (bank account, UPI ID) in the database: AES-256-GCM keys as JSON,
+    # {"<kid>": "<base64 of 32 random bytes>"}, and the kid new values are sealed with. Keep old
+    # keys in the ring until nothing sealed with them is left. Required in prod; elsewhere, unset
+    # means a random key per process (values saved then cannot be opened after a restart, which
+    # nothing in dev needs). Generate one with `python -m vendor_api.cli generate-payout-key`.
+    payout_encryption_keys: SecretStr | None = None
+    payout_encryption_kid: str | None = None
     central_api_url: str | None = None
     # The id the central app knows our secret by (sent as X-Shazlo-Key-Id), and the secret itself:
     # at least 32 characters, never in the repository (docs/runbooks/central-api-key-rotation.md).
@@ -338,6 +354,31 @@ class Settings(BaseSettings):
                 f"RATE_LIMIT_HMAC_KEY must be at least {MIN_HMAC_KEY_LENGTH} characters"
             )
         self.rate_limit_hmac_key = key
+        return self
+
+    @model_validator(mode="after")
+    def _check_payout_keys(self) -> Self:
+        keys = self.payout_encryption_keys
+        if keys is not None and not keys.get_secret_value().strip():
+            keys = None  # `PAYOUT_ENCRYPTION_KEYS=` copied from .env.example means "not set"
+        kid = (self.payout_encryption_kid or "").strip() or None
+        if keys is None:
+            if self.env == "prod":
+                raise ValueError("PAYOUT_ENCRYPTION_KEYS is required in prod")
+            if kid is not None:
+                raise ValueError("PAYOUT_ENCRYPTION_KID is set but PAYOUT_ENCRYPTION_KEYS is not")
+            kid = "ephemeral"
+            key = base64.b64encode(secrets.token_bytes(32)).decode()
+            keys = SecretStr(json.dumps({kid: key}))
+        try:
+            ring = parse_keys(keys.get_secret_value())
+        except ValueError as error:
+            raise ValueError(str(error)) from None
+        if kid is None:
+            raise ValueError("PAYOUT_ENCRYPTION_KID is required with PAYOUT_ENCRYPTION_KEYS")
+        if kid not in ring:
+            raise ValueError("PAYOUT_ENCRYPTION_KID must name a key in PAYOUT_ENCRYPTION_KEYS")
+        self.payout_encryption_keys, self.payout_encryption_kid = keys, kid
         return self
 
     @field_validator("portal_base_url")

@@ -8,6 +8,7 @@ import { useUnsavedChanges } from '../../hooks/useUnsavedChanges'
 import { useConfirm } from '../../ui/ConfirmDialog'
 import { useToast } from '../../ui/Toast'
 import { formatDate } from '../brand/review'
+import { ReviewReason } from '../submissions/ReviewReason'
 import { friendlyError } from '../errors'
 import { editingState } from './editing'
 import {
@@ -324,9 +325,7 @@ export function ProductEditor({ product }: Props) {
           {state?.rejected ? (
             <Alert severity="warning">
               <strong>Version {state.rejected.version} was not approved.</strong>{' '}
-              <Box component="span" sx={{ whiteSpace: 'pre-line' }}>
-                {state.rejected.reason ?? 'No reason was given.'}
-              </Box>{' '}
+              <ReviewReason reason={state.rejected.reason} />{' '}
               Fix it and submit again.{showLive ? ' The live product is unchanged.' : ''}
             </Alert>
           ) : null}

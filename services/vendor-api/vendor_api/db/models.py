@@ -14,6 +14,7 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -60,6 +61,7 @@ class AssetKind(StrEnum):
     BRAND_LOGO = "brand_logo"
     BRAND_BANNER = "brand_banner"
     PRODUCT_IMAGE = "product_image"
+    SIZE_CHART = "size_chart"  # a photo of a brand's own size chart (#265)
 
 
 class AssetProvider(StrEnum):
@@ -977,4 +979,272 @@ class OutboxEventLog(Base):
     kind: Mapped[str] = mapped_column(String(16))
     outcome: Mapped[str] = mapped_column(Text)
     actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    created_at: Mapped[datetime] = _created_at()
+
+
+# --- Store details, commission and size charts (#265) -------------------------------------------
+
+
+class Sells(StrEnum):
+    WOMEN = "women"
+    MEN = "men"
+    BOTH = "both"
+
+
+class ReturnCondition(StrEnum):
+    UNWORN_WITH_TAGS = "unworn_with_tags"
+    ANY_REASON = "any_reason"
+    DAMAGED_OR_WRONG = "damaged_or_wrong"
+
+
+class PayoutMethod(StrEnum):
+    BANK = "bank"
+    UPI = "upi"
+
+
+# A payout is nothing, a whole bank account or a whole UPI ID: never a mix of the two.
+PAYOUT_WHOLE = (
+    "(payout_method IS NULL AND payout_secret IS NULL AND payout_key_id IS NULL "
+    "AND payout_holder_name IS NULL AND payout_account_last4 IS NULL "
+    "AND payout_ifsc IS NULL AND payout_bank_name IS NULL AND payout_upi_masked IS NULL) "
+    "OR (payout_method = 'bank' AND payout_secret IS NOT NULL AND payout_key_id IS NOT NULL "
+    "AND payout_holder_name IS NOT NULL AND payout_account_last4 ~ '^[0-9]{4}$' "
+    "AND payout_ifsc ~ '^[A-Z]{4}0[A-Z0-9]{6}$' AND payout_upi_masked IS NULL) "
+    "OR (payout_method = 'upi' AND payout_secret IS NOT NULL AND payout_key_id IS NOT NULL "
+    "AND payout_upi_masked IS NOT NULL AND payout_holder_name IS NULL "
+    "AND payout_account_last4 IS NULL AND payout_ifsc IS NULL AND payout_bank_name IS NULL)"
+)
+
+
+class StoreDetails(Base):
+    """What a brand tells Shazlo about how it sells: the sign-up topics, kept up to date after
+    approval. One row per vendor, created by the first save; a missing row means nothing saved.
+
+    Each topic is NULL until its section is saved, and the checks below keep a saved topic whole
+    (a return window without its condition, or a bank payout without its account, cannot be
+    stored). `delivery` is JSON because its two modes have different shapes; the API validates it.
+
+    **Payouts:** the account number (or UPI ID) is sealed with AES-GCM
+    (`services/payout_cipher.py`) into `payout_secret`, bound to this vendor; only the last four
+    digits, the IFSC, the bank's name and a masked UPI ID are kept in clear, and they are all the
+    API ever shows. None of this is published to the central app.
+    """
+
+    __tablename__ = "store_details"
+    __table_args__ = (
+        CheckConstraint(f"sells IS NULL OR {_one_of('sells', Sells)}", name="sells_values"),
+        CheckConstraint("city IS NULL OR length(btrim(city)) >= 2", name="city_not_blank"),
+        CheckConstraint(
+            "(contact_name IS NULL) = (contact_phone IS NULL) "
+            "AND (contact_name IS NULL) = (contact_email IS NULL)",
+            name="contact_whole",
+        ),
+        CheckConstraint(
+            "contact_phone IS NULL OR contact_phone ~ '^[6-9][0-9]{9}$'", name="contact_phone"
+        ),
+        CheckConstraint(
+            "delivery IS NULL OR delivery->>'mode' IN ('shazlo', 'own')", name="delivery_mode"
+        ),
+        CheckConstraint(
+            "return_window_days IS NULL OR return_window_days IN (0, 7, 14, 30)",
+            name="return_window_values",
+        ),
+        CheckConstraint(
+            f"return_condition IS NULL OR {_one_of('return_condition', ReturnCondition)}",
+            name="return_condition_values",
+        ),
+        CheckConstraint("refund_days IS NULL OR refund_days IN (2, 5, 7)", name="refund_values"),
+        # No window saved: nothing. No returns (0): no condition or refund time. Otherwise both.
+        CheckConstraint(
+            "(return_window_days IS NULL AND return_condition IS NULL AND refund_days IS NULL) "
+            "OR (return_window_days = 0 AND return_condition IS NULL AND refund_days IS NULL) "
+            "OR (return_window_days > 0 AND return_condition IS NOT NULL "
+            "AND refund_days IS NOT NULL)",
+            name="returns_whole",
+        ),
+        CheckConstraint(
+            "(pod_cash IS NULL) = (pod_upi IS NULL) AND (pod_cash IS NULL OR pod_cash OR pod_upi)",
+            name="pay_on_delivery_whole",
+        ),
+        CheckConstraint(
+            f"payout_method IS NULL OR {_one_of('payout_method', PayoutMethod)}",
+            name="payout_method_values",
+        ),
+        CheckConstraint(PAYOUT_WHOLE, name="payout_whole"),
+        CheckConstraint(
+            "gstin IS NULL OR gstin ~ '^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$'",
+            name="gstin_shape",
+        ),
+    )
+    __mapper_args__ = {"eager_defaults": True}
+
+    vendor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("vendors.id", ondelete="RESTRICT"), primary_key=True
+    )
+    sells: Mapped[str | None] = mapped_column(String(8))
+    city: Mapped[str | None] = mapped_column(String(80))
+    instagram_or_website: Mapped[str | None] = mapped_column(String(300))
+    contact_name: Mapped[str | None] = mapped_column(String(200))
+    contact_phone: Mapped[str | None] = mapped_column(String(10))
+    contact_email: Mapped[str | None] = mapped_column(String(320))
+    delivery: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    return_window_days: Mapped[int | None] = mapped_column(Integer)
+    return_condition: Mapped[str | None] = mapped_column(String(20))
+    refund_days: Mapped[int | None] = mapped_column(Integer)
+    pod_cash: Mapped[bool | None] = mapped_column(Boolean)
+    pod_upi: Mapped[bool | None] = mapped_column(Boolean)
+    payout_method: Mapped[str | None] = mapped_column(String(4))
+    payout_secret: Mapped[bytes | None] = mapped_column(LargeBinary)
+    payout_key_id: Mapped[str | None] = mapped_column(String(64))
+    payout_holder_name: Mapped[str | None] = mapped_column(String(200))
+    payout_account_last4: Mapped[str | None] = mapped_column(String(4))
+    payout_ifsc: Mapped[str | None] = mapped_column(String(11))
+    payout_bank_name: Mapped[str | None] = mapped_column(String(100))
+    payout_upi_masked: Mapped[str | None] = mapped_column(String(80))
+    legal_name: Mapped[str | None] = mapped_column(String(120))
+    gstin: Mapped[str | None] = mapped_column(String(15))
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("vendor_users.id", ondelete="RESTRICT")
+    )
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+
+class CommissionState(StrEnum):
+    NOT_SET = "not_set"  # no rate and no proposal
+    PROPOSED = "proposed"  # the brand's rate waits for Shazlo
+    SENT_BACK = "sent_back"  # Shazlo sent the proposal back with a note
+    AGREED = "agreed"  # a rate is in force
+
+
+COMMISSION_MAX_BPS = 4000  # 40%
+COMMISSION_NOTE_MAX = 600
+
+
+class Commission(Base):
+    """The commission agreed with one brand, in basis points (1200 = 12%). There is no default
+    rate: a vendor without a row is `not_set`.
+
+    `agreed_bps` is the rate in force and survives a new proposal: a brand that proposes again
+    keeps its agreed rate until Shazlo approves the new one. Changes are audited in
+    `vendor_change_events` (subject `commission`).
+    """
+
+    __tablename__ = "commissions"
+    __table_args__ = (
+        CheckConstraint(_one_of("state", CommissionState), name="state_values"),
+        CheckConstraint(
+            f"agreed_bps IS NULL OR agreed_bps BETWEEN 0 AND {COMMISSION_MAX_BPS}",
+            name="agreed_range",
+        ),
+        CheckConstraint(
+            f"proposed_bps IS NULL OR proposed_bps BETWEEN 0 AND {COMMISSION_MAX_BPS}",
+            name="proposed_range",
+        ),
+        CheckConstraint(
+            f"note IS NULL OR length(note) <= {COMMISSION_NOTE_MAX}", name="note_bounded"
+        ),
+        CheckConstraint(
+            "(state = 'not_set' AND agreed_bps IS NULL AND proposed_bps IS NULL AND note IS NULL) "
+            "OR (state = 'proposed' AND proposed_bps IS NOT NULL AND note IS NULL) "
+            "OR (state = 'sent_back' AND proposed_bps IS NOT NULL AND note IS NOT NULL) "
+            "OR (state = 'agreed' AND agreed_bps IS NOT NULL AND proposed_bps IS NULL)",
+            name="state_whole",
+        ),
+        # The admin list filters by state ("rates to review").
+        Index("ix_commissions_state", "state"),
+    )
+    __mapper_args__ = {"eager_defaults": True}
+
+    vendor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("vendors.id", ondelete="RESTRICT"), primary_key=True
+    )
+    state: Mapped[str] = mapped_column(String(10))
+    agreed_bps: Mapped[int | None] = mapped_column(Integer)
+    proposed_bps: Mapped[int | None] = mapped_column(Integer)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+
+class SizeChartGroup(StrEnum):
+    BOTTOMS = "bottoms"
+    TOPS = "tops"
+    DRESSES = "dresses"
+    JACKETS = "jackets"
+
+
+class SizeChart(Base):
+    """A brand's size chart for one group of product types ("used for all your shirts"):
+    centimetres by size and measurement, and/or a photo of the brand's own chart.
+
+    The photo is one of the vendor's own assets (composite foreign key), never a URL from the
+    request.
+    """
+
+    __tablename__ = "size_charts"
+    __table_args__ = (
+        CheckConstraint(_one_of("size_group", SizeChartGroup), name="size_group_values"),
+        CheckConstraint("jsonb_typeof(measurements) = 'object'", name="measurements_object"),
+        ForeignKeyConstraint(
+            ["vendor_id", "photo_asset_id"],
+            ["assets.vendor_id", "assets.id"],
+            name="fk_size_charts_photo_asset_id_assets",
+            ondelete="RESTRICT",
+        ),
+    )
+    __mapper_args__ = {"eager_defaults": True}
+
+    vendor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("vendors.id", ondelete="RESTRICT"), primary_key=True
+    )
+    size_group: Mapped[str] = mapped_column(String(10), primary_key=True)
+    measurements: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    photo_asset_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    updated_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("vendor_users.id", ondelete="RESTRICT")
+    )
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+
+class ChangeSubject(StrEnum):
+    BRAND = "brand"
+    CONTACT = "contact"
+    DELIVERY = "delivery"
+    RETURNS = "returns"
+    PAYMENT = "payment"
+    PAYOUT = "payout"
+    BUSINESS = "business"
+    COMMISSION = "commission"
+    SIZE_CHART = "size_chart"
+
+
+class VendorChangeEvent(Base):
+    """Append-only audit of changes to a vendor's store details, commission and size charts:
+    who changed which part, and when. A trigger refuses UPDATE, DELETE and TRUNCATE.
+
+    `detail` holds only what is safe to keep: the masked payout, the commission rates and note,
+    the size group. Contact details are not copied here.
+    """
+
+    __tablename__ = "vendor_change_events"
+    __table_args__ = (
+        CheckConstraint(_one_of("subject", ChangeSubject), name="subject_values"),
+        CheckConstraint(_one_of("actor_type", ActorType), name="actor_type_values"),
+        CheckConstraint("actor_type = 'system' OR actor_id IS NOT NULL", name="actor_id_required"),
+        CheckConstraint("length(action) BETWEEN 1 AND 32", name="action_bounded"),
+        Index("ix_vendor_change_events_vendor_id_id", "vendor_id", "id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    vendor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("vendors.id", ondelete="RESTRICT")
+    )
+    subject: Mapped[str] = mapped_column(String(16))
+    action: Mapped[str] = mapped_column(String(32))
+    actor_type: Mapped[str] = mapped_column(String(16))
+    # A vendor user's id, or an identity-api admin's (another database, so no foreign key).
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    detail: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = _created_at()
