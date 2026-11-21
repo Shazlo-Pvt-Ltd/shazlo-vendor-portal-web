@@ -97,6 +97,7 @@ describe('V-03 Set password', () => {
     await user.click(screen.getByRole('button', { name: 'Set password and sign in' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/'))
     expect(context.session.get()).not.toBeNull()
+    expect(db.sessions.cookie).not.toBeNull()
     expect(db.user.password).toBe(GOOD)
     expect(db.invites.has(DEMO_INVITE)).toBe(false)
   })

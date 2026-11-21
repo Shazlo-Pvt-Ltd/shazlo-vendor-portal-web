@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Box, Button, Checkbox, Divider, FormControlLabel, IconButton, InputAdornment, Link, Stack, TextField, Typography } from '@mui/material'
+import { Box, Button, Divider, IconButton, InputAdornment, Link, Stack, TextField, Typography } from '@mui/material'
 import { Banner, brand, fontFamily } from '@shazlo/ui'
 import { Eye, EyeOff, Layers, ShieldCheck, Wallet } from 'lucide-react'
 import { useId, useState } from 'react'
@@ -18,7 +18,6 @@ const copy = authCopy.signIn
 const schema = z.object({
   identifier: z.string().trim().min(1, copy.errors.emailRequired).email(copy.errors.emailFormat),
   password: z.string().min(1, copy.errors.passwordRequired),
-  remember: z.boolean(),
 })
 type Values = z.infer<typeof schema>
 
@@ -64,12 +63,12 @@ export default function SignIn() {
   const [params] = useSearchParams()
   const [showPassword, setShowPassword] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
-  const { register, handleSubmit, formState } = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { identifier: '', password: '', remember: false } })
+  const { register, handleSubmit, formState } = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { identifier: '', password: '' } })
 
-  const onSubmit = handleSubmit(async ({ identifier, password, remember }) => {
+  const onSubmit = handleSubmit(async ({ identifier, password }) => {
     setFailure(null)
     try {
-      await signIn(identifier, password, remember)
+      await signIn(identifier, password)
       navigate(safeNext(params.get('next')), { replace: true })
     } catch (error) {
       setFailure(error instanceof ApiError ? error.message : 'Something went wrong. Try again.')
@@ -100,12 +99,12 @@ export default function SignIn() {
               },
             }}
           />
-          <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
-            <FormControlLabel control={<Checkbox {...register('remember')} />} label={copy.remember} />
+          {/* No "Keep me signed in": the session is the vendor_refresh cookie, which vendor-api sets for 7 days. */}
+          <Box sx={{ textAlign: 'right' }}>
             <Link component={RouterLink} to={paths.forgotPassword}>
               {copy.forgot}
             </Link>
-          </Stack>
+          </Box>
           <Button type="submit" variant="contained" size="large" fullWidth disabled={formState.isSubmitting}>
             {formState.isSubmitting ? copy.submitting : copy.submit}
           </Button>

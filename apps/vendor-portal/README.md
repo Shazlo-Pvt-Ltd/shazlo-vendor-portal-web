@@ -20,7 +20,8 @@ dresses and kurtas. The seed is described at the top of `src/mocks/db.ts`. Demo 
 | `kiran@kalkistudio.in` | `ajrakh-indigo-26` |
 
 The set-password screen works with `/set-password?token=invite-kalki-demo`. Mock data persists in
-`localStorage`; run `shazloResetDemo()` in the browser console to start over.
+`localStorage` (with the mock's stand-in for the refresh cookie, so a reload stays signed in); run
+`shazloResetDemo()` in the browser console to start over.
 
 To use a real vendor-api instead: `VITE_MOCK_API=off VITE_VENDOR_API_URL=http://localhost:8001 npm run dev -w @shazlo/vendor-portal`.
 
@@ -30,11 +31,11 @@ To use a real vendor-api instead: `VITE_MOCK_API=off VITE_VENDOR_API_URL=http://
 |---|---|
 | API contract (portal side, until vendor-api serves its own) | `openapi/vendor-portal.yaml`; routes marked `x-proposal` need agreeing with vendor-api |
 | Generated types | `npm run api:types -w @shazlo/vendor-portal` → `src/api/schema.d.ts` |
-| Client | `src/api/client.ts` (openapi-fetch; one shared token refresh; error envelope → `ApiError`) |
+| Client | `src/api/client.ts` (openapi-fetch with `credentials: 'include'`; one shared cookie refresh, one retry on `409 refresh_conflict`; error envelope → `ApiError`) |
 | Reads and writes | `src/api/queries.ts` (TanStack Query hooks; every cache key and invalidation) |
 | Option lists and rules | `src/lib/catalog.ts` (product types, size-chart groups, sizes, colours, photo slots, submit check, import parsing), `src/lib/storeDetails.ts` (store-details checks and completeness), `src/lib/validators.ts` (IFSC, GSTIN, UPI, PIN, phone), `src/lib/commission.ts`; labels and messages in `src/copy/catalog.ts`. Screens and the mock API both use them |
 | Mock API | `src/mocks` (handlers follow the contract; delete each handler when its endpoint ships) |
-| Session | `src/auth` ("Keep me signed in" uses localStorage, otherwise the tab's sessionStorage) |
+| Session | `src/auth`, as vendor-api and ADR 0009: the access token in memory only, the refresh token in the HttpOnly `vendor_refresh` cookie. No token in localStorage or sessionStorage. A page load shows "Checking your session…" while the cookie is swapped for an access token |
 | Shell | `src/shell` (desktop sidebar, phone tab bar, setup banner, notifications) |
 | Screens | `src/screens/*` (V-01 to V-09); copy in `src/copy/*` so a translation touches one file per screen |
 | Shared components | `packages/ui` (`StatusPill`, `PageHeader`, `StatFigure`, `SectionCard`, `Banner`, `EmptyState`, `Logo`, snackbar) |

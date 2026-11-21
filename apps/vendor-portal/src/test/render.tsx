@@ -27,8 +27,8 @@ export async function renderApp({ route = '/', signedIn = true, viewport = 'desk
   setViewport(viewport)
   const context = createAppContext({ baseUrl: 'http://localhost' })
   if (signedIn) {
-    const pair = await context.api.call((c) => c.POST('/api/v1/vendor/auth/login', { body: DEMO_LOGIN }))
-    context.session.set(pair)
+    const started = await context.api.call((c) => c.POST('/api/v1/vendor/auth/login', { body: DEMO_LOGIN }))
+    context.session.set(started.access_token)
   }
   const router = createMemoryRouter(routes, { initialEntries: [route] })
   const user = userEvent.setup()

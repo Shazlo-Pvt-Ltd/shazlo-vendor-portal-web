@@ -97,9 +97,9 @@ function PasswordForm({ token, invite, onExpired, onAccepted }: { token: string;
   const onSubmit = handleSubmit(async (values) => {
     setFailure(null)
     try {
-      const pair = await accept.mutateAsync({ token, password: values.password })
+      const started = await accept.mutateAsync({ token, password: values.password })
       onAccepted()
-      adopt(pair)
+      adopt(started)
       navigate(paths.overview, { replace: true })
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) onExpired()

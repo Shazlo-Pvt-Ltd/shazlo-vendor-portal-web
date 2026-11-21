@@ -249,7 +249,7 @@ async function renderShell(path: string, width: number) {
   resetMockDb()
   setViewport(width)
   const context = createAppContext({ baseUrl: 'http://localhost' })
-  context.session.set(await context.api.call((c) => c.POST('/api/v1/vendor/auth/login', { body: DEMO_LOGIN })))
+  context.session.set((await context.api.call((c) => c.POST('/api/v1/vendor/auth/login', { body: DEMO_LOGIN }))).access_token)
   const router = createMemoryRouter(
     [
       {

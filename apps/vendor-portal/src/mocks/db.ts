@@ -66,7 +66,9 @@ export interface MockDb {
   vendor: Omit<Schemas['Me']['vendor'], 'commission_bps' | 'commission'>
   user: Schemas['Me']['user'] & { password: string }
   passwordSet: boolean
-  sessions: { access: Map<string, number>; refresh: Set<string> }
+  // `cookie` stands in for the browser's HttpOnly vendor_refresh cookie: the refresh token the
+  // mock set last. It stays on the mock's side, so portal code never sees a refresh token.
+  sessions: { access: Map<string, number>; refresh: Set<string>; cookie: string | null }
   invites: Map<string, { email: string; brand_name: string; owner_name: string }>
   applications: (Schemas['VendorApplication'] & { id: string })[]
   store: StoreRecord
@@ -264,7 +266,7 @@ export function createDb({ now = () => new Date() }: { now?: () => Date } = {}):
     vendor: { id: 'v_kalki', brand_name: 'Kalki Studio', status: 'approved', approved_at: at(17 * D) },
     user: { id: 'u_kiran', name: 'Kiran Shah', email: DEMO_LOGIN.identifier, password: DEMO_LOGIN.password },
     passwordSet: true,
-    sessions: { access: new Map(), refresh: new Set() },
+    sessions: { access: new Map(), refresh: new Set(), cookie: null },
     invites: new Map([[DEMO_INVITE, { email: DEMO_LOGIN.identifier, brand_name: 'Kalki Studio', owner_name: 'Kiran Shah' }]]),
     applications: [],
     store: seedStore(at(17 * D)),
