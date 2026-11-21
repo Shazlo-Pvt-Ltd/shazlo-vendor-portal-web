@@ -75,8 +75,9 @@ describe('A-02 Home: Vendors', () => {
   it('says when the figures did not load and tries again', async () => {
     server.use(http.get('*/api/v1/admin/summary', () => HttpResponse.json({ message: 'vendor-api is restarting.', extra: { code: 'unavailable' } }, { status: 404 }), { once: true }))
     const { user } = await renderShell()
-    const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent('Vendor figures did not load')
+    // The publishing card has its own alert (a failed event in the seed), so find this one by its text.
+    const alert = (await screen.findByText('Vendor figures did not load')).closest<HTMLElement>('[role="alert"]')!
+    expect(alert).toBeInTheDocument()
     expect(alert).toHaveTextContent('vendor-api is restarting.')
     await user.click(within(alert).getByRole('button', { name: 'Try again' }))
     const card = await region('Vendors')
