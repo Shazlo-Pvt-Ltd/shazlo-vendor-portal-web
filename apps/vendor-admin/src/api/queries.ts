@@ -1,5 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRuntime } from '../runtime/runtime'
+import { ApiError } from './http'
 import type { components } from './schema'
 
 type S = components['schemas']
@@ -144,7 +145,10 @@ export function useVendorAction(id: string) {
   })
 }
 
-export type CommissionAction = { step: 'approve' } | { step: 'send-back'; body: { note: string } } | { step: 'set'; body: { commission_bps: number; note?: string } }
+export type CommissionAction =
+  | { step: 'approve'; body: S['SeenProposal'] }
+  | { step: 'send-back'; body: { note: string; proposed_bps: number } }
+  | { step: 'set'; body: { commission_bps: number; note?: string } }
 
 // Approve a brand's proposed rate, send it back with a note, or set the rate directly.
 export function useCommissionAction(id: string) {
@@ -156,7 +160,7 @@ export function useCommissionAction(id: string) {
       const path = { params: { path: { id } } }
       switch (a.step) {
         case 'approve':
-          return api.call((c) => c.POST('/api/v1/admin/vendors/{id}/commission/approve', path))
+          return api.call((c) => c.POST('/api/v1/admin/vendors/{id}/commission/approve', { ...path, body: a.body }))
         case 'send-back':
           return api.call((c) => c.POST('/api/v1/admin/vendors/{id}/commission/send-back', { ...path, body: a.body }))
         case 'set':
@@ -166,6 +170,14 @@ export function useCommissionAction(id: string) {
     onSuccess: (vendor) => {
       qc.setQueryData(keys.vendor(id), vendor)
       invalidate()
+    },
+    // A conflict means the page is out of date (the brand changed its proposal, or another reviewer
+    // decided first): fetch the vendor again so the card shows what is true now.
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 409) {
+        void qc.invalidateQueries({ queryKey: keys.vendor(id) })
+        invalidate()
+      }
     },
   })
 }

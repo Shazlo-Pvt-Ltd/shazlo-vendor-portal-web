@@ -1,6 +1,6 @@
 import { configure, screen, waitFor, within } from '@testing-library/react'
 import { File as NodeFile } from 'node:buffer'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import type { MockDb } from '../../mocks/db'
 import { renderApp } from '../../test/render'
 
@@ -133,14 +133,23 @@ describe('V-07 Product editor', () => {
   })
 
   it('autosaves a second after typing stops', { timeout: LONG }, async () => {
-    const { user, db } = await renderApp({ route: '/products/p_001' })
-    const name = await screen.findByLabelText('Name')
-    expect(screen.getByText(/^Saved · 2 h ago$/)).toBeInTheDocument()
-    await user.clear(name)
-    await user.type(name, 'Ajrakh Kurta — Indigo')
-    await waitFor(() => expect(product(db, 'p_001').title).toBe('Ajrakh Kurta — Indigo'), SAVED)
-    expect(await screen.findByText('Saved · just now')).toBeInTheDocument()
-    expect(h1()).toHaveTextContent('Ajrakh Kurta — Indigo')
+    // The seed saved this product 2 hours before "now", and "2 h ago" is said only for earlier the
+    // same day in IST: between midnight and 2 am it is "Yesterday". Pin the clock to midday (only
+    // Date: timers, user-event and the autosave delay run as usual).
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-20T12:00:00+05:30'))
+    try {
+      const { user, db } = await renderApp({ route: '/products/p_001' })
+      const name = await screen.findByLabelText('Name')
+      expect(screen.getByText(/^Saved · 2 h ago$/)).toBeInTheDocument()
+      await user.clear(name)
+      await user.type(name, 'Ajrakh Kurta — Indigo')
+      await waitFor(() => expect(product(db, 'p_001').title).toBe('Ajrakh Kurta — Indigo'), SAVED)
+      expect(await screen.findByText('Saved · just now')).toBeInTheDocument()
+      expect(h1()).toHaveTextContent('Ajrakh Kurta — Indigo')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('saves gender, colours and material from the chips and fields', { timeout: LONG }, async () => {

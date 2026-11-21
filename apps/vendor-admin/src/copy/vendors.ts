@@ -194,7 +194,7 @@ export const vendorDetailCopy = {
     ifsc: 'IFSC',
     legalName: 'Legal business name',
     gst: 'GST number',
-    proposed: 'Proposed commission',
+    proposed: 'Proposed at sign-up',
     noProposal: 'None. They will agree a rate with our team.',
     terms: 'Seller terms',
     priceRule: 'Price rule',
@@ -244,7 +244,9 @@ export const vendorDetailCopy = {
     sentBackPill: 'Sent back',
     sentBack: 'Sent back: waiting for the brand.',
     theyProposed: (rate: string) => `They proposed ${rate}.`,
-    yourNote: (date: string) => `Your note, ${date}`,
+    // Signed by the reviewer who sent it back (from the history), never "you": others read it too.
+    noteFrom: (name: string, date: string) => `Note from ${name}, ${date}`,
+    noteOn: (date: string) => `Note to the brand, ${date}`,
     approveDone: (brand: string, rate: string) => `Agreed ${rate} with ${brand}`,
     approveBanner: (brand: string, rate: string) => `Agreed ${rate} with ${brand}. They see it in their store details.`,
     sendBackDialog: {

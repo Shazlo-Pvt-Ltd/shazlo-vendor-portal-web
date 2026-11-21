@@ -16,6 +16,18 @@ export const phoneFullWidth = { width: { xs: '100%', sm: 'auto' } } as const
 // Icon buttons reach 44 px on touch-sized frames; desktop keeps MUI's own size.
 export const touchIcon = { minWidth: { xs: 44, md: 0 }, minHeight: { xs: 44, md: 0 } } as const
 
+// A dialog's buttons: on a phone (where the dialog fills the screen) a column of full-width,
+// 44 px buttons with the confirm on top and room for the home indicator; from 600 px a row.
+export const dialogActions = {
+  px: { xs: 2, sm: 3 },
+  pb: 'calc(20px + env(safe-area-inset-bottom, 0px))',
+  gap: 1,
+  flexDirection: { xs: 'column-reverse', sm: 'row' },
+  alignItems: { xs: 'stretch', sm: 'center' },
+  '& > :not(style) ~ :not(style)': { ml: { xs: 0, sm: 1 } },
+  '& .MuiButton-root': { minHeight: { xs: 44, sm: 0 } },
+} as const
+
 // Tabs that scroll sideways on a phone, with the arrows shown there too.
 export const scrollingTabs = { variant: 'scrollable', scrollButtons: 'auto', allowScrollButtonsMobile: true } as const
 
