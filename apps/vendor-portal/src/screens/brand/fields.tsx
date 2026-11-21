@@ -1,10 +1,13 @@
-import { Box, Button, FormHelperText, Stack, TextField, Typography } from '@mui/material'
-import { brand, fontFamily, neutral, radius, StatusPill } from '@shazlo/ui'
+import { Box, Button, FormHelperText, LinearProgress, Stack, TextField, Typography } from '@mui/material'
+import { brand, neutral, radius, StatusPill } from '@shazlo/ui'
 import { ImageIcon, Upload } from 'lucide-react'
 import { memo, useId, useRef, useState, type ChangeEvent, type InputHTMLAttributes, type ReactNode } from 'react'
 import { Controller, type Control } from 'react-hook-form'
+import { ApiError, NetworkError } from '../../api/errors'
 import { useUploadImage } from '../../api/queries'
+import { UploadError } from '../../api/uploads/upload'
 import { brandCopy as copy } from '../../copy/brand'
+import { SafeImage } from '../../security/SafeImage'
 import { initials, type BrandValues } from './schema'
 
 // The form re-renders on every keystroke (the preview and Changed tags follow the values), so the
@@ -73,6 +76,7 @@ export const TextInput = memo(function TextInput({
   max,
   multiline = false,
   htmlInput,
+  hint,
 }: {
   control: Control<BrandValues>
   name: TextName
@@ -82,6 +86,8 @@ export const TextInput = memo(function TextInput({
   max?: number
   multiline?: boolean
   htmlInput?: InputHTMLAttributes<HTMLInputElement>
+  /** Shown under the field while there is no problem to show. */
+  hint?: string
 }) {
   const id = useId()
   return (
@@ -102,7 +108,7 @@ export const TextInput = memo(function TextInput({
               inputRef={field.ref}
               disabled={disabled}
               error={Boolean(message)}
-              helperText={max === undefined ? message : <CountedHelper message={message} count={field.value.length} max={max} />}
+              helperText={max === undefined ? (message ?? hint) : <CountedHelper message={message} count={field.value.length} max={max} />}
               fullWidth
               multiline={multiline}
               minRows={multiline ? 4 : undefined}
@@ -115,6 +121,15 @@ export const TextInput = memo(function TextInput({
     />
   )
 })
+
+// The brand's initials in the display face (the theme's h1 family at this size).
+function Initials({ name, size }: { name: string; size: number }) {
+  return (
+    <Box component="span" aria-hidden="true" sx={{ typography: 'h1', fontWeight: 400, letterSpacing: 0, fontSize: Math.round(size * 0.32), lineHeight: 1 }}>
+      {initials(name)}
+    </Box>
+  )
+}
 
 // A round logo, or the brand's initials until one is uploaded.
 export function LogoMark({ url, name, size, alt = '', ring = false }: { url: string | null; name: string; size: number; alt?: string; ring?: boolean }) {
@@ -131,15 +146,11 @@ export function LogoMark({ url, name, size, alt = '', ring = false }: { url: str
         bgcolor: brand.cream,
         color: brand.brown,
         border: ring ? `3px solid ${neutral.surface}` : `1px solid ${neutral.line}`,
+        '& > img': { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
       }}
     >
-      {url ? (
-        <Box component="img" src={url} alt={alt} sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-      ) : (
-        <Box component="span" aria-hidden="true" sx={{ fontFamily: fontFamily.display, fontSize: Math.round(size * 0.32), lineHeight: 1 }}>
-          {initials(name)}
-        </Box>
-      )}
+      {/* The address comes from the seller's upload: only a safe one is loaded; else the initials. */}
+      <SafeImage src={url} alt={alt} fallback={<Initials name={name} size={size} />} />
     </Box>
   )
 }
@@ -158,18 +169,29 @@ function CoverFrame({ url, alt }: { url: string | null; alt: string }) {
         display: 'grid',
         placeItems: 'center',
         color: neutral.inkTertiary,
+        '& > img': { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
       }}
     >
-      {url ? (
-        <Box component="img" src={url} alt={alt} sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-      ) : (
-        <Stack spacing={1} sx={{ alignItems: 'center' }}>
-          <ImageIcon size={20} strokeWidth={1.5} aria-hidden="true" />
-          <Typography variant="body2">{copy.identity.noCover}</Typography>
-        </Stack>
-      )}
+      <SafeImage
+        src={url}
+        alt={alt}
+        fallback={
+          <Stack spacing={1} sx={{ alignItems: 'center' }}>
+            <ImageIcon size={20} strokeWidth={1.5} aria-hidden="true" />
+            <Typography variant="body2">{copy.identity.noCover}</Typography>
+          </Stack>
+        }
+      />
     </Box>
   )
+}
+
+// A failure on the way (connection, the image host, our side) can be tried again with the same file;
+// a file of the wrong type or size cannot.
+function canRetry(error: unknown): boolean {
+  if (error instanceof UploadError) return error.retryable
+  if (error instanceof ApiError) return error.status >= 500 || error.status === 429
+  return error instanceof NetworkError
 }
 
 const IMAGE_TEXT = {
@@ -199,6 +221,9 @@ export function ImageField({
   const text = IMAGE_TEXT[kind]
   const upload = useUploadImage()
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [progress, setProgress] = useState<number | null>(null)
+  // The file that failed on the way, so Try again sends it without picking it again.
+  const [retryFile, setRetryFile] = useState<File | null>(null)
   const input = useRef<HTMLInputElement>(null)
   const id = useId()
   const labelId = `${id}-label`
@@ -207,18 +232,26 @@ export function ImageField({
   const error = uploadError ?? fieldError
   const verb = value ? copy.identity.replace : copy.identity.upload
 
-  async function choose(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    // Clear the picker so choosing the same file again still triggers a change.
-    if (input.current) input.current.value = ''
-    if (!file) return
+  async function send(file: File) {
     setUploadError(null)
+    setRetryFile(null)
+    setProgress(0)
     try {
-      const { url } = await upload.mutateAsync({ file, purpose: kind })
+      const { url } = await upload.mutateAsync({ file, purpose: kind, onProgress: setProgress })
       onChange(url)
     } catch (e) {
       setUploadError(e instanceof Error && e.message ? e.message : copy.errors.upload)
+      if (canRetry(e)) setRetryFile(file)
+    } finally {
+      setProgress(null)
     }
+  }
+
+  function choose(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    // Clear the picker so choosing the same file again still triggers a change.
+    if (input.current) input.current.value = ''
+    if (file) void send(file)
   }
 
   const button: ReactNode = (
@@ -258,12 +291,25 @@ export function ImageField({
           </Stack>
         </>
       )}
+      {progress !== null && (
+        <LinearProgress
+          variant="determinate"
+          value={Math.round(progress * 100)}
+          aria-label={copy.identity.uploadingLabel(text.label.toLowerCase())}
+          sx={{ mt: 1.5, height: 4, borderRadius: 2, bgcolor: neutral.line, '& .MuiLinearProgress-bar': { bgcolor: brand.navy } }}
+        />
+      )}
       {error && (
         <FormHelperText id={errorId} error role="alert" sx={{ mx: 0, mt: 1 }}>
           {error}
         </FormHelperText>
       )}
-      <input ref={input} type="file" accept={IMAGE_TYPES} hidden tabIndex={-1} aria-label={text.file} onChange={(e) => void choose(e)} />
+      {retryFile && !upload.isPending && (
+        <Button variant="outlined" onClick={() => void send(retryFile)} disabled={disabled} sx={{ ...touchTarget, mt: 1 }}>
+          {copy.identity.tryAgain}
+        </Button>
+      )}
+      <input ref={input} type="file" accept={IMAGE_TYPES} hidden tabIndex={-1} aria-label={text.file} onChange={choose} />
     </Box>
   )
 }

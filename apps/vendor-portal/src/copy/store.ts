@@ -130,6 +130,9 @@ export const storeCopy = {
     subtitle: 'How you deliver, take returns and get paid. Shoppers see your delivery and returns on every product.',
     loading: 'Loading your store details',
     loadError: 'We could not load your store details.',
+    // vendor-api without the store-details routes yet (proposed.yaml).
+    unavailable: 'Store details are not available yet.',
+    unavailableBody: `To change your delivery, returns or payouts before then, write to ${partnersEmail}.`,
     retry: 'Try again',
     todo: 'To do',
     missingTitle: 'Finish these before you can send products for review',
@@ -177,6 +180,7 @@ export const storeCopy = {
     cancel: 'Cancel',
     sent: 'Proposal sent. We usually reply within 2 working days.',
     failed: 'Your proposal did not send. Try again.',
+    unavailable: `Proposing a rate here is not available yet. Write to ${partnersEmail} and we will agree it with you.`,
     noDefault: 'There is no standard rate: each brand agrees its own.',
   },
 } as const

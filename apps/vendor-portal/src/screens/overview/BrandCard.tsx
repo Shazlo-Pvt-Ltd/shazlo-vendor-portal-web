@@ -50,7 +50,7 @@ function BrandSummary({ page }: { page: Schemas['BrandPage'] }) {
         </Typography>
       ))}
       {reason && (
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>
           {copy.reason(reason)}
         </Typography>
       )}

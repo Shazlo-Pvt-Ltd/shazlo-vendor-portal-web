@@ -1,7 +1,7 @@
 import { Box, Button, Link, Skeleton, Stack, Typography } from '@mui/material'
 import { Banner, PageHeader } from '@shazlo/ui'
 import { ChevronLeft } from 'lucide-react'
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link as RouterLink, useNavigate, useParams } from 'react-router'
 import { ApiError } from '../../api/errors'
 import type { Schemas } from '../../api/model'
@@ -97,6 +97,8 @@ function SectionForm({ topic, details }: { topic: Topic; details: Schemas['Store
   const [answers, setAnswers] = useState<TopicAnswers>(() => answersFrom(details))
   const [failure, setFailure] = useState<string | null>(null)
   const form = useFormErrors(FIELD_ORDER[topic])
+  // Saved once: a second press before the page moves on (isPending is a render late) sends nothing.
+  const saving = useRef(false)
   const payout = answers.payout
   const ifsc = useIfsc(topic === 'payout' && payout.method === 'bank' ? payout.ifsc : null)
 
@@ -115,6 +117,8 @@ function SectionForm({ topic, details }: { topic: Topic; details: Schemas['Store
       form.show(problems, lookup, values)
       return
     }
+    if (saving.current) return
+    saving.current = true
     if (topic === 'delivery') {
       // A place typed but not added is added now, so the form shows what was saved if the save fails.
       const d = answers.delivery
@@ -123,6 +127,7 @@ function SectionForm({ topic, details }: { topic: Topic; details: Schemas['Store
     save.mutate(sectionBody(topic, answers), {
       onSuccess: () => navigate(paths.storeDetails, { state: { saved: topic, wasIncomplete: !details.complete } satisfies SavedState }),
       onError: (error) => {
+        saving.current = false
         if (error instanceof ApiError && error.status === 422 && hasErrors(error.fields)) {
           form.show({}, error.fields, values)
           return

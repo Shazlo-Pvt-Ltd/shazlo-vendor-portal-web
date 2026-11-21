@@ -15,6 +15,7 @@ import { useSignOut } from '../session/useSignOut'
 import { GUTTER, PAGE_END, RAIL_WIDTH, SIDEBAR_WIDTH, TAB_BAR_HEIGHT, useNavMode, type NavMode } from './layout'
 import { NotificationsMenu } from './NotificationsMenu'
 import { PageFallback } from './PageFallback'
+import { usePageHeadingFocus } from './pageFocus'
 import { SectionBoundary } from './SectionBoundary'
 import { TaskProvider, useTaskState, type ResolvedBack } from './task'
 
@@ -461,6 +462,7 @@ function Layout({ children }: { children?: ReactNode }) {
   const gutter = GUTTER[mode]
   useScrollToHash()
   useScrollToTopOnNewPage()
+  usePageHeadingFocus()
 
   // Full-screen tasks are forms: no accidental pull-to-refresh (see SellerGlobalStyles).
   useEffect(() => {

@@ -1,7 +1,7 @@
 import { Box, Button, InputAdornment, Skeleton, Stack, Typography } from '@mui/material'
 import { neutral, radius, SectionCard } from '@shazlo/ui'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { ApiError } from '../../api/errors'
+import { ApiError, NetworkError } from '../../api/errors'
 import type { Schemas } from '../../api/model'
 import { useProposeCommission } from '../../api/queries'
 import { catalogCopy } from '../../copy/catalog'
@@ -107,12 +107,24 @@ export function CommissionCard({ commission }: { commission: Schemas['Commission
   )
 }
 
+// What went wrong, in words a seller can act on: vendor-api without the route (404, 405) is not a
+// failure to retry; a network or server problem is.
+function proposalFailure(error: unknown): string {
+  if (error instanceof ApiError && (error.status === 404 || error.status === 405)) return copy.unavailable
+  if (error instanceof ApiError && error.status < 500) return error.message
+  if (error instanceof NetworkError) return error.message
+  return copy.failed
+}
+
 // A rate in %, checked like the API checks it; the agreed rate stays until Shazlo answers.
 function ProposeForm({ agreed, onSent, onCancel }: { agreed: number | null; onSent: () => void; onCancel?: () => void }) {
   const propose = useProposeCommission()
   const [text, setText] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
+  // A second press while the first proposal is on its way, or after it went, sends nothing:
+  // isPending and the card's new state arrive a render late.
+  const sending = useRef(false)
 
   const problem = (value: string): string | null => {
     const bps = proposedBps(value)
@@ -131,11 +143,15 @@ function ProposeForm({ agreed, onSent, onCancel }: { agreed: number | null; onSe
       document.getElementById('field-rate')?.focus()
       return
     }
+    if (sending.current) return
+    sending.current = true
     propose.mutate(proposedBps(text)!, {
       onSuccess: onSent,
       onError: (err) => {
+        // Sent once: after a success the form goes away, so only a failure lets it send again.
+        sending.current = false
         if (err instanceof ApiError && err.fields.rate_bps) setError(err.fields.rate_bps)
-        else setFailure(err instanceof ApiError ? err.message : copy.failed)
+        else setFailure(proposalFailure(err))
       },
     })
   }

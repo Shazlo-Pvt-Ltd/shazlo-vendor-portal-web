@@ -1,20 +1,27 @@
 import { Box, Button, Stack, Tab, Tabs, useMediaQuery } from '@mui/material'
 import type { Theme } from '@mui/material/styles'
 import { Banner, brand, EmptyState, neutral, PageHeader } from '@shazlo/ui'
-import { useId } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Link as RouterLink, useSearchParams } from 'react-router'
+import type { Schemas } from '../../api/model'
 import { useReviews, useSummary } from '../../api/queries'
 import { paths } from '../../app/paths'
 import { reviewCopy as copy } from '../../copy/review'
+import { srOnly } from '../../lib/a11y'
 import { formatCount } from '../../lib/format'
+import { useSession } from '../../session/AuthProvider'
 import { HowReviewWorks } from './HowReviewWorks'
+import { endVisit, previousVisit } from './lastVisit'
 import { DecidedCard, ListsSkeleton, WaitingCard } from './ReviewLists'
+import { REFRESH_MS, sinceOf, statusChanges } from './rules'
 
 const TABS = ['all', 'waiting', 'rejected', 'approved'] as const
 type TabKey = (typeof TABS)[number]
 const isTab = (value: string | null): value is TabKey => TABS.includes(value as TabKey)
 
 const touch = { minHeight: { xs: 44, md: 36 } }
+
+type ReviewState = Schemas['ReviewItem']['state']
 
 function TabLabel({ text, count }: { text: string; count: number | undefined }) {
   return (
@@ -41,6 +48,33 @@ export default function ReviewStatus() {
   const reviews = useReviews()
   const oldest = useSummary().data?.oldest_waiting_hours ?? null
   const id = useId()
+  const lastLoginAt = useSession().user?.last_login_at
+
+  // Main's "new since your last visit": decisions after the previous visit in this tab (or, on the
+  // first one, after signing in) are marked. Leaving the page records this visit.
+  const [since] = useState(() => sinceOf(previousVisit(), lastLoginAt))
+  useEffect(() => () => endVisit(), [])
+
+  // Decisions arrive while the page is open: ask every minute (and when the window regains focus).
+  const refetch = useRef(reviews.refetch)
+  useEffect(() => {
+    refetch.current = reviews.refetch
+  })
+  useEffect(() => {
+    const timer = window.setInterval(() => void refetch.current(), REFRESH_MS)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  // A decision that arrives while the seller watches is read out, not only redrawn.
+  const seen = useRef(new Map<string, ReviewState>())
+  const [announcement, setAnnouncement] = useState('')
+  useEffect(() => {
+    const now = reviews.data?.items
+    if (!now) return
+    const changes = statusChanges(seen.current, now)
+    if (changes.length > 0) setAnnouncement(copy.announce.updated(changes.join(' ')))
+    for (const item of now) seen.current.set(item.id, item.state)
+  }, [reviews.data])
 
   const select = (next: TabKey) =>
     setParams(
@@ -77,7 +111,7 @@ export default function ReviewStatus() {
     panel = (
       <Stack spacing={{ xs: 2.5, md: 3 }}>
         {tab !== 'rejected' && tab !== 'approved' && <WaitingCard items={waiting} total={counts?.waiting ?? waiting.length} compact={!desktop} />}
-        {tab !== 'waiting' && <DecidedCard items={decided} filter={tab} compact={!desktop} />}
+        {tab !== 'waiting' && <DecidedCard items={decided} all={items} since={since} filter={tab} compact={!desktop} />}
       </Stack>
     )
 
@@ -132,6 +166,9 @@ export default function ReviewStatus() {
           </Box>
         </Box>
       </Stack>
+      <Box data-testid="review-announcer" role="status" aria-live="polite" sx={srOnly}>
+        {announcement}
+      </Box>
     </>
   )
 }

@@ -1,5 +1,5 @@
 import { Box, Button, Link, Skeleton, Stack, Typography, useMediaQuery } from '@mui/material'
-import type { Theme } from '@mui/material/styles'
+import { alpha, type Theme } from '@mui/material/styles'
 import { Banner, brand, EmptyState, neutral, SectionCard, StatusPill } from '@shazlo/ui'
 import { Link as RouterLink } from 'react-router'
 import type { Schemas } from '../../api/model'
@@ -39,7 +39,7 @@ function DecisionRow({ item, compact }: { item: Schemas['ReviewItem']; compact: 
         alignItems: 'flex-start',
         py: 1.75,
         borderTop: `1px solid ${neutral.line}`,
-        '@media (hover: hover)': { '&:hover': { bgcolor: 'rgba(255, 237, 163, 0.35)' } },
+        '@media (hover: hover)': { '&:hover': { bgcolor: alpha(brand.cream, 0.35) } },
       }}
     >
       <ProductThumb src={item.subject.thumbnail_url} />
@@ -68,7 +68,7 @@ function DecisionRow({ item, compact }: { item: Schemas['ReviewItem']; compact: 
         )}
         {compact && <Box sx={{ mt: 0.75 }}>{status}</Box>}
         {item.state === 'rejected' && item.reason && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, maxWidth: '65ch' }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, maxWidth: '65ch', whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>
             {copy.reason(item.reason)}
           </Typography>
         )}
@@ -99,7 +99,11 @@ function RowsSkeleton({ label, rows = 3 }: { label: string; rows?: number }) {
 export function RecentDecisions() {
   const compact = !useMediaQuery((t: Theme) => t.breakpoints.up('md'), { noSsr: true })
   const reviews = useReviews(undefined, 20)
-  const decided = (reviews.data?.items ?? []).filter((r) => r.state !== 'waiting' && r.decided_at).slice(0, SHOWN)
+  // The list is newest sent first; the newest decisions come first here (main's overview did the same).
+  const decided = (reviews.data?.items ?? [])
+    .filter((r) => r.state !== 'waiting' && r.decided_at)
+    .sort((a, b) => Date.parse(b.decided_at!) - Date.parse(a.decided_at!))
+    .slice(0, SHOWN)
 
   let body
   if (reviews.isPending) body = <RowsSkeleton label={copy.loading} />

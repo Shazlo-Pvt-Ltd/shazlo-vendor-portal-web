@@ -34,6 +34,14 @@ export const reviewCopy = {
     brandEdit: 'Edit to your live brand page',
   },
 
+  // Main's marker and announcements (features/submissions), in Build 2's words.
+  newSince: 'New since your last visit',
+  announce: {
+    updated: (changes: string) => `Status updated. ${changes}`,
+    change: (title: string, state: string) => `${title}: ${state}.`,
+    states: { waiting: 'waiting for review', rejected: 'sent back', approved: 'approved' },
+  },
+
   decided: {
     title: 'Recently decided',
     sentBack: (when: string) => `Sent back ${when}`,
@@ -42,6 +50,9 @@ export const reviewCopy = {
     reason: (text: string) => `“${text}”`,
     fix: 'Fix and resubmit',
     fixLabel: (title: string) => `Fix and resubmit ${title}`,
+    noReason: 'No reason was given. Write to partners@shazlo.store if it is not clear what to change.',
+    superseded: 'You sent a newer version after this one.',
+    liveUnchanged: 'The live version is unchanged: shoppers still see it.',
     emptyTitle: 'No decisions yet',
     emptyBody: 'Most items are reviewed within 24 hours. Decisions show up here.',
     emptyRejectedTitle: 'Nothing sent back',

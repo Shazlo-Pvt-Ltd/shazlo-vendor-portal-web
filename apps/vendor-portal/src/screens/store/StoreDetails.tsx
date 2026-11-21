@@ -2,6 +2,7 @@ import { Box, Button, Card, Link, Skeleton, Stack, Typography } from '@mui/mater
 import { Banner, neutral, PageHeader, radius, SectionCard } from '@shazlo/ui'
 import { useEffect, useRef, type ReactNode } from 'react'
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router'
+import { ApiError } from '../../api/errors'
 import type { Schemas } from '../../api/model'
 import { useMe, useStoreDetails } from '../../api/queries'
 import { paths } from '../../app/paths'
@@ -32,6 +33,8 @@ function rowsOf(topic: Topic, d: Schemas['StoreDetails']): Row[] | null {
     case 'business': return businessRows(d.business)
   }
 }
+
+const isMissingRoute = (error: unknown) => error instanceof ApiError && (error.status === 404 || error.status === 405)
 
 function TopicCard({ topic, details }: { topic: Topic; details: Schemas['StoreDetails'] }) {
   const title = TOPIC_TITLES[topic]
@@ -147,6 +150,16 @@ export function StoreDetailsPage() {
           <CommissionCard commission={me.data?.vendor.commission} />
         </Box>
       </Box>
+    )
+  } else if (isMissingRoute(details.error)) {
+    // vendor-api without the store-details routes (openapi/proposed.yaml): nothing to retry.
+    content = (
+      <Stack spacing={3}>
+        <Banner tone="info" title={copy.page.unavailable}>
+          {copy.page.unavailableBody}
+        </Banner>
+        <CommissionCard commission={me.data?.vendor.commission} />
+      </Stack>
     )
   } else if (details.isError) {
     content = (

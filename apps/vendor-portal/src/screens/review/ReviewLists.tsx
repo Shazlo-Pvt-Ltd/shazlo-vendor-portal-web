@@ -8,6 +8,7 @@ import { ProductThumb } from '../../components/ProductThumb'
 import { reviewCopy as copy } from '../../copy/review'
 import { reviewPill } from '../../lib/status'
 import { subjectHref } from './items'
+import { isNewSince, isSuperseded } from './rules'
 import { onDay, onDayAt, waitedFor } from './when'
 
 type Item = Schemas['ReviewItem']
@@ -16,6 +17,8 @@ export type DecidedFilter = 'all' | 'rejected' | 'approved'
 const rowPadding = { px: { xs: 2, sm: 3 } }
 const rowSx = { ...rowPadding, display: 'flex', gap: 2, alignItems: 'flex-start', py: 2, borderTop: `1px solid ${neutral.line}` } as const
 const listSx = { listStyle: 'none', m: 0, p: 0, pb: 1 } as const
+// A reviewer's words exactly as written: line breaks kept, long words wrapped (React escapes markup).
+const reasonSx = { m: 0, whiteSpace: 'pre-line', overflowWrap: 'anywhere' } as const
 
 function kindLabel(item: Item): string {
   if (item.subject.type === 'brand_page') return item.kind === 'edit' ? copy.kind.brandEdit : copy.kind.brand
@@ -32,6 +35,7 @@ function TitleLink({ item }: { item: Item }) {
 
 // On phones the pill moves under the title, so the text keeps the row's width.
 type RowProps = { item: Item; compact: boolean }
+type DecidedRowProps = RowProps & { fresh: boolean; superseded: boolean }
 
 function WaitingRow({ item, compact }: RowProps) {
   const line = item.kind === 'edit' ? copy.waiting.submittedEdit(onDay(item.submitted_at)) : copy.waiting.submitted(onDayAt(item.submitted_at), waitedFor(item.submitted_at))
@@ -60,8 +64,18 @@ function decidedLine(item: Item): string {
   return item.publishing ? copy.decided.publishing(onDay(at)) : copy.decided.live(onDay(at))
 }
 
-function DecidedRow({ item, compact }: RowProps) {
+// Main's marker, quiet: navy text, never a badge (spec §8).
+function NewSince() {
+  return (
+    <Typography variant="caption" component="p" sx={{ color: brand.navy, mt: 0.5 }}>
+      {copy.newSince}
+    </Typography>
+  )
+}
+
+function DecidedRow({ item, compact, fresh, superseded }: DecidedRowProps) {
   const sentBack = item.state === 'rejected'
+  const toFix = sentBack && !superseded
   const pill = <StatusPill status={reviewPill(item)} />
   return (
     <Box component="li" sx={rowSx}>
@@ -74,20 +88,37 @@ function DecidedRow({ item, compact }: RowProps) {
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
               {decidedLine(item)}
             </Typography>
+            {fresh && <NewSince />}
           </Box>
           {!compact && pill}
         </Stack>
-        {sentBack && item.reason && (
+        {sentBack && (
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', mt: 1.5, px: 1.5, py: 1.25, bgcolor: brand.cream, borderRadius: `${radius.card}px`, maxWidth: '65ch' }}>
             <Box component="span" sx={{ color: brand.brown, display: 'flex', pt: '2px', flexShrink: 0 }}>
               <Info size={16} strokeWidth={1.5} aria-hidden="true" />
             </Box>
-            <Typography component="blockquote" variant="body2" sx={{ m: 0 }}>
-              {copy.decided.reason(item.reason)}
-            </Typography>
+            {item.reason ? (
+              <Typography component="blockquote" variant="body2" sx={reasonSx}>
+                {copy.decided.reason(item.reason)}
+              </Typography>
+            ) : (
+              <Typography variant="body2" sx={reasonSx}>
+                {copy.decided.noReason}
+              </Typography>
+            )}
           </Box>
         )}
-        {sentBack && (
+        {sentBack && item.kind === 'edit' && item.subject.type === 'product' && (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            {copy.decided.liveUnchanged}
+          </Typography>
+        )}
+        {sentBack && superseded && (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            {copy.decided.superseded}
+          </Typography>
+        )}
+        {toFix && (
           <Button variant="outlined" component={RouterLink} to={subjectHref(item)} aria-label={copy.decided.fixLabel(item.subject.title)} sx={{ mt: 1.5, minHeight: { xs: 44, md: 36 } }}>
             {copy.decided.fix}
           </Button>
@@ -132,11 +163,12 @@ const decidedEmpty: Record<DecidedFilter, { illustration: IllustrationName; titl
   approved: { illustration: 'kurta', title: copy.decided.emptyApprovedTitle, body: copy.decided.emptyApprovedBody },
 }
 
-export function DecidedCard({ items, filter, compact }: { items: Item[]; filter: DecidedFilter; compact: boolean }) {
+/** `all`: every item on the page, to tell a rejection already sent again; `since`: what counts as new. */
+export function DecidedCard({ items, all, since, filter, compact }: { items: Item[]; all: readonly Item[]; since: number | null; filter: DecidedFilter; compact: boolean }) {
   return (
     <SectionCard title={copy.decided.title} padded={false}>
       <ListOrEmpty items={items} empty={decidedEmpty[filter]}>
-        {(item) => <DecidedRow key={item.id} item={item} compact={compact} />}
+        {(item) => <DecidedRow key={item.id} item={item} compact={compact} fresh={isNewSince(item, since)} superseded={item.state === 'rejected' && isSuperseded(item, all)} />}
       </ListOrEmpty>
     </SectionCard>
   )

@@ -1,4 +1,5 @@
 import { Box, Button, Card, Link, Skeleton, Stack, Typography } from '@mui/material'
+import { alpha } from '@mui/material/styles'
 import { Banner, brand, neutral, PageHeader, SectionCard } from '@shazlo/ui'
 import { ChevronRight } from 'lucide-react'
 import { useId, type ReactNode } from 'react'
@@ -9,6 +10,7 @@ import { overviewCopy } from '../../copy/overview'
 import { formatCount } from '../../lib/format'
 import { setupSteps } from '../../shell/setup'
 import { subjectHref } from '../review/items'
+import { isSuperseded } from '../review/rules'
 
 const copy = overviewCopy.home
 const SHOWN = 3
@@ -22,7 +24,7 @@ const rowLinkSx = {
   py: 1,
   color: neutral.ink,
   textDecoration: 'none',
-  '@media (hover: hover)': { '&:hover': { bgcolor: 'rgba(16, 60, 100, 0.05)' } },
+  '@media (hover: hover)': { '&:hover': { bgcolor: alpha(brand.navy, 0.05) } },
   '&:focus-visible': { outline: `2px solid ${brand.navy}`, outlineOffset: -2 },
 } as const
 
@@ -110,10 +112,12 @@ export function SetupTasks() {
 
 // Items the review team sent back, each with the reason in their words and a way to fix it.
 export function NeedsChanges() {
-  const reviews = useReviews('rejected')
+  // Every item, not only the sent-back ones: one already sent again needs nothing more.
+  const reviews = useReviews()
   if (reviews.isPending) return <Skeleton variant="rounded" height={120} role="status" aria-label={copy.changes.loading} />
   if (reviews.isError) return <Retry title={copy.changes.error} onRetry={() => void reviews.refetch()} />
-  const items = reviews.data.items
+  const all = reviews.data.items
+  const items = all.filter((item) => item.state === 'rejected' && !isSuperseded(item, all))
   if (items.length === 0) return null
   return (
     <SectionCard
@@ -136,7 +140,7 @@ export function NeedsChanges() {
                 {title}
               </Typography>
               {item.reason && (
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>
                   {item.reason}
                 </Typography>
               )}

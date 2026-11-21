@@ -28,8 +28,11 @@ export const brandCopy = {
   // Shown in the page, not as a toast (spec §8).
   discarded: 'Draft discarded. Your page matches the live version again.',
   discardedFirst: 'Draft discarded.',
+  // While a version is in review it stays as sent; a new draft can be edited beside it (main's rule).
+  editNewDraft: 'Edit a new draft',
+  waitForDecision: 'You can send this draft once our team has decided on the version in review.',
   banners: {
-    inReview: 'Your brand page is in review. You can edit it again once our team has decided — usually within 24 hours.',
+    inReview: 'Your brand page is in review. You can keep editing a new draft; send it once our team has decided — usually within 24 hours.',
     sentBack: 'Our team sent your brand page back.',
     sentBackNext: 'Change the draft below and submit it again.',
     submitted: 'Sent for review. Your live page stays as it is until we approve the changes.',
@@ -49,6 +52,8 @@ export const brandCopy = {
     replace: 'Replace',
     upload: 'Upload',
     uploading: 'Uploading…',
+    uploadingLabel: (what: string) => `Uploading ${what}`,
+    tryAgain: 'Try again',
     brandName: 'Brand name',
     brandNameHint: 'Contact us to change your brand name.',
     basedIn: 'Based in',
@@ -58,6 +63,7 @@ export const brandCopy = {
   shopping: {
     title: 'Shopping details',
     instagram: 'Instagram',
+    instagramSaves: (handle: string) => `We will save this as @${handle}`,
     website: 'Website (optional)',
     fromStore: 'Returns and delivery come from your store details.',
     fromStoreLink: 'Change them in Store details',
@@ -65,8 +71,14 @@ export const brandCopy = {
   errors: {
     tagline: 'Keep the tagline to 60 characters.',
     story: 'Keep the story to 600 characters.',
-    instagram: 'Start your handle with @, like @kalki.studio.',
+    instagram: 'Use your Instagram name, like @kalki.studio, or the address of your profile.',
     website: 'Enter a web address like kalkistudio.in.',
+    websiteLong: 'Keep the web address to 500 characters.',
+    basedIn: 'Keep this to 120 characters.',
+    // Sending for review.
+    reviewPending: 'A version of your brand page is already waiting for our team. You can send this one once they have decided.',
+    needsStore: 'Tell us who you sell for in Store details first, then send your brand page.',
+    needsStoreLink: 'Open Store details',
     upload: 'The photo did not upload. Try again.',
   },
   preview: {
@@ -83,5 +95,6 @@ export const brandCopy = {
     caption: 'Product tiles show only approved products.',
     show: 'Show preview',
     hide: 'Hide preview',
+    website: 'Website',
   },
 } as const

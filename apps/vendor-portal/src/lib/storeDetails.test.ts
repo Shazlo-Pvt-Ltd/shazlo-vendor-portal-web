@@ -199,3 +199,35 @@ describe('commission helpers', () => {
     expect(sellerReceives(null, agreed)).toBeNull()
   })
 })
+
+describe('trying to break the commission rules', () => {
+  it.each([
+    ['-5', null],
+    ['12.555', null],
+    ['1e1', null],
+    ['१२', null],
+    ['12,5', null],
+    ['.5', null],
+    ['', null],
+    ['0', 0],
+    ['040', 4000],
+    [' 12.25 % ', 1225],
+    ['12.5%', 1250],
+  ] as const)('reads %j as %j basis points', (typed, bps) => {
+    expect(parsePercent(typed)).toBe(bps)
+  })
+
+  it('allows 0% to 40% in whole basis points only', () => {
+    expect(checkCommissionBps(0)).toBeNull()
+    expect(checkCommissionBps(4000)).toBeNull()
+    for (const bad of [-1, 4001, 12.5, Number.NaN, Infinity, '1200', null, undefined]) expect(checkCommissionBps(bad)).not.toBeNull()
+  })
+
+  it('never shows a payout without an agreed rate, and pays out every paisa', () => {
+    expect(sellerReceives(219_900, { state: 'proposed', agreed_bps: null, proposed_bps: 1000, note: null, updated_at: null })).toBeNull()
+    expect(sellerReceives(0, { state: 'agreed', agreed_bps: 1200, proposed_bps: null, note: null, updated_at: null })).toBeNull()
+    const odd = sellerReceives(99_999, { state: 'agreed', agreed_bps: 1250, proposed_bps: null, note: null, updated_at: null })!
+    expect(odd.commission + odd.receive).toBe(99_999)
+    expect(formatBps(1)).toBe('0.01%')
+  })
+})

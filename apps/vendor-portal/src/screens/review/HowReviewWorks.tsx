@@ -1,5 +1,5 @@
 import { Box, Typography } from '@mui/material'
-import { brand, fontFamily, radius, SectionCard } from '@shazlo/ui'
+import { brand, radius, SectionCard } from '@shazlo/ui'
 import { Check } from 'lucide-react'
 import { reviewCopy } from '../../copy/review'
 
@@ -12,7 +12,7 @@ export function HowReviewWorks() {
       <Box component="ol" sx={{ listStyle: 'none', m: 0, p: 0 }}>
         {copy.steps.map((step, i) => (
           <Box component="li" key={step.title} sx={{ display: 'flex', gap: 1.5, py: 1 }}>
-            <Typography component="span" sx={{ fontFamily: fontFamily.display, fontSize: '1.125rem', lineHeight: 1.3, color: brand.brown, width: 16, flexShrink: 0, fontVariantNumeric: 'lining-nums' }}>
+            <Typography component="span" variant="h2" sx={{ fontWeight: 400, fontSize: '1.125rem', lineHeight: 1.3, letterSpacing: 0, color: brand.brown, width: 16, flexShrink: 0, fontVariantNumeric: 'lining-nums' }}>
               {i + 1}
             </Typography>
             <Box sx={{ minWidth: 0 }}>

@@ -1,14 +1,16 @@
 import { Box, Skeleton, Stack, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material'
-import { brand, fontFamily, neutral, radius } from '@shazlo/ui'
-import { Eye, ImageIcon, MapPin, RotateCcw, Truck, type LucideIcon } from 'lucide-react'
+import { brand, neutral, radius } from '@shazlo/ui'
+import { AtSign, Eye, Globe, ImageIcon, MapPin, RotateCcw, Truck, type LucideIcon } from 'lucide-react'
 import { memo, useId, useState, type ReactNode } from 'react'
 import type { Schemas } from '../../api/model'
 import { useProducts, useStoreDetails } from '../../api/queries'
 import { brandCopy as copy } from '../../copy/brand'
 import { catalogCopy } from '../../copy/catalog'
 import { formatINR } from '../../lib/format'
+import { SafeImage } from '../../security/SafeImage'
+import { SafeLink } from '../../security/SafeLink'
 import { LogoMark } from './fields'
-import { cityOf, type Profile } from './schema'
+import { cityOf, instagramHref, normaliseInstagram, websiteHref, type Profile } from './schema'
 
 type Version = 'draft' | 'live'
 
@@ -26,12 +28,8 @@ function Meta({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode 
 function Tile({ product }: { product: Schemas['ProductSummary'] }) {
   return (
     <Box component="li" sx={{ minWidth: 0 }}>
-      <Box sx={{ ...TILE_PHOTO, display: 'grid', placeItems: 'center', color: neutral.lineStrong }}>
-        {product.thumbnail_url ? (
-          <Box component="img" src={product.thumbnail_url} alt="" loading="lazy" sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-        ) : (
-          <ImageIcon size={20} strokeWidth={1.25} aria-hidden="true" />
-        )}
+      <Box sx={{ ...TILE_PHOTO, display: 'grid', placeItems: 'center', color: neutral.lineStrong, '& > img': { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } }}>
+        <SafeImage src={product.thumbnail_url} alt="" fallback={<ImageIcon size={20} strokeWidth={1.25} aria-hidden="true" />} />
       </Box>
       <Typography variant="caption" component="p" noWrap title={product.title} sx={{ mt: 0.75 }}>
         {product.title}
@@ -90,6 +88,30 @@ function storeLines(details: Schemas['StoreDetails'] | undefined): { delivery: s
   }
 }
 
+// Instagram and the website, as the app links them. Typed by the seller, so only through SafeLink:
+// an address that is not a plain https one is never a link.
+function Links({ profile }: { profile: Profile }) {
+  const website = websiteHref(profile.website)
+  const instagram = instagramHref(profile.instagram)
+  if (!website && !instagram) return null
+  return (
+    <Stack direction="row" sx={{ flexWrap: 'wrap', columnGap: 1.5, rowGap: 0.5, mt: 1.5, typography: 'caption' }}>
+      {instagram && (
+        <Meta icon={AtSign}>
+          <SafeLink href={instagram} sx={{ color: neutral.ink }}>{`@${normaliseInstagram(profile.instagram)}`}</SafeLink>
+        </Meta>
+      )}
+      {website && (
+        <Meta icon={Globe}>
+          <SafeLink href={website} sx={{ color: neutral.ink }}>
+            {copy.preview.website}
+          </SafeLink>
+        </Meta>
+      )}
+    </Stack>
+  )
+}
+
 // A phone-sized rendering of the brand page as shoppers see it in the Shazlo app.
 function Phone({ profile, contained }: { profile: Profile; contained: boolean }) {
   const city = cityOf(profile.based_in)
@@ -104,12 +126,12 @@ function Phone({ profile, contained }: { profile: Profile; contained: boolean })
         {...(contained ? { tabIndex: 0, role: 'group', 'aria-label': copy.preview.screen } : {})}
         sx={{ pb: 2.5, ...(contained && { maxHeight: 'min(560px, calc(100dvh - 210px))', overflowY: 'auto', scrollbarWidth: 'thin', '&:focus-visible': { outlineOffset: -2 } }) }}
       >
-        <Box sx={{ aspectRatio: '8 / 3', bgcolor: neutral.placeholder }}>
-          {profile.cover_url && <Box component="img" src={profile.cover_url} alt="" sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
+        <Box sx={{ aspectRatio: '8 / 3', bgcolor: neutral.placeholder, '& > img': { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } }}>
+          <SafeImage src={profile.cover_url} alt="" />
         </Box>
         <Box sx={{ px: 2, mt: '-28px' }}>
           <LogoMark url={profile.logo_url} name={profile.brand_name} size={56} ring />
-          <Typography component="p" sx={{ fontFamily: fontFamily.display, fontSize: '1.375rem', lineHeight: 1.2, letterSpacing: '-0.2px', mt: 1, overflowWrap: 'anywhere' }}>
+          <Typography component="p" variant="h1" sx={{ fontWeight: 400, fontSize: '1.375rem', lineHeight: 1.2, letterSpacing: '-0.2px', mt: 1, overflowWrap: 'anywhere' }}>
             {profile.brand_name}
           </Typography>
           {profile.tagline && (
@@ -127,6 +149,7 @@ function Phone({ profile, contained }: { profile: Profile; contained: boolean })
               {profile.story}
             </Typography>
           )}
+          <Links profile={profile} />
           <ProductTiles />
         </Box>
       </Box>

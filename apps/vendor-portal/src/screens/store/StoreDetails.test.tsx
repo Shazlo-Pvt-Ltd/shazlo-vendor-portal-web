@@ -1,9 +1,9 @@
 import { screen, waitFor, within } from '@testing-library/react'
-import { http } from 'msw'
+import { http, HttpResponse } from 'msw'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
-import type { MockDb } from '../../mocks/db'
+import { DEMO_STAFF, emptyStore, type MockDb, type StoreRecord } from '../../mocks/db'
 import { renderApp, type Viewport } from '../../test/render'
-import { mockDb, server } from '../../test/server'
+import { server, setupMockApi } from '../../test/server'
 
 const SLOW = { timeout: 8000 }
 vi.setConfig({ testTimeout: 40_000, hookTimeout: 60_000 })
@@ -12,21 +12,16 @@ beforeAll(async () => {
   await Promise.all([import('./StoreDetails'), import('./StoreSection')])
 })
 
-// Changes the seed that the next renderApp creates, before any request reads it.
-function seed(change: (db: MockDb) => void) {
-  let changed: MockDb | null = null
-  server.use(
-    http.all('*/api/v1/*', () => {
-      if (changed !== mockDb) {
-        change(mockDb)
-        changed = mockDb
-      }
-    }),
-  )
-}
+type CommissionOut = MockDb['commissions'] extends Map<string, infer C> ? C : never
+
+const { db } = setupMockApi()
+const kalki = () => db().vendors.find((v) => v.name === 'Kalki Studio')!
+const store = (): StoreRecord => db().stores.get(kalki().id)!
+const savedCommission = (): CommissionOut => db().commissions.get(kalki().id)!
+const setCommission = (c: CommissionOut) => db().commissions.set(kalki().id, c)
 
 async function openStoreDetails({ viewport, prepare }: { viewport?: Viewport; prepare?: (db: MockDb) => void } = {}) {
-  if (prepare) seed(prepare)
+  prepare?.(db())
   const view = await renderApp({ route: '/store/details', viewport })
   await screen.findByRole('region', { name: 'Your brand' }, SLOW)
   return view
@@ -90,8 +85,8 @@ describe('Store details: the summary', () => {
 
   it('masks a saved bank account and drops the notice once nothing is missing', async () => {
     await openStoreDetails({
-      prepare: (db) => {
-        db.store.payout = { method: 'bank', holder_name: 'Kalki Studio LLP', account_number: '50100123454821', ifsc: 'HDFC0001234' }
+      prepare: () => {
+        store().payout = { method: 'bank', holder_name: 'Kalki Studio LLP', account_number: '50100123454821', ifsc: 'HDFC0001234' }
       },
     })
     const payouts = card('Payouts')
@@ -104,11 +99,11 @@ describe('Store details: the summary', () => {
 
   it('masks a UPI ID, and reads back delivering yourself and no returns', async () => {
     await openStoreDetails({
-      prepare: (db) => {
-        db.store.payout = { method: 'upi', upi_id: 'kalki.studio@okhdfcbank' }
-        db.store.delivery = { mode: 'own', areas: { all_india: false, places: ['Ahmedabad', '380015'] }, delivery_days: '1_2' }
-        db.store.returns = { window_days: 0, condition: null, refund_days: null }
-        db.store.business = { legal_name: null, gstin: null }
+      prepare: () => {
+        store().payout = { method: 'upi', upi_id: 'kalki.studio@okhdfcbank' }
+        store().delivery = { mode: 'own', areas: { all_india: false, places: ['Ahmedabad', '380015'] }, delivery_days: '1_2' }
+        store().returns = { window_days: 0, condition: null, refund_days: null }
+        store().business = { legal_name: null, gstin: null }
       },
     })
     expect(value(card('Payouts'), 'UPI ID')).toHaveTextContent('ka•••@okhdfcbank')
@@ -124,7 +119,7 @@ describe('Store details: the summary', () => {
   it('lists everything still to do for a brand that has saved nothing', async () => {
     await openStoreDetails({
       prepare: (db) => {
-        db.store = { sells: null, city: null, instagram_or_website: null, contact: null, delivery: null, returns: null, pay_on_delivery: null, payout: null, business: { legal_name: null, gstin: null }, updated_at: null }
+        db.stores.set(kalki().id, emptyStore())
       },
     })
     const notice = screen.getByText('Finish these before you can send products for review').closest('[role="status"]') as HTMLElement
@@ -142,7 +137,7 @@ describe('Store details: the summary', () => {
 
 describe('Store details: commission (spec §6)', () => {
   it('shows the agreed rate, and asks for a different one only when asked', async () => {
-    const { user, db } = await openStoreDetails()
+    const { user } = await openStoreDetails()
     const commission = card('Commission')
     expect(commission.closest('#commission')).not.toBeNull()
     expect(await within(commission).findByText('12% of each sale.')).toBeInTheDocument()
@@ -164,11 +159,11 @@ describe('Store details: commission (spec §6)', () => {
     expect(await within(commission).findByText('You proposed 10%. Waiting for Shazlo.')).toBeInTheDocument()
     expect(within(commission).getByText('Proposal sent. We usually reply within 2 working days.')).toBeInTheDocument()
     expect(within(commission).getByText('Your rate stays at 12% of each sale until Shazlo agrees a new one.')).toBeInTheDocument()
-    expect(db.commission).toMatchObject({ state: 'proposed', proposed_bps: 1000, agreed_bps: 1200 })
+    expect(savedCommission()).toMatchObject({ state: 'proposed', proposed_bps: 1000, agreed_bps: 1200 })
   })
 
   it('offers to propose a rate when none is agreed, checking it like the API does', async () => {
-    const { user, db } = await openStoreDetails({ prepare: (d) => (d.commission = { state: 'not_set', agreed_bps: null, proposed_bps: null, note: null, updated_at: null }) })
+    const { user } = await openStoreDetails({ prepare: () => setCommission({ state: 'not_set', agreed_bps: null, proposed_bps: null, note: null }) })
     const commission = card('Commission')
     expect(await within(commission).findByText('Not agreed yet. Propose a rate, or our team will set it with you.')).toBeInTheDocument()
     const field = within(commission).getByRole('textbox', { name: 'Rate you propose, in %' })
@@ -183,18 +178,18 @@ describe('Store details: commission (spec §6)', () => {
     expect(field).toHaveAccessibleDescription('From 0% to 40%, like 12 or 12.5.')
     await user.click(send)
     expect(field).toHaveAccessibleDescription('Enter a rate from 0% to 40%.')
-    expect(db.commission.state).toBe('not_set')
+    expect(savedCommission().state).toBe('not_set')
     await user.clear(field)
     await user.type(field, '12.5')
     expect(field).toHaveAccessibleDescription('From 0% to 40%, like 12 or 12.5.')
     await user.click(send)
     expect(await within(commission).findByText('You proposed 12.5%. Waiting for Shazlo.')).toBeInTheDocument()
-    expect(db.commission).toMatchObject({ state: 'proposed', proposed_bps: 1250 })
+    expect(savedCommission()).toMatchObject({ state: 'proposed', proposed_bps: 1250 })
     expect(within(commission).queryByRole('textbox')).toBeNull()
   })
 
   it('waits quietly while a proposal is with Shazlo', async () => {
-    await openStoreDetails({ prepare: (d) => (d.commission = { state: 'proposed', agreed_bps: null, proposed_bps: 1000, note: null, updated_at: null }) })
+    await openStoreDetails({ prepare: () => setCommission({ state: 'proposed', agreed_bps: null, proposed_bps: 1000, note: null }) })
     const commission = card('Commission')
     expect(await within(commission).findByText('You proposed 10%. Waiting for Shazlo.')).toBeInTheDocument()
     expect(within(commission).queryByRole('textbox')).toBeNull()
@@ -203,13 +198,110 @@ describe('Store details: commission (spec §6)', () => {
 
   it("shows Shazlo's note on a proposal sent back, and lets the brand propose again", async () => {
     const note = 'Most brands in your price range agree 12%. Can we talk about 12%?'
-    const { user, db } = await openStoreDetails({ prepare: (d) => (d.commission = { state: 'sent_back', agreed_bps: null, proposed_bps: 800, note, updated_at: null }) })
+    const { user } = await openStoreDetails({ prepare: () => setCommission({ state: 'sent_back', agreed_bps: null, proposed_bps: 800, note }) })
     const commission = card('Commission')
     expect(await within(commission).findByText('Shazlo sent your proposal of 8% back.')).toBeInTheDocument()
     expect(within(commission).getByText(`“${note}”`)).toBeInTheDocument()
     await user.type(within(commission).getByRole('textbox', { name: 'Rate you propose, in %' }), '11')
     await user.click(within(commission).getByRole('button', { name: 'Send proposal' }))
     expect(await within(commission).findByText('You proposed 11%. Waiting for Shazlo.')).toBeInTheDocument()
-    await waitFor(() => expect(db.commission).toMatchObject({ state: 'proposed', proposed_bps: 1100, note: null }))
+    await waitFor(() => expect(savedCommission()).toMatchObject({ state: 'proposed', proposed_bps: 1100, note: null }))
+  })
+})
+
+describe('Store details: when things go wrong', () => {
+  it('says plainly when vendor-api does not have store details yet, without a dead retry loop', async () => {
+    // FastAPI's answer for a route it does not have.
+    server.use(http.get('*/v1/vendor/store-details', () => HttpResponse.json({ detail: 'Not Found' }, { status: 404 })))
+    await renderApp({ route: '/store/details' })
+    expect(await screen.findByText('Store details are not available yet.', {}, SLOW)).toBeInTheDocument()
+    expect(screen.getByText(/write to partners@shazlo\.store/)).toBeInTheDocument()
+    expect(screen.queryByText('The request failed (404).')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+    // Commission still shows: it comes with the session.
+    expect(await within(card('Commission')).findByText('12% of each sale.')).toBeInTheDocument()
+  })
+
+  it('offers Try again after a dropped connection, and recovers', async () => {
+    db().faults.push({ path: '/v1/vendor/store-details', method: 'GET', network: true })
+    const { user } = await renderApp({ route: '/store/details' })
+    const retry = await screen.findByRole('button', { name: 'Try again' }, SLOW)
+    expect(screen.getByText('We could not load your store details.')).toBeInTheDocument()
+    await user.click(retry)
+    expect(await screen.findByRole('region', { name: 'Your brand' }, SLOW)).toBeInTheDocument()
+  })
+
+  it('refuses rates that are not a percentage from 0 to 40, and accepts 0 and two decimals', async () => {
+    const { user } = await openStoreDetails({ prepare: () => setCommission({ state: 'not_set', agreed_bps: null, proposed_bps: null, note: null }) })
+    const commission = card('Commission')
+    const field = await within(commission).findByRole('textbox', { name: 'Rate you propose, in %' })
+    const send = within(commission).getByRole('button', { name: 'Send proposal' })
+    const tries: [string, string][] = [
+      ['-5', 'Enter a percentage, like 12 or 12.5.'],
+      ['12.555', 'Enter a percentage, like 12 or 12.5.'],
+      ['1e1', 'Enter a percentage, like 12 or 12.5.'],
+      ['१२', 'Enter a percentage, like 12 or 12.5.'],
+      ['40.01', 'Enter a rate from 0% to 40%.'],
+      ['400', 'Enter a rate from 0% to 40%.'],
+    ]
+    for (const [typed, message] of tries) {
+      await user.clear(field)
+      await user.type(field, typed)
+      await user.click(send)
+      expect(field).toHaveAccessibleDescription(message)
+    }
+    expect(savedCommission().state).toBe('not_set')
+    await user.clear(field)
+    await user.type(field, ' 12.25 % ')
+    await user.click(send)
+    expect(await within(commission).findByText('You proposed 12.25%. Waiting for Shazlo.')).toBeInTheDocument()
+    expect(savedCommission()).toMatchObject({ state: 'proposed', proposed_bps: 1225 })
+  })
+
+  it('accepts a proposal of 0%', async () => {
+    const { user } = await openStoreDetails({ prepare: () => setCommission({ state: 'not_set', agreed_bps: null, proposed_bps: null, note: null }) })
+    const commission = card('Commission')
+    await user.type(await within(commission).findByRole('textbox', { name: 'Rate you propose, in %' }), '0')
+    await user.click(within(commission).getByRole('button', { name: 'Send proposal' }))
+    expect(await within(commission).findByText('You proposed 0%. Waiting for Shazlo.')).toBeInTheDocument()
+  })
+
+  it('sends one proposal however often Send is pressed', async () => {
+    const posts: string[] = []
+    server.events.on('request:start', ({ request }) => {
+      if (request.method === 'POST' && request.url.endsWith('/v1/vendor/commission/proposal')) posts.push(request.url)
+    })
+    const { user } = await openStoreDetails({ prepare: () => setCommission({ state: 'not_set', agreed_bps: null, proposed_bps: null, note: null }) })
+    const commission = card('Commission')
+    await user.type(await within(commission).findByRole('textbox', { name: 'Rate you propose, in %' }), '11')
+    const send = within(commission).getByRole('button', { name: 'Send proposal' })
+    await user.dblClick(send)
+    await user.keyboard('{Enter}')
+    expect(await within(commission).findByText('You proposed 11%. Waiting for Shazlo.')).toBeInTheDocument()
+    expect(posts).toHaveLength(1)
+    server.events.removeAllListeners()
+  })
+
+  it('says plainly when proposing is not available yet, and keeps the rate typed', async () => {
+    server.use(http.post('*/v1/vendor/commission/proposal', () => HttpResponse.json({ detail: 'Not Found' }, { status: 404 })))
+    const { user } = await openStoreDetails({ prepare: () => setCommission({ state: 'not_set', agreed_bps: null, proposed_bps: null, note: null }) })
+    const commission = card('Commission')
+    const field = await within(commission).findByRole('textbox', { name: 'Rate you propose, in %' })
+    await user.type(field, '11')
+    await user.click(within(commission).getByRole('button', { name: 'Send proposal' }))
+    expect(await within(commission).findByRole('alert')).toHaveTextContent('Proposing a rate here is not available yet. Write to partners@shazlo.store and we will agree it with you.')
+    expect(field).toHaveValue('11')
+  })
+
+  it('shows staff the same details and commission (only Team is for owners)', async () => {
+    await renderApp({ route: '/store/details', credentials: DEMO_STAFF })
+    expect(await screen.findByRole('region', { name: 'Payouts' }, SLOW)).toBeInTheDocument()
+    expect(await within(card('Commission')).findByText('12% of each sale.')).toBeInTheDocument()
+  })
+
+  it('keeps long and non-Latin answers inside their cards', async () => {
+    const city = 'अहमदाबाद, गुजरात — '.repeat(12)
+    await openStoreDetails({ prepare: () => (store().city = city) })
+    expect(value(card('Your brand'), 'Ships from')).toHaveTextContent(city.trim())
   })
 })

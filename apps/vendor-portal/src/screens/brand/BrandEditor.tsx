@@ -15,10 +15,10 @@ import { brandCopy as copy } from '../../copy/brand'
 import { SaveStatus, useAutosave } from '../../lib/autosave'
 import { BrandPreview } from './BrandPreview'
 import { BrandNameField, ImageInput, TextInput, touchTarget } from './fields'
-import { brandSchema, changedFields, emptyProfile, isEditableField, LIMITS, toValues, type BrandValues, type Profile } from './schema'
+import { brandSchema, changedFields, emptyProfile, forSaving, isEditableField, LIMITS, normaliseInstagram, toValues, type BrandValues, type Profile } from './schema'
 
 type Page = Schemas['BrandPage']
-type Outcome = { tone: 'success' | 'error'; title: string }
+type Outcome = { tone: 'success' | 'error'; title: string; link?: { to: string; label: string } }
 
 // The form and a phone preview sit side by side only where both fit (≥ 1200 px with the sidebar);
 // narrower screens get one column with the preview behind a button.
@@ -30,6 +30,7 @@ const columns = {
   gap: { xs: 3, lg: 5 },
   alignItems: 'start',
 } as const
+const SELLER_ADDED = ['logo_url', 'cover_url', 'tagline', 'story', 'instagram', 'website'] as const satisfies readonly (keyof BrandValues)[]
 const pair = { display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 3 } as const
 
 // Stable props for the memoised inputs.
@@ -193,6 +194,18 @@ function messageOf(error: unknown): string {
   return error instanceof Error && error.message ? error.message : copy.genericError
 }
 
+/** A refusal of some of the values (422), which the form shows on those fields. */
+const refusedFields = (error: unknown): [keyof BrandValues, string][] =>
+  error instanceof ApiError && error.status === 422 ? (Object.entries(error.fields).filter(([key]) => isEditableField(key)) as [keyof BrandValues, string][]) : []
+
+/** Why sending for review did not work, in words that say what to do. */
+function submitOutcome(error: unknown): Outcome {
+  if (error instanceof ApiError && error.code === 'review_pending') return { tone: 'error', title: copy.errors.reviewPending }
+  // vendor-api needs to know what the brand sells; Build 2 takes it from the store details.
+  if (error instanceof ApiError && error.code === 'profile_incomplete') return { tone: 'error', title: copy.errors.needsStore, link: { to: paths.storeSection('brand'), label: copy.errors.needsStoreLink } }
+  return { tone: 'error', title: messageOf(error) }
+}
+
 function BrandForm({
   page,
   brandName,
@@ -208,14 +221,19 @@ function BrandForm({
 }) {
   const sideBySide = useSideBySide()
   const { live, review } = page
-  const editable = review.state !== 'waiting'
+  // While a version is in review it stays as sent (main's rule). The seller may start a new draft
+  // beside it, which saves as usual but can only be sent once the review is decided.
+  const waiting = review.state === 'waiting'
+  const [unlocked, setUnlocked] = useState(false)
+  const editable = !waiting || unlocked
 
   const [initial] = useState(() => toValues(page.draft ?? live ?? emptyProfile(brandName)))
   const { control, handleSubmit, setError, formState } = useForm<BrandValues>({ resolver: zodResolver(brandSchema), defaultValues: initial, mode: 'onChange' })
   const values = useWatch({ control }) as BrandValues
   const valid = brandSchema.safeParse(values).success
   const changed = changedFields(values, live)
-  const hasChanges = live ? changed.size > 0 : page.draft !== null
+  // A first page has something to discard once the seller has added to it (the place comes from sign-up).
+  const hasChanges = live ? changed.size > 0 : SELLER_ADDED.some((key) => Boolean(values[key]))
 
   // Options board pick: the draft saves a second after typing stops; invalid values are never saved.
   const saveDraft = useSaveBrandDraft()
@@ -224,12 +242,17 @@ function BrandForm({
     values,
     enabled: editable && valid,
     savedAt: page.draft_saved_at,
+    // Leaving the page within the second still saves the last edit.
+    flushOnUnmount: true,
+    isInvalid: (error) => refusedFields(error).length > 0,
     save: async (next: BrandValues) => {
       try {
-        await saveDraft.mutateAsync(next)
+        await saveDraft.mutateAsync(forSaving(next))
         failedSave.current = null
       } catch (error) {
         failedSave.current = error
+        // vendor-api refused a value: say so on the field now, not only when sending for review.
+        for (const [key, message] of refusedFields(error)) setError(key, { type: 'server', message })
         throw error
       }
     },
@@ -241,22 +264,26 @@ function BrandForm({
   const outcomeRef = useRef<HTMLDivElement>(null)
 
   const fail = (error: unknown) => {
-    setOutcome({ tone: 'error', title: messageOf(error) })
-    if (!(error instanceof ApiError)) return
-    Object.entries(error.fields)
-      .filter(([key]) => isEditableField(key))
-      .forEach(([key, message], i) => setError(key as keyof BrandValues, { type: 'server', message }, { shouldFocus: i === 0 }))
+    setOutcome(submitOutcome(error))
+    refusedFields(error).forEach(([key, message], i) => setError(key, { type: 'server', message }, { shouldFocus: i === 0 }))
   }
 
+  // Sent once: a second press while the first is on its way (isSubmitting is a render late) does nothing.
+  const sending = useRef(false)
   const sendForReview = async () => {
+    if (sending.current) return
+    sending.current = true
     setOutcome(null)
-    await autosave.flush()
-    if (failedSave.current) return fail(failedSave.current)
     try {
+      await autosave.flush()
+      if (failedSave.current) return fail(failedSave.current)
       await submit.mutateAsync()
+      setUnlocked(false)
       setOutcome({ tone: 'success', title: live ? copy.banners.submitted : copy.banners.submittedFirst })
     } catch (error) {
       fail(error)
+    } finally {
+      sending.current = false
     }
   }
   // Checks the fields first; an invalid form focuses its first problem and sends nothing.
@@ -295,8 +322,22 @@ function BrandForm({
     )
 
   // One flex-gap row of our own: PageHeader's Stack spacing leaves a margin on items that wrap.
-  const actions = editable ? (
-    <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 1.5, rowGap: 1 }}>
+  const row = { display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 1.5, rowGap: 1 } as const
+  const actions = !editable ? (
+    <Box sx={row}>
+      <Button variant="outlined" onClick={() => setUnlocked(true)} sx={touchTarget}>
+        {copy.editNewDraft}
+      </Button>
+    </Box>
+  ) : waiting ? (
+    <Box sx={row}>
+      <SaveStatus state={autosave.state} savedAt={autosave.savedAt} />
+      <Typography variant="body2" color="text.secondary">
+        {copy.waitForDecision}
+      </Typography>
+    </Box>
+  ) : (
+    <Box sx={row}>
       <SaveStatus state={autosave.state} savedAt={autosave.savedAt} />
       {hasChanges && (
         <Button
@@ -313,7 +354,7 @@ function BrandForm({
         {formState.isSubmitting ? copy.submitting : copy.submit}
       </Button>
     </Box>
-  ) : undefined
+  )
 
   const banners: ReactNode[] = []
   if (discarded && !outcome) {
@@ -332,17 +373,30 @@ function BrandForm({
   } else if (review.state === 'waiting') {
     banners.push(<Banner key="review" tone="info" title={copy.banners.inReview} />)
   }
-  if (outcome?.tone === 'error') banners.push(<Banner key="outcome" tone="error" title={outcome.title} onClose={() => setOutcome(null)} />)
+  if (outcome?.tone === 'error') {
+    banners.push(
+      <Banner key="outcome" tone="error" title={outcome.title} onClose={() => setOutcome(null)}>
+        {outcome.link && (
+          <Link component={RouterLink} to={outcome.link.to}>
+            {outcome.link.label}
+          </Link>
+        )}
+      </Banner>,
+    )
+  }
   if (review.state === 'rejected') {
     banners.push(
       <Banner key="sent-back" tone="warning" title={copy.banners.sentBack}>
-        {review.reason && <>“{review.reason}” </>}
+        {/* The reviewer's words as written: line breaks kept, markup shown as text. */}
+        {review.reason && <Box component="span" sx={{ whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>“{review.reason}” </Box>}
         {copy.banners.sentBackNext}
       </Banner>,
     )
   }
 
   const locked = !editable
+  const handle = normaliseInstagram(values.instagram)
+  const instagramHint = handle && values.instagram.trim() !== `@${handle}` ? copy.shopping.instagramSaves(handle) : undefined
   return (
     <>
       <PageHeader title={copy.title} status={pill} subtitle={live ? copy.subtitle : copy.subtitleFirst} actions={actions} />
@@ -364,7 +418,7 @@ function BrandForm({
           <SectionCard title={copy.shopping.title}>
             <Stack spacing={3}>
               <Box sx={pair}>
-                <TextInput control={control} name="instagram" label={copy.shopping.instagram} changed={changed.has('instagram')} disabled={locked} htmlInput={HANDLE_INPUT} />
+                <TextInput control={control} name="instagram" label={copy.shopping.instagram} changed={changed.has('instagram')} disabled={locked} htmlInput={HANDLE_INPUT} hint={instagramHint} />
                 <TextInput control={control} name="website" label={copy.shopping.website} changed={changed.has('website')} disabled={locked} htmlInput={URL_INPUT} />
               </Box>
               {/* Returns and delivery are store details now (spec §5); the preview reads them from there. */}

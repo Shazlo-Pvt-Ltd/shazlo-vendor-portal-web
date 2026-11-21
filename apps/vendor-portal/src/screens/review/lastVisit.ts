@@ -1,10 +1,11 @@
 import { registerSensitiveReset } from '../../security/sensitiveState'
 
 /**
- * When the vendor last left the submissions page, in milliseconds: the "new since your last
- * visit" marker shows decisions made after it. It is only a time, nothing about the vendor, and it
+ * When the seller last left Review status, in milliseconds: decisions made after it are marked
+ * "new since your last visit" (main's features/submissions/lastVisit.ts). It is only a time, and it
  * lives in memory like the rest of the session (the portal keeps nothing in web storage), so it
- * lasts until the tab is reloaded or the user signs out.
+ * lasts until the tab is reloaded or the seller signs out. Before the first visit, the sign-in time
+ * stands in (see rules.ts).
  */
 let lastVisit: number | null = null
 

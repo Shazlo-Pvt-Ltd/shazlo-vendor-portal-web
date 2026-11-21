@@ -1,41 +1,55 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MockDb } from '../../mocks/db'
+import { DEMO_STAFF, nextId, type MockDb } from '../../mocks/db'
+import { decide } from '../../mocks/handlers'
 import { renderApp } from '../../test/render'
-import { mockDb, server } from '../../test/server'
+import { server, setupMockApi } from '../../test/server'
+import { resetLastVisit } from './lastVisit'
 
-// The wireframe's moment: Saturday 31 Oct 2026, 13:40 IST. The seed is built relative to it.
+// The wireframe's moment: Saturday 31 Oct 2026, 13:40 IST. The seed is built relative to it, and the
+// mock's clock follows the (faked) system time, so a test can let time pass before a decision.
 const NOW = new Date('2026-10-31T13:40:00+05:30')
+const MINUTE = 60_000
 
-// Changes the seed that the next renderApp creates, before any request reads it.
-function seed(change: (db: MockDb) => void) {
-  let changed: MockDb | null = null
-  server.use(
-    http.all('*/api/v1/*', () => {
-      if (changed !== mockDb) {
-        change(mockDb)
-        changed = mockDb
-      }
-    }),
-  )
-}
+// Before setupMockApi(), so the seed is made at NOW.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(NOW)
+  resetLastVisit()
+})
+afterEach(() => {
+  vi.useRealTimers()
+})
 
+const { db } = setupMockApi({ now: () => new Date() })
+
+const kalki = () => db().vendors.find((v) => v.name === 'Kalki Studio')!
+const bySku = (sku: string) => db().products.find((p) => p.sku === sku)!
 const tabParam = (router: Awaited<ReturnType<typeof renderApp>>['router']) => new URLSearchParams(router.state.location.search).get('tab')
 const rowOf = (region: HTMLElement, title: string) => within(region).getByRole('link', { name: title }).closest('li')!
+
+/** The draft brand page goes to review, as POST /brand-profile/submit would send it. */
+function sendBrandPageForReview(d: MockDb, minutesAgo: number) {
+  const at = new Date(Date.now() - minutesAgo * MINUTE).toISOString()
+  const draft = d.brands.get(kalki().id)!.find((v) => v.state === 'draft')!
+  Object.assign(draft, { state: 'pending_review', submitted_at: at })
+  d.submissions.push({ id: nextId(d), vendor_id: kalki().id, subject: 'brand_profile', product_id: null, sku: null, title: null, version: draft.version, status: 'pending', reason: null, submitted_at: at, decided_at: null })
+}
+
+/** A sent-back product fixed and sent again. */
+function resubmit(d: MockDb, sku: string) {
+  const product = bySku(sku)
+  product.working!.state = 'in_review'
+  product.working!.version += 1
+  product.status = 'pending_review'
+  d.submissions.push({ id: nextId(d), vendor_id: kalki().id, subject: 'product', product_id: product.id, sku, title: product.working!.content.title, version: product.working!.version, status: 'pending', reason: null, submitted_at: new Date(Date.now() - 30 * MINUTE).toISOString(), decided_at: null })
+}
 
 // Load the lazily imported screen once up front, so the first tests do not time out while the
 // chunk is transformed.
 beforeAll(async () => {
   await import('./ReviewStatus')
-})
-
-beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['Date'] })
-  vi.setSystemTime(NOW)
-})
-afterEach(() => {
-  vi.useRealTimers()
 })
 
 describe('V-09 Review status: header and queue', () => {
@@ -56,12 +70,7 @@ describe('V-09 Review status: header and queue', () => {
   })
 
   it('drops the waiting time when nothing waits, and says the list is empty', async () => {
-    seed((db) => {
-      for (const p of db.products) {
-        if (p.status === 'pending_review') p.status = 'draft'
-        p.edit_in_review = false
-      }
-    })
+    db().submissions = db().submissions.filter((s) => s.status !== 'pending')
     await renderApp({ route: '/review?tab=waiting' })
     // The sidebar count comes from the same summary as the queue time.
     expect(await screen.findByRole('link', { name: /^Review status\s*, 0 waiting$/ }, { timeout: 5000 })).toBeInTheDocument()
@@ -89,7 +98,7 @@ describe('V-09 Review status: lists', () => {
     expect(within(shirt).getByText('Edit to a live product')).toBeInTheDocument()
     expect(shirt).toHaveTextContent('Submitted yesterday · the live version stays in the app')
     expect(within(shirt).getByText('Edit in review')).toBeInTheDocument()
-    expect(within(waiting).getByRole('link', { name: 'Handloom Cotton Shirt — Rust' })).toHaveAttribute('href', '/products/p_004')
+    expect(within(waiting).getByRole('link', { name: 'Handloom Cotton Shirt — Rust' })).toHaveAttribute('href', `/products/${bySku('KS-HCS-003').id}`)
   })
 
   it('quotes the reason for sent-back items and links to the fix', async () => {
@@ -99,9 +108,8 @@ describe('V-09 Review status: lists', () => {
 
     const ajrakh = rowOf(decided, 'Ajrakh Block-Print Kurta')
     expect(ajrakh).toHaveTextContent('Sent back today, 11:40')
-    // The reason itself comes from the mock seed; check it is quoted in full.
     expect(ajrakh).toHaveTextContent(/“Back photo is missing.*”/)
-    expect(within(ajrakh).getByRole('link', { name: 'Fix and resubmit Ajrakh Block-Print Kurta' })).toHaveAttribute('href', '/products/p_001')
+    expect(within(ajrakh).getByRole('link', { name: 'Fix and resubmit Ajrakh Block-Print Kurta' })).toHaveAttribute('href', `/products/${bySku('KS-AJR-014').id}`)
 
     const jacket = rowOf(decided, 'Kutch Mirror-Work Jacket')
     expect(jacket).toHaveTextContent('Sent back 21 Oct, 09:40')
@@ -111,20 +119,141 @@ describe('V-09 Review status: lists', () => {
     expect(within(dupatta).getByText('Live')).toBeInTheDocument()
     expect(within(dupatta).queryByRole('link', { name: /Fix and resubmit/ })).toBeNull()
 
+    // vendor-api has no "publishing" state: an approved product is live.
     const coord = rowOf(decided, 'Linen Co-ord Set — Indigo')
-    expect(coord).toHaveTextContent('Approved 20 Oct · publishing to the app')
-    expect(within(coord).getByText('Publishing')).toBeInTheDocument()
+    expect(coord).toHaveTextContent('Approved 20 Oct · live in the app')
   })
 
   it('sends a sent-back brand page to the brand editor', async () => {
-    seed((db) => {
-      db.brand.review = { state: 'rejected', at: new Date(NOW.getTime() - 3_600_000).toISOString(), reason: 'The cover photo shows another brand’s logo.' }
-    })
+    sendBrandPageForReview(db(), 90)
+    decide(db(), { brandOf: kalki().id }, { approve: false, reason: 'The cover photo shows another brand’s logo.' })
     await renderApp({ route: '/review?tab=rejected' })
     const decided = await screen.findByRole('region', { name: 'Recently decided' })
     const brand = await within(decided).findByRole('link', { name: 'Fix and resubmit Brand page' })
     expect(brand).toHaveAttribute('href', '/brand')
     expect(decided).toHaveTextContent('“The cover photo shows another brand’s logo.”')
+  })
+
+  it('finds the product by its code when vendor-api does not name it', async () => {
+    db().proposals.submissionProductIds = false
+    await renderApp({ route: '/review?tab=rejected' })
+    const decided = await screen.findByRole('region', { name: 'Recently decided' })
+    expect(await within(decided).findByRole('link', { name: 'Fix and resubmit Ajrakh Block-Print Kurta' })).toHaveAttribute('href', `/products/${bySku('KS-AJR-014').id}`)
+  })
+
+  it('sends a product it cannot find to Products, not to a broken address', async () => {
+    db().proposals.submissionProductIds = false
+    db().submissions.push({ id: nextId(db()), vendor_id: kalki().id, subject: 'product', product_id: null, sku: 'KS-OLD-001', title: 'Old kurta', version: 1, status: 'rejected', reason: 'Blurry.', submitted_at: new Date(NOW.getTime() - 60 * MINUTE).toISOString(), decided_at: new Date(NOW.getTime() - 30 * MINUTE).toISOString() })
+    await renderApp({ route: '/review?tab=rejected' })
+    const decided = await screen.findByRole('region', { name: 'Recently decided' })
+    expect(await within(decided).findByRole('link', { name: 'Fix and resubmit Old kurta' })).toHaveAttribute('href', '/products')
+  })
+
+  it('shows a reason exactly as written: line breaks kept, markup as text', async () => {
+    const product = bySku('KS-DAB-040')
+    decide(db(), { productId: product.id }, { approve: false, reason: 'Two things:\n1. Steam the skirt.\n2. <b>Retake</b> the back photo.' })
+    await renderApp({ route: '/review?tab=rejected' })
+    const decided = await screen.findByRole('region', { name: 'Recently decided' })
+    const row = await waitFor(() => rowOf(decided, 'Dabu Print Wrap Skirt'))
+    const reason = within(row).getByText(/Two things:/)
+    expect(reason).toHaveTextContent('2. <b>Retake</b> the back photo.')
+    expect(reason).toHaveStyle({ whiteSpace: 'pre-line' })
+    expect(row.querySelector('b')).toBeNull()
+  })
+
+  it('says so when a sent-back item came with no reason', async () => {
+    decide(db(), { productId: bySku('KS-DAB-040').id }, { approve: false })
+    await renderApp({ route: '/review?tab=rejected' })
+    const decided = await screen.findByRole('region', { name: 'Recently decided' })
+    const row = await waitFor(() => rowOf(decided, 'Dabu Print Wrap Skirt'))
+    expect(row).toHaveTextContent('No reason was given. Write to partners@shazlo.store if it is not clear what to change.')
+  })
+
+  it('says a sent-back change to a live product left the live version on sale', async () => {
+    decide(db(), { productId: bySku('KS-HCS-003').id }, { approve: false, reason: 'The new price is below your MRP rule.' })
+    await renderApp({ route: '/review?tab=rejected' })
+    const decided = await screen.findByRole('region', { name: 'Recently decided' })
+    const row = await waitFor(() => rowOf(decided, 'Handloom Cotton Shirt — Rust'))
+    expect(row).toHaveTextContent('The live version is unchanged: shoppers still see it.')
+  })
+
+  it('does not ask to fix an item that was already sent again', async () => {
+    resubmit(db(), 'KS-AJR-014')
+    await renderApp({ route: '/review?tab=rejected' })
+    const decided = await screen.findByRole('region', { name: 'Recently decided' })
+    const row = await waitFor(() => rowOf(decided, 'Ajrakh Block-Print Kurta'))
+    expect(row).toHaveTextContent('You sent a newer version after this one.')
+    expect(within(row).queryByRole('link', { name: /Fix and resubmit/ })).toBeNull()
+    // The other sent-back product still needs its fix.
+    expect(within(rowOf(decided, 'Kutch Mirror-Work Jacket')).getByRole('link', { name: /Fix and resubmit/ })).toBeInTheDocument()
+  })
+
+  it('keeps long and non-Latin titles inside the row', async () => {
+    const title = 'हाथ से छपा अजरख कुर्ता — '.repeat(8).trim()
+    db().submissions.find((s) => s.sku === 'KS-AJR-014')!.title = title
+    await renderApp({ route: '/review?tab=rejected' })
+    const link = await screen.findByRole('link', { name: title })
+    expect(link).toHaveStyle({ overflowWrap: 'anywhere' })
+  })
+})
+
+describe('V-09 Review status: what is new', () => {
+  const sidebar = () => screen.getByRole('navigation', { name: 'Seller sections' })
+
+  it('marks decisions made since the last visit, and none on the first visit after signing in', async () => {
+    const { user } = await renderApp({ route: '/review' })
+    const decided = await screen.findByRole('region', { name: 'Recently decided' })
+    await waitFor(() => expect(within(decided).getAllByRole('listitem')).toHaveLength(21))
+    expect(screen.queryByText('New since your last visit')).toBeNull()
+
+    await user.click(within(sidebar()).getByRole('link', { name: 'Overview' }))
+    await screen.findByRole('heading', { level: 1, name: 'Overview' })
+    vi.setSystemTime(NOW.getTime() + 10 * MINUTE)
+    decide(db(), { productId: bySku('KS-DAB-040').id }, { approve: true })
+    decide(db(), { productId: bySku('KS-PIK-027').id }, { approve: false, reason: 'Show the dupatta too.' })
+
+    await user.click(within(sidebar()).getByRole('link', { name: /^Review status/ }))
+    const again = await screen.findByRole('region', { name: 'Recently decided' })
+    await waitFor(() => expect(within(again).getAllByText('New since your last visit')).toHaveLength(2))
+    expect(within(rowOf(again, 'Dabu Print Wrap Skirt')).getByText('New since your last visit')).toBeInTheDocument()
+    expect(within(rowOf(again, 'Pochampally Ikat Kurta')).getByText('New since your last visit')).toBeInTheDocument()
+    expect(within(rowOf(again, 'Bandhani Silk Dupatta')).queryByText('New since your last visit')).toBeNull()
+  })
+
+  it('marks decisions made after signing in on the first visit', async () => {
+    const { user } = await renderApp({ route: '/' })
+    await screen.findByRole('heading', { level: 1, name: 'Overview' })
+    vi.setSystemTime(NOW.getTime() + 5 * MINUTE)
+    decide(db(), { productId: bySku('KS-DAB-040').id }, { approve: true })
+    await user.click(within(sidebar()).getByRole('link', { name: /^Review status/ }))
+    const decided = await screen.findByRole('region', { name: 'Recently decided' })
+    await waitFor(() => expect(within(rowOf(decided, 'Dabu Print Wrap Skirt')).getByText('New since your last visit')).toBeInTheDocument())
+  })
+
+  it('reads out a decision that arrives while the page is open', async () => {
+    const { queryClient } = await renderApp({ route: '/review' })
+    const decided = await screen.findByRole('region', { name: 'Recently decided' })
+    await waitFor(() => expect(within(decided).getAllByRole('listitem')).toHaveLength(21))
+    const live = screen.getByTestId('review-announcer')
+    expect(live).toHaveAttribute('aria-live', 'polite')
+    expect(live).toBeEmptyDOMElement()
+
+    vi.setSystemTime(NOW.getTime() + MINUTE)
+    decide(db(), { productId: bySku('KS-DAB-040').id }, { approve: true })
+    await act(() => queryClient.invalidateQueries({ queryKey: ['reviews'] }))
+    await waitFor(() => expect(live).toHaveTextContent('Status updated. Dabu Print Wrap Skirt: approved.'))
+  })
+
+  it('looks again every minute while the page is open', async () => {
+    const intervals: number[] = []
+    const real = window.setInterval
+    vi.spyOn(window, 'setInterval').mockImplementation(((fn: () => void, ms?: number) => {
+      intervals.push(ms ?? 0)
+      return real(fn, ms)
+    }) as typeof window.setInterval)
+    await renderApp({ route: '/review' })
+    await screen.findByRole('region', { name: 'Recently decided' })
+    expect(intervals).toContain(60_000)
   })
 })
 
@@ -170,24 +299,25 @@ describe('V-09 Review status: tabs', () => {
   })
 
   it('says so when nothing was sent back', async () => {
-    seed((db) => {
-      for (const p of db.products) if (p.status === 'rejected') p.status = 'approved'
-    })
+    db().submissions = db().submissions.filter((s) => s.status !== 'rejected')
     await renderApp({ route: '/review?tab=rejected' })
     const decided = await screen.findByRole('region', { name: 'Recently decided' })
     expect(await within(decided).findByRole('heading', { name: 'Nothing sent back' })).toBeInTheDocument()
   })
 
   it('points a new seller to their first product when nothing has been sent', async () => {
-    seed((db) => {
-      db.products = []
-      db.brand = { live: null, live_since: null, draft: null, draft_saved_at: null, review: { state: 'none' }, submitted_at: null }
-    })
+    db().submissions = db().submissions.filter((s) => s.vendor_id !== kalki().id)
     await renderApp({ route: '/review' })
     expect(await screen.findByRole('heading', { name: 'Nothing sent for review yet' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Add product' })).toHaveAttribute('href', '/products/new')
     expect(screen.queryByRole('tablist')).toBeNull()
     expect(screen.getByRole('region', { name: 'How review works' })).toBeInTheDocument()
+  })
+
+  it('works the same for staff', async () => {
+    await renderApp({ route: '/review?tab=rejected', credentials: DEMO_STAFF })
+    const decided = await screen.findByRole('region', { name: 'Recently decided' })
+    expect(await within(decided).findByRole('link', { name: 'Fix and resubmit Ajrakh Block-Print Kurta' })).toBeInTheDocument()
   })
 })
 
@@ -210,7 +340,7 @@ describe('V-09 Review status: explainer, states and layout', () => {
       open = resolve
     })
     server.use(
-      http.get('*/api/v1/vendor/reviews', async () => {
+      http.get('*/v1/vendor/submissions', async () => {
         await gate
       }),
     )
@@ -223,9 +353,8 @@ describe('V-09 Review status: explainer, states and layout', () => {
 
   it('explains when the items do not load, and tries again', async () => {
     let down = true
-    server.use(http.get('*/api/v1/vendor/reviews', () => (down ? HttpResponse.json({ message: 'Down', extra: { code: 'server_error' } }, { status: 500 }) : undefined)))
+    server.use(http.get('*/v1/vendor/submissions', () => (down ? HttpResponse.json({ error: { code: 'internal_error', message: 'Down' } }, { status: 500 }) : undefined)))
     const { user } = await renderApp({ route: '/review' })
-    // The query client retries a 500 twice (about 3 s) before giving up.
     const alert = await screen.findByRole('alert', {}, { timeout: 8000 })
     expect(alert).toHaveTextContent('Your review items did not load. Check your connection and try again.')
     down = false
