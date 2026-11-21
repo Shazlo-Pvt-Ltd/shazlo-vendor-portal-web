@@ -69,6 +69,8 @@ not verbatim board swatches. Status/link/button contrast is tested against the
 actual paired backgrounds, including default contained-button hover shades.
 Amber `#D99B19` and navy `#0B2A46` hover shades are also implementation choices;
 MUI's automatically darkened amber would lower contrast with wine text.
+Quiet label text on navy, `#96A8AB` (`navyText.quiet`: off-white at 56% over
+navy), is an implementation choice too; it is tested at 4.5:1 on navy.
 Disabled controls and decorative dividers are not normal body text.
 
 `brand.black`, `brand.gold` and `brand.white` are replaced by the named palette.
