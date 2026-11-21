@@ -25,26 +25,57 @@ def normalise_phone(raw: str) -> str | None:
     return digits if _MOBILE.fullmatch(digits) else None
 
 
+# The email and website checks split the text instead of using one regular expression with
+# nested or adjacent open-ended repeats, so crafted input cannot make them backtrack: every
+# pattern left below is a single character class repeated, matched once per part.
 EMAIL_MAX = 320
-_EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+_NO_SPACE = re.compile(r"\S+")
 
 
 def is_valid_email(raw: str) -> bool:
+    """name@domain.tld: one @, no spaces, a dot inside the domain (not at either end)."""
     value = raw.strip()
-    return len(value) <= EMAIL_MAX and _EMAIL.fullmatch(value) is not None
+    if len(value) > EMAIL_MAX or value.count("@") != 1 or _NO_SPACE.fullmatch(value) is None:
+        return False
+    local, _, domain = value.partition("@")
+    return bool(local) and "." in domain[1:-1]
 
 
 LINK_MAX = 300
 # An Instagram handle (@kalki.studio) or a website (kalkistudio.in, https://...).
-_HANDLE = re.compile(r"@?(?!.*\.\.)[a-z0-9._]{1,30}", re.IGNORECASE)
-_WEBSITE = re.compile(r"(https?://)?([a-z0-9-]+\.)+[a-z]{2,}(/\S*)?", re.IGNORECASE)
+_HANDLE = re.compile(r"@?[a-z0-9._]{1,30}", re.IGNORECASE)
+_LABEL = re.compile(r"[a-z0-9-]+", re.IGNORECASE)
+_TLD = re.compile(r"[a-z]{2,}", re.IGNORECASE)
+
+
+def _is_handle(value: str) -> bool:
+    return ".." not in value and _HANDLE.fullmatch(value) is not None
+
+
+def _is_website(value: str) -> bool:
+    """Optional http(s)://, then labels of letters, digits and hyphens joined by dots ending in
+    a letters-only top-level domain, then an optional /path without spaces."""
+    lowered = value.lower()
+    for scheme in ("https://", "http://"):
+        if lowered.startswith(scheme):
+            value = value[len(scheme) :]
+            break
+    host, slash, path = value.partition("/")
+    if slash and path and _NO_SPACE.fullmatch(path) is None:
+        return False
+    *labels, tld = host.split(".")
+    return (
+        bool(labels)
+        and all(_LABEL.fullmatch(label) for label in labels)
+        and _TLD.fullmatch(tld) is not None
+    )
 
 
 def is_valid_link(raw: str) -> bool:
     value = raw.strip()
     if not value or len(value) > LINK_MAX:
         return False
-    return _HANDLE.fullmatch(value) is not None or _WEBSITE.fullmatch(value) is not None
+    return _is_handle(value) or _is_website(value)
 
 
 _PIN = re.compile(r"[1-9][0-9]{5}")

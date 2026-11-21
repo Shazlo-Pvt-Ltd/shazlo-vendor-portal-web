@@ -4,6 +4,8 @@ The rules match the seller portal's (`apps/vendor-portal/src/lib/validators.ts` 
 branch), so a value the screens accept is accepted here and the other way round.
 """
 
+import time
+
 import pytest
 
 from vendor_api.services import indian_formats as f
@@ -176,4 +178,73 @@ def test_invalid_gstin(gstin: str) -> None:
     ],
 )
 def test_email(raw: str, ok: bool) -> None:
+    assert f.is_valid_email(raw) is ok
+
+
+# --- crafted input must not make a check slow (CodeQL: polynomial regular expressions) -------
+
+SLOW = 0.25  # seconds; a linear check of these strings takes microseconds
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "a@" + "!" * 20_000,
+        "a@" + "!" * 20_000 + "@",
+        "!" * 20_000 + "@a",
+        "a@b" + "." * 20_000,
+    ],
+)
+def test_email_check_is_linear(raw: str) -> None:
+    started = time.perf_counter()
+    assert not f.is_valid_email(raw)
+    assert time.perf_counter() - started < SLOW
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "a" + "-" * 20_000,
+        "a" + "-" * 20_000 + "!",
+        "a." + "a-." * 7_000 + "!",
+        "https://" + "a-" * 10_000,
+    ],
+)
+def test_link_check_is_linear(raw: str) -> None:
+    started = time.perf_counter()
+    f.is_valid_link(raw)
+    assert time.perf_counter() - started < SLOW
+
+
+@pytest.mark.parametrize(
+    ("raw", "ok"),
+    [
+        ("kalki-studio.co.in", True),
+        ("https://www.kalki-studio.in/a/b?c=d", True),
+        ("kalki.in/", True),
+        ("kalki-studio.i", False),  # a hyphen: not an Instagram handle
+        ("kalki-studio.in1", False),
+        (".kalki-studio.in", False),
+        ("kalki-studio..in", False),
+        ("kalki.in/ path", False),
+        ("http:/kalki.in", False),
+        ("HTTPS://KALKI.IN", True),
+    ],
+)
+def test_website_shapes(raw: str, ok: bool) -> None:
+    assert f.is_valid_link(raw) is ok
+
+
+@pytest.mark.parametrize(
+    ("raw", "ok"),
+    [
+        ("a@b.c", True),
+        ("a@b.c.d", True),
+        ("a@.c", False),
+        ("a@b.", False),
+        ("a@@b.c", False),
+        ("a@b .c", False),
+    ],
+)
+def test_email_shapes(raw: str, ok: bool) -> None:
     assert f.is_valid_email(raw) is ok
