@@ -1,5 +1,5 @@
 /**
- * Store details (`GET /v1/vendor/store-details`, vendor-api since PR #281). The answer is flat, as
+ * Store details (`GET /v1/vendor/store-details`, vendor-api since PR 281). The answer is flat, as
  * Build 2 drew it, but its topics are loosely typed objects, so each is read defensively. Payouts
  * come back masked: the bank (null for a bank vendor-api does not list) and the last four digits,
  * or a masked UPI ID; the number itself never comes back and is never sent again.

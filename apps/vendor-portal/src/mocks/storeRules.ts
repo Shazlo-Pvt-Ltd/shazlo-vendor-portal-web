@@ -1,4 +1,4 @@
-// vendor-api's rules for store details, commission, size charts and the IFSC lookup (PR #281),
+// vendor-api's rules for store details, commission, size charts and the IFSC lookup (PR 281),
 // ported so the mock answers what vendor-api answers: the same 422 keys, types and messages, the
 // same normal forms, the same masks. Sources: services/vendor-api/vendor_api/services/
 // {store_details,commission,size_charts,indian_formats,ifsc_directory}.py and core/validation.py.

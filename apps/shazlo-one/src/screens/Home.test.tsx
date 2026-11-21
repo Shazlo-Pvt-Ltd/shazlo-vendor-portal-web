@@ -73,12 +73,16 @@ describe('A-02 Home: Vendors', () => {
   })
 
   it('says when the figures did not load and tries again', async () => {
-    server.use(http.get('*/api/v1/admin/summary', () => HttpResponse.json({ message: 'vendor-api is restarting.', extra: { code: 'unavailable' } }, { status: 404 }), { once: true }))
+    // vendor-api stays down until the admin tries again: React Query may refetch a failed query by
+    // itself (on mount or reconnect), and a one-off failure would be gone before the test looks.
+    let down = true
+    server.use(http.get('*/api/v1/admin/summary', () => (down ? HttpResponse.json({ message: 'vendor-api is restarting.', extra: { code: 'unavailable' } }, { status: 404 }) : undefined)))
     const { user } = await renderShell()
     // The publishing card has its own alert (a failed event in the seed), so find this one by its text.
     const alert = (await screen.findByText('Vendor figures did not load')).closest<HTMLElement>('[role="alert"]')!
     expect(alert).toBeInTheDocument()
     expect(alert).toHaveTextContent('vendor-api is restarting.')
+    down = false
     await user.click(within(alert).getByRole('button', { name: 'Try again' }))
     const card = await region('Vendors')
     expect(within(await figure(card, 'Waiting')).getByText('14')).toBeInTheDocument()

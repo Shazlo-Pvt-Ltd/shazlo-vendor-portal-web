@@ -25,7 +25,7 @@ export type MessageOut = Real['Message']
 export type SignupBody = Proposed['ProposedSignupRequest']
 export type SignupStoreDetails = Proposed['SignupStoreDetails']
 
-// ---- store details (real since PR #281) ----------------------------------------------------------
+// ---- store details (real since PR 281) ----------------------------------------------------------
 /** Flat, as Build 2 drew it; the topics are loosely typed objects, read defensively. */
 export type StoreDetailsOut = Real['StoreDetailsOut']
 export type StoreBrandIn = Real['BrandIn']
@@ -75,7 +75,7 @@ export type DraftOut = Proposed['ProposedDraftOut']
 export type BrandProfileOut = Proposed['ProposedBrandProfileOut']
 export type BrandProfileBody = Proposed['ProposedBrandProfileBody']
 
-// ---- size charts (real since PR #281) ------------------------------------------------------------
+// ---- size charts (real since PR 281) ------------------------------------------------------------
 export type SizeChartOut = Real['SizeChartOut']
 export type SizeChartBody = Real['SizeChartIn']
 /** vendor-api takes the group as a free path segment and answers 404 for anything else. */
