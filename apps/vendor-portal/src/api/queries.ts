@@ -94,7 +94,6 @@ export const keys = {
   submissions: (params: SubmissionParams = {}) => ['submissions', params] as const,
   allSubmissions: ['submissions'] as const,
   importJob: (id: string) => ['import', id] as const,
-  invite: (token: string) => ['invite', token] as const,
   storeDetails: ['store-details'] as const,
   ifsc: (code: string) => ['ifsc', code] as const,
   sizeChart: (group: Schemas['SizeChartGroup']) => ['size-chart', group] as const,
@@ -471,20 +470,6 @@ export function useReviews(state?: 'waiting' | 'rejected' | 'approved', limit?: 
   })
 }
 
-/**
- * Who an invite link is for. vendor-api has no route that says (it only takes the token with the
- * new password), so this answers at once with blanks; the set-password screen should stop
- * greeting by name (see the report on build2-on-main).
- */
-export function useInvite(token: string | null) {
-  return useQuery({
-    queryKey: keys.invite(token ?? ''),
-    queryFn: () => ({ email: '', brand_name: '', owner_name: '' }),
-    enabled: Boolean(token),
-    retry: false,
-  })
-}
-
 // Bulk import jobs live in this tab's memory: the file is kept so the import can run it again for real.
 const importJobs = new Map<string, { file: File; job: ImportJob }>()
 let importSeq = 0
@@ -562,9 +547,6 @@ const FORGET_AT_ONCE = { gcTime: 0 } as const
 export function useSignUp() {
   return useMutation({ mutationFn: signUp, ...FORGET_AT_ONCE })
 }
-
-/** Build 2's name for {@link useSignUp}. */
-export const useApply = useSignUp
 
 /** `POST /v1/auth/verify-email` with the token from the emailed link. 400 `invalid_token` when it is used or old. */
 export function useVerifyEmail() {

@@ -2,8 +2,8 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, configure } from '@testing-library/react'
 import { afterEach } from 'vitest'
 
-// No MSW server starts here: main's tests start their own (src/test/msw.ts) and the mock API is
-// started per file with useMockApi() (src/test/server.ts). Two servers would both answer.
+// No MSW server starts here: the mock API is started per file with setupMockApi() (src/test/server.ts)
+// or a file's own server. Two servers would both answer every request.
 
 // Screens are lazy chunks: the first one a test file opens can take a few seconds to load on a cold,
 // busy machine, far longer than findBy's 1 s default. Waiting longer costs nothing when it is fast.
