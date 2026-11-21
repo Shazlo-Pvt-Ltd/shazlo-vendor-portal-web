@@ -287,7 +287,7 @@ export interface paths {
         };
         /**
          * Get Vendor
-         * @description One vendor with its status history.
+         * @description One vendor with its status history and commission.
          */
         get: operations["get_vendor_v1_admin_vendors__vendor_id__get"];
         put?: never;
@@ -319,6 +319,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/vendors/{vendor_id}/commission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Vendor Commission
+         * @description A brand's commission. `404` for an unknown vendor.
+         */
+        get: operations["get_vendor_commission_v1_admin_vendors__vendor_id__commission_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/vendors/{vendor_id}/commission/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Commission
+         * @description Agrees the brand's waiting proposal. `409 no_proposal` when none waits;
+         *     `409 commission_changed` when it is not the `proposed_bps` sent.
+         */
+        post: operations["approve_commission_v1_admin_vendors__vendor_id__commission_approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/vendors/{vendor_id}/commission/send-back": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Back Commission
+         * @description Sends the waiting proposal back with a note (10 to 600 characters) the brand sees. The
+         *     agreed rate, if any, stays. `409 no_proposal` when none waits.
+         */
+        post: operations["send_back_commission_v1_admin_vendors__vendor_id__commission_send_back_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/vendors/{vendor_id}/commission/set": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Commission
+         * @description Sets the agreed rate directly (for example agreed on a call), whatever was proposed; an
+         *     optional note up to 600 characters. `409 vendor_not_eligible` for a rejected application.
+         */
+        post: operations["set_commission_v1_admin_vendors__vendor_id__commission_set_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/vendors/{vendor_id}/reject": {
         parameters: {
             query?: never;
@@ -335,6 +418,27 @@ export interface paths {
          *     is suspended, not rejected.
          */
         post: operations["reject_vendor_v1_admin_vendors__vendor_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/vendors/{vendor_id}/store-details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Vendor Store Details
+         * @description A vendor's store details as the vendor sees them: payouts masked (bank, last four digits
+         *     or a masked UPI ID), never the number. `404` for an unknown vendor.
+         */
+        get: operations["get_vendor_store_details_v1_admin_vendors__vendor_id__store_details_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -548,6 +652,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/ifsc/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ifsc Lookup
+         * @description The bank behind an IFSC (from its first four letters). `422 ifsc_format` for a code that
+         *     is not an IFSC; `404 ifsc_unknown` for a well-formed code of a bank we do not list, which a
+         *     payout may still use. Limited per IP; nothing is looked up anywhere else.
+         */
+        get: operations["ifsc_lookup_v1_public_ifsc__code__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/vendor/assets": {
         parameters: {
             query?: never;
@@ -656,6 +782,47 @@ export interface paths {
          *     draft. The submitted version can no longer be changed.
          */
         post: operations["submit_v1_vendor_brand_profile_submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/vendor/commission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Commission
+         * @description The brand's commission: what is agreed, what it proposed, and Shazlo's note.
+         */
+        get: operations["get_commission_v1_vendor_commission_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/vendor/commission/proposal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Propose Commission
+         * @description Owner only. Proposes a rate for Shazlo to approve; an agreed rate stays in force until
+         *     then. `422` for the rate already agreed. Limited per vendor.
+         */
+        post: operations["propose_commission_v1_vendor_commission_proposal_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -803,6 +970,203 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/vendor/size-charts/{group}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Size Chart
+         * @description The brand's chart for a group (`bottoms`, `tops`, `dresses`, `jackets`); empty when none
+         *     is saved. `404` for any other group.
+         */
+        get: operations["get_size_chart_v1_vendor_size_charts__group__get"];
+        /**
+         * Save Size Chart
+         * @description Replaces the brand's chart for a group. Sizes and measurements must be the group's; values
+         *     are centimetres above 0 and up to 300 with one decimal at most. `photo_asset_id` is one of
+         *     the brand's own ready `size_chart` images (sign the upload with kind `size_chart`). An empty
+         *     chart without a photo deletes it.
+         */
+        put: operations["save_size_chart_v1_vendor_size_charts__group__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/vendor/store-details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Store Details Route
+         * @description Every topic, what is still missing, and whether they are complete. A vendor that has
+         *     saved nothing gets nulls and every required topic in `missing`.
+         */
+        get: operations["get_store_details_route_v1_vendor_store_details_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/vendor/store-details/brand": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Brand
+         * @description What the brand sells (women, men or both), where it ships from, and an optional
+         *     Instagram handle or website (empty or null clears it).
+         */
+        put: operations["save_brand_v1_vendor_store_details_brand_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/vendor/store-details/business": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Business
+         * @description Owner only. Optional legal name and GST number (checked, check character included);
+         *     empty values are stored as null.
+         */
+        put: operations["save_business_v1_vendor_store_details_business_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/vendor/store-details/contact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Contact
+         * @description Who Shazlo talks to. The phone is stored as ten digits; the email in lower case.
+         */
+        put: operations["save_contact_v1_vendor_store_details_contact_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/vendor/store-details/delivery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Delivery
+         * @description `shazlo` (Shazlo picks up from `pickup_address`) or `own` (the brand delivers to all of
+         *     India or to up to 50 cities or PIN codes, in `delivery_days`: 1_2, 2_3, 3_5 or 5_7).
+         */
+        put: operations["save_delivery_v1_vendor_store_details_delivery_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/vendor/store-details/payment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Payment
+         * @description How shoppers can pay on delivery: cash and/or UPI, at least one.
+         */
+        put: operations["save_payment_v1_vendor_store_details_payment_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/vendor/store-details/payout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Payout
+         * @description Owner only. Where Shazlo pays the brand: a bank account (`holder_name`,
+         *     `account_number` of 9 to 18 digits, `ifsc`) or a UPI ID. The number is sealed and never
+         *     returned; the answer shows the bank (from the IFSC, null for an unlisted bank) and the last
+         *     four digits, or the masked UPI ID. Every change is audited.
+         */
+        put: operations["save_payout_v1_vendor_store_details_payout_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/vendor/store-details/returns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Returns
+         * @description `window_days` 0 (no returns), 7, 14 or 30. With a window, `condition`
+         *     (unworn_with_tags, any_reason, damaged_or_wrong) and `refund_days` (2, 5 or 7) are required;
+         *     with 0 they are stored as null whatever is sent.
+         */
+        put: operations["save_returns_v1_vendor_store_details_returns_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/vendor/submissions": {
         parameters: {
             query?: never;
@@ -943,6 +1307,17 @@ export interface components {
             version: number;
         };
         /**
+         * ApproveIn
+         * @description The proposal the reviewer saw: approving a different one is a 409.
+         * @example {
+         *       "proposed_bps": 1000
+         *     }
+         */
+        ApproveIn: {
+            /** Proposed Bps */
+            proposed_bps: number;
+        };
+        /**
          * ApproveReviewRequest
          * @example {
          *       "version": 3
@@ -964,11 +1339,18 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
+        /** AreasIn */
+        AreasIn: {
+            /** All India */
+            all_india: boolean;
+            /** Places */
+            places?: string[];
+        };
         /**
          * AssetKind
          * @enum {string}
          */
-        AssetKind: "brand_logo" | "brand_banner" | "product_image";
+        AssetKind: "brand_logo" | "brand_banner" | "product_image" | "size_chart";
         /**
          * AssetOut
          * @example {
@@ -1011,6 +1393,18 @@ export interface components {
             url: string;
             /** Width */
             width: number | null;
+        };
+        /** BrandIn */
+        BrandIn: {
+            /** City */
+            city: string;
+            /** Instagram Or Website */
+            instagram_or_website?: string | null;
+            /**
+             * Sells
+             * @enum {string}
+             */
+            sells: "women" | "men" | "both";
         };
         /**
          * BrandProfileBody
@@ -1117,6 +1511,13 @@ export interface components {
              */
             submitted_at: string;
         };
+        /** BusinessIn */
+        BusinessIn: {
+            /** Gstin */
+            gstin?: string | null;
+            /** Legal Name */
+            legal_name?: string | null;
+        };
         /** ChangeOut */
         ChangeOut: {
             /** After */
@@ -1132,6 +1533,33 @@ export interface components {
             current_password: string;
             /** New Password */
             new_password: string;
+        };
+        /** CommissionOut */
+        CommissionOut: {
+            /** Agreed Bps */
+            agreed_bps: number | null;
+            /** Note */
+            note: string | null;
+            /** Proposed Bps */
+            proposed_bps: number | null;
+            /** State */
+            state: string;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /**
+         * CommissionState
+         * @enum {string}
+         */
+        CommissionState: "not_set" | "proposed" | "sent_back" | "agreed";
+        /** ContactIn */
+        ContactIn: {
+            /** Email */
+            email: string;
+            /** Name */
+            name: string;
+            /** Phone */
+            phone: string;
         };
         /**
          * CreateProductBody
@@ -1191,6 +1619,18 @@ export interface components {
             variants?: components["schemas"]["VariantBody"][];
             /** Weight Grams */
             weight_grams?: number | null;
+        };
+        /** DeliveryIn */
+        DeliveryIn: {
+            areas?: components["schemas"]["AreasIn"] | null;
+            /** Delivery Days */
+            delivery_days?: string | null;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "shazlo" | "own";
+            pickup_address?: components["schemas"]["PickupAddressIn"] | null;
         };
         /** DraftOut */
         DraftOut: {
@@ -1274,6 +1714,15 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** IfscBankOut */
+        IfscBankOut: {
+            /** Bank */
+            bank: string;
+            /** Branch */
+            branch: string | null;
+            /** Ifsc */
+            ifsc: string;
         };
         /** ImageBody */
         ImageBody: {
@@ -1591,6 +2040,40 @@ export interface components {
             /** Sending */
             sending: number;
         };
+        /** PaymentIn */
+        PaymentIn: {
+            /** Cash */
+            cash: boolean;
+            /** Upi */
+            upi: boolean;
+        };
+        /** PayoutIn */
+        PayoutIn: {
+            /** Account Number */
+            account_number?: string | null;
+            /** Holder Name */
+            holder_name?: string | null;
+            /** Ifsc */
+            ifsc?: string | null;
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "bank" | "upi";
+            /** Upi Id */
+            upi_id?: string | null;
+        };
+        /** PickupAddressIn */
+        PickupAddressIn: {
+            /** Area */
+            area: string;
+            /** City */
+            city: string;
+            /** Line1 */
+            line1: string;
+            /** Pin */
+            pin: string;
+        };
         /**
          * ProductContentBody
          * @description The whole content of one revision. A `PUT` replaces it, so a field or list left out is
@@ -1731,6 +2214,16 @@ export interface components {
             version: number;
         };
         /**
+         * ProposalIn
+         * @example {
+         *       "rate_bps": 1000
+         *     }
+         */
+        ProposalIn: {
+            /** Rate Bps */
+            rate_bps: number;
+        };
+        /**
          * ReasonRequest
          * @description Rejecting and suspending need a reason, which the vendor is told: a missing, empty or
          *     whitespace-only one is a 422.
@@ -1769,6 +2262,15 @@ export interface components {
         ResendRequest: {
             /** Email */
             email: string;
+        };
+        /** ReturnsIn */
+        ReturnsIn: {
+            /** Condition */
+            condition?: string | null;
+            /** Refund Days */
+            refund_days?: number | null;
+            /** Window Days */
+            window_days: number;
         };
         /** ReviewDetailOut */
         ReviewDetailOut: {
@@ -1899,6 +2401,16 @@ export interface components {
             row: number;
         };
         /**
+         * SendBackIn
+         * @example {
+         *       "note": "Our rate for kurtas is 12%. Propose again?"
+         *     }
+         */
+        SendBackIn: {
+            /** Note */
+            note: string;
+        };
+        /**
          * SessionResponse
          * @description The refresh token is never in the body; it is only ever in the HttpOnly cookie.
          */
@@ -1921,6 +2433,19 @@ export interface components {
             password: string;
             /** Token */
             token: string;
+        };
+        /**
+         * SetRateIn
+         * @example {
+         *       "commission_bps": 1200,
+         *       "note": "Agreed on the call."
+         *     }
+         */
+        SetRateIn: {
+            /** Commission Bps */
+            commission_bps: number;
+            /** Note */
+            note?: string | null;
         };
         /**
          * SignRequest
@@ -2010,6 +2535,32 @@ export interface components {
             /** Website Or Instagram */
             website_or_instagram?: string | null;
         };
+        /** SizeChartIn */
+        SizeChartIn: {
+            /** Measurements */
+            measurements: {
+                [key: string]: unknown;
+            };
+            /** Photo Asset Id */
+            photo_asset_id?: string | null;
+        };
+        /** SizeChartOut */
+        SizeChartOut: {
+            /** Group */
+            group: string;
+            /** Measurements */
+            measurements: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /** Photo Asset Id */
+            photo_asset_id: string | null;
+            /** Photo Url */
+            photo_url: string | null;
+            /** Updated At */
+            updated_at: string | null;
+        };
         /** StatusEventOut */
         StatusEventOut: {
             /** Actor Id */
@@ -2027,6 +2578,47 @@ export interface components {
             reason: string | null;
             /** To Status */
             to_status: string;
+        };
+        /** StoreDetailsOut */
+        StoreDetailsOut: {
+            /** Brand Name */
+            brand_name: string;
+            /** Business */
+            business: {
+                [key: string]: string | null;
+            };
+            /** City */
+            city: string | null;
+            /** Complete */
+            complete: boolean;
+            /** Contact */
+            contact: {
+                [key: string]: string;
+            } | null;
+            /** Delivery */
+            delivery: {
+                [key: string]: unknown;
+            } | null;
+            /** Instagram Or Website */
+            instagram_or_website: string | null;
+            /** Missing */
+            missing: string[];
+            /** Pay On Delivery */
+            pay_on_delivery: {
+                [key: string]: boolean;
+            } | null;
+            /** Payout */
+            payout: {
+                [key: string]: unknown;
+            } | null;
+            /** Returns */
+            returns: {
+                [key: string]: unknown;
+            } | null;
+            /** Sells */
+            sells: ("women" | "men" | "both") | null;
+            /** Updated At */
+            updated_at: string | null;
         };
         /**
          * SubmissionOut
@@ -2226,6 +2818,7 @@ export interface components {
         };
         /** VendorDetailOut */
         VendorDetailOut: {
+            commission: components["schemas"]["CommissionOut"];
             /** Contact Name */
             contact_name: string;
             /**
@@ -2267,6 +2860,7 @@ export interface components {
         };
         /** VendorOut */
         VendorOut: {
+            commission: components["schemas"]["CommissionOut"];
             /** Contact Name */
             contact_name: string;
             /**
@@ -2698,6 +3292,8 @@ export interface operations {
                 status?: "pending" | "approved" | "rejected" | "suspended" | "all";
                 /** @description Part of the name, slug or email */
                 q?: string | null;
+                /** @description Only brands whose commission is in this state (`proposed`: to review) */
+                commission?: components["schemas"]["CommissionState"] | null;
                 limit?: number;
                 offset?: number;
             };
@@ -2793,6 +3389,142 @@ export interface operations {
             };
         };
     };
+    get_vendor_commission_v1_admin_vendors__vendor_id__commission_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vendor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommissionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_commission_v1_admin_vendors__vendor_id__commission_approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vendor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommissionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_back_commission_v1_admin_vendors__vendor_id__commission_send_back_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vendor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendBackIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommissionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_commission_v1_admin_vendors__vendor_id__commission_set_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vendor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetRateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommissionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reject_vendor_v1_admin_vendors__vendor_id__reject_post: {
         parameters: {
             query?: never;
@@ -2815,6 +3547,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VendorDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_vendor_store_details_v1_admin_vendors__vendor_id__store_details_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vendor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreDetailsOut"];
                 };
             };
             /** @description Validation Error */
@@ -3150,6 +3913,37 @@ export interface operations {
             };
         };
     };
+    ifsc_lookup_v1_public_ifsc__code__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IfscBankOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     register_asset_v1_vendor_assets_post: {
         parameters: {
             query?: never;
@@ -3305,6 +4099,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BrandProfileOut"];
+                };
+            };
+        };
+    };
+    get_commission_v1_vendor_commission_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommissionOut"];
+                };
+            };
+        };
+    };
+    propose_commission_v1_vendor_commission_proposal_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommissionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -3581,6 +4428,323 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProductOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_size_chart_v1_vendor_size_charts__group__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SizeChartOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_size_chart_v1_vendor_size_charts__group__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SizeChartIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SizeChartOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_store_details_route_v1_vendor_store_details_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreDetailsOut"];
+                };
+            };
+        };
+    };
+    save_brand_v1_vendor_store_details_brand_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrandIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreDetailsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_business_v1_vendor_store_details_business_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BusinessIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreDetailsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_contact_v1_vendor_store_details_contact_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreDetailsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_delivery_v1_vendor_store_details_delivery_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeliveryIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreDetailsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_payment_v1_vendor_store_details_payment_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaymentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreDetailsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_payout_v1_vendor_store_details_payout_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayoutIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreDetailsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_returns_v1_vendor_store_details_returns_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReturnsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoreDetailsOut"];
                 };
             };
             /** @description Validation Error */

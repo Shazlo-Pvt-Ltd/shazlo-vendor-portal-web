@@ -189,6 +189,8 @@ def test_the_seed_command_only_runs_in_dev(
             "IDENTITY_JWKS_URL": "https://identity.shazlo.store/.well-known/jwks.json",
             "IDENTITY_ISSUER": "https://identity.shazlo.store",
             "JWT_ISSUER": "https://vendor-api.shazlo.store",
+            "PAYOUT_ENCRYPTION_KEYS": '{"k1": "' + "A" * 43 + '="}',  # 32 zero bytes
+            "PAYOUT_ENCRYPTION_KID": "k1",
         }.items():
             monkeypatch.setenv(name, value)
     assert cli.main(["seed-dev"]) == 1

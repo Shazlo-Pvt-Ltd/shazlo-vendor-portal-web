@@ -1,10 +1,13 @@
 import argparse
 import asyncio
+import base64
 import contextlib
+import json
 import os
 import secrets
 import sys
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
 from shazlo_security.keys import KeyConfigError, new_kid, write_new_key
@@ -19,6 +22,7 @@ from vendor_api.db.session import create_engine, create_sessionmaker
 from vendor_api.openapi import OPENAPI_PATH, build_openapi
 from vendor_api.services.email import EmailTemplate, build_sender
 from vendor_api.services.outbox import OutboxWriter
+from vendor_api.services.payout_cipher import parse_keys
 from vendor_api.services.reconciliation import Reconciler, Report, Scope
 from vendor_api.services.seed import (
     DEV_SEED_PASSWORD,
@@ -241,12 +245,30 @@ def _send_test_email(to: str, template: EmailTemplate) -> None:
         print("In local development it is in the Mailpit inbox: http://localhost:8025")
 
 
+def _generate_payout_key(kid: str | None) -> None:
+    """Prints `{"<kid>": "<base64 key>"}` and the kid. Add the entry to PAYOUT_ENCRYPTION_KEYS
+    (keep the old ones while values sealed with them remain) and set PAYOUT_ENCRYPTION_KID."""
+    chosen = kid or f"{datetime.now(UTC):%Y-%m}-{secrets.token_hex(3)}"
+    entry = json.dumps({chosen: base64.b64encode(secrets.token_bytes(32)).decode()})
+    try:
+        parse_keys(entry)
+    except ValueError as error:
+        raise CommandError(str(error)) from None
+    print(entry)
+    print(f"PAYOUT_ENCRYPTION_KID={chosen}  (store the key in your secret manager, never in git)")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="vendor_api.cli")
     commands = parser.add_subparsers(dest="command", required=True)
     keygen = commands.add_parser("generate-key", help="create an RS256 signing key for local dev")
     keygen.add_argument("--dir", type=Path, default=Path(".keys"), help="default: ./.keys")
     keygen.add_argument("--kid", help="key ID; default is the date plus a random suffix")
+    payout_key = commands.add_parser(
+        "generate-payout-key",
+        help="print a new AES-256 key as a PAYOUT_ENCRYPTION_KEYS entry (nothing is written)",
+    )
+    payout_key.add_argument("--kid", help="key ID; default is the month plus a random suffix")
     mail = commands.add_parser(
         "send-test-email", help="send an example email through the configured backend (ENV=dev)"
     )
@@ -330,6 +352,8 @@ def main(argv: list[str] | None = None) -> int:
             _print_resync(asyncio.run(_resync(args.vendor, args.product, args.all)))
         elif args.command == "send-test-email":
             _send_test_email(args.to, args.template)
+        elif args.command == "generate-payout-key":
+            _generate_payout_key(args.kid)
         else:
             _generate_key(args.dir, args.kid)
     except CommandError as error:
