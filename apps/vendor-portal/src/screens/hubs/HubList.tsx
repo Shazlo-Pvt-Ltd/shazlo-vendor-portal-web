@@ -1,4 +1,5 @@
 import { Box, Card, Typography } from '@mui/material'
+import { alpha } from '@mui/material/styles'
 import { brand, neutral } from '@shazlo/ui'
 import { ChevronRight, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -28,7 +29,8 @@ const rowSx = {
   border: 0,
   bgcolor: 'transparent',
   cursor: 'pointer',
-  '@media (hover: hover)': { '&:hover': { bgcolor: 'rgba(16, 60, 100, 0.05)' } },
+  // A faint navy wash, made from the theme's navy.
+  '@media (hover: hover)': { '&:hover': { bgcolor: alpha(brand.navy, 0.05) } },
   '&:focus-visible': { outline: `2px solid ${brand.navy}`, outlineOffset: -2 },
 } as const
 

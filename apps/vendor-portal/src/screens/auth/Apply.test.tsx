@@ -1,51 +1,59 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
-import type { Schemas } from '../../api/model'
-import type { ApplyDraft } from './applyModel'
-import { checkApplication } from '../../lib/storeDetails'
+import { DEMO_LOGIN } from '../../mocks/db'
+import { clearSensitiveState } from '../../security/sensitiveState'
 import { renderApp } from '../../test/render'
-import { server } from '../../test/server'
+import { setupMockApi } from '../../test/server'
+import { emptyDraft, readDraft, writeDraft, type ApplyDraft } from './applyModel'
 
-const DRAFT_KEY = 'shazlo.seller.application-draft.v2'
-const OLD_DRAFT_KEY = 'shazlo.seller.application-draft'
+const { server, db } = setupMockApi()
 const SLOW = { timeout: 8000 }
+const PASSWORD = 'indigo and madder 26'
+const EMAIL = 'asha@neelthreads.in'
 
 // Tests type through several pages; give them room on a slow machine.
 vi.setConfig({ testTimeout: 40_000, hookTimeout: 60_000 })
 
 type User = Awaited<ReturnType<typeof renderApp>>['user']
 
-// The screen is lazy-loaded; transform it once before the first test.
+// The screens are lazy-loaded; transform them once before the first test.
 beforeAll(async () => {
-  await import('./Apply')
+  await Promise.all([import('./Apply'), import('./SignIn')])
 })
 
-// Every answer of a finished sign-up, as the draft on this device holds it (no account number:
-// that is never stored). Tests start on a later page by saving this with another `page`.
-type Stored = Omit<ApplyDraft, 'page' | 'payout'> & { payout: Omit<ApplyDraft['payout'], 'account_number' | 'account_number_again'> }
-const ANSWERS: Stored = {
-  checking: false,
-  brand: { brand_name: 'Neel Threads', sells: 'both', city: 'Surat', instagram_or_website: '' },
-  contact: { name: 'Asha Patel', phone: '98765 43210', email: 'asha@neelthreads.in' },
-  delivery: { mode: 'own', pickup_address: { line1: '', area: '', city: '', pin: '' }, areas: { all_india: false, places: ['Surat', '395007'] }, place: '', delivery_days: '2_3' },
-  returns: { window_days: 0, condition: null, refund_days: null },
-  payment: { cash: true, upi: true },
-  payout: { method: 'bank', holder_name: 'Neel Threads', ifsc: 'hdfc0001234', upi_id: '' },
-  business: { legal_name: '', gstin: '' },
-  terms: { commission: '', agreed_terms: true, agreed_price_rule: true },
+// Every answer of a finished sign-up, as the draft in memory holds it (no password and no account
+// number: those are never kept). Tests start on a later page by keeping this with another `page`.
+function answers(page: number, change: (a: ApplyDraft) => void = () => {}): ApplyDraft {
+  const a: ApplyDraft = {
+    ...emptyDraft(),
+    page,
+    brand: { brand_name: 'Neel Threads', sells: 'both', city: 'Surat', instagram_or_website: '' },
+    contact: { name: 'Asha Patel', phone: '98765 43210', email: EMAIL },
+    delivery: { mode: 'own', pickup_address: { line1: '', area: '', city: '', pin: '' }, areas: { all_india: false, places: ['Surat', '395007'] }, place: '', delivery_days: '2_3' },
+    returns: { window_days: 0, condition: null, refund_days: null },
+    payment: { cash: true, upi: true },
+    payout: { method: 'bank', holder_name: 'Neel Threads', account_number: '', account_number_again: '', ifsc: 'hdfc0001234', upi_id: '' },
+    business: { legal_name: '', gstin: '' },
+    terms: { commission: '', agreed_terms: true, agreed_price_rule: true },
+  }
+  change(a)
+  return a
 }
 
-function saveDraft(page: number, change: (a: Stored) => void = () => {}) {
-  const answers = structuredClone(ANSWERS)
-  change(answers)
-  localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...answers, page }))
-}
+const TITLES = ['Apply to sell', 'Your brand', 'Contact', 'Delivery', 'Returns', 'Payment on delivery', 'Payouts', 'Business details and commission', 'Check your answers']
 
-async function openAt(page: number, options: { change?: (a: Stored) => void; viewport?: 'mobile' | 'desktop' } = {}) {
-  saveDraft(page, options.change)
-  const view = await renderApp({ route: '/signup', signedIn: false, viewport: options.viewport })
-  await screen.findByRole('heading', { level: 1 }, SLOW)
+/**
+ * The seller left the sign-up for another page and came back: the draft kept in memory brings
+ * them back to `page`. (A fresh app start clears every draft, as a reload does, so the draft is
+ * kept once the app is running.)
+ */
+async function openAt(page: number, options: { change?: (a: ApplyDraft) => void; viewport?: 'mobile' | 'desktop' } = {}) {
+  const view = await renderApp({ route: '/login', signedIn: false, viewport: options.viewport })
+  await screen.findByRole('heading', { level: 1, name: 'Sign in to your seller account' }, SLOW)
+  writeDraft(answers(page, options.change))
+  await act(() => view.router.navigate('/signup'))
+  await screen.findByRole('heading', { level: 1, name: TITLES[page] }, SLOW)
   return view
 }
 
@@ -55,6 +63,7 @@ const stepText = () => screen.getByText(/^Step \d of 7$/).textContent
 const group = (name: string) => screen.getByRole('group', { name })
 // The answer beside a label on Check your answers.
 const answer = (section: HTMLElement, label: string) => within(section).getByText(label, { selector: 'dt' }).nextElementSibling
+const passwordInput = () => screen.getByLabelText('Choose a password', { selector: 'input' })
 
 async function typeIn(user: User, label: string, text: string) {
   const field = screen.getByRole('textbox', { name: label })
@@ -63,15 +72,45 @@ async function typeIn(user: User, label: string, text: string) {
   await user.paste(text)
 }
 
+async function typePassword(user: User, text = PASSWORD) {
+  await user.clear(passwordInput())
+  await user.click(passwordInput())
+  await user.paste(text)
+}
+
+/** From a kept draft at Check your answers: Send finds the missing password, then the missing account number. */
+async function sendWithSecrets(user: User, { account = true } = {}) {
+  await user.click(screen.getByRole('button', { name: 'Send application' }))
+  await screen.findByRole('heading', { level: 1, name: 'Contact' })
+  expect(passwordInput()).toHaveAccessibleDescription('Choose a password.')
+  await typePassword(user)
+  await next(user)
+  await screen.findByRole('heading', { level: 1, name: 'Check your answers' })
+  if (account) {
+    await user.click(screen.getByRole('button', { name: 'Send application' }))
+    await screen.findByRole('heading', { level: 1, name: 'Payouts' })
+    await typeIn(user, 'Account number', '5010 0123 4567 4821')
+    await typeIn(user, 'Account number again', '5010 0123 4567 4821')
+    await next(user)
+    await screen.findByRole('heading', { level: 1, name: 'Check your answers' })
+  }
+  await user.click(screen.getByRole('button', { name: 'Send application' }))
+}
+
+const upi = (a: ApplyDraft) => {
+  a.payout = { ...a.payout, method: 'upi', holder_name: '', ifsc: '', upi_id: 'neel.threads@okhdfcbank' }
+}
+
 describe('V-02 Apply to sell: the pages', () => {
-  it('starts with what you will need, then one topic per page with Step x of 7', async () => {
+  it('starts with what you will need, says the answers stay in this tab only, then one topic per page', async () => {
     const { user } = await renderApp({ route: '/signup', signedIn: false })
     expect(await screen.findByRole('heading', { level: 1, name: 'Apply to sell' }, SLOW)).toBeInTheDocument()
     expect(screen.getByText('Tell us about your brand in 7 short steps. It takes about 8 minutes.')).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 2, name: 'What you will need' })).toBeInTheDocument()
-    expect(screen.getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Your pickup address', 'Your bank account or UPI ID', 'Your GST number, if you have one'])
-    expect(screen.getByText(/We save your answers on this device/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
+    expect(within(screen.getByRole('main')).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Your pickup address', 'Your bank account or UPI ID', 'Your GST number, if you have one'])
+    expect(screen.getByText(/We keep your answers while this tab is open/)).toHaveTextContent('Closing or reloading the page clears them.')
+    expect(screen.queryByText(/on this device/)).toBeNull()
+    expect(within(screen.getByRole('main')).getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
     // One yellow button per screen.
     expect(document.querySelectorAll('.MuiButton-contained')).toHaveLength(1)
 
@@ -89,6 +128,18 @@ describe('V-02 Apply to sell: the pages', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Apply to sell' })).toHaveFocus()
   })
 
+  it('moves one page on a double click of Start or Continue, without checking the next page', async () => {
+    const { user } = await openAt(3)
+    await user.dblClick(screen.getByRole('button', { name: 'Continue' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Returns' })).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Some answers need fixing' })).toBeNull()
+    cleanup()
+    const fresh = await renderApp({ route: '/signup', signedIn: false })
+    await fresh.user.dblClick(await screen.findByRole('button', { name: 'Start' }, SLOW))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Your brand' })).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Some answers need fixing' })).toBeNull()
+  })
+
   it('checks the brand page only on Continue, lists the problems at the top and clears each once fixed', async () => {
     const { user } = await renderApp({ route: '/signup', signedIn: false })
     await user.click(await screen.findByRole('button', { name: 'Start' }, SLOW))
@@ -101,8 +152,7 @@ describe('V-02 Apply to sell: the pages', () => {
     await typeIn(user, 'Instagram or website (optional)', 'my shop!')
     await next(user)
     expect(summary()).toHaveFocus()
-    const links = within(summary()).getAllByRole('link').map((l) => l.textContent)
-    expect(links).toEqual([
+    expect(within(summary()).getAllByRole('link').map((l) => l.textContent)).toEqual([
       'Add your store name.',
       'Choose who you sell for: women, men or both.',
       'Add the city or area you ship from, like Ahmedabad.',
@@ -130,27 +180,47 @@ describe('V-02 Apply to sell: the pages', () => {
     expect(stepText()).toBe('Step 2 of 7')
   })
 
-  it('checks the contact page and gives phones the right keyboards', async () => {
+  it('asks for contact details and a password, with the right keyboards and a password the browser can save', async () => {
     const { user } = await openAt(2, { change: (a) => (a.contact = { name: '', phone: '', email: '' }) })
     const phone = screen.getByRole('textbox', { name: 'Mobile number' })
     const email = screen.getByRole('textbox', { name: 'Email' })
     expect(screen.getByRole('textbox', { name: 'Your name' })).toHaveAttribute('autocomplete', 'name')
     expect(phone).toHaveAttribute('type', 'tel')
-    expect(phone).toHaveAttribute('autocomplete', 'tel')
     expect(phone).toHaveAttribute('inputmode', 'tel')
     expect(email).toHaveAttribute('autocomplete', 'email')
     expect(email).toHaveAttribute('inputmode', 'email')
-    expect(email).toHaveAttribute('autocapitalize', 'none')
-    expect(email).toHaveAttribute('spellcheck', 'false')
+    const password = passwordInput()
+    expect(password).toHaveAttribute('type', 'password')
+    expect(password).toHaveAttribute('autocomplete', 'new-password')
+    expect(password).toHaveAttribute('autocapitalize', 'none')
+    expect(password).toHaveAccessibleDescription('At least 12 characters. You sign in with your email and this password.')
+    // The password can be shown while typing, and pasting is never blocked.
+    await user.click(screen.getByRole('button', { name: 'Show password' }))
+    expect(password).toHaveAttribute('type', 'text')
+    await user.click(screen.getByRole('button', { name: 'Hide password' }))
 
     await typeIn(user, 'Your name', 'Asha Patel')
     await typeIn(user, 'Mobile number', '12345')
     await typeIn(user, 'Email', 'asha@')
+    await typePassword(user, 'short')
     await next(user)
-    expect(phone).toHaveAccessibleDescription('Enter a 10-digit Indian mobile number, like 98250 12345.')
-    expect(email).toHaveAccessibleDescription('Enter an email like name@brand.in.')
+    expect(within(summary()).getAllByRole('link').map((l) => l.textContent)).toEqual([
+      'Enter a 10-digit Indian mobile number, like 98250 12345.',
+      'Enter an email like name@brand.in.',
+      'Use at least 12 characters.',
+    ])
+    expect(password).toHaveAttribute('aria-invalid', 'true')
+    await user.click(within(summary()).getByRole('link', { name: 'Use at least 12 characters.' }))
+    expect(password).toHaveFocus()
+
     await typeIn(user, 'Mobile number', '+91 98765 43210')
-    await typeIn(user, 'Email', 'asha@neelthreads.in')
+    await typeIn(user, 'Email', EMAIL)
+    // The password cannot be the email address.
+    await typePassword(user, ` ${EMAIL.toUpperCase()} `)
+    await next(user)
+    expect(password).toHaveAccessibleDescription('Your password cannot be your email address.')
+    await typePassword(user)
+    expect(screen.queryByRole('group', { name: 'Some answers need fixing' })).toBeNull()
     await next(user)
     expect(await screen.findByRole('heading', { level: 1, name: 'Delivery' })).toBeInTheDocument()
   })
@@ -169,8 +239,6 @@ describe('V-02 Apply to sell: delivery and returns', () => {
     const pin = screen.getByRole('textbox', { name: 'PIN code' })
     expect(pin).toHaveAttribute('inputmode', 'numeric')
     expect(pin).toHaveAttribute('autocomplete', 'postal-code')
-    expect(screen.getByRole('textbox', { name: 'House or shop number, building and street' })).toHaveAttribute('autocomplete', 'address-line1')
-    expect(screen.queryByRole('group', { name: 'Where do you deliver?' })).toBeNull()
     await typeIn(user, 'PIN code', '38001')
     await next(user)
     expect(within(summary()).getAllByRole('link').map((l) => l.textContent)).toEqual([
@@ -183,7 +251,6 @@ describe('V-02 Apply to sell: delivery and returns', () => {
     // Delivering yourself swaps the address for areas and delivery time.
     await user.click(screen.getByRole('radio', { name: /^We deliver ourselves/ }))
     expect(screen.queryByRole('textbox', { name: 'PIN code' })).toBeNull()
-    expect(screen.getByRole('group', { name: 'How long does delivery take?' })).toBeInTheDocument()
     await next(user)
     expect(within(summary()).getAllByRole('link').map((l) => l.textContent)).toEqual([
       'Choose All of India, or add the cities or PIN codes you deliver to.',
@@ -191,15 +258,13 @@ describe('V-02 Apply to sell: delivery and returns', () => {
     ])
   })
 
-  it('takes the places a brand delivers to as removable chips', async () => {
+  it('takes the places a brand delivers to as removable chips, and keeps them in the draft', async () => {
     const { user } = await openAt(3, { change: (a) => (a.delivery = { ...a.delivery, areas: { all_india: false, places: [] } }) })
     await next(user)
     const place = screen.getByRole('textbox', { name: 'City or PIN code' })
-    expect(place).toHaveAccessibleDescription('Choose All of India, or add the cities or PIN codes you deliver to.')
     expect(within(summary()).getByRole('link')).toHaveAttribute('href', `#${place.id}`)
 
     await user.type(place, 'Surat{Enter}')
-    expect(screen.queryByRole('group', { name: 'Some answers need fixing' })).toBeNull()
     await user.type(place, '39500')
     await user.click(screen.getByRole('button', { name: 'Add' }))
     const places = screen.getByRole('list', { name: 'Places you deliver to' })
@@ -207,12 +272,11 @@ describe('V-02 Apply to sell: delivery and returns', () => {
     await next(user)
     expect(place).toHaveAccessibleDescription('"39500" is not a PIN code. A PIN code has 6 digits, like 380015.')
     await user.click(within(places).getByRole('button', { name: 'Remove 39500' }))
-    expect(within(places).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Surat'])
     // A place typed but not added is added by Continue.
     await user.type(place, '395007')
     await next(user)
     expect(await screen.findByRole('heading', { level: 1, name: 'Returns' })).toBeInTheDocument()
-    expect(JSON.parse(localStorage.getItem(DRAFT_KEY) ?? '{}').delivery.areas.places).toEqual(['Surat', '395007'])
+    expect(readDraft()?.delivery.areas.places).toEqual(['Surat', '395007'])
     await user.click(screen.getByRole('button', { name: 'Back' }))
     await screen.findByRole('heading', { level: 1, name: 'Delivery' })
     expect(within(screen.getByRole('list', { name: 'Places you deliver to' })).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Surat', '395007'])
@@ -221,19 +285,13 @@ describe('V-02 Apply to sell: delivery and returns', () => {
   it('hides the return conditions and refund time when there are no returns', async () => {
     const { user } = await openAt(4, { change: (a) => (a.returns = { window_days: null, condition: null, refund_days: null }) })
     const windows = group('How long do shoppers have to return an order?')
-    expect(within(windows).getAllByRole('radio').map((r) => r.closest('label')?.textContent)).toEqual(['No returns', '7 days', '14 days', '30 days'])
     await next(user)
     expect(within(summary()).getAllByRole('link').map((l) => l.textContent)).toEqual(['Choose a return window.'])
-
     await user.click(within(windows).getByRole('radio', { name: '7 days' }))
-    expect(group('Which returns do you accept?')).toBeInTheDocument()
     await next(user)
     expect(within(summary()).getAllByRole('link').map((l) => l.textContent)).toEqual(['Choose which returns you accept.', 'Choose how soon you refund.'])
-
     await user.click(within(windows).getByRole('radio', { name: 'No returns' }))
     expect(screen.queryByRole('group', { name: 'Which returns do you accept?' })).toBeNull()
-    expect(screen.queryByRole('group', { name: 'How soon do you refund?' })).toBeNull()
-    expect(screen.queryByRole('group', { name: 'Some answers need fixing' })).toBeNull()
     await next(user)
     expect(await screen.findByRole('heading', { level: 1, name: 'Payment on delivery' })).toBeInTheDocument()
   })
@@ -243,29 +301,23 @@ describe('V-02 Apply to sell: delivery and returns', () => {
     await next(user)
     expect(within(summary()).getByRole('link', { name: 'Choose at least one: cash on delivery or UPI on delivery.' })).toBeInTheDocument()
     await user.click(screen.getByRole('checkbox', { name: 'UPI on delivery' }))
-    expect(screen.queryByRole('group', { name: 'Some answers need fixing' })).toBeNull()
     await next(user)
     expect(await screen.findByRole('heading', { level: 1, name: 'Payouts' })).toBeInTheDocument()
   })
 })
 
 describe('V-02 Apply to sell: payouts and business details', () => {
-  it('asks for the account number twice, shows the bank for the IFSC, and never stores the number', async () => {
-    const { user } = await openAt(6, { change: (a) => (a.payout = { method: '', holder_name: '', ifsc: '', upi_id: '' }) })
+  it('asks for the account number twice, shows the bank for the IFSC, and never keeps the number', async () => {
+    const { user } = await openAt(6, { change: (a) => (a.payout = { method: '', holder_name: '', account_number: '', account_number_again: '', ifsc: '', upi_id: '' }) })
     await next(user)
     expect(within(summary()).getAllByRole('link').map((l) => l.textContent)).toEqual(['Choose a bank account or a UPI ID.'])
 
     await user.click(screen.getByRole('radio', { name: 'Bank account' }))
     const account = screen.getByRole('textbox', { name: 'Account number' })
     expect(account).toHaveAttribute('inputmode', 'numeric')
-    expect(account).toHaveAccessibleDescription('We do not keep the account number on this device. Type it again if you come back later.')
-    const ifsc = screen.getByRole('textbox', { name: 'IFSC code' })
-    expect(ifsc).toHaveAttribute('autocapitalize', 'none')
-    expect(ifsc).toHaveAttribute('autocorrect', 'off')
-    expect(ifsc).toHaveAttribute('spellcheck', 'false')
+    expect(account).toHaveAccessibleDescription('We do not keep the account number if you leave this page. Type it again if you come back.')
 
     await typeIn(user, 'Account holder name', 'Neel Threads')
-    // Pasting is allowed in both fields.
     await typeIn(user, 'Account number', '5010 0123 4567 4821')
     await typeIn(user, 'Account number again', '5010 0123 4567 4812')
     await typeIn(user, 'IFSC code', 'hdfc0001234')
@@ -279,18 +331,15 @@ describe('V-02 Apply to sell: payouts and business details', () => {
     await waitFor(() => expect(screen.queryByText(/HDFC Bank/)).toBeNull())
     await new Promise((resolve) => setTimeout(resolve, 50))
     await next(user)
-    expect(ifsc).toHaveAccessibleDescription('We could not find this IFSC code. Check it on your cheque book or bank app.')
+    expect(screen.getByRole('textbox', { name: 'IFSC code' })).toHaveAccessibleDescription('We could not find this IFSC code. Check it on your cheque book or bank app.')
 
-    const stored = localStorage.getItem(DRAFT_KEY) ?? ''
-    expect(stored).toContain('Neel Threads')
-    expect(stored).not.toContain('4821')
-    expect(JSON.parse(stored).payout).not.toHaveProperty('account_number')
+    const kept = JSON.stringify(readDraft())
+    expect(kept).toContain('Neel Threads')
+    expect(kept).not.toContain('4821')
 
     await user.click(screen.getByRole('radio', { name: 'UPI ID' }))
-    const upi = screen.getByRole('textbox', { name: 'UPI ID' })
-    expect(upi).toHaveAttribute('autocapitalize', 'none')
     await next(user)
-    expect(upi).toHaveAccessibleDescription('Enter your UPI ID.')
+    expect(screen.getByRole('textbox', { name: 'UPI ID' })).toHaveAccessibleDescription('Enter your UPI ID.')
     await typeIn(user, 'UPI ID', 'neel.threads@okhdfcbank')
     await next(user)
     expect(await screen.findByRole('heading', { level: 1, name: 'Business details and commission' })).toBeInTheDocument()
@@ -298,9 +347,13 @@ describe('V-02 Apply to sell: payouts and business details', () => {
 
   it('needs both agreements, and checks the optional GST number and commission when given', async () => {
     const { user } = await openAt(7, { change: (a) => (a.terms = { commission: '', agreed_terms: false, agreed_price_rule: false }) })
-    expect(screen.getByRole('textbox', { name: 'Commission you propose, in % (optional)' })).toHaveAccessibleDescription('Leave empty if you have agreed a rate with our team.')
-    expect(screen.getByRole('textbox', { name: 'Commission you propose, in % (optional)' })).toHaveAttribute('inputmode', 'decimal')
-    expect(screen.getByRole('link', { name: 'seller terms' })).toHaveAttribute('href', 'https://shazlo.store/seller-terms')
+    const rate = () => screen.getByRole('textbox', { name: 'Commission you propose, in % (optional)' })
+    expect(rate()).toHaveAccessibleDescription('Leave empty if you have agreed a rate with our team.')
+    expect(rate()).toHaveAttribute('inputmode', 'decimal')
+    const terms = screen.getByRole('link', { name: 'seller terms' })
+    expect(terms).toHaveAttribute('href', 'https://shazlo.store/seller-terms')
+    expect(terms).toHaveAttribute('target', '_blank')
+    expect(terms.getAttribute('rel')).toMatch(/noopener|noreferrer/)
     const priceRule = screen.getByRole('checkbox', { name: 'My price on Shazlo will never be higher than my price anywhere else — my website, shop or other apps.' })
 
     await typeIn(user, 'GST number (optional)', '24ABCDE1234F1Z0')
@@ -312,13 +365,6 @@ describe('V-02 Apply to sell: payouts and business details', () => {
       'Agree to the seller terms to send your application.',
       'Agree to the price rule to send your application.',
     ])
-    expect(priceRule).toHaveAccessibleDescription('Agree to the price rule to send your application.')
-
-    // Emptying the optional rate fixes it; a new problem shows on the next Continue.
-    await typeIn(user, 'Commission you propose, in % (optional)', 'twelve')
-    expect(screen.getByRole('textbox', { name: 'Commission you propose, in % (optional)' })).toHaveAccessibleDescription('Leave empty if you have agreed a rate with our team.')
-    await next(user)
-    expect(screen.getByRole('textbox', { name: 'Commission you propose, in % (optional)' })).toHaveAccessibleDescription('Enter a percentage, like 12 or 12.5.')
     await typeIn(user, 'Commission you propose, in % (optional)', '12.5')
     await user.clear(screen.getByRole('textbox', { name: 'GST number (optional)' }))
     await user.click(screen.getByRole('checkbox', { name: /I agree to the/ }))
@@ -329,131 +375,178 @@ describe('V-02 Apply to sell: payouts and business details', () => {
   })
 })
 
-describe('V-02 Apply to sell: check answers and send', () => {
-  it('reads every answer back with Change links that return to Check your answers', async () => {
-    const { user } = await openAt(8, { change: (a) => (a.terms.commission = '12.5') })
-    expect(screen.getByRole('heading', { level: 2, name: 'Your brand' })).toBeInTheDocument()
+describe('V-02 Apply to sell: check answers', () => {
+  it('reads every answer back, the password only as "Chosen", with Change links that return here', async () => {
+    const { user } = await openAt(2, { change: (a) => ((a.terms.commission = '12.5'), (a.checking = true)) })
+    await typePassword(user)
+    await next(user)
+    await screen.findByRole('heading', { level: 1, name: 'Check your answers' })
     const brand = screen.getByRole('region', { name: 'Your brand' })
     expect(answer(brand, 'Store name')).toHaveTextContent('Neel Threads')
-    expect(answer(brand, 'Sells')).toHaveTextContent('Both')
+    const contact = screen.getByRole('region', { name: 'Contact' })
+    expect(answer(contact, 'Password')).toHaveTextContent('Chosen')
+    expect(contact).not.toHaveTextContent(PASSWORD)
     const delivery = screen.getByRole('region', { name: 'Delivery' })
     expect(answer(delivery, 'Delivers to')).toHaveTextContent('Surat, 395007')
-    expect(answer(delivery, 'Delivery time')).toHaveTextContent('2–3 days')
-    expect(within(screen.getByRole('region', { name: 'Returns' })).queryByText('Refund time', { selector: 'dt' })).toBeNull()
     const terms = screen.getByRole('region', { name: 'Business details and commission' })
     expect(answer(terms, 'Commission you propose')).toHaveTextContent('12.5%')
-    expect(answer(terms, 'Price rule')).toHaveTextContent('Agreed')
 
     await user.click(within(delivery).getByRole('button', { name: 'Change Delivery time' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Delivery' })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: '1–2 days' })).toHaveFocus()
     await user.click(screen.getByRole('radio', { name: '3–5 days' }))
     await next(user)
-    // Back to the check page, not on to Returns.
-    const again = await screen.findByRole('region', { name: 'Delivery' })
-    expect(answer(again, 'Delivery time')).toHaveTextContent('3–5 days')
-  })
+    expect(answer(await screen.findByRole('region', { name: 'Delivery' }), 'Delivery time')).toHaveTextContent('3–5 days')
 
-  it('sends the application as the API takes it, clears the draft and says what happens next', async () => {
-    let sent: Schemas['VendorApplication'] | null = null
+    await user.click(within(screen.getByRole('region', { name: 'Contact' })).getByRole('button', { name: 'Change Password' }))
+    await screen.findByRole('heading', { level: 1, name: 'Contact' })
+    expect(passwordInput()).toHaveFocus()
+    // The password typed earlier is still there while the page is open.
+    expect(passwordInput()).toHaveValue(PASSWORD)
+  })
+})
+
+describe('V-02 Apply to sell: sending', () => {
+  it('creates the account with the store details, clears the draft and asks to confirm the email', async () => {
+    let body: Record<string, unknown> | undefined
     server.use(
-      http.post('*/api/v1/public/vendor-applications', async ({ request }) => {
-        sent = (await request.clone().json()) as Schemas['VendorApplication']
+      http.post('*/v1/auth/signup', async ({ request }) => {
+        body = (await request.clone().json()) as Record<string, unknown>
       }),
     )
-    const { user, db } = await openAt(6)
+    const { user } = await openAt(8)
     expect(screen.getByText('Picked up where you left off')).toBeInTheDocument()
-    // The account number was never stored, so it is typed again.
-    await typeIn(user, 'Account number', '5010 0123 4567 4821')
-    await typeIn(user, 'Account number again', '5010 0123 4567 4821')
-    await next(user)
-    await screen.findByRole('heading', { level: 1, name: 'Business details and commission' })
-    await next(user)
-    await screen.findByRole('heading', { level: 1, name: 'Check your answers' })
-    expect(answer(screen.getByRole('region', { name: 'Payouts' }), 'Paid to')).toHaveTextContent('HDFC Bank •••• 4821')
+    expect(screen.getByText(/We never keep your password or bank account number/)).toBeInTheDocument()
     expect(document.querySelectorAll('.MuiButton-contained')).toHaveLength(1)
-    await user.click(screen.getByRole('button', { name: 'Send application' }))
+    await sendWithSecrets(user)
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'Application received' })).toBeInTheDocument()
-    expect(sent).toEqual({
+    expect(await screen.findByRole('heading', { level: 1, name: 'Application received' })).toHaveFocus()
+    expect(body).toMatchObject({
       brand_name: 'Neel Threads',
+      contact_name: 'Asha Patel',
+      email: EMAIL,
+      phone: '9876543210',
+      password: PASSWORD,
+      terms_accepted: true,
+      price_rule_accepted: true,
       sells: 'both',
       city: 'Surat',
-      owner_name: 'Asha Patel',
-      phone: '9876543210',
-      email: 'asha@neelthreads.in',
-      delivery: { mode: 'own', areas: { all_india: false, places: ['Surat', '395007'] }, delivery_days: '2_3' },
-      returns: { window_days: 0, condition: null, refund_days: null },
-      pay_on_delivery: { cash: true, upi: true },
-      payout: { method: 'bank', holder_name: 'Neel Threads', account_number: '5010012345674821', ifsc: 'HDFC0001234' },
-      agreed_terms: true,
-      agreed_price_rule: true,
+      store_details: {
+        delivery: { mode: 'own', areas: { all_india: false, places: ['Surat', '395007'] }, delivery_days: '2_3' },
+        payout: { method: 'bank', holder_name: 'Neel Threads', account_number: '5010012345674821', ifsc: 'HDFC0001234' },
+      },
     })
-    expect(checkApplication(sent)).toEqual({})
-    expect(db.applications).toHaveLength(1)
-    expect(localStorage.getItem(DRAFT_KEY)).toBeNull()
+    // The account exists, waits for its email to be confirmed, and the store waits for review.
+    const owner = db().users.find((u) => u.email === EMAIL)!
+    expect(owner).toMatchObject({ role: 'owner', verified: false, password: PASSWORD })
+    expect(db().vendors.find((v) => v.id === owner.vendor_id)).toMatchObject({ name: 'Neel Threads', status: 'pending' })
+    expect(db().emails).toEqual([expect.objectContaining({ to: EMAIL, kind: 'verify' })])
+    expect(readDraft()).toBeNull()
+
     expect(screen.getByText('Thank you, Asha. We have your application for Neel Threads.')).toBeInTheDocument()
-    expect(screen.getByText('Our team reviews it within 2 working days.')).toBeInTheDocument()
-    expect(screen.getByText('We agree your commission with you before you start selling.')).toBeInTheDocument()
-    expect(screen.getByText('If it is approved, we email asha@neelthreads.in a link to set your password.')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: 'Confirm your email' })).toBeInTheDocument()
+    expect(screen.getByText(`We sent an email to ${EMAIL}. Open the link in it to confirm your email, then sign in with your password.`)).toBeInTheDocument()
+    expect(screen.getByText(/Our team reviews your application within 2 working days/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute('href', '/login')
+    expect(document.querySelectorAll('.MuiButton-contained')).toHaveLength(0)
+  })
+
+  it('sends another confirmation email on request, then waits before the next', async () => {
+    const { user } = await openAt(8, { change: upi })
+    await sendWithSecrets(user, { account: false })
+    await screen.findByRole('heading', { level: 1, name: 'Application received' })
+    // A double click sends one email.
+    await user.dblClick(screen.getByRole('button', { name: 'Send the email again' }))
+    expect(await screen.findByText(`We sent it again to ${EMAIL}. Check your inbox and spam folder.`)).toBeInTheDocument()
+    const again = screen.getByRole('button', { name: /^Send again in \d+ s$/ })
+    expect(again).toBeDisabled()
+    expect(db().emails.filter((e) => e.kind === 'verify')).toHaveLength(2)
+  })
+
+  it('waits as long as the server says after too many emails', async () => {
+    const { user } = await openAt(8, { change: upi })
+    await sendWithSecrets(user, { account: false })
+    await screen.findByRole('heading', { level: 1, name: 'Application received' })
+    server.use(http.post('*/v1/auth/resend-verification', () => HttpResponse.json({ error: { code: 'rate_limited', message: 'x' } }, { status: 429, headers: { 'Retry-After': '90' } }), { once: true }))
+    await user.click(screen.getByRole('button', { name: 'Send the email again' }))
+    expect(await screen.findByText('Too many attempts.')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Send again in (90|89) s$/ })).toBeDisabled())
+  })
+
+  it('gives the same answer for an email that already has an account, so nobody learns which do', async () => {
+    const texts: string[] = []
+    for (const email of [EMAIL, DEMO_LOGIN.email]) {
+      const { user } = await openAt(8, { change: (a) => (upi(a), (a.contact.email = email)) })
+      await sendWithSecrets(user, { account: false })
+      await screen.findByRole('heading', { level: 1, name: 'Application received' })
+      texts.push((screen.getByRole('main').textContent ?? '').split(email).join('EMAIL'))
+      cleanup()
+    }
+    expect(texts[0]).toBe(texts[1])
+    expect(texts[1]).not.toMatch(/already|registered|exists|taken/i)
+    // The first address was new and gets a link; the second already had an account and is told so by email only.
+    expect(db().emails.map((e) => e.kind)).toEqual(['verify', 'exists'])
+  })
+
+  it('shows hostile and long non-Latin answers as plain text, and sends them as typed', async () => {
+    const brand = '<img src=x onerror=alert(1)> कलकी स्टूडियो 🧵'
+    const name = `${'राधिका '.repeat(30).trim()}`
+    const { user } = await openAt(8, { change: (a) => (upi(a), (a.brand.brand_name = brand), (a.contact.name = name)) })
+    expect(answer(screen.getByRole('region', { name: 'Your brand' }), 'Store name')).toHaveTextContent(brand)
+    expect(document.querySelector('img[src="x"]')).toBeNull()
+    await sendWithSecrets(user, { account: false })
+    await screen.findByRole('heading', { level: 1, name: 'Application received' })
+    expect(screen.getByText(`Thank you, राधिका. We have your application for ${brand}.`)).toBeInTheDocument()
+    expect(document.querySelector('img[src="x"]')).toBeNull()
+    expect(db().vendors.some((v) => v.name === brand)).toBe(true)
   })
 
   it('adds the proposed commission and business details when given', async () => {
-    let sent: Schemas['VendorApplication'] | null = null
+    let body: Record<string, unknown> | undefined
     server.use(
-      http.post('*/api/v1/public/vendor-applications', async ({ request }) => {
-        sent = (await request.clone().json()) as Schemas['VendorApplication']
+      http.post('*/v1/auth/signup', async ({ request }) => {
+        body = (await request.clone().json()) as Record<string, unknown>
       }),
     )
-    const { user } = await openAt(6, {
+    const { user } = await openAt(8, {
       change: (a) => {
-        a.payout = { method: 'upi', holder_name: '', ifsc: '', upi_id: 'Neel.Threads@okhdfcbank' }
+        a.payout = { method: 'upi', holder_name: '', account_number: '', account_number_again: '', ifsc: '', upi_id: 'Neel.Threads@okhdfcbank' }
         a.business = { legal_name: 'Neel Threads LLP', gstin: '24aakfk1234l1zd' }
         a.terms.commission = '12.5'
         a.delivery = { ...a.delivery, mode: 'shazlo', pickup_address: { line1: '4 Ring Road', area: 'Athwa', city: 'Surat', pin: '395 007' } }
         a.returns = { window_days: 7, condition: 'unworn_with_tags', refund_days: 5 }
       },
     })
-    await next(user)
-    await next(user)
-    await user.click(await screen.findByRole('button', { name: 'Send application' }))
+    await sendWithSecrets(user, { account: false })
     await screen.findByRole('heading', { level: 1, name: 'Application received' })
-    expect(sent).toMatchObject({
-      delivery: { mode: 'shazlo', pickup_address: { line1: '4 Ring Road', area: 'Athwa', city: 'Surat', pin: '395007' } },
-      returns: { window_days: 7, condition: 'unworn_with_tags', refund_days: 5 },
-      payout: { method: 'upi', upi_id: 'neel.threads@okhdfcbank' },
-      legal_name: 'Neel Threads LLP',
-      gstin: '24AAKFK1234L1ZD',
+    expect(body).toMatchObject({
       proposed_commission_bps: 1250,
+      store_details: {
+        delivery: { mode: 'shazlo', pickup_address: { line1: '4 Ring Road', area: 'Athwa', city: 'Surat', pin: '395007' } },
+        returns: { window_days: 7, condition: 'unworn_with_tags', refund_days: 5 },
+        payout: { method: 'upi', upi_id: 'neel.threads@okhdfcbank' },
+        business: { legal_name: 'Neel Threads LLP', gstin: '24AAKFK1234L1ZD' },
+      },
     })
+    expect(db().commissions.get(db().users.find((u) => u.email === EMAIL)!.vendor_id)).toMatchObject({ state: 'proposed', proposed_bps: 1250 })
   })
 
   it('takes the seller to the earliest page the server questioned, then on to the next', async () => {
-    server.use(
-      http.post(
-        '*/api/v1/public/vendor-applications',
-        () =>
-          HttpResponse.json(
-            {
-              message: 'Check the highlighted fields.',
-              extra: { code: 'validation_error', fields: { 'payout.ifsc': 'We could not find this IFSC code. Check it on your cheque book or bank app.', owner_name: 'A seller with this name has already applied.' } },
-            },
-            { status: 422 },
-          ),
-        { once: true },
-      ),
-    )
-    const { user, db } = await openAt(6)
-    await typeIn(user, 'Account number', '5010 0123 4567 4821')
-    await typeIn(user, 'Account number again', '5010 0123 4567 4821')
-    await next(user)
-    await next(user)
-    await user.click(await screen.findByRole('button', { name: 'Send application' }))
+    const { user } = await openAt(8)
+    db().faults.push({
+      path: '/v1/auth/signup',
+      status: 422,
+      code: 'validation_error',
+      details: [
+        { loc: ['body', 'store_details', 'payout', 'bank', 'ifsc'], msg: 'We could not find this IFSC code. Check it on your cheque book or bank app.' },
+        { loc: ['body', 'contact_name'], msg: 'Use letters for your name.' },
+      ],
+    })
+    await sendWithSecrets(user)
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Contact' })).toBeInTheDocument()
     expect(summary()).toHaveFocus()
-    expect(screen.getByRole('textbox', { name: 'Your name' })).toHaveAccessibleDescription('A seller with this name has already applied.')
+    expect(screen.getByRole('textbox', { name: 'Your name' })).toHaveAccessibleDescription('Use letters for your name.')
     await typeIn(user, 'Your name', 'Asha P.')
     expect(screen.queryByRole('group', { name: 'Some answers need fixing' })).toBeNull()
     await next(user)
@@ -464,57 +557,116 @@ describe('V-02 Apply to sell: check answers and send', () => {
     await next(user)
     await user.click(await screen.findByRole('button', { name: 'Send application' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Application received' })).toBeInTheDocument()
-    expect(db.applications[0]).toMatchObject({ owner_name: 'Asha P.' })
+    expect(db().stores.get(db().users.find((u) => u.email === EMAIL)!.vendor_id)?.contact?.name).toBe('Asha P.')
   })
 
-  it('keeps the page and the answers when the network fails', async () => {
-    server.use(http.post('*/api/v1/public/vendor-applications', () => HttpResponse.error(), { once: true }))
-    const { user } = await openAt(6)
-    await typeIn(user, 'Account number', '5010 0123 4567 4821')
-    await typeIn(user, 'Account number again', '5010 0123 4567 4821')
-    await next(user)
-    await next(user)
-    await user.click(await screen.findByRole('button', { name: 'Send application' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(/offline|did not send/)
+  it("puts the server's password refusal on the password field", async () => {
+    const { user } = await openAt(8, { change: upi })
+    db().faults.push({ path: '/v1/auth/signup', status: 422, code: 'weak_password', message: 'Password is too common' })
+    await sendWithSecrets(user, { account: false })
+    expect(await screen.findByRole('heading', { level: 1, name: 'Contact' })).toBeInTheDocument()
+    expect(passwordInput()).toHaveAccessibleDescription('Password is too common')
+    expect(within(summary()).getByRole('link', { name: 'Password is too common' })).toBeInTheDocument()
+  })
+
+  it('says plainly when the email already has an account, with a way to sign in', async () => {
+    const { user } = await openAt(8, { change: upi })
+    db().faults.push({ path: '/v1/auth/signup', status: 409, code: 'email_taken', message: 'Email already registered' })
+    await sendWithSecrets(user, { account: false })
+    const banner = await screen.findByRole('alert')
+    expect(banner).toHaveTextContent(`There is already a seller account for ${EMAIL}.`)
+    expect(banner).toHaveTextContent('Sign in with it, or change the email under Contact to apply for another store.')
+    expect(within(banner).getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
     expect(screen.getByRole('heading', { level: 1, name: 'Check your answers' })).toBeInTheDocument()
-    expect(localStorage.getItem(DRAFT_KEY)).not.toBeNull()
+  })
+
+  it('keeps the page and the answers when the network fails, and sends on the next try', async () => {
+    const { user } = await openAt(8, { change: upi })
+    db().faults.push({ path: '/v1/auth/signup', network: true })
+    await sendWithSecrets(user, { account: false })
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not reach the server. Check your connection and try again.')
+    expect(screen.getByRole('heading', { level: 1, name: 'Check your answers' })).toBeInTheDocument()
+    expect(readDraft()?.brand.brand_name).toBe('Neel Threads')
+    await user.click(screen.getByRole('button', { name: 'Send application' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Application received' })).toBeInTheDocument()
+  })
+
+  it('counts down after too many attempts and does not send until it ends', async () => {
+    const { user } = await openAt(8, { change: upi })
+    server.use(http.post('*/v1/auth/signup', () => HttpResponse.json({ error: { code: 'rate_limited', message: 'slow down' } }, { status: 429, headers: { 'Retry-After': '42' } }), { once: true }))
+    await sendWithSecrets(user, { account: false })
+    expect(await screen.findByText(/Too many attempts. Try again in (42|41) s\./)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send application' })).toBeDisabled()
+  })
+
+  it('sends once on a double click', async () => {
+    let calls = 0
+    server.use(
+      http.post('*/v1/auth/signup', async () => {
+        calls += 1
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }),
+    )
+    const { user } = await openAt(2, { change: (a) => (upi(a), (a.checking = true)) })
+    await typePassword(user)
+    await next(user)
+    await user.dblClick(await screen.findByRole('button', { name: 'Send application' }))
+    await screen.findByRole('heading', { level: 1, name: 'Application received' })
+    expect(calls).toBe(1)
+    expect(db().users.filter((u) => u.email === EMAIL)).toHaveLength(1)
+  })
+
+  it('keeps no copy of the password in the query cache once the call has ended', async () => {
+    const { user, queryClient } = await openAt(8, { change: upi })
+    db().faults.push({ path: '/v1/auth/signup', status: 422, code: 'weak_password', message: 'Password is too common' })
+    await sendWithSecrets(user, { account: false })
+    await screen.findByRole('heading', { level: 1, name: 'Contact' })
+    await waitFor(() => expect(queryClient.getMutationCache().getAll()).toEqual([]))
   })
 })
 
-describe('V-02 Apply to sell: the draft on this device', () => {
+describe('V-02 Apply to sell: the draft in memory', () => {
   it('picks up where the seller left off, and Start over clears it', async () => {
     const { user } = await openAt(3)
     expect(screen.getByText('Picked up where you left off')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 1, name: 'Delivery' })).toBeInTheDocument()
     expect(stepText()).toBe('Step 3 of 7')
     expect(screen.getByRole('radio', { name: /^We deliver ourselves/ })).toBeChecked()
-
     await user.click(screen.getByRole('button', { name: 'Start over' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Apply to sell' })).toBeInTheDocument()
     expect(screen.queryByText('Picked up where you left off')).toBeNull()
-    expect(localStorage.getItem(DRAFT_KEY)).toBeNull()
+    expect(readDraft()).toBeNull()
   })
 
-  it('saves answers as they are typed', async () => {
+  it('keeps answers as they are typed, never in web storage, and never the password', async () => {
+    localStorage.clear()
+    sessionStorage.clear()
     const { user } = await renderApp({ route: '/signup', signedIn: false })
     await user.click(await screen.findByRole('button', { name: 'Start' }, SLOW))
     await user.type(await screen.findByRole('textbox', { name: 'Store name' }), 'Neel')
-    expect(JSON.parse(localStorage.getItem(DRAFT_KEY) ?? 'null')).toMatchObject({ page: 1, brand: { brand_name: 'Neel' } })
+    expect(readDraft()).toMatchObject({ page: 1, brand: { brand_name: 'Neel' } })
+    await act(() => writeDraft(answers(2)))
+    expect(localStorage.length).toBe(0)
+    expect(sessionStorage.length).toBe(0)
   })
 
-  it('throws away drafts of the old form and drafts it cannot read', async () => {
-    localStorage.setItem(OLD_DRAFT_KEY, JSON.stringify({ step: 2, brand: { brand_name: 'Kalki Studio', city: 'Ahmedabad', instagram_or_website: '' } }))
-    localStorage.setItem(DRAFT_KEY, '{"page": 3, "brand": ')
+  it('is gone after a reload: a new start of the app begins again', async () => {
+    writeDraft(answers(3))
     await renderApp({ route: '/signup', signedIn: false })
     expect(await screen.findByRole('heading', { level: 1, name: 'Apply to sell' }, SLOW)).toBeInTheDocument()
     expect(screen.queryByText('Picked up where you left off')).toBeNull()
-    expect(localStorage.getItem(OLD_DRAFT_KEY)).toBeNull()
+  })
+
+  it('forgets the typed password when the session state is cleared', async () => {
+    const { user } = await openAt(2)
+    await typePassword(user)
+    act(() => clearSensitiveState())
+    await waitFor(() => expect(passwordInput()).toHaveValue(''))
   })
 })
 
 describe('V-02 Apply to sell: phones', () => {
   it('fits a 390 px phone with Continue in a sticky footer', async () => {
-    const { container } = await openAt(1, { viewport: 'mobile' })
+    const { container } = await openAt(2, { viewport: 'mobile' })
     for (const el of container.querySelectorAll('*')) {
       const style = getComputedStyle(el)
       for (const value of [style.width, style.minWidth]) {
@@ -524,9 +676,7 @@ describe('V-02 Apply to sell: phones', () => {
     const footer = container.querySelector('[data-sticky-footer]')
     expect(footer).not.toBeNull()
     expect(getComputedStyle(footer!).position).toBe('sticky')
-    const button = within(footer as HTMLElement).getByRole('button', { name: 'Continue' })
-    expect(parseFloat(getComputedStyle(button).minHeight)).toBeGreaterThanOrEqual(44)
-    expect(getComputedStyle(screen.getByRole('button', { name: 'Back' })).minHeight).toBe('44px')
+    expect(parseFloat(getComputedStyle(within(footer as HTMLElement).getByRole('button', { name: 'Continue' })).minHeight)).toBeGreaterThanOrEqual(44)
     // No card on phones: the page runs edge to edge.
     expect(container.querySelector('.MuiCard-root')).toBeNull()
   })

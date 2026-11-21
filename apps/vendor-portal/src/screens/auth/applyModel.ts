@@ -1,20 +1,16 @@
-import { z } from 'zod'
+import { ApiError } from '../../api/errors'
 import type { Schemas } from '../../api/model'
+import { checkNewPassword } from '../../lib/account'
 import {
-  DELIVERY_DAYS,
-  DELIVERY_MODES,
   normaliseBusiness,
   normaliseContact,
   normaliseDelivery,
   normalisePayOnDelivery,
   normalisePayout,
   normaliseReturns,
-  PAYOUT_METHODS,
-  REFUND_DAYS,
-  RETURN_CONDITIONS,
-  RETURN_WINDOWS,
   type FieldErrors,
 } from '../../lib/storeDetails'
+import { saveDraft, takeDraft } from '../../session/drafts'
 import {
   businessBody,
   checkTerms,
@@ -42,7 +38,7 @@ import {
 
 // Sign-up (V-02, spec §5): an intro, seven topic pages, Check your answers, then Send. The topic
 // forms and their checks are the ones Store details uses (src/screens/store/topics); this module
-// adds the page order, the draft kept on this device and the application the API takes.
+// adds the page order, the password, the draft kept in memory and the application the API takes.
 
 // Pages: 0 is the intro, 1–7 the topics, 8 Check your answers.
 export const INTRO = 0
@@ -57,6 +53,8 @@ export interface ApplyDraft {
   checking: boolean
   brand: BrandAnswers
   contact: ContactAnswers
+  // Asked on the Contact step (main's rules); sent as typed, never kept in the draft.
+  password: string
   delivery: DeliveryAnswers
   returns: ReturnsAnswers
   payment: PaymentAnswers
@@ -71,6 +69,7 @@ export function emptyDraft(): ApplyDraft {
     checking: false,
     brand: empty.brand(),
     contact: empty.contact(),
+    password: '',
     delivery: empty.delivery(),
     returns: empty.returns(),
     payment: empty.payment(),
@@ -84,11 +83,13 @@ export const isStep = (page: number) => page >= 1 && page <= STEP_COUNT
 
 // The answers a step page edits (what error messages are about).
 export function valuesOfStep(step: number, d: ApplyDraft): unknown {
+  if (step === 2) return { ...d.contact, password: d.password }
   return step === 7 ? { ...d.business, ...d.terms } : d[STEP_TOPICS[step - 1]!]
 }
 
 // Fields of a step in page order, for the error summary.
 export function orderOfStep(step: number): readonly string[] {
+  if (step === 2) return [...FIELD_ORDER.contact, 'password']
   if (step === 7) return [...FIELD_ORDER.business, ...FIELD_ORDER.terms]
   const topic = STEP_TOPICS[step - 1]
   return topic ? FIELD_ORDER[topic] : []
@@ -98,7 +99,7 @@ export function orderOfStep(step: number): readonly string[] {
 export function checkStep(step: number, d: ApplyDraft): FieldErrors {
   switch (step) {
     case 1: return checkTopic('brand', d.brand, { storeName: true })
-    case 2: return checkTopic('contact', d.contact)
+    case 2: return { ...checkTopic('contact', d.contact), ...passwordProblem(d.password, d.contact.email) }
     case 3: return checkTopic('delivery', d.delivery)
     case 4: return checkTopic('returns', d.returns)
     case 5: return checkTopic('payment', d.payment)
@@ -108,8 +109,14 @@ export function checkStep(step: number, d: ApplyDraft): FieldErrors {
   return {}
 }
 
-// Before sending, every step again: a restored draft may have skipped one, and account numbers
-// are never restored. The first step with problems, or null.
+// The password may not be the email (vendor-api's rule), so it is checked against what was typed there.
+function passwordProblem(password: string, email: string): FieldErrors {
+  const problem = checkNewPassword(password, email)
+  return problem ? { password: problem } : {}
+}
+
+// Before sending, every step again: a restored draft may have skipped one, and the password and
+// account numbers are never kept. The first step with problems, or null.
 export function firstProblem(d: ApplyDraft): { step: number; errors: FieldErrors } | null {
   for (let step = 1; step <= STEP_COUNT; step++) {
     const errors = checkStep(step, d)
@@ -138,6 +145,8 @@ export function toApplication(d: ApplyDraft): Schemas['VendorApplication'] {
     owner_name: contact.name,
     phone: contact.phone,
     email: contact.email,
+    // As typed: spaces count.
+    password: d.password,
     delivery: normaliseDelivery(deliveryBody(d.delivery)),
     returns: normaliseReturns(returnsBody(d.returns)),
     pay_on_delivery: normalisePayOnDelivery(paymentBody(d.payment)),
@@ -153,6 +162,8 @@ export function toApplication(d: ApplyDraft): Schemas['VendorApplication'] {
 // ---- messages from the server (422) ------------------------------------------------------------
 
 const PREFIXED: [prefix: string, step: number][] = [['delivery.', 3], ['returns.', 4], ['payout.', 6]]
+// One message for the two checkboxes of step 5.
+const WHOLE: [prefix: string, step: number, key: string][] = [['pay_on_delivery.', 5, 'pay_on_delivery']]
 const PLAIN: Record<string, [step: number, key: string]> = {
   brand_name: [1, 'brand_name'],
   sells: [1, 'sells'],
@@ -161,6 +172,7 @@ const PLAIN: Record<string, [step: number, key: string]> = {
   owner_name: [2, 'name'],
   phone: [2, 'phone'],
   email: [2, 'email'],
+  password: [2, 'password'],
   delivery: [3, 'mode'],
   returns: [4, 'window_days'],
   pay_on_delivery: [5, 'pay_on_delivery'],
@@ -183,49 +195,37 @@ export function errorsByStep(fields: Record<string, string>): Map<number, FieldE
       put(plain[0], plain[1], message)
       continue
     }
+    const whole = WHOLE.find(([prefix]) => field.startsWith(prefix))
+    if (whole) {
+      if (!out.get(whole[1])?.[whole[2]]) put(whole[1], whole[2], message)
+      continue
+    }
     const prefixed = PREFIXED.find(([prefix]) => field.startsWith(prefix))
     if (prefixed) put(prefixed[1], field.slice(prefixed[0].length), message)
   }
   return out
 }
 
-// ---- the draft kept on this device ---------------------------------------------------------------
+// Refusals vendor-api sends as a code (422 without field details), and the field each is about.
+const BY_CODE: Record<string, [step: number, key: string]> = {
+  weak_password: [2, 'password'],
+  terms_not_accepted: [7, 'agreed_terms'],
+  price_rule_not_accepted: [7, 'agreed_price_rule'],
+}
 
-// v2: the Build 2 sign-up. Drafts of the old three-step form are thrown away.
-export const DRAFT_KEY = 'shazlo.seller.application-draft.v2'
-const OLD_DRAFT_KEYS = ['shazlo.seller.application-draft']
+/** A 422 from the sign-up, as messages for each step's fields. Empty when it names nothing the steps show. */
+export function problemsByStep(error: unknown): Map<number, FieldErrors> {
+  if (!(error instanceof ApiError) || error.status !== 422) return new Map()
+  const steps = errorsByStep(error.fields)
+  const coded = BY_CODE[error.code]
+  if (coded && !steps.get(coded[0])?.[coded[1]]) steps.set(coded[0], { ...steps.get(coded[0]), [coded[1]]: error.message })
+  return steps
+}
 
-const text = z.string().max(2000).catch('')
-const flag = z.boolean().catch(false)
-const choice = <const T extends readonly string[]>(values: T) => z.enum([...values, ''] as const).catch('')
+// ---- the draft kept in memory ------------------------------------------------------------------
 
-const storedDraft = z.object({
-  page: z.number().int().min(INTRO).max(CHECK).catch(INTRO),
-  checking: flag,
-  brand: z.object({ brand_name: text, sells: choice(['women', 'men', 'both']), city: text, instagram_or_website: text }).catch(empty.brand),
-  contact: z.object({ name: text, phone: text, email: text }).catch(empty.contact),
-  delivery: z
-    .object({
-      mode: choice(DELIVERY_MODES),
-      pickup_address: z.object({ line1: text, area: text, city: text, pin: text }).catch(() => empty.delivery().pickup_address),
-      areas: z.object({ all_india: z.boolean().nullable().catch(null), places: z.array(z.string().max(100)).max(50).catch([]) }).catch(() => empty.delivery().areas),
-      place: text,
-      delivery_days: choice(DELIVERY_DAYS),
-    })
-    .catch(empty.delivery),
-  returns: z
-    .object({
-      window_days: z.literal(RETURN_WINDOWS).nullable().catch(null),
-      condition: z.enum(RETURN_CONDITIONS).nullable().catch(null),
-      refund_days: z.literal(REFUND_DAYS).nullable().catch(null),
-    })
-    .catch(empty.returns),
-  payment: z.object({ cash: flag, upi: flag }).catch(empty.payment),
-  // Account numbers are never stored (below), so they are not read back either.
-  payout: z.object({ method: choice(PAYOUT_METHODS), holder_name: text, ifsc: text, upi_id: text }).catch(empty.payout),
-  business: z.object({ legal_name: text, gstin: text }).catch(empty.business),
-  terms: z.object({ commission: text, agreed_terms: flag, agreed_price_rule: flag }).catch(empty.terms),
-})
+/** The key of the sign-up draft in session/drafts.ts. */
+export const APPLY_DRAFT_KEY = 'signup'
 
 export function hasAnswers(d: ApplyDraft): boolean {
   const filled = (v: unknown): boolean =>
@@ -234,39 +234,28 @@ export function hasAnswers(d: ApplyDraft): boolean {
   return filled(answers)
 }
 
-// Storage can be blocked (private mode) or hold something we did not write; both mean no draft.
-export function readDraft(): ApplyDraft | null {
-  try {
-    for (const key of OLD_DRAFT_KEYS) localStorage.removeItem(key)
-    const raw = localStorage.getItem(DRAFT_KEY)
-    if (!raw) return null
-    const parsed = storedDraft.safeParse(JSON.parse(raw))
-    if (!parsed.success) return null
-    const draft: ApplyDraft = { ...parsed.data, payout: { ...parsed.data.payout, account_number: '', account_number_again: '' } }
-    return hasAnswers(draft) ? draft : null
-  } catch {
-    return null
-  }
+// The password and the bank account number are never kept, even in memory: a seller who leaves
+// the page types them again.
+function withoutSecrets(d: ApplyDraft): ApplyDraft {
+  return structuredClone({ ...d, password: '', payout: { ...d.payout, account_number: '', account_number_again: '' } })
 }
 
-// The bank account number stays in memory only: this device may be shared.
+/**
+ * The draft kept while this tab is open (src/session/drafts.ts: memory only, gone on a reload or a
+ * sign-out), or null. It stays kept after reading: StrictMode reads it twice.
+ */
+export function readDraft(): ApplyDraft | null {
+  const kept = takeDraft<ApplyDraft>(APPLY_DRAFT_KEY)
+  if (!kept) return null
+  saveDraft(APPLY_DRAFT_KEY, kept)
+  return structuredClone(kept)
+}
+
 export function writeDraft(draft: ApplyDraft): void {
-  try {
-    if (!hasAnswers(draft)) {
-      localStorage.removeItem(DRAFT_KEY)
-      return
-    }
-    const { account_number: _a, account_number_again: _b, ...payout } = draft.payout
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...draft, payout }))
-  } catch {
-    // Blocked storage: the application still works, it just will not survive a reload.
-  }
+  if (hasAnswers(withoutSecrets(draft))) saveDraft(APPLY_DRAFT_KEY, withoutSecrets(draft))
+  else clearDraft()
 }
 
 export function clearDraft(): void {
-  try {
-    localStorage.removeItem(DRAFT_KEY)
-  } catch {
-    // As above.
-  }
+  takeDraft(APPLY_DRAFT_KEY)
 }

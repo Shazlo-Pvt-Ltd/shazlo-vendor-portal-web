@@ -1,19 +1,24 @@
 import { Box, Button, Divider, Link, Stack, Typography } from '@mui/material'
-import { Banner, brand, fontFamily } from '@shazlo/ui'
-import { Clock, Handshake, Mail, MessageCircle, type LucideIcon } from 'lucide-react'
+import { Banner, brand } from '@shazlo/ui'
+import { Clock, Handshake, MessageCircle, type LucideIcon } from 'lucide-react'
 import { forwardRef, useEffect, useRef, type FormEvent, type ReactNode, type Ref } from 'react'
 import { Link as RouterLink } from 'react-router'
 import { paths } from '../../app/paths'
 import { catalogCopy } from '../../copy/catalog'
 import { onboardingCopy } from '../../copy/onboarding'
 import { storeCopy } from '../../copy/store'
+import { PASSWORD_MAX, PASSWORD_MIN } from '../../lib/account'
 import { maskPayout } from '../../lib/storeDetails'
+import { PasswordField } from '../../security/PasswordField'
 import { ErrorSummary } from '../store/topics/controls'
 import { BusinessFields, TermsFields, TopicFields } from '../store/topics/forms'
-import { businessBody, contactBody, deliveryBody, paymentBody, payoutBody, proposedBps, returnsBody, type Topic, type TopicAnswers } from '../store/topics/model'
+import { businessBody, contactBody, deliveryBody, fieldId, paymentBody, payoutBody, proposedBps, returnsBody, type Topic } from '../store/topics/model'
 import { brandRows, businessRows, contactRows, deliveryRows, paymentRows, payoutRows, returnsRows, SummaryList, termsRows, type Row } from '../store/topics/summary'
 import { BackButton, TaskFooter } from './AuthLayout'
 import { STEP_COUNT, STEP_TOPICS, type ApplyDraft } from './applyModel'
+import { ResendEmail } from './ResendEmail'
+import { WaitBanner } from './WaitBanner'
+import { ignoreRepeatClick } from '../../lib/clicks'
 
 const copy = onboardingCopy.apply
 
@@ -24,9 +29,9 @@ export const PageTitle = forwardRef<HTMLHeadingElement, { children: ReactNode }>
     <Typography
       ref={ref}
       tabIndex={-1}
-      variant="h1"
+      variant="pageTitle"
       component="h1"
-      sx={{ fontFamily: fontFamily.display, fontSize: { xs: '1.75rem', sm: '2.25rem' }, lineHeight: 1.15, fontWeight: 400, textWrap: 'balance', outline: 'none' }}
+      sx={{ fontSize: { xs: '1.75rem', sm: '2.25rem' }, lineHeight: 1.15, textWrap: 'balance', overflowWrap: 'anywhere', outline: 'none' }}
     >
       {children}
     </Typography>
@@ -89,7 +94,7 @@ export function IntroPage({ headingRef, notice, onStart }: { headingRef: Ref<HTM
       <Divider sx={{ my: 3 }} />
       <SignInLine />
       <TaskFooter>
-        <Button variant="contained" size="large" onClick={onStart} sx={{ minHeight: 44 }}>
+        <Button variant="contained" size="large" onClick={(event) => event.detail > 1 || onStart()} sx={{ minHeight: 44 }}>
           {i.start}
         </Button>
       </TaskFooter>
@@ -137,17 +142,20 @@ export function StepPage({ step, draft, headingRef, errors, ordered, notice, onC
             <TermsFields values={draft.terms} onChange={(v) => onChange('terms', v)} errors={errors} />
           </Stack>
         ) : (
-          <TopicFields
-            topic={topic}
-            values={draft[topic]}
-            onChange={(v) => onChange(topic, v as ApplyDraft[typeof topic])}
-            errors={errors}
-            storeName="edit"
-            accountNote={storeCopy.payout.accountNotKept}
-          />
+          <>
+            <TopicFields
+              topic={topic}
+              values={draft[topic]}
+              onChange={(v) => onChange(topic, v as ApplyDraft[typeof topic])}
+              errors={errors}
+              storeName="edit"
+              accountNote={copy.accountNotKept}
+            />
+            {step === 2 && <NewPassword value={draft.password} error={errors.password} onChange={(password) => onChange('password', password)} />}
+          </>
         )}
         <TaskFooter>
-          <Button type="submit" variant="contained" size="large" sx={{ minHeight: 44 }}>
+          <Button type="submit" variant="contained" size="large" onClick={ignoreRepeatClick} sx={{ minHeight: 44 }}>
             {copy.next}
           </Button>
         </TaskFooter>
@@ -156,12 +164,36 @@ export function StepPage({ step, draft, headingRef, errors, ordered, notice, onC
   )
 }
 
+// The Contact step's password (main's rules, src/lib/account.ts). Its id lets the error summary
+// and Check your answers' Change link reach it.
+function NewPassword({ value, error, onChange }: { value: string; error?: string; onChange: (value: string) => void }) {
+  return (
+    <Box sx={{ mt: 3 }}>
+      <PasswordField
+        purpose="new"
+        id={fieldId('password')}
+        name="password"
+        label={copy.password}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        error={Boolean(error)}
+        helperText={error ?? copy.passwordHint(PASSWORD_MIN)}
+        fullWidth
+        sx={{ '& .MuiInputBase-input': { fontSize: '1rem' } }}
+        // Room for more than the rule allows, so a pasted password that is too long is named, not cut short.
+        slotProps={{ htmlInput: { maxLength: PASSWORD_MAX * 2 } }}
+      />
+    </Box>
+  )
+}
+
 // ---- Check your answers --------------------------------------------------------------------------------
 
-function topicRows(topic: Topic, a: TopicAnswers, bankName: string | undefined): Row[] {
+function topicRows(topic: Topic, a: ApplyDraft, bankName: string | undefined): Row[] {
   switch (topic) {
     case 'brand': return brandRows({ ...a.brand, brand_name: a.brand.brand_name.trim() })
-    case 'contact': return contactRows(contactBody(a.contact))
+    // The password itself is never shown, only whether one is chosen.
+    case 'contact': return [...contactRows(contactBody(a.contact)), { key: 'password', label: copy.passwordRow, value: a.password ? copy.passwordChosen : storeCopy.rows.notAnswered }]
     case 'delivery': return deliveryRows(a.delivery.mode ? deliveryBody(a.delivery) : { mode: '' })
     case 'returns': return returnsRows(returnsBody(a.returns))
     case 'payment': return paymentRows(paymentBody(a.payment))
@@ -181,6 +213,7 @@ export function CheckAnswersPage({
   headingRef,
   notice,
   pending,
+  waitSeconds,
   onBack,
   onChange,
   onSend,
@@ -190,6 +223,8 @@ export function CheckAnswersPage({
   headingRef: Ref<HTMLHeadingElement>
   notice?: ReactNode
   pending: boolean
+  // After too many attempts: Send waits this many seconds.
+  waitSeconds: number
   onBack: () => void
   onChange: (step: number, field: string) => void
   onSend: () => void
@@ -202,6 +237,11 @@ export function CheckAnswersPage({
         {copy.check.subtitle}
       </Typography>
       {notice}
+      {waitSeconds > 0 && (
+        <Box sx={{ mb: 3 }}>
+          <WaitBanner seconds={waitSeconds} />
+        </Box>
+      )}
       <Stack spacing={3.5}>
         {copy.steps.map((meta, i) => {
           const step = i + 1
@@ -224,7 +264,7 @@ export function CheckAnswersPage({
         })}
       </Stack>
       <TaskFooter>
-        <Button variant="contained" size="large" onClick={onSend} disabled={pending} sx={{ minHeight: 44 }}>
+        <Button variant="contained" size="large" onClick={(event) => event.detail > 1 || onSend()} disabled={pending || waitSeconds > 0} sx={{ minHeight: 44 }}>
           {pending ? copy.submitting : copy.submit}
         </Button>
       </TaskFooter>
@@ -232,7 +272,7 @@ export function CheckAnswersPage({
   )
 }
 
-// ---- sent -------------------------------------------------------------------------------------------------
+// ---- sent ------------------------------------------------------------------------------------------------
 
 export type Received = { name: string; email: string; brand: string }
 
@@ -249,24 +289,37 @@ function NextItem({ icon: Icon, children }: { icon: LucideIcon; children: ReactN
   )
 }
 
+// The account exists now, but signing in waits until the email is confirmed (main's "Check your
+// email"): say where the link went, and offer it again.
 export function ApplicationReceived({ name, email, brand: brandName }: Received) {
   const r = copy.received
-  const ref = useRef<HTMLDivElement>(null)
+  const ref = useRef<HTMLHeadingElement>(null)
   // The page this replaces held focus; hand it to the confirmation so it is read out.
   useEffect(() => ref.current?.focus(), [])
   return (
-    <Box ref={ref} tabIndex={-1} sx={{ outline: 'none' }}>
-      <PageTitle>{r.title}</PageTitle>
+    <Box>
+      <PageTitle ref={ref}>{r.title}</PageTitle>
       <Typography variant="body1" color="text.secondary" sx={{ mt: 1.5, mb: 4, overflowWrap: 'anywhere' }}>
         {r.subtitle(name, brandName)}
       </Typography>
+      <Box component="section" aria-labelledby="received-verify" sx={{ mb: 4 }}>
+        <Typography id="received-verify" variant="h2" component="h2" sx={{ mb: 1.5 }}>
+          {r.verifyTitle}
+        </Typography>
+        <Typography variant="body1" sx={{ overflowWrap: 'anywhere' }}>
+          {r.verify(email)}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2.5 }}>
+          {r.verifyHelp}
+        </Typography>
+        <ResendEmail email={email} />
+      </Box>
       <Typography variant="h2" component="h2" sx={{ mb: 2 }}>
         {r.nextTitle}
       </Typography>
       <Stack component="ol" spacing={2} sx={{ listStyle: 'none', p: 0, m: 0 }}>
         <NextItem icon={Clock}>{r.review}</NextItem>
         <NextItem icon={Handshake}>{r.commission}</NextItem>
-        <NextItem icon={Mail}>{r.approved(email)}</NextItem>
         <NextItem icon={MessageCircle}>
           {r.questions} <Link href={`mailto:${onboardingCopy.partnersEmail}`}>{onboardingCopy.partnersEmail}</Link>.
         </NextItem>

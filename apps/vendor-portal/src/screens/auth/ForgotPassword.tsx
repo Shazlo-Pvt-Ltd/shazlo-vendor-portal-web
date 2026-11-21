@@ -8,14 +8,21 @@ import { z } from 'zod'
 import { ApiError } from '../../api/errors'
 import { useForgotPassword } from '../../api/queries'
 import { paths } from '../../app/paths'
+import { authCopy } from '../../copy/auth'
 import { onboardingCopy } from '../../copy/onboarding'
+import { EMAIL_MAX, EMAIL_PATTERN } from '../../lib/account'
+import { failureOf } from '../../lib/failure'
 import { fieldProps } from '../../lib/forms'
+import { useCountdown } from '../../session/useCountdown'
 import { AuthLayout, AuthTitle } from './AuthLayout'
+import { WaitBanner } from './WaitBanner'
+import { ignoreRepeatClick } from '../../lib/clicks'
 
 const copy = onboardingCopy.forgot
+const errors = authCopy.signIn.errors
 
 const schema = z.object({
-  email: z.string().trim().min(1, copy.errors.emailRequired).email(copy.errors.emailFormat),
+  email: z.string().trim().min(1, errors.emailRequired).max(EMAIL_MAX, errors.emailFormat).regex(EMAIL_PATTERN, errors.emailFormat),
 })
 type Values = z.infer<typeof schema>
 
@@ -37,21 +44,32 @@ function CheckYourEmail({ email }: { email: string }) {
   )
 }
 
+/**
+ * Asks vendor-api for a link to choose a new password (`POST /v1/auth/forgot-password`). The
+ * answer is the same whether or not the address has an account, so the page never says which.
+ */
 export default function ForgotPassword() {
   const forgot = useForgotPassword()
+  const wait = useCountdown()
   const [sentTo, setSentTo] = useState<string | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
-  const { register, handleSubmit, formState } = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { email: '' } })
+  const { register, handleSubmit, formState, setError } = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { email: '' } })
 
   const onSubmit = handleSubmit(async ({ email }) => {
+    if (wait.active) return
     setFailure(null)
     try {
       await forgot.mutateAsync(email)
       setSentTo(email)
     } catch (error) {
-      // The answer never says whether the account exists; only a request that did not go through is worth showing.
+      // Only a request that did not go through is worth showing; anything about the account would give it away.
       if (error instanceof ApiError && error.status === 404) setSentTo(email)
-      else setFailure(error instanceof ApiError ? error.message : copy.failed)
+      else if (error instanceof ApiError && error.status === 422) setError('email', { message: errors.emailFormat }, { shouldFocus: true })
+      else {
+        const { message, retryAfter } = failureOf(error)
+        if (retryAfter) wait.start(retryAfter)
+        else setFailure(message)
+      }
     }
   })
 
@@ -69,14 +87,15 @@ export default function ForgotPassword() {
       <Box component="form" noValidate onSubmit={onSubmit}>
         <Stack spacing={2.5}>
           {failure && <Banner tone="error" title={failure} />}
+          {wait.active && <WaitBanner seconds={wait.remaining} />}
           <TextField
             label={copy.email}
             type="email"
             autoComplete="username"
-            slotProps={{ htmlInput: { inputMode: 'email', autoCapitalize: 'none', spellCheck: false } }}
+            slotProps={{ htmlInput: { inputMode: 'email', autoCapitalize: 'none', autoCorrect: 'off', spellCheck: false, maxLength: EMAIL_MAX } }}
             {...fieldProps(register('email'), formState.errors.email)}
           />
-          <Button type="submit" variant="contained" size="large" fullWidth disabled={formState.isSubmitting} sx={{ minHeight: 44 }}>
+          <Button type="submit" variant="contained" size="large" fullWidth disabled={formState.isSubmitting || wait.active} onClick={ignoreRepeatClick} sx={{ minHeight: 44 }}>
             {formState.isSubmitting ? copy.submitting : copy.submit}
           </Button>
         </Stack>

@@ -1,10 +1,12 @@
 import { Box, Card, Link, Stack, Typography, useMediaQuery } from '@mui/material'
 import { type Theme } from '@mui/material/styles'
-import { brand, fontFamily, Logo, neutral } from '@shazlo/ui'
+import { Banner, brand, Logo, neutral } from '@shazlo/ui'
 import { ChevronLeft, HelpCircle } from 'lucide-react'
-import type { ReactNode } from 'react'
+import type { ReactNode, Ref } from 'react'
+import { useLocation } from 'react-router'
 import { authCopy as copy } from '../../copy/auth'
 import { useKeyboardInset } from '../../shell/StickyFooter'
+import { noticeOf } from './notice'
 
 function Header() {
   return (
@@ -42,11 +44,24 @@ const SAFE_BOTTOM = 'env(safe-area-inset-bottom, 0px)'
 // With `aside`, desktop splits into the form and a cream panel (V-01, pick C); phones drop the panel.
 // With `task` (sign-up), phones get the page edge to edge with no card, so the sticky footer can span
 // the screen; wider screens a centred card at most 680 px wide (spec §3).
+// A page that sent the seller here with a notice (see ./notice.ts: "Your password is set") shows
+// it once, in the page, above the form.
 export function AuthLayout({ children, aside, width = 440, task = false }: { children: ReactNode; aside?: ReactNode; width?: number; task?: boolean }) {
   const wide = useMediaQuery((t: Theme) => t.breakpoints.up('md'))
   const phone = useMediaQuery(PHONE, { noSsr: true })
+  const notice = noticeOf(useLocation().state)
   const flush = task && phone
   const maxWidth = task ? 680 : width
+  const content = (
+    <>
+      {notice && (
+        <Box sx={{ mb: 3 }}>
+          <Banner tone="success" title={notice} />
+        </Box>
+      )}
+      {children}
+    </>
+  )
   return (
     <Box sx={{ minHeight: '100dvh', display: 'flex', bgcolor: neutral.canvas }}>
       <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
@@ -56,9 +71,9 @@ export function AuthLayout({ children, aside, width = 440, task = false }: { chi
           sx={{ flex: 1, display: 'flex', alignItems: task ? 'flex-start' : 'center', justifyContent: 'center', px: 2, py: flush ? 3 : { xs: 4, sm: 6 }, ...(task && { overscrollBehaviorY: 'contain' }) }}
         >
           {flush || (aside && wide) ? (
-            <Box sx={{ width: '100%', maxWidth }}>{children}</Box>
+            <Box sx={{ width: '100%', maxWidth }}>{content}</Box>
           ) : (
-            <Card sx={{ width: '100%', maxWidth, p: { xs: 3, sm: 5 }, borderRadius: '12px', overflow: 'visible' }}>{children}</Card>
+            <Card sx={{ width: '100%', maxWidth, p: { xs: 3, sm: 5 }, borderRadius: '12px', overflow: 'visible' }}>{content}</Card>
           )}
         </Box>
         <Footer />
@@ -137,10 +152,11 @@ export function BackButton({ onClick, label }: { onClick: () => void; label: str
   )
 }
 
-export function AuthTitle({ title, subtitle }: { title: string; subtitle?: ReactNode }) {
+// With `headingRef`, the heading can take focus (a page that replaced another moves focus to it).
+export function AuthTitle({ title, subtitle, headingRef }: { title: string; subtitle?: ReactNode; headingRef?: Ref<HTMLHeadingElement> }) {
   return (
     <Box sx={{ mb: 4 }}>
-      <Typography variant="h1" component="h1" sx={{ fontFamily: fontFamily.display, fontSize: { xs: '1.75rem', sm: '2.25rem' }, lineHeight: 1.15, fontWeight: 400, textWrap: 'balance' }}>
+      <Typography ref={headingRef} tabIndex={headingRef ? -1 : undefined} variant="pageTitle" component="h1" sx={{ outline: 'none', fontSize: { xs: '1.75rem', sm: '2.25rem' }, lineHeight: 1.15, textWrap: 'balance', overflowWrap: 'anywhere' }}>
         {title}
       </Typography>
       {subtitle && (

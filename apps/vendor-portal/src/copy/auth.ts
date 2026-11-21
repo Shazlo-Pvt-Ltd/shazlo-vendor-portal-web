@@ -25,6 +25,30 @@ export const authCopy = {
       passwordRequired: 'Enter your password.',
     },
   },
+  // A call that failed (src/lib/failure.ts).
+  failures: {
+    tooMany: 'Too many attempts.',
+    ourSide: 'Something went wrong on our side. Try again in a moment.',
+    unknown: 'Something went wrong. Try again.',
+    // The countdown after "Too many attempts": seen every second, announced once.
+    wait: (seconds: number) => `Too many attempts. Try again in ${seconds} s.`,
+    waitAnnounced: 'Too many attempts. Wait a minute, then try again.',
+  },
+  // The email and password rules (src/lib/account.ts).
+  rules: {
+    emailRequired: 'Enter your email.',
+    emailFormat: 'Enter an email like name@brand.in.',
+    passwordRequired: 'Choose a password.',
+    passwordShort: (min: number) => `Use at least ${min} characters.`,
+    passwordLong: (max: number) => `Use at most ${max} characters.`,
+    passwordIsEmail: 'Your password cannot be your email address.',
+    confirmRequired: 'Type the same password again.',
+    mismatch: 'The passwords do not match. Type the same password in both fields.',
+    currentRequired: 'Enter your current password.',
+    newRequired: 'Choose a new password.',
+    sameAsCurrent: 'Choose a password different from your current one.',
+    newMismatch: 'The new passwords do not match. Type the same password in both fields.',
+  },
   why: {
     title: 'Why sell on Shazlo',
     tagline: 'swipe to style',

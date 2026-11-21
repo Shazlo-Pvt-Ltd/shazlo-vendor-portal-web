@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { linkToken } from './linkToken'
+import { linkToken, TOKEN_MAX } from './linkToken'
 
 describe('linkToken', () => {
   it('reads the token from the fragment, where vendor-api puts it', () => {
@@ -26,5 +26,14 @@ describe('linkToken', () => {
     { hash: '#token=%20%20', search: '' },
   ])('is empty when there is no token: %j', (location) => {
     expect(linkToken(location)).toBe('')
+  })
+
+  it('is empty for a token longer than vendor-api accepts, so nothing is sent', () => {
+    expect(linkToken({ hash: `#token=${'a'.repeat(TOKEN_MAX)}`, search: '' })).toHaveLength(TOKEN_MAX)
+    expect(linkToken({ hash: `#token=${'a'.repeat(TOKEN_MAX + 1)}`, search: '' })).toBe('')
+  })
+
+  it('is empty, not an error, for a fragment that is not valid percent-encoding', () => {
+    expect(() => linkToken({ hash: '#token=%E0%A4%A', search: '' })).not.toThrow()
   })
 })

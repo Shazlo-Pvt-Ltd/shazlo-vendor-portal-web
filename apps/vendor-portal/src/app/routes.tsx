@@ -20,6 +20,7 @@ const SignIn = lazy(() => import('../screens/auth/SignIn'))
 const Apply = lazy(() => import('../screens/auth/Apply'))
 const SetPassword = lazy(() => import('../screens/auth/SetPassword'))
 const ForgotPassword = lazy(() => import('../screens/auth/ForgotPassword'))
+const VerifyEmail = lazy(() => import('../screens/auth/VerifyEmail'))
 const Overview = lazy(() => import('../screens/overview/Overview'))
 const BrandEditor = lazy(() => import('../screens/brand/BrandEditor'))
 const ProductList = lazy(() => import('../screens/products/ProductList'))
@@ -27,6 +28,8 @@ const ProductEditor = lazy(() => import('../screens/products/ProductEditor'))
 const ReviewStatus = lazy(() => import('../screens/review/ReviewStatus'))
 const StoreHub = lazy(() => import('../screens/hubs/StoreHub'))
 const AccountHub = lazy(() => import('../screens/hubs/AccountHub'))
+const ChangePassword = lazy(() => import('../screens/account/ChangePassword'))
+const Team = lazy(() => import('../screens/team/Team'))
 const StoreDetails = lazy(() => import('../screens/store/StoreDetails').then((m) => ({ default: m.StoreDetailsPage })))
 const StoreSection = lazy(() => import('../screens/store/StoreSection').then((m) => ({ default: m.StoreSectionPage })))
 
@@ -57,7 +60,7 @@ export const screens: Record<string, Screen> = {
   '/login': { element: <SignIn /> },
   '/signup': { element: <Apply /> },
   '/forgot-password': { element: <ForgotPassword /> },
-  '/verify-email': { element: <ComingSoon page="verifyEmail" /> },
+  '/verify-email': { element: <VerifyEmail /> },
   '/set-password': { element: <SetPassword /> },
   '/reset-password': { element: <SetPassword /> },
   '/accept-invite': { element: <SetPassword /> },
@@ -75,9 +78,9 @@ export const screens: Record<string, Screen> = {
   // One topic (pickup, payouts…); the page names its own crumb.
   '/store/details/:section': { element: <StoreSection />, handle: { crumbs: [storeDetailsCrumb], back: back.storeDetails, fullScreen: true } },
   '/account': { element: <AccountHub />, handle: { crumbs: [{ label: 'Account' }] } },
-  '/account/password': { element: <ComingSoon page="password" />, handle: { crumbs: [{ label: 'Account', to: paths.account }, { label: 'Change password' }], back: back.account } },
+  '/account/password': { element: <ChangePassword />, handle: { crumbs: [{ label: 'Account', to: paths.account }, { label: 'Change password' }], back: back.account } },
   '/help': { element: <ComingSoon page="help" />, handle: { crumbs: [{ label: 'Help & support' }], back: back.account } },
-  '/team': { element: <ComingSoon page="team" />, handle: { crumbs: [{ label: 'Team' }], back: back.account } },
+  '/team': { element: <Team />, handle: { crumbs: [{ label: 'Team' }], back: back.account } },
 }
 
 /** A route's screen with its page title; signed-out pages load inside their own Suspense. */
