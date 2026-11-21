@@ -48,6 +48,13 @@ def test_normalise_phone(raw: str, expected: str | None) -> None:
         ("a" * 31, False),
         ("https://kalki.in/" + "x" * 300, False),  # longer than the column
         ("", False),
+        # Letters that only look Latin (dotless ı, long ſ, the Kelvin sign, İ): Python's
+        # case-insensitive [a-z] matches them unless the pattern is ASCII-only.
+        ("kalkıstudio.in", False),
+        ("kalkſtudio.in", False),
+        ("Kalkistudio.in", False),
+        ("İnstagram.com", False),
+        ("@kalkı.studio", False),
     ],
 )
 def test_is_valid_link(raw: str, ok: bool) -> None:
@@ -77,6 +84,10 @@ def test_normalise_pin_drops_spaces() -> None:
         ("HDFC000123", "HDFC000123", False),
         ("HDFC00012345", "HDFC00012345", False),
         ("HDFC000123$", "HDFC000123$", False),
+        # Upper-casing turns ſ into S, ı into I and ß into SS; the code itself must be ASCII.
+        ("ſBIN0001234", "SBIN0001234", False),
+        ("ıCIC0001234", "ICIC0001234", False),
+        ("ßIN0001234", "SSIN0001234", False),
     ],
 )
 def test_ifsc(raw: str, normalised: str, ok: bool) -> None:
@@ -116,6 +127,7 @@ def test_account_last4() -> None:
         ("kalki@ok-hdfc", False),
         ("kalki studio@ybl", False),
         ("kalki@1bank", False),
+        ("Kalki@okhdfcbank", False),  # the Kelvin sign lower-cases to k
     ],
 )
 def test_upi_id(raw: str, ok: bool) -> None:
@@ -161,6 +173,7 @@ def test_valid_gstin(gstin: str) -> None:
         _with_check("24ABCDE1234F1Y"),  # the 14th character is always Z
         "24ABCDE1234F1Z",
         "",
+        _with_check("24ABSDE1234F1Z").replace("S", "ſ", 1),  # ſ upper-cases to S
     ],
 )
 def test_invalid_gstin(gstin: str) -> None:

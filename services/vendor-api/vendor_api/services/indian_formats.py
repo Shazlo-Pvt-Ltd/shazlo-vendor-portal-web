@@ -42,10 +42,12 @@ def is_valid_email(raw: str) -> bool:
 
 
 LINK_MAX = 300
-# An Instagram handle (@kalki.studio) or a website (kalkistudio.in, https://...).
-_HANDLE = re.compile(r"@?[a-z0-9._]{1,30}", re.IGNORECASE)
-_LABEL = re.compile(r"[a-z0-9-]+", re.IGNORECASE)
-_TLD = re.compile(r"[a-z]{2,}", re.IGNORECASE)
+# An Instagram handle (@kalki.studio) or a website (kalkistudio.in, https://...). ASCII only:
+# without re.ASCII a case-insensitive [a-z] also matches ı, ſ, the Kelvin sign and İ, so a stored
+# link could hold a host that only looks like the brand's.
+_HANDLE = re.compile(r"@?[a-z0-9._]{1,30}", re.IGNORECASE | re.ASCII)
+_LABEL = re.compile(r"[a-z0-9-]+", re.IGNORECASE | re.ASCII)
+_TLD = re.compile(r"[a-z]{2,}", re.IGNORECASE | re.ASCII)
 
 
 def _is_handle(value: str) -> bool:
@@ -98,7 +100,8 @@ def normalise_ifsc(raw: str) -> str:
 
 
 def is_valid_ifsc(raw: str) -> bool:
-    return _IFSC.fullmatch(normalise_ifsc(raw)) is not None
+    # Checked as typed first: upper-casing turns ſ into S, ı into I and ß into SS.
+    return raw.isascii() and _IFSC.fullmatch(normalise_ifsc(raw)) is not None
 
 
 # Indian bank account numbers are 9 to 18 digits.
@@ -127,7 +130,8 @@ def normalise_upi_id(raw: str) -> str:
 
 
 def is_valid_upi_id(raw: str) -> bool:
-    return _UPI.fullmatch(normalise_upi_id(raw)) is not None
+    # Checked as typed first: lower-casing turns the Kelvin sign into k.
+    return raw.isascii() and _UPI.fullmatch(normalise_upi_id(raw)) is not None
 
 
 def mask_upi_id(raw: str) -> str:
@@ -159,6 +163,8 @@ def gstin_check_char(first14: str) -> str:
 
 def is_valid_gstin(raw: str) -> bool:
     """State codes 01-38, 97 (other territory) or 99 (centre), the shape, and the check."""
+    if not raw.isascii():  # upper-casing would turn ſ into S and ı into I
+        return False
     value = normalise_gstin(raw)
     if _GSTIN.fullmatch(value) is None:
         return False

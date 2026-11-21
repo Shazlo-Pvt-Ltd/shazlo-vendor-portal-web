@@ -68,7 +68,15 @@ def _valid_cm(value: object) -> bool:
         return False
     if not 0 < value <= MEASUREMENT_MAX_CM:
         return False
-    return abs(value * 10 - round(value * 10)) < 1e-9
+    # Whole tenths of a centimetre, at least one: 1e-12 is above 0 but rounds to no tenths.
+    tenths = value * 10
+    return round(tenths) >= 1 and abs(tenths - round(tenths)) < 1e-9
+
+
+def _as_tenths(value: Any) -> Any:
+    """A checked measurement as the tenth it stands for: float noise inside the check's
+    tolerance (96.0000000001) is stored as 96.0, not as sent. Whole numbers stay whole."""
+    return round(value, 1) if isinstance(value, float) else value
 
 
 def check_chart(group: SizeChartGroup, body: SizeChartIn) -> dict[str, str]:
@@ -109,7 +117,7 @@ def normalise(group: SizeChartGroup, measurements: dict[str, Any]) -> dict[str, 
     known = [size for size in measurements if size in ALL_SIZES]
     for size in sorted(known, key=ALL_SIZES.index):
         row = measurements[size]
-        full = {name: row.get(name) for name in MEASUREMENTS[group]}
+        full = {name: _as_tenths(row.get(name)) for name in MEASUREMENTS[group]}
         if any(value is not None for value in full.values()):
             out[size] = full
     return out

@@ -32,20 +32,38 @@ def has_hidden_characters(value: str, *, multiline: bool = False) -> bool:
     return False
 
 
-def _visible(value: str) -> str:
-    if has_hidden_characters(value):
+# Letters and symbols that draw nothing: the Hangul fillers and the blank braille cell. Unicode
+# does not class them as spaces or format characters, so neither `str.strip` nor the check above
+# removes them.
+_BLANK_LOOKING = frozenset({"ᅟ", "ᅠ", "ㅤ", "ﾠ", "⠀"}) | _ALLOWED_FORMAT
+
+
+def looks_blank(value: str) -> bool:
+    """Something is there, but a reader sees nothing: only spaces, fillers and lone joiners.
+    Empty and all-space text are not caught here; each field's own check asks for it."""
+    return (
+        not value.isspace()
+        and bool(value)
+        and all(char.isspace() or char in _BLANK_LOOKING for char in value)
+    )
+
+
+def _refuse_unreadable(value: str, *, multiline: bool) -> str:
+    if has_hidden_characters(value, multiline=multiline):
         raise PydanticCustomError(
             "hidden_characters", "Remove hidden or control characters from this text."
         )
+    if looks_blank(value):
+        raise PydanticCustomError("blank_text", "This looks empty. Type the text itself.")
     return value
+
+
+def _visible(value: str) -> str:
+    return _refuse_unreadable(value, multiline=False)
 
 
 def _visible_multiline(value: str) -> str:
-    if has_hidden_characters(value, multiline=True):
-        raise PydanticCustomError(
-            "hidden_characters", "Remove hidden or control characters from this text."
-        )
-    return value
+    return _refuse_unreadable(value, multiline=True)
 
 
 # Single-line text people type and others read (names, cities, addresses): no NUL, controls,
