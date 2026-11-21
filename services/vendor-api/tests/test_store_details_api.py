@@ -222,6 +222,8 @@ BAD: list[tuple[str, dict[str, Any], str]] = [
     ("brand", {**BRAND, "instagram_or_website": "javascript:alert(1)"}, "instagram_or_website"),
     ("contact", {**CONTACT, "phone": "12345"}, "phone"),
     ("contact", {**CONTACT, "email": "asha"}, "email"),
+    # 209 characters as sent; lower-casing turns each "İ" into two, past the 320 the column holds.
+    ("contact", {**CONTACT, "email": "İ" * 200 + "@kalki.in"}, "email"),
     ("contact", {**CONTACT, "name": "  "}, "name"),
     ("delivery", {"mode": "drone"}, "mode"),
     (

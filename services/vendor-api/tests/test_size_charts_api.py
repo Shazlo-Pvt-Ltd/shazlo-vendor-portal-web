@@ -166,10 +166,13 @@ async def test_bad_measurements_are_a_422_naming_the_place(
     assert any(loc == field or loc.startswith(field + ".") for loc in locs), locs
 
 
-@pytest.mark.parametrize("raw", ["1e309", "-1e309", "NaN", "Infinity"])
+@pytest.mark.parametrize(
+    "raw", ["1e309", "-1e309", "NaN", "Infinity", "1" + "0" * 400, "-1" + "0" * 400]
+)
 async def test_numbers_json_cannot_hold_are_refused(tenants: Tenants, raw: str) -> None:
     """Python's JSON parser reads 1e309 as infinity and accepts NaN; neither is a measurement
-    (and neither could be stored in JSONB or sent back as JSON)."""
+    (and neither could be stored in JSONB or sent back as JSON). A 401-digit integer stays an int
+    too large to become a float, so it must be refused before any float arithmetic, not raise."""
     response = await tenants.api.http.put(
         f"{PATH}/tops",
         content='{"measurements": {"M": {"chest": ' + raw + "}}}",

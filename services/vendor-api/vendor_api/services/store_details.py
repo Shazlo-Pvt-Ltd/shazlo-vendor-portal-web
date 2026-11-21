@@ -155,9 +155,14 @@ def check_contact(body: ContactIn) -> dict[str, str]:
         out["phone"] = "Enter a 10-digit Indian mobile number."
     if _blank(body.email):
         out["email"] = "Enter an email address."
-    elif not fmt.is_valid_email(body.email):
+    elif not fmt.is_valid_email(_stored_email(body.email)):
+        # Checked as stored: lower-casing can lengthen text ("İ" becomes two characters).
         out["email"] = "Enter an email address like name@example.com."
     return out
+
+
+def _stored_email(raw: str) -> str:
+    return raw.strip().lower()
 
 
 _PIN_LIKE = re.compile(r"[0-9][0-9\s]*")
@@ -428,7 +433,7 @@ class StoreDetailsService:
         elif isinstance(body, ContactIn):
             row.contact_name = body.name.strip()
             row.contact_phone = fmt.normalise_phone(body.phone)
-            row.contact_email = body.email.strip().lower()
+            row.contact_email = _stored_email(body.email)
         elif isinstance(body, DeliveryIn):
             row.delivery = _normalised_delivery(body)
         elif isinstance(body, ReturnsIn):

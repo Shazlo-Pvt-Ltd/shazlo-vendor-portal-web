@@ -62,7 +62,11 @@ class SizeChartIn(BaseModel):
 def _valid_cm(value: object) -> bool:
     if isinstance(value, bool) or not isinstance(value, int | float):
         return False
-    if not math.isfinite(value) or not 0 < value <= MEASUREMENT_MAX_CM:
+    # Only floats go through math.isfinite: JSON can carry an integer too large to become a
+    # float, and math.isfinite would raise on it. Comparing it with the limit below cannot.
+    if isinstance(value, float) and not math.isfinite(value):
+        return False
+    if not 0 < value <= MEASUREMENT_MAX_CM:
         return False
     return abs(value * 10 - round(value * 10)) < 1e-9
 
