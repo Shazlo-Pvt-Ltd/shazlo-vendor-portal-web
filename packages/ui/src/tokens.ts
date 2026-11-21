@@ -71,6 +71,8 @@ export interface TypeStyle {
 // Sizes are implementation choices retained from the original theme, not Penpot measurements.
 // Ovo and Schoolbell ship a single regular weight; avoid synthetic bold for body text.
 export const typeScale = {
+  // Editorial page titles (options board: "Editorial"); 32 px on phones.
+  pageTitle: { family: 'display', size: 48, lineHeight: 54, weight: 400, letterSpacing: -0.6 },
   displayXl: { family: 'display', size: 64, lineHeight: 68, weight: 400, letterSpacing: -1 },
   displayL: { family: 'display', size: 40, lineHeight: 44, weight: 400, letterSpacing: -0.5 },
   h1: { family: 'display', size: 24, lineHeight: 32, weight: 600, letterSpacing: -0.4 },

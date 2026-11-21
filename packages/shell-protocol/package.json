@@ -1,0 +1,17 @@
+{
+  "name": "@shazlo/shell-protocol",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ADR 0001 postMessage protocol between the Shazlo One shell and its module iframes",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  }
+}

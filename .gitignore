@@ -16,6 +16,11 @@ dist-ssr/
 build/
 coverage/
 reports/
+test-results/
+playwright-report/
+# Playwright baselines are committed for Linux (CI) only.
+**/e2e/__screenshots__/win32/
+**/e2e/__screenshots__/darwin/
 
 # Python
 __pycache__/
