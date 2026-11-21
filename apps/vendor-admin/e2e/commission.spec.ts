@@ -96,7 +96,10 @@ test('send back needs a note; on a phone the dialog’s buttons are full width a
   }
   await confirm.click()
   await expect(dialog.getByText('Write at least 10 characters.')).toBeVisible()
-  await dialog.getByRole('textbox', { name: 'Note to the brand' }).fill('We can agree 12% once you switch to Shazlo delivery.')
+  // The refused note gets focus back, so the reviewer can type at once.
+  const note = dialog.getByRole('textbox', { name: 'Note to the brand' })
+  await expect.poll(() => isActive(note)).toBe(true)
+  await note.fill('We can agree 12% once you switch to Shazlo delivery.')
   await confirm.click()
   await expect(dialog).toBeHidden()
   const card = m.getByRole('region', { name: 'Commission', exact: true })

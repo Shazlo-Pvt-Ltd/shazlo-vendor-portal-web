@@ -7,7 +7,7 @@ import { ApiError } from '../../api/http'
 import { useVendorAction } from '../../api/queries'
 import type { components } from '../../api/schema'
 import { REASON_MIN, vendorActionsCopy } from '../../copy/vendors'
-import { fieldProps, noAsterisk } from '../../lib/forms'
+import { fieldProps, noAsterisk, useFocusOnRefusal } from '../../lib/forms'
 import { dialogActions, usePhone } from '../../lib/responsive'
 
 const copy = vendorActionsCopy
@@ -42,18 +42,14 @@ export function ReasonDialog({ open, title, body, label, confirm, pending, onCan
     if (open) reset({ text: '' })
   }, [open, reset])
 
+  // A refused reason (by the form or by the API) puts focus back on the field, once it can take it.
+  const refused = useFocusOnRefusal(busy, () => setFocus('text'))
   const submit = handleSubmit(async ({ text }) => {
     const fieldError = await onSubmit(text.trim())
-    if (fieldError) setError('text', { type: 'server', message: fieldError })
-  })
-
-  // A refused reason (by the form or by the API) puts focus back on the field, once it can take it:
-  // the field is disabled while the form submits, and a disabled field cannot be focused, so react-hook-form's
-  // own focus (made during the submit) only lands if the form has already re-enabled it.
-  const refused = formState.errors.text
-  useEffect(() => {
-    if (refused && !busy) setFocus('text')
-  }, [refused, busy, setFocus])
+    if (!fieldError) return
+    refused()
+    setError('text', { type: 'server', message: fieldError })
+  }, refused)
 
   return (
     // The field's autoFocus loses to the dialog's focus trap, which focuses the dialog itself; focus the

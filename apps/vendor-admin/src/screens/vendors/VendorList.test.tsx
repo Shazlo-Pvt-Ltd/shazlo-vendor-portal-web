@@ -212,7 +212,7 @@ describe('A-08 Vendors', () => {
     await user.type(reason, 'Too short')
     await user.click(within(dialog).getByRole('button', { name: 'Suspend vendor' }))
     expect(await within(dialog).findByText('Write at least 10 characters.')).toBeInTheDocument()
-    // Focus returns once the dialog stops submitting, a render after the message appears.
+    // Focus returns to the reason once the dialog stops submitting.
     await waitFor(() => expect(reason).toHaveFocus())
     expect(db.vendors.find((v) => v.id === 'v_kalki')!.status).toBe('approved')
 
