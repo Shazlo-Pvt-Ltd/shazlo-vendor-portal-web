@@ -122,9 +122,12 @@ describe('A-09 Commission card', { timeout: 30_000 }, () => {
 
     await user.click(within(dialog).getByRole('button', { name: 'Save rate' }))
     expect(await within(dialog).findByText('Enter the commission, like 12.')).toBeInTheDocument()
+    // A refused rate puts focus back on the field.
+    expect(rate).toHaveFocus()
     await user.type(rate, '50')
     await user.click(within(dialog).getByRole('button', { name: 'Save rate' }))
     expect(await within(dialog).findByText('Enter a commission between 0% and 40%.')).toBeInTheDocument()
+    expect(rate).toHaveFocus()
     await user.clear(rate)
     await user.type(rate, '12.5')
     await user.type(within(dialog).getByRole('textbox', { name: 'Note to the brand (optional)' }), 'Agreed on the call with Meera.')

@@ -42,10 +42,15 @@ export function ReasonDialog({ open, title, body, label, confirm, pending, onCan
     if (open) reset({ text: '' })
   }, [open, reset])
 
-  const submit = handleSubmit(async ({ text }) => {
-    const fieldError = await onSubmit(text.trim())
-    if (fieldError) setError('text', { type: 'server', message: fieldError }, { shouldFocus: true })
-  })
+  // A refused reason puts focus back on the field. Explicitly: react-hook-form finds the field to
+  // focus through the fields it saw mounted, which the reset on open clears until the next render.
+  const submit = handleSubmit(
+    async ({ text }) => {
+      const fieldError = await onSubmit(text.trim())
+      if (fieldError) setError('text', { type: 'server', message: fieldError }, { shouldFocus: true })
+    },
+    () => setFocus('text'),
+  )
 
   return (
     // The field's autoFocus loses to the dialog's focus trap, which focuses the dialog itself; focus the

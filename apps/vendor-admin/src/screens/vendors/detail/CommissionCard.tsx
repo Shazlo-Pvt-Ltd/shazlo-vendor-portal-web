@@ -54,12 +54,17 @@ function SetRateDialog({ open, title, initial, onCancel, onSubmit, onExited }: {
     if (open) reset({ rate: initial, note: '' })
   }, [open, initial, reset])
 
-  const submit = handleSubmit(async ({ rate, note }) => {
-    const problems = await onSubmit({ bps: toBps(rate), note: note.trim() })
-    if (!problems) return
-    if (problems.rate) setError('rate', { type: 'server', message: problems.rate }, { shouldFocus: true })
-    if (problems.note) setError('note', { type: 'server', message: problems.note }, { shouldFocus: !problems.rate })
-  })
+  // A refused field gets focus explicitly, as in ReasonDialog (the reset on open clears the fields
+  // react-hook-form would look through until the next render).
+  const submit = handleSubmit(
+    async ({ rate, note }) => {
+      const problems = await onSubmit({ bps: toBps(rate), note: note.trim() })
+      if (!problems) return
+      if (problems.rate) setError('rate', { type: 'server', message: problems.rate }, { shouldFocus: true })
+      if (problems.note) setError('note', { type: 'server', message: problems.note }, { shouldFocus: !problems.rate })
+    },
+    (errors) => setFocus(errors.rate ? 'rate' : 'note'),
+  )
 
   return (
     // As in ReasonDialog: autoFocus loses to the focus trap, so the rate field is focused on entering.
