@@ -378,6 +378,81 @@ describe('A-09 Commission card when the data moves underneath', { timeout: 30_00
   })
 })
 
+// A refused field gets focus back once it can take it. The fields are disabled while a dialog
+// submits, so a focus made during the submit lands on nothing and the button keeps it.
+describe('A-09 Commission card focus after a refusal', { timeout: 30_000 }, () => {
+  it('returns focus to the note when the API refuses it', async () => {
+    const { user, db } = await open('v_rangrez', 'Rangrez Studio')
+    await user.click(within(card()).getByRole('button', { name: 'Send back' }))
+    const dialog = await screen.findByRole('dialog')
+    const note = within(dialog).getByRole('textbox', { name: 'Note to the brand' })
+    await user.click(note)
+    await user.paste('a'.repeat(601))
+    await user.click(within(dialog).getByRole('button', { name: 'Send back' }))
+    await within(dialog).findByText('Keep the note to 600 characters.')
+    await settle()
+    expect(vendorOf(db, 'v_rangrez').commission.state).toBe('proposed')
+    expect(note).toHaveFocus()
+  })
+
+  it('returns focus to the rate when the API refuses it', async () => {
+    server.use(
+      http.post('*/api/v1/admin/vendors/:id/commission/set', () =>
+        HttpResponse.json({ message: 'No.', extra: { code: 'validation_error', fields: { commission_bps: 'The API refuses this rate.' } } }, { status: 422 }),
+      ),
+    )
+    const { user } = await open('v_kesariya', 'Kesariya Prints')
+    await user.click(within(card()).getByRole('button', { name: 'Set rate' }))
+    const dialog = await screen.findByRole('dialog')
+    const rate = within(dialog).getByRole('textbox', { name: 'Commission' })
+    await user.type(rate, '12')
+    await user.click(within(dialog).getByRole('button', { name: 'Save rate' }))
+    await within(dialog).findByText('The API refuses this rate.')
+    await settle()
+    expect(rate).toHaveFocus()
+  })
+
+  it('focuses the note, not the rate, when only the note is refused', async () => {
+    const { user } = await open('v_kesariya', 'Kesariya Prints')
+    await user.click(within(card()).getByRole('button', { name: 'Set rate' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByRole('textbox', { name: 'Commission' }), '12')
+    const note = within(dialog).getByRole('textbox', { name: 'Note to the brand (optional)' })
+    await user.click(note)
+    await user.paste('a'.repeat(601))
+    await user.click(within(dialog).getByRole('button', { name: 'Save rate' }))
+    await within(dialog).findByText('Keep the note to 600 characters.')
+    await settle()
+    expect(note).toHaveFocus()
+  })
+
+  it('does not pull focus into the card on a later refresh after a failed approve', async () => {
+    server.use(
+      http.post('*/api/v1/admin/vendors/:id/commission/approve', () => HttpResponse.json({ message: 'Boom', extra: { code: 'server_error' } }, { status: 500 }), {
+        once: true,
+      }),
+    )
+    const { user, db } = await open('v_indigo', 'Indigo Loom')
+    await user.click(within(card()).getByRole('button', { name: 'Approve 10%' }))
+    await screen.findByRole('alert')
+    // The reviewer clicks on empty space to read the banner.
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    expect(document.activeElement).toBe(document.body)
+    // The brand changes its proposal, and the page refetches when the connection comes back.
+    vendorOf(db, 'v_indigo').commission = { ...vendorOf(db, 'v_indigo').commission, proposed_bps: 1100 }
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(Date.now() + 60_000)
+      onlineManager.setOnline(false)
+      onlineManager.setOnline(true)
+      await waitFor(() => expect(within(card()).getByRole('button', { name: 'Approve 11%' })).toBeInTheDocument())
+    } finally {
+      vi.useRealTimers()
+    }
+    expect(document.activeElement).toBe(document.body)
+  })
+})
+
 // The card is the page's one decision for an approved brand. Wherever the page is one column
 // (phones, tablets, and a laptop beside the shell's sidebar) it comes before the long application.
 describe('A-09 Commission card placement', { timeout: 30_000 }, () => {
