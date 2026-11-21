@@ -1001,7 +1001,7 @@
                 }
               }
             },
-            "description": "`unauthorized`: The access token is missing, invalid, expired, or its admin is deactivated."
+            "description": "`unauthorized`: The access token is missing, invalid, expired, or its admin is deactivated.\n\n`invalid_credentials`: The email or the password is wrong, or the admin is deactivated. From change-password: another password change or a deactivation finished first, so sign in again."
           },
           "422": {
             "content": {
@@ -1077,7 +1077,7 @@
                 }
               }
             },
-            "description": "`invalid_credentials`: The email or the password is wrong, or the admin is deactivated."
+            "description": "`invalid_credentials`: The email or the password is wrong, or the admin is deactivated. From change-password: another password change or a deactivation finished first, so sign in again."
           },
           "422": {
             "content": {

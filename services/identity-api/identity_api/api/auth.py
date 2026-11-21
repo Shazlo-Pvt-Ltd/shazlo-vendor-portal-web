@@ -290,7 +290,7 @@ async def logout(request: Request, auth: Auth, token: RefreshCookie = None) -> R
     "/change-password",
     responses=error_responses(
         (400, ("invalid_current_password",)),
-        (401, ("unauthorized",)),
+        (401, ("unauthorized", "invalid_credentials")),
         (422, ("weak_password", "validation_error")),
         (429, ("rate_limited",)),
         (503, ("rate_limiter_unavailable",)),

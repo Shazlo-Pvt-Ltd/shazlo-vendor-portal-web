@@ -51,7 +51,10 @@ class ErrorResponse(BaseModel):
 # What each error code means to a client, for the OpenAPI document. A code is described once, so
 # two endpoints that can answer it never describe it differently.
 ERROR_CODES: dict[str, str] = {
-    "invalid_credentials": "The email or the password is wrong, or the admin is deactivated.",
+    "invalid_credentials": (
+        "The email or the password is wrong, or the admin is deactivated. From change-password: "
+        "another password change or a deactivation finished first, so sign in again."
+    ),
     "invalid_refresh_token": "The refresh cookie is missing, expired or already revoked.",
     "refresh_conflict": (
         "Another request (usually another tab) used the same refresh cookie a moment ago. "

@@ -5,6 +5,7 @@ change from the shell's CI.
 """
 
 import json
+import re
 from typing import Any
 
 import pytest
@@ -40,6 +41,66 @@ SHELL_OPERATIONS = [
     ("patch", "/v1/admins/{admin_id}"),
     ("post", "/v1/admins/{admin_id}/reset-password"),
 ]
+
+# The error codes each shell operation can answer, by status. The shell branches on them, so a
+# code that disappears from an endpoint or moves to another one must fail here, not in the shell.
+SIGNED_IN = {"401": {"unauthorized"}, "403": {"password_change_required"}}
+ADMIN_ONLY = {"401": {"unauthorized"}, "403": {"password_change_required", "forbidden"}}
+DOCUMENTED_ERRORS: dict[tuple[str, str], dict[str, set[str]]] = {
+    ("post", "/v1/auth/login"): {
+        "401": {"invalid_credentials"},
+        "422": {"validation_error"},
+        "429": {"rate_limited"},
+        "503": {"rate_limiter_unavailable"},
+    },
+    ("post", "/v1/auth/refresh"): {
+        "401": {"invalid_refresh_token"},
+        "403": {"origin_not_allowed"},
+        "409": {"refresh_conflict"},
+        "422": {"validation_error"},
+        "429": {"rate_limited"},
+    },
+    ("post", "/v1/auth/logout"): {"403": {"origin_not_allowed"}, "422": {"validation_error"}},
+    ("post", "/v1/auth/change-password"): {
+        "400": {"invalid_current_password"},
+        # invalid_credentials: a concurrent password change or deactivation won the race.
+        "401": {"unauthorized", "invalid_credentials"},
+        "422": {"weak_password", "validation_error"},
+        "429": {"rate_limited"},
+        "503": {"rate_limiter_unavailable"},
+    },
+    ("post", "/v1/auth/token"): {
+        "400": {"unknown_audience", "audience_not_exchangeable"},
+        "401": {"unauthorized"},
+        "403": {"password_change_required", "audience_not_allowed"},
+        "422": {"validation_error"},
+        "429": {"rate_limited"},
+    },
+    ("get", "/v1/me"): SIGNED_IN,
+    ("get", "/v1/roles"): ADMIN_ONLY,
+    ("get", "/v1/admins"): {**ADMIN_ONLY, "422": {"validation_error"}},
+    ("post", "/v1/admins"): {
+        **ADMIN_ONLY,
+        "409": {"email_taken"},
+        "422": {"weak_password", "unknown_role", "validation_error"},
+    },
+    ("get", "/v1/admins/{admin_id}"): {
+        **ADMIN_ONLY,
+        "404": {"admin_not_found"},
+        "422": {"validation_error"},
+    },
+    ("patch", "/v1/admins/{admin_id}"): {
+        **ADMIN_ONLY,
+        "404": {"admin_not_found"},
+        "409": {"cannot_deactivate_self", "last_super_admin"},
+        "422": {"unknown_role", "validation_error"},
+    },
+    ("post", "/v1/admins/{admin_id}/reset-password"): {
+        **ADMIN_ONLY,
+        "404": {"admin_not_found"},
+        "422": {"weak_password", "validation_error"},
+    },
+}
 
 
 @pytest.fixture(scope="module")
@@ -87,13 +148,30 @@ def test_every_shell_operation_has_typed_bodies(
         assert "HTTPValidationError" not in json.dumps(schema)
 
 
+def test_the_table_covers_every_shell_operation() -> None:
+    assert set(DOCUMENTED_ERRORS) == set(SHELL_OPERATIONS)
+
+
+@pytest.mark.parametrize(("method", "path"), SHELL_OPERATIONS)
+def test_each_operation_documents_exactly_its_error_codes(
+    document: dict[str, Any], method: str, path: str
+) -> None:
+    responses = document["paths"][path][method]["responses"]
+    documented = {
+        status: set(re.findall(r"^`([a-z_]+)`:", response["description"], re.MULTILINE))
+        for status, response in responses.items()
+        if status[0] in "45"
+    }
+    assert documented == DOCUMENTED_ERRORS[(method, path)]
+
+
 def test_error_codes_are_described(document: dict[str, Any]) -> None:
     text = json.dumps(document)
     for code in SHELL_ERROR_CODES:
         assert f"`{code}`" in text, f"{code} is not described in openapi.json"
 
 
-def test_every_documented_code_is_a_known_code(document: dict[str, Any]) -> None:
+def test_every_known_code_is_documented(document: dict[str, Any]) -> None:
     from identity_api.core.errors import ERROR_CODES
 
     # `error_responses` raises KeyError for a code that is not described; this guards the other
