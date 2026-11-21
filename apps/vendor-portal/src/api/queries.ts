@@ -27,6 +27,7 @@ import { teamUserFromApi } from './adapters/team'
 import { downloadImportTemplate, importProducts } from './endpoints'
 import { ApiError, NetworkError } from './errors'
 import { getApiClient } from './instance'
+import { handleUnauthorized } from './session'
 import type {
   ApplicationReceipt,
   BrandPage,
@@ -551,9 +552,15 @@ async function signUp(application: VendorApplication): Promise<ApplicationReceip
   return { id: '', status: 'applied' }
 }
 
+/**
+ * Calls that carry a password (or a bank account number) are dropped from the mutation cache as
+ * soon as nothing watches them (`gcTime: 0`): with the screen's `reset()`, no copy outlives the call.
+ */
+const FORGET_AT_ONCE = { gcTime: 0 } as const
+
 /** Sign-up with the store details (`POST /v1/auth/signup`). A 422's fields are named as the steps name them. */
 export function useSignUp() {
-  return useMutation({ mutationFn: signUp })
+  return useMutation({ mutationFn: signUp, ...FORGET_AT_ONCE })
 }
 
 /** Build 2's name for {@link useSignUp}. */
@@ -580,7 +587,7 @@ export function useForgotPassword() {
  * `invalid_token` for a used or old link, 422 `weak_password` with the rule in the message.
  */
 export function useSetPassword() {
-  return useMutation({ mutationFn: async (body: { token: string; password: string }) => void (await call(client().POST('/v1/auth/set-password', { body }))) })
+  return useMutation({ mutationFn: async (body: { token: string; password: string }) => void (await call(client().POST('/v1/auth/set-password', { body }))), ...FORGET_AT_ONCE })
 }
 
 /** Build 2's name for {@link useSetPassword}. vendor-api does not sign in here, so it resolves with null. */
@@ -590,18 +597,29 @@ export function useAcceptInvite() {
       await call(client().POST('/v1/auth/set-password', { body }))
       return null
     },
+    ...FORGET_AT_ONCE,
   })
 }
 
 /**
  * Changes the signed-in user's password. vendor-api ends the user's other sessions and answers with
  * a new one: pass it to the session's `signIn` (it is not shown on any screen). 400
- * `invalid_current_password`, 422 `weak_password`.
+ * `invalid_current_password`, 422 `weak_password`. It needs the access token, but the client does
+ * not renew it for `/v1/auth/*` (a 401 there means a bad login), so a 401 renews the session here
+ * and the call is sent once more.
  */
 export function useChangePassword() {
   return useMutation({
-    mutationFn: ({ currentPassword, newPassword }: { currentPassword: string; newPassword: string }): Promise<SessionIn> =>
-      callObject(client().POST('/v1/auth/change-password', { body: { current_password: currentPassword, new_password: newPassword } })),
+    mutationFn: async ({ currentPassword, newPassword }: { currentPassword: string; newPassword: string }): Promise<SessionIn> => {
+      const send = () => callObject(client().POST('/v1/auth/change-password', { body: { current_password: currentPassword, new_password: newPassword } }))
+      try {
+        return await send()
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401 && (await handleUnauthorized())) return send()
+        throw error
+      }
+    },
+    ...FORGET_AT_ONCE,
   })
 }
 
@@ -639,10 +657,26 @@ export function useDiscardBrandDraft() {
   })
 }
 
+/**
+ * vendor-api sends a brand page for review only with a category (422 `profile_incomplete`), and
+ * Build 2 no longer asks for categories: "who you sell for" in the store details replaced them. A
+ * draft without one takes that answer (women, men or both) before it is sent. Without store
+ * details the submit is refused as before, and the editor says to fill them in.
+ */
+async function ensureBrandCategories(qc: QueryClient): Promise<void> {
+  const draft = await brandDraft()
+  if (Array.isArray(draft.categories) && draft.categories.length > 0) return
+  const sells = (await storeDetails(qc).catch(() => null))?.sells
+  if (!sells) return
+  const categories = sells === 'both' ? ['women', 'men'] : [sells]
+  await callObject(client().PUT('/v1/vendor/brand-profile', { body: { ...publishedAsBody(draft), categories } }))
+}
+
 export function useSubmitBrandPage() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async () => {
+      await ensureBrandCategories(qc)
       await callObject(client().POST('/v1/vendor/brand-profile/submit'))
       return brandPage()
     },
@@ -703,8 +737,9 @@ function useProductWrite<TVars>(send: (vars: TVars) => Promise<Schemas['Product'
     mutationFn: send,
     onSuccess: (product) => {
       qc.setQueryData(keys.product(product.id), product)
-      void qc.invalidateQueries({ queryKey: keys.allProducts })
+      // Counts first: the list's refetch reads them, and must not reuse the old ones.
       void qc.invalidateQueries({ queryKey: keys.counts })
+      void qc.invalidateQueries({ queryKey: keys.allProducts })
       void qc.invalidateQueries({ queryKey: keys.productIndex })
       void qc.invalidateQueries({ queryKey: keys.summary })
       void qc.invalidateQueries({ queryKey: keys.allReviews })
@@ -778,28 +813,33 @@ export function useRemoveProductImage(id: string) {
 
 const KIND: Record<UploadPurpose, AssetKind> = { logo: 'brand_logo', cover: 'brand_banner', product: 'product_image', size_chart: 'product_image' }
 
-/** Sign → upload to Cloudinary → register (main's pipeline, features/uploads/upload.ts). */
+/** Sign → upload to Cloudinary → register (main's pipeline, api/uploads/upload.ts). */
 async function upload(file: File, purpose: UploadPurpose, options: { signal?: AbortSignal; onProgress?: (fraction: number) => void } = {}): Promise<UploadedImage> {
   const asset = await uploadImage(file, KIND[purpose], { signal: options.signal ?? new AbortController().signal, onProgress: options.onProgress })
   rememberAsset(asset.url, asset.id)
   return { key: asset.id, url: asset.url }
 }
 
-async function attachPhoto(qc: QueryClient, productId: string, file: File, angle: PhotoAngle): Promise<Product> {
-  const { key } = await upload(file, 'product')
+type PhotoUpload = { file: File; angle: PhotoAngle; signal?: AbortSignal; onProgress?: (fraction: number) => void }
+
+async function attachPhoto(qc: QueryClient, productId: string, { file, angle, signal, onProgress }: PhotoUpload): Promise<Product> {
+  const { key } = await upload(file, 'product', { signal, onProgress })
+  // Cancelled after the image host had it: it is registered, but not put on the product.
+  if (signal?.aborted) throw new DOMException('The upload was cancelled.', 'AbortError')
   return putContent(qc, productId, (raw) => addImage(contentFromInput({}, raw, newProductCode), { assetId: key, angle }))
 }
 
+/** Uploads a photo into a slot. `signal` cancels it (an AbortError); `onProgress` reports 0 to 1 while the file is sent. */
 export function useAddProductImage(id: string) {
   const qc = useQueryClient()
-  return useProductWrite(({ file, angle }: { file: File; angle: Schemas['PhotoAngle'] }) => attachPhoto(qc, id, file, angle))
+  return useProductWrite((photo: PhotoUpload) => attachPhoto(qc, id, photo))
 }
 
 // The same upload for any product, chosen per call: photos picked after a bulk import are matched
 // to the new drafts by name (matchPhotoFile in src/lib/catalog.ts), then attached one by one.
 export function useAttachProductPhoto() {
   const qc = useQueryClient()
-  return useProductWrite(({ productId, file, angle }: { productId: string; file: File; angle: Schemas['PhotoAngle'] }) => attachPhoto(qc, productId, file, angle))
+  return useProductWrite(({ productId, ...photo }: PhotoUpload & { productId: string }) => attachPhoto(qc, productId, photo))
 }
 
 // Moves a photo to another slot ("Make main photo" = angle 'front'); a taken named slot swaps.
@@ -836,8 +876,9 @@ export function useBulkProducts() {
       return { results }
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.allProducts })
+      // Counts first: the list's refetch reads them, and must not reuse the old ones.
       void qc.invalidateQueries({ queryKey: keys.counts })
+      void qc.invalidateQueries({ queryKey: keys.allProducts })
       void qc.invalidateQueries({ queryKey: keys.summary })
       void qc.invalidateQueries({ queryKey: keys.allReviews })
       void qc.invalidateQueries({ queryKey: keys.allSubmissions })
@@ -886,7 +927,7 @@ export function useStartImport() {
       } catch (error) {
         // A problem with the whole file is the job's failure, shown like Build 2's "failed" check.
         if (!(error instanceof ApiError && error.status === 422 && FILE_PROBLEMS.has(error.code))) throw error
-        job = { id, status: 'failed', file_name: file.name, total_rows: 0, ok_rows: 0, ok_products: 0, error_rows: 0, errors: [{ row: 1, product: null, column: WHOLE_ROW, field: null, message: error.message }] }
+        job = { id, status: 'failed', file_name: file.name, total_rows: 0, ok_rows: 0, ok_products: 0, unchanged: 0, error_rows: 0, errors: [{ row: 1, product: null, column: WHOLE_ROW, field: null, code: error.code, message: error.message }], ignored_columns: [], errors_truncated: false }
       }
       importJobs.set(id, { file, job })
       qc.setQueryData(keys.importJob(id), job)
@@ -916,8 +957,9 @@ export function useCommitImport() {
       return importCommitFromReport(report, titles)
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.allProducts })
+      // Counts first: the list's refetch reads them, and must not reuse the old ones.
       void qc.invalidateQueries({ queryKey: keys.counts })
+      void qc.invalidateQueries({ queryKey: keys.allProducts })
       void qc.invalidateQueries({ queryKey: keys.productIndex })
       void qc.invalidateQueries({ queryKey: keys.summary })
       void qc.invalidateQueries({ queryKey: keys.me })
@@ -932,8 +974,9 @@ export function useRunImport() {
     mutationFn: async ({ file, mode }: { file: File; mode: ImportMode }): Promise<ImportReport> => importReportFromApi(await importProducts(file, { mode })),
     onSuccess: (report) => {
       if (!report.committed) return
-      void qc.invalidateQueries({ queryKey: keys.allProducts })
+      // Counts first: the list's refetch reads them, and must not reuse the old ones.
       void qc.invalidateQueries({ queryKey: keys.counts })
+      void qc.invalidateQueries({ queryKey: keys.allProducts })
       void qc.invalidateQueries({ queryKey: keys.productIndex })
       void qc.invalidateQueries({ queryKey: keys.summary })
     },

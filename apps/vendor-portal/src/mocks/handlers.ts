@@ -88,7 +88,9 @@ type Params = Record<string, string | readonly string[] | undefined>
 const UPLOAD_ORIGIN = 'https://api.cloudinary.com'
 const CLOUDINARY_CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': '*' }
 const MAX_UPLOAD = 10 * 1024 * 1024
-const MAX_IMPORT_BYTES = 5 * 1024 * 1024
+// vendor-api's defaults (settings.import_max_bytes, import_max_rows).
+const MAX_IMPORT_BYTES = 2 * 1024 * 1024
+const MAX_IMPORT_ROWS = 1000
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const PHONE = /^\+?[0-9][0-9 ()-]{5,29}[0-9]$/
@@ -591,9 +593,9 @@ function draftOut(db: MockDb, vendor: VendorRecord, draft: BrandVersion): DraftO
 
 // ---- passwords -----------------------------------------------------------------------------------
 
-/** vendor-api's password rule, in short: 10 to 128 characters. */
+/** vendor-api's password rule, in short: 12 (its `password_min_length` default) to 128 characters. */
 function weakPassword(password: unknown): string | null {
-  if (typeof password !== 'string' || password.length < 10) return 'Use at least 10 characters.'
+  if (typeof password !== 'string' || password.length < 12) return 'Use at least 12 characters.'
   if (password.length > 128) return 'Use at most 128 characters.'
   return null
 }
@@ -1149,11 +1151,12 @@ export function createHandlers(getDb: GetDb, { base = '*' }: { base?: string } =
       const type = (request.headers.get('Content-Type') ?? '').split(';')[0]!.trim()
       if (type !== 'text/csv' && type !== 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return fail(db, 415, 'unsupported_media_type', 'Upload a .csv or .xlsx file')
       const bytes = await request.arrayBuffer()
-      if (bytes.byteLength > MAX_IMPORT_BYTES) return fail(db, 413, 'file_too_large', 'The file is larger than 5 MB')
+      if (bytes.byteLength > MAX_IMPORT_BYTES) return fail(db, 413, 'file_too_large', `The file is larger than ${MAX_IMPORT_BYTES / 1024} KB. Split it in parts`)
       if (type !== 'text/csv') return fail(db, 422, 'invalid_file', 'The demo reads .csv files only. Save the sheet as CSV and try again.')
       const text = new TextDecoder().decode(bytes)
       if (!text.trim()) return fail(db, 422, 'invalid_file', 'The file is empty')
       const sheet = checkCsv(text)
+      if (sheet.rowsRead > MAX_IMPORT_ROWS) return fail(db, 422, 'too_many_rows', `The file has more than ${MAX_IMPORT_ROWS} rows. Split it into smaller files and import each one`)
       if (sheet.rowsRead === 0 && sheet.problems.length > 0) {
         const missing = sheet.problems.map((p) => p.column).filter(Boolean)
         return fail(db, 422, 'missing_columns', `The file has no column named ${missing.join(', ')}`)

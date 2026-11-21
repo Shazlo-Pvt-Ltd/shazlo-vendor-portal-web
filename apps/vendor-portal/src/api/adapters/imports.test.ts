@@ -32,12 +32,24 @@ describe('importJobFromReport', () => {
       total_rows: 3,
       ok_rows: 2,
       ok_products: 2,
+      unchanged: 0,
       error_rows: 1,
       errors: [
-        { row: 4, product: null, column: 'Sizes and stock', field: 'sizes_stock', message: 'Write sizes like S:4, M:6.' },
-        { row: 4, product: null, column: 'Whole row', field: null, message: 'This row repeats row 2.' },
+        { row: 4, product: null, column: 'Sizes and stock', field: 'sizes_stock', code: 'invalid_value', message: 'Write sizes like S:4, M:6.' },
+        { row: 4, product: null, column: 'Whole row', field: null, code: 'duplicate_row', message: 'This row repeats row 2.' },
       ],
+      ignored_columns: [],
+      errors_truncated: false,
     })
+  })
+
+  it('says which products are already there, which columns were ignored and when the list of problems was cut short', () => {
+    const job = importJobFromReport(
+      'job-5',
+      'x.csv',
+      report({ summary: { products: 3, created: 0, unchanged: 1, valid: 1, rejected: 1, rows_read: 3, rows_with_errors: 1 }, ignored_columns: ['notes', 'Colour code'], errors_truncated: true }),
+    )
+    expect(job).toMatchObject({ unchanged: 1, ok_products: 1, ignored_columns: ['notes', 'Colour code'], errors_truncated: true })
   })
 
   it('calls a file with no readable row failed', () => {

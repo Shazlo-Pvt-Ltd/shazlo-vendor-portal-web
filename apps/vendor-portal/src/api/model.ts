@@ -308,6 +308,31 @@ export interface Product {
   updated_at: string
   /** A change to a live product is waiting for review; the live version stays on sale. */
   edit_in_review: boolean
+  /** What shoppers see now, beside the version being changed (the editor's revision card); null until one is approved. */
+  live: ProductVersion | null
+  /** The version being edited or reviewed; null when there is none (a live product nobody is changing). */
+  working: WorkingVersion | null
+}
+/** One version of a product's content, as shoppers see it once approved. */
+export interface ProductVersion {
+  version: number
+  title: string
+  description: string
+  category: ProductType | null
+  gender: Gender | null
+  material: string
+  main_colour: string | null
+  other_colours: string[]
+  price_paise: number | null
+  mrp_paise: number | null
+  images: ProductImage[]
+  variants: Variant[]
+}
+/** `submitted_at` is set once this version was sent for review: deleting then archives instead of erasing. */
+export interface WorkingVersion {
+  version: number
+  state: 'editing' | 'in_review' | 'rejected' | 'withdrawn'
+  submitted_at: string | null
 }
 export interface BulkResult {
   results: { id: string; ok: boolean; code?: string; message?: string }[]
@@ -350,6 +375,8 @@ export interface ImportError {
   /** The column in plain words. */
   column: string
   field: ImportColumn | null
+  /** vendor-api's code for the problem (`invalid_value`, `required`…), for the error report. */
+  code: string
   message: string
 }
 export interface ImportJob {
@@ -359,8 +386,14 @@ export interface ImportJob {
   total_rows: number
   ok_rows: number
   ok_products: number
+  /** Products already in the seller's list: importing leaves them as they are. */
+  unchanged: number
   error_rows: number
   errors: ImportError[]
+  /** Header cells that are not template columns; they are ignored. */
+  ignored_columns: string[]
+  /** More problems than vendor-api lists: fix these, check again, and the rest show. */
+  errors_truncated: boolean
 }
 export interface ImportCommit {
   created: number
@@ -502,6 +535,8 @@ export interface Schemas {
   Variant: Variant
   ProductInput: ProductInput
   Product: Product
+  ProductVersion: ProductVersion
+  WorkingVersion: WorkingVersion
   ReviewItem: ReviewItem
   ReviewPage: ReviewPage
   ImportColumn: ImportColumn

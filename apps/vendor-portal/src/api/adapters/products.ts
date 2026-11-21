@@ -6,7 +6,7 @@
  */
 import { isNamedAngle, MAX_OTHER_COLOURS, sizeCode, sortSizes } from '../../lib/catalog'
 import { remapFieldErrors } from '../errors'
-import type { PhotoAngle, Product, ProductHistoryEntry, ProductInput, ProductSummary, ReviewState, SubmitRequirement, Variant } from '../model'
+import type { PhotoAngle, Product, ProductHistoryEntry, ProductInput, ProductSummary, ProductVersion, ReviewState, SubmitRequirement, Variant, WorkingVersion } from '../model'
 import type { CreateProductBody, ImageBody, ImageOut, ProductContentBody, ProductOut, ProductSummaryIn, RevisionOut, VariantBody, VariantOut } from '../wire'
 import {
   asArray,
@@ -88,14 +88,12 @@ function historyOf(out: ProductOut): ProductHistoryEntry[] {
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
 }
 
-/** vendor-api's product (both revisions) as the editor's product. */
-export function productFromApi(out: ProductOut): Product {
-  const revision = sourceRevision(out)
+/** A revision's content as the screens show it: one price, sizes with stock, photos in slot order. */
+function versionOf(revision: RevisionOut | null): ProductVersion {
   const variants = activeVariants(revision)
   const priced = variants.find((v) => positiveInt(v.price_paise) !== null)
-  const working = isObject(out.working) ? out.working : null
   return {
-    id: text(out.id),
+    version: positiveInt(revision?.version) ?? 1,
     title: text(revision?.title),
     description: text(revision?.description),
     category: productTypeFromApi(revision?.category),
@@ -103,8 +101,6 @@ export function productFromApi(out: ProductOut): Product {
     material: text(revision?.fabric),
     main_colour: textOrNull(revision?.main_colour),
     other_colours: asArray(revision?.other_colours).filter((c): c is string => typeof c === 'string').slice(0, MAX_OTHER_COLOURS),
-    sku: text(out.sku),
-    status: productStatusFromApi(out.status),
     price_paise: priced ? positiveInt(priced.price_paise) : null,
     mrp_paise: priced ? positiveInt(priced.mrp_paise) : null,
     images: imagesOf(revision).map((image) => ({ id: image.asset_id, url: text(image.url), angle: oneOf(PHOTO_ANGLES, image.angle) ?? 'extra' })),
@@ -112,10 +108,29 @@ export function productFromApi(out: ProductOut): Product {
       variants.map((v): Variant => ({ size: text(v.size), sku: text(v.sku), stock: Math.max(0, Math.trunc(Number(v.stock) || 0)) })),
       (v) => v.size,
     ),
+  }
+}
+
+const WORKING_STATES = ['editing', 'in_review', 'rejected', 'withdrawn'] as const satisfies readonly WorkingVersion['state'][]
+
+/** vendor-api's product (both revisions) as the editor's product. */
+export function productFromApi(out: ProductOut): Product {
+  const working = isObject(out.working) ? out.working : null
+  const live = isObject(out.live) ? out.live : null
+  const { version: _version, ...content } = versionOf(sourceRevision(out))
+  return {
+    id: text(out.id),
+    ...content,
+    sku: text(out.sku),
+    status: productStatusFromApi(out.status),
     review: reviewOf(out),
     history: historyOf(out),
     updated_at: text(out.updated_at),
-    edit_in_review: isObject(out.live) && working?.state === 'in_review',
+    edit_in_review: live !== null && working?.state === 'in_review',
+    live: live ? versionOf(live) : null,
+    working: working
+      ? { version: positiveInt(working.version) ?? 1, state: oneOf(WORKING_STATES, working.state) ?? 'editing', submitted_at: isoOrNull(working.submitted_at) }
+      : null,
   }
 }
 
@@ -180,8 +195,10 @@ function imageBodies(revision: RevisionOut | null): ImageBody[] {
 function variantBodies(input: ProductInput, revision: RevisionOut | null, productCode: string): VariantBody[] {
   const existing = activeVariants(revision)
   const priced = existing.find((v) => positiveInt(v.price_paise) !== null)
+  // An MRP can be there before any price is (a draft): keep it when only the price is sent.
+  const withMrp = priced ?? existing.find((v) => positiveInt(v.mrp_paise) !== null)
   const price = input.price_paise !== undefined ? input.price_paise : (priced?.price_paise ?? null)
-  const mrp = input.mrp_paise !== undefined ? input.mrp_paise : (priced?.mrp_paise ?? null)
+  const mrp = input.mrp_paise !== undefined ? input.mrp_paise : (withMrp?.mrp_paise ?? null)
   const sizes =
     input.variants ??
     existing.map((v): Variant => ({ size: text(v.size), sku: text(v.sku), stock: Math.max(0, Math.trunc(Number(v.stock) || 0)) }))

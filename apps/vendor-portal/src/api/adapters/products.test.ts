@@ -169,7 +169,48 @@ describe('productFromApi', () => {
 
   it('makes an empty product of one with no revision at all', () => {
     const p = productFromApi(product({ working: null, live: null }))
-    expect(p).toMatchObject({ title: '', images: [], variants: [], category: null })
+    expect(p).toMatchObject({ title: '', images: [], variants: [], category: null, live: null, working: null })
+  })
+
+  it('keeps what is live beside the version being changed (the revision card)', () => {
+    const live = revision({ id: 'rev-1', state: 'live', title: 'Old title', submitted_at: T0, review: { status: 'approved', reason: null, decided_at: T1 } })
+    const working = revision({
+      id: 'rev-2',
+      version: 2,
+      state: 'editing',
+      title: 'New title',
+      variants: [{ id: 'v-m', sku: 'KS-1-M', size: 'M', color: '', price_paise: 199900, mrp_paise: 299900, is_active: true, stock: 9 }],
+    })
+    const p = productFromApi(product({ status: 'approved', live, working }))
+    expect(p.title).toBe('New title')
+    expect(p.price_paise).toBe(199900)
+    expect(p.live).toMatchObject({ version: 1, title: 'Old title', price_paise: 249900, mrp_paise: 299900, category: 'Kurtas', gender: 'Women', material: 'Cotton mul', main_colour: 'Indigo' })
+    expect(p.live?.variants).toEqual([
+      { size: 'S', sku: 'KS-1-S', stock: 2 },
+      { size: 'M', sku: 'KS-1-M', stock: 4 },
+    ])
+    expect(p.live?.images.map((i) => i.angle)).toEqual(['front', 'back', 'tryon'])
+    expect(p.working).toEqual({ version: 2, state: 'editing', submitted_at: null })
+  })
+
+  it('says which version is being changed and whether it was ever sent (the delete rules need it)', () => {
+    expect(productFromApi(product()).working).toEqual({ version: 1, state: 'editing', submitted_at: null })
+    const rejected = revision({ state: 'rejected', submitted_at: T1, review: { status: 'rejected', reason: 'x', decided_at: T2 } })
+    expect(productFromApi(product({ status: 'rejected', working: rejected })).working).toEqual({ version: 1, state: 'rejected', submitted_at: T1 })
+    expect(productFromApi(product({ working: revision({ state: 'mystery' }) })).working?.state).toBe('editing')
+    expect(productFromApi(product({ working: revision({ version: 0 as never }) })).working?.version).toBe(1)
+  })
+})
+
+describe('contentFromInput keeps the MRP', () => {
+  it('when no size has a price yet and only the price is sent', () => {
+    const working = revision({
+      variants: [
+        { id: 'v-m', sku: 'KS-1-M', size: 'M', color: '', price_paise: null, mrp_paise: 299900, is_active: true, stock: 4 },
+      ],
+    })
+    const body = contentFromInput({ price_paise: 199900 }, product({ working }), () => 'X')
+    expect(body.variants).toMatchObject([{ size: 'M', price_paise: 199900, mrp_paise: 299900 }])
   })
 })
 

@@ -50,7 +50,7 @@ export function importReportFromApi(r: ImportReportOut): ImportReport {
 /** A checked (or imported) file as Build 2's import job. */
 export function importJobFromReport(id: string, fileName: string, r: ImportReportOut): ImportJob {
   const report = importReportFromApi(r)
-  const { rowsRead, rowsWithErrors, valid, created } = report.summary
+  const { rowsRead, rowsWithErrors, valid, created, unchanged } = report.summary
   const status: ImportJob['status'] = report.committed ? 'committed' : rowsRead === 0 && report.errors.length > 0 ? 'failed' : 'ready'
   return {
     id,
@@ -59,6 +59,7 @@ export function importJobFromReport(id: string, fileName: string, r: ImportRepor
     total_rows: rowsRead,
     ok_rows: Math.max(0, rowsRead - rowsWithErrors),
     ok_products: valid + created,
+    unchanged,
     error_rows: rowsWithErrors,
     errors: report.errors.map((e) => {
       const field = oneOf(IMPORT_COLUMNS, e.column) ?? null
@@ -67,9 +68,12 @@ export function importJobFromReport(id: string, fileName: string, r: ImportRepor
         product: null,
         column: field ? catalogCopy.importColumns[field] : (e.column ?? WHOLE_ROW),
         field,
+        code: e.code,
         message: e.message,
       }
     }),
+    ignored_columns: report.ignoredColumns,
+    errors_truncated: report.errorsTruncated,
   }
 }
 

@@ -12,6 +12,7 @@ import { ApiError } from './errors'
 import {
   useAddProductImage,
   useBrandPage,
+  useBulkProducts,
   useCommitImport,
   useCreateProduct,
   useImportJob,
@@ -193,6 +194,43 @@ describe('products', () => {
     expect(product!.images.filter((i) => i.angle === 'back')).toHaveLength(1)
     const back = product!.images.find((i) => i.angle === 'back')!
     expect(db().assets.get(back.id)).toMatchObject({ status: 'ready', kind: 'product_image' })
+  })
+
+  it('reports a photo upload\'s progress, and a cancelled one adds nothing', async () => {
+    const { wrapper } = await signedIn()
+    const id = bySku('KS-AJR-014').id
+    const add = renderHook(() => useAddProductImage(id), { wrapper })
+    const progress: number[] = []
+    await act(async () => {
+      await add.result.current.mutateAsync({ file: new File(['jpeg-bytes'], 'back.jpg', { type: 'image/jpeg' }), angle: 'back', onProgress: (f) => progress.push(f) })
+    })
+    expect(progress[0]).toBe(0)
+    expect(progress.at(-1)).toBe(1)
+
+    const before = db().products.find((p) => p.id === id)!.working!.content.images.length
+    const cancel = new AbortController()
+    cancel.abort()
+    let error: unknown
+    await act(async () => {
+      error = await add.result.current.mutateAsync({ file: new File(['jpeg-bytes'], 'worn.jpg', { type: 'image/jpeg' }), angle: 'extra', signal: cancel.signal }).catch((e: unknown) => e)
+    })
+    expect(error).toBeInstanceOf(DOMException)
+    expect((error as DOMException).name).toBe('AbortError')
+    expect(db().products.find((p) => p.id === id)!.working!.content.images).toHaveLength(before)
+  })
+})
+
+describe('after a change', () => {
+  it('the list shows fresh counts once a product is archived or sent', async () => {
+    const { wrapper } = await signedIn()
+    const list = renderHook(() => useProducts({ status: 'approved' }), { wrapper })
+    await waitFor(() => expect(list.result.current.data?.counts).toMatchObject({ approved: 18, archived: 0 }))
+    const bulk = renderHook(() => useBulkProducts(), { wrapper })
+    await act(async () => {
+      await bulk.result.current.mutateAsync({ action: 'archive', ids: [bySku('KS-BDN-022').id] })
+    })
+    await waitFor(() => expect(list.result.current.data?.counts).toMatchObject({ approved: 17, archived: 1 }))
+    expect(list.result.current.data?.items).toHaveLength(17)
   })
 })
 

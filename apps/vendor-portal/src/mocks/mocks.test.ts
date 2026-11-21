@@ -99,6 +99,15 @@ describe('mock auth behaves like vendor-api', () => {
     expect((await send('POST', '/v1/auth/login', DEMO_LOGIN)).status).toBe(429)
     expect((await send('POST', '/v1/auth/login', DEMO_LOGIN)).status).toBe(200)
   })
+
+  it('asks for passwords of 12 to 128 characters, like vendor-api\'s default setting', async () => {
+    const { send, use } = api()
+    use((await send('POST', '/v1/auth/login', DEMO_LOGIN)).body.access_token)
+    const change = (next: string) => send('POST', '/v1/auth/change-password', { current_password: DEMO_LOGIN.password, new_password: next })
+    expect((await change('elevenchars')).body).toMatchObject({ error: { code: 'weak_password' } })
+    expect((await change('x'.repeat(129))).body).toMatchObject({ error: { code: 'weak_password' } })
+    expect((await change('twelve chars')).status).toBe(200)
+  })
 })
 
 describe('the three later proposals, on or off', () => {
@@ -169,6 +178,26 @@ describe('decide (an admin\'s decision, for tests and the demo)', () => {
     decide(db, { productId: skirt.id }, { approve: false, reason: 'Plain background, please.' })
     expect(skirt.status).toBe('rejected')
     expect(db.submissions.find((s) => s.product_id === skirt.id)).toMatchObject({ status: 'rejected', reason: 'Plain background, please.' })
+  })
+})
+
+describe('the bulk import keeps the limits of vendor-api', () => {
+  it('refuses a file over 2 MB (413) and one over 1,000 rows (422 too_many_rows)', async () => {
+    const db = createDb()
+    const handlers = createHandlers(() => db)
+    const login = await getResponse(handlers, new Request('https://api.test/v1/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(DEMO_LOGIN) }))
+    const token = ((await login!.json()) as { access_token: string }).access_token
+    const post = (body: string) =>
+      getResponse(handlers, new Request('https://api.test/v1/vendor/products/import?mode=validate', { method: 'POST', headers: { 'Content-Type': 'text/csv', Authorization: `Bearer ${token}` }, body }))
+    const [header, row] = IMPORT_TEMPLATE.split('\n')
+    const big = await post(`${header}\n${'x'.repeat(2 * 1024 * 1024)}`)
+    expect(big!.status).toBe(413)
+    expect(((await big!.json()) as Body).error.code).toBe('file_too_large')
+    const long = await post([header, ...Array.from({ length: 1001 }, () => row)].join('\n'))
+    expect(long!.status).toBe(422)
+    expect(((await long!.json()) as Body).error.code).toBe('too_many_rows')
+    const fine = await post([header, ...Array.from({ length: 1000 }, (_, i) => row!.replace('Relaxed Linen Shirt', `Shirt ${i}`))].join('\n'))
+    expect(fine!.status).toBe(200)
   })
 })
 
