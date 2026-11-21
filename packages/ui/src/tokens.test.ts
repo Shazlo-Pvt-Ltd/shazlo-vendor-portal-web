@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { brand, contrastRatio, link, neutral, reviewStatus, status, statusBackground, theme, voyageFontFaces } from './index'
+import { brand, contrastRatio, link, navyText, neutral, reviewStatus, status, statusBackground, theme, voyageFontFaces } from './index'
 
 describe('contrastRatio', () => {
   it('matches the WCAG reference values', () => {
@@ -25,6 +25,10 @@ describe('tokens meet WCAG AA', () => {
     expect(contrastRatio(brand.wine, theme.palette.primary.dark)).toBeGreaterThanOrEqual(4.5)
     expect(contrastRatio(brand.offWhite, brand.navy)).toBeGreaterThanOrEqual(4.5)
     expect(contrastRatio(brand.offWhite, theme.palette.secondary.dark)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('quiet caption labels on navy (the Shazlo One sidebar section labels)', () => {
+    expect(contrastRatio(navyText.quiet, brand.navy)).toBeGreaterThanOrEqual(4.5)
   })
 
   it('status text on surfaces and its corresponding fill', () => {

@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Box, Button, IconButton, InputAdornment, Stack, TextField, Typography } from '@mui/material'
-import { Banner, brand, fontFamily, Logo } from '@shazlo/ui'
+import { Banner, brand, fontFamily, Logo, navyText } from '@shazlo/ui'
 import { Eye, EyeOff, ShieldCheck, Store, Users } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -65,7 +65,7 @@ export default function SignIn() {
             })}
           </Stack>
         </Box>
-        <Typography variant="caption" sx={{ color: 'rgba(255, 252, 227, 0.55)' }}>{copy.internal}</Typography>
+        <Typography variant="caption" sx={{ color: navyText.quiet }}>{copy.internal}</Typography>
       </Box>
       <Box component="main" sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', px: 2, py: 6 }}>
         <Box sx={{ width: '100%', maxWidth: 400 }}>
