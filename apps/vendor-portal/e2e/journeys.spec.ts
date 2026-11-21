@@ -8,7 +8,7 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 
 test('a new brand applies to sell in seven short steps', async ({ page }) => {
   await freezeTime(page)
-  await page.goto('/apply')
+  await page.goto('/signup')
   const step = (title: string) => expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible()
   const next = () => page.getByRole('button', { name: 'Continue' }).click()
   await page.getByRole('button', { name: 'Start' }).click()
@@ -23,6 +23,7 @@ test('a new brand applies to sell in seven short steps', async ({ page }) => {
   await page.getByRole('textbox', { name: 'Your name' }).fill('Meera Joshi')
   await page.getByRole('textbox', { name: 'Mobile number' }).fill('98290 12345')
   await page.getByRole('textbox', { name: 'Email' }).fill('meera@neelindigo.in')
+  await page.getByLabel('Choose a password', { exact: true }).fill('indigo-house-2026')
   await next()
 
   await step('Delivery')
@@ -55,6 +56,8 @@ test('a new brand applies to sell in seven short steps', async ({ page }) => {
   await step('Check your answers')
   await page.getByRole('button', { name: 'Send application' }).click()
   await expect(page.getByRole('heading', { name: 'Application received' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Confirm your email' })).toBeVisible()
+  await expect(page.getByText(/We sent an email to meera@neelindigo\.in/)).toBeVisible()
 })
 
 test('a seller fixes a sent-back product and resubmits it', async ({ page }, testInfo) => {
@@ -82,7 +85,9 @@ test('a seller fixes a sent-back product and resubmits it', async ({ page }, tes
   await page.getByRole('button', { name: 'Save' }).click()
   await expect(page.getByText('Your store details are complete. You can send products for review.')).toBeVisible()
 
-  await page.goto('/products/p_001')
+  // Back to the product through the app: a reload would sign out of the demo.
+  await page.getByRole('navigation', { name: 'Seller sections' }).getByRole('link', { name: /^Products/ }).click()
+  await page.getByRole('link', { name: /Ajrakh Block-Print Kurta/ }).first().click()
   await page.getByRole('button', { name: 'Send for review again' }).click()
   await expect(page.getByText(/Sent for review/).first()).toBeVisible()
 })
@@ -96,22 +101,35 @@ test('a seller edits the brand page draft and sends it for review', async ({ pag
   await expect(page.getByText('Sent for review. Your live page stays as it is until we approve the changes.')).toBeVisible()
 })
 
-test('"Keep me signed in" survives a reload and sign out ends the session', async ({ page }, testInfo) => {
+// Staying signed in across reloads is vendor-api's refresh cookie; demo mode keeps its data in page
+// memory, so these journeys move with in-app links rather than reloads.
+test('signing in lands on Home and signing out ends the session', async ({ page }, testInfo) => {
   await freezeTime(page)
-  await page.goto('/sign-in')
+  await page.goto('/login')
   await page.getByLabel('Work email').fill(DEMO.email)
   await page.getByLabel('Password', { exact: true }).fill(DEMO.password)
-  await page.getByLabel('Keep me signed in on this device').check()
   await page.getByRole('button', { name: 'Sign in' }).click()
   const home = page.getByRole('heading', { level: 1, name: testInfo.project.name === 'mobile' ? 'Home' : 'Overview' })
-  await expect(home).toBeVisible()
-  await page.reload()
   await expect(home).toBeVisible()
   if (testInfo.project.name === 'mobile') {
     await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Account' }).click()
   }
   await page.getByRole('button', { name: 'Sign out' }).click()
-  await expect(page).toHaveURL(/\/sign-in$/)
+  await expect(page).toHaveURL(/\/login$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Sign in to your seller account' })).toBeVisible()
+  // Signing in and out replace the history entry, so Back never shows the signed-in pages again.
+  await page.goBack()
+  await expect(home).toHaveCount(0)
+})
+
+test('a signed-out deep link returns to its page after signing in', async ({ page }) => {
+  await freezeTime(page)
+  await page.goto('/store/details')
+  await expect(page).toHaveURL(/\/login\?next=%2Fstore%2Fdetails$/)
+  await page.getByLabel('Work email').fill(DEMO.email)
+  await page.getByLabel('Password', { exact: true }).fill(DEMO.password)
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Store details' })).toBeVisible()
 })
 
 test('phones move between the four tabs and back from inner pages', async ({ page }, testInfo) => {
