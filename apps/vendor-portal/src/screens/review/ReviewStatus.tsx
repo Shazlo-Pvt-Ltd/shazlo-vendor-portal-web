@@ -111,8 +111,9 @@ export default function ReviewStatus() {
                   sx={{
                     mb: { xs: 2, md: 2.5 },
                     borderBottom: `1px solid ${neutral.line}`,
-                    // Four tabs fit a 375 px phone; narrower screens can still swipe the row.
-                    '& .MuiTab-root': { color: neutral.inkSecondary, minHeight: 48, minWidth: { xs: 0, sm: 90 }, px: { xs: 1.5, sm: 2 } },
+                    // Four tabs fit a 360 px phone ("All 26 · In review 5 · Needs changes 2 · Live 19" is
+                    // 314 px in Ovo at 8 px a side); narrower screens can still swipe the row.
+                    '& .MuiTab-root': { color: neutral.inkSecondary, minHeight: 48, minWidth: { xs: 0, sm: 90 }, px: { xs: 1, sm: 2 } },
                     '& .MuiTab-root.Mui-selected': { color: neutral.ink },
                     '& .MuiTabs-indicator': { backgroundColor: brand.brown },
                   }}

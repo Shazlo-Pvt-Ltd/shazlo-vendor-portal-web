@@ -49,6 +49,12 @@ Review states retain their icon and label in addition to color: **Live** is blue
 tint/wine. `reviewStatus` exposes the paired foreground/background values.
 Raspberry is exported separately as `annotation`, never as a product status.
 
+`StatusPill`'s default labels (`statusPillLabel`) are the admin's words. The
+seller portal names the same states differently (*In review*, *Needs changes*,
+*Changes in review*), so it always passes `label` through its own pill
+(`apps/vendor-portal/src/components/StatusPill.tsx`). The colour and icon
+follow `status` either way.
+
 ## Implementation choices
 
 The board gives color/font roles, not numeric type sizes, spacing, radii or a
@@ -63,6 +69,8 @@ not verbatim board swatches. Status/link/button contrast is tested against the
 actual paired backgrounds, including default contained-button hover shades.
 Amber `#D99B19` and navy `#0B2A46` hover shades are also implementation choices;
 MUI's automatically darkened amber would lower contrast with wine text.
+Quiet label text on navy, `#96A8AB` (`navyText.quiet`: off-white at 56% over
+navy), is an implementation choice too; it is tested at 4.5:1 on navy.
 Disabled controls and decorative dividers are not normal body text.
 
 `brand.black`, `brand.gold` and `brand.white` are replaced by the named palette.

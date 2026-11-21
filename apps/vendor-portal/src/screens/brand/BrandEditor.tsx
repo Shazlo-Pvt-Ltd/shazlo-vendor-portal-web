@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Box, Button, Card, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, FormHelperText, Link, Skeleton, Stack, Typography, useMediaQuery } from '@mui/material'
 import type { Theme } from '@mui/material/styles'
-import { Banner, PageHeader, radius, SectionCard, shadow, StatusPill } from '@shazlo/ui'
+import { Banner, PageHeader, radius, SectionCard, shadow } from '@shazlo/ui'
 import { Eye, EyeOff, Send } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type InputHTMLAttributes, type ReactNode } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
@@ -10,8 +10,10 @@ import { ApiError, type Schemas } from '../../api/client'
 import { useBrandPage, useDiscardBrandDraft, useMe, useSaveBrandDraft, useSubmitBrandPage } from '../../api/queries'
 import { useCrumb } from '../../app/crumbs'
 import { paths } from '../../app/paths'
+import { StatusPill } from '../../components/StatusPill'
 import { brandCopy as copy } from '../../copy/brand'
 import { SaveStatus, useAutosave } from '../../lib/autosave'
+import { brandReviewPill } from '../../lib/status'
 import { BrandPreview } from './BrandPreview'
 import { BrandNameField, ImageInput, TextInput, touchTarget } from './fields'
 import { brandSchema, changedFields, emptyProfile, isEditableField, LIMITS, toValues, type BrandValues, type Profile } from './schema'
@@ -282,9 +284,11 @@ function BrandForm({
     }
   }
 
+  // In review: the same pill as on Overview, "Changes in review" once the page is live (#267).
+  // A sent-back page shows its draft's pill here; the banner says it was sent back.
   const pill =
     review.state === 'waiting' ? (
-      <StatusPill status="pending" />
+      <StatusPill status={brandReviewPill(review.state, live != null) ?? 'pending'} />
     ) : !live ? (
       <StatusPill status="draft" label={copy.pill.notLive} />
     ) : changed.size > 0 ? (

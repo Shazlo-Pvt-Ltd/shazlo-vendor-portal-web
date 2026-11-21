@@ -646,7 +646,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Agree the rate the brand proposed. Recorded in the vendor's history (commission_approved) and sent to the app as vendor.commission_changed. */
+        /** @description Agree the rate the brand proposed. Recorded in the vendor's history (commission_approved) and sent to the app as vendor.commission_changed. The body carries the proposal the reviewer saw; if the brand has changed it since, nothing is agreed and the answer is 409 proposal_changed, like a review decision on a changed item. */
         post: {
             parameters: {
                 query?: never;
@@ -656,7 +656,11 @@ export interface paths {
                 };
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SeenProposal"];
+                };
+            };
             responses: {
                 /** @description Rate agreed */
                 200: {
@@ -669,6 +673,7 @@ export interface paths {
                 };
                 404: components["responses"]["Error"];
                 409: components["responses"]["Error"];
+                422: components["responses"]["Error"];
             };
         };
         delete?: never;
@@ -688,7 +693,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Send the brand's proposal back with a note the brand reads; the agreed rate (if any) stays. Recorded in the history (commission_sent_back). */
+        /** @description Send the brand's proposal back with a note the brand reads; the agreed rate (if any) stays. Recorded in the history (commission_sent_back). Like approve, it names the proposal the reviewer saw (409 proposal_changed otherwise). */
         post: {
             parameters: {
                 query?: never;
@@ -702,6 +707,7 @@ export interface paths {
                 content: {
                     "application/json": {
                         note: string;
+                        proposed_bps: number;
                     };
                 };
             };
@@ -921,6 +927,10 @@ export interface components {
             note: string | null;
             /** Format: date-time */
             updated_at: string | null;
+        };
+        /** @description The brand's proposal as the reviewer saw it (Commission.proposed_bps), so a decision never lands on a rate they did not see. */
+        SeenProposal: {
+            proposed_bps: number;
         };
         PickupAddress: {
             line: string;

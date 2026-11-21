@@ -71,9 +71,9 @@ describe('V-04 Overview: sent-back banner', () => {
       for (const p of db.products) if (p.status === 'rejected') p.status = 'approved'
     })
     await renderApp()
-    const sentBack = await screen.findByRole('group', { name: 'Sent back' })
-    expect(await within(sentBack).findByText('0')).toBeInTheDocument()
-    expect(within(sentBack).getByText('Nothing to fix')).toBeInTheDocument()
+    const needsChanges = await screen.findByRole('group', { name: 'Needs changes' })
+    expect(await within(needsChanges).findByText('0')).toBeInTheDocument()
+    expect(within(needsChanges).getByText('Nothing to fix')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).toBeNull()
   })
 })
@@ -83,8 +83,8 @@ describe('V-04 Overview: figures', () => {
     await renderApp()
     const expected = [
       ['Live on Shazlo', '18', 'Visible in the app feed', '/products?status=approved'],
-      ['Pending review', '4', 'Usually reviewed within 24 h', '/products?status=pending_review'],
-      ['Sent back', '2', 'Needs your changes', '/products?status=rejected'],
+      ['In review', '4', 'Usually reviewed within 24 h', '/products?status=pending_review'],
+      ['Needs changes', '2', 'Fix and resubmit', '/products?status=rejected'],
       ['Drafts', '3', 'Not submitted yet', '/products?status=draft'],
     ] as const
     for (const [label, value, baseline, href] of expected) {
@@ -140,7 +140,7 @@ describe('V-04 Overview: recent review decisions', () => {
     expect(within(ajrakh).getByRole('link', { name: 'Ajrakh Block-Print Kurta' })).toHaveAttribute('href', '/products/p_001')
     expect(within(ajrakh).getByText('KS-AJR-014')).toBeInTheDocument()
     expect(ajrakh).toHaveTextContent(/“Back photo is missing.*”/)
-    expect(within(ajrakh).getByText('Sent back')).toBeInTheDocument()
+    expect(within(ajrakh).getByText('Needs changes')).toBeInTheDocument()
     expect(within(ajrakh).getByText('2 h ago')).toBeInTheDocument()
 
     expect(within(bandhani).getByRole('link', { name: 'Bandhani Silk Dupatta' })).toHaveAttribute('href', '/products/p_003')
@@ -195,7 +195,7 @@ describe('V-04 Overview: brand page card', () => {
     await renderApp()
     const card = await screen.findByRole('region', { name: 'Brand page' })
     expect(await within(card).findByText('In review since yesterday, 17:40.')).toBeInTheDocument()
-    expect(within(card).getByText('Edit in review')).toBeInTheDocument()
+    expect(within(card).getByText('Changes in review')).toBeInTheDocument()
     expect(within(card).queryByText(/You have a draft/)).toBeNull()
   })
 

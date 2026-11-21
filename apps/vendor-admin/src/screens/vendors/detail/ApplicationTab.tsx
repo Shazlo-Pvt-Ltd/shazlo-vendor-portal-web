@@ -8,7 +8,7 @@ import { sellsLabel, vendorDetailCopy } from '../../../copy/vendors'
 import { srOnly } from '../../../lib/a11y'
 import { formatRate, waitingProposal } from '../../../lib/commission'
 import { fieldProps, noAsterisk } from '../../../lib/forms'
-import { usePhone } from '../../../lib/responsive'
+import { useCompact } from '../../../lib/responsive'
 import type { ApprovalValues } from './approval'
 import { CommissionCard } from './CommissionCard'
 
@@ -312,25 +312,28 @@ type Props = {
 }
 
 export function ApplicationTab({ vendor, open, form, onApprove, approving, onCommissionDone, onCommissionFailed }: Props) {
-  const phone = usePhone()
+  // One column below 900 px: phones, tablets, and a laptop beside the shell's sidebar.
+  const oneColumn = useCompact()
   const brandOnShazlo = vendor.status === 'approved' || vendor.status === 'suspended'
   let side: ReactNode = null
   if (open) side = <ApprovalCard vendor={vendor} form={form} onSubmit={onApprove} disabled={approving} />
   // The header holds the page's primary button for a suspended brand (Reactivate).
   else if (brandOnShazlo) side = <CommissionCard vendor={vendor} primary={vendor.status !== 'suspended'} onDone={onCommissionDone} onFailed={onCommissionFailed} />
 
+  // Keyed, so crossing 900 px (turning a tablet) moves the card rather than building a new one: an open
+  // dialog, what was typed in it and a decision in flight all stay.
   const sideColumn = side && (
-    <Grid size={{ xs: 12, md: 4 }}>
+    <Grid key="side" size={{ xs: 12, md: 4 }}>
       <Box sx={{ position: { md: 'sticky' }, top: { md: 16 } }}>{side}</Box>
     </Grid>
   )
-  // On a phone a brand's commission comes first, above the long application; an application is
+  // In one column a brand's commission comes first, above the long application; an application is
   // read before its approval settings.
-  const commissionFirst = phone && brandOnShazlo
+  const commissionFirst = oneColumn && brandOnShazlo
   return (
     <Grid container spacing={3}>
       {commissionFirst && sideColumn}
-      <Grid size={{ xs: 12, md: 8 }}>
+      <Grid key="application" size={{ xs: 12, md: 8 }}>
         <Stack spacing={3}>
           <ApplicationCard vendor={vendor} />
           <ChecksCard checks={vendor.checks} />

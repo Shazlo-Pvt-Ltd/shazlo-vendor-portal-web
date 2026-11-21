@@ -35,7 +35,7 @@ function useSidebarNav() {
     { to: paths.brand, label: copy.brand, icon: Store, match: (p) => under(p, paths.brand) },
     { to: paths.products, label: copy.products, icon: Package, count: summary?.products.all, match: isProducts },
     { to: paths.bulkImport, label: copy.bulkImport, icon: FileSpreadsheet, match: (p) => p === paths.bulkImport },
-    { to: paths.review, label: copy.review, icon: History, count: summary?.reviews_waiting, countLabel: (n) => `${n} waiting`, match: (p) => under(p, paths.review) },
+    { to: paths.review, label: copy.review, icon: History, count: summary?.reviews_waiting, countLabel: copy.reviewCount, match: (p) => under(p, paths.review) },
   ]
   const more: NavItem[] = [
     { to: paths.storeDetails, label: copy.storeDetails, icon: SlidersHorizontal, match: isStoreDetails },
@@ -74,7 +74,7 @@ function SideNavItem({ item, active }: { item: NavItem; active: boolean }) {
         <ListItemText primary={item.label} slotProps={{ primary: { variant: 'body1', sx: { fontFamily: active ? fontFamily.display : undefined } } }} />
         {item.count != null && (
           <>
-            {/* Read as "Review status, 5 waiting"; the visible number is the short form. */}
+            {/* Read as "Review status, 5 in review"; the visible number is the short form. */}
             <Box component="span" sx={srOnly}>
               {`, ${item.countLabel ? item.countLabel(item.count) : item.count}`}
             </Box>

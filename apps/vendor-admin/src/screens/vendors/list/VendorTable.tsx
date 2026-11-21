@@ -20,9 +20,11 @@ const tabular = { fontVariantNumeric: 'tabular-nums' } as const
 const stop = (event: MouseEvent) => event.stopPropagation()
 const SKELETON_ROWS = 8
 
-// Auto layout lets the columns share a 1024 px window; only the brand and sells columns wrap.
-const layout: Record<string, { align?: 'right'; width?: number | string }> = {
-  live: { align: 'right' },
+// Auto layout lets the columns share a 1024 px window; only the brand and sells columns wrap, and
+// the two-word "Live products" header, so the brand keeps room for its name beside the commission
+// pills ("12% proposed").
+const layout: Record<string, { align?: 'right'; width?: number | string; wrapHeader?: boolean }> = {
+  live: { align: 'right', wrapHeader: true },
   commission: { align: 'right' },
   actions: { align: 'right', width: 96 },
 }
@@ -112,7 +114,7 @@ export function VendorTable({ items, fetching, onOpen, onMenu }: Props) {
         id: 'sells',
         header: copy.sells,
         cell: ({ row }) => (
-          <Typography variant="body2" component="span" sx={{ whiteSpace: 'nowrap' }}>
+          <Typography variant="body2" component="span">
             {sellsLabel[row.original.sells]}
           </Typography>
         ),
@@ -178,9 +180,9 @@ export function VendorTable({ items, fetching, onOpen, onMenu }: Props) {
             {table.getHeaderGroups().map((group) => (
               <TableRow key={group.id}>
                 {group.headers.map((header) => {
-                  const { align, width } = layout[header.column.id] ?? {}
+                  const { align, width, wrapHeader } = layout[header.column.id] ?? {}
                   return (
-                    <TableCell key={header.id} align={align} sx={{ width, px: 1.5, typography: 'body2', color: 'text.secondary', py: 1, borderColor: neutral.line, whiteSpace: 'nowrap' }}>
+                    <TableCell key={header.id} align={align} sx={{ width, px: 1.5, typography: 'body2', color: 'text.secondary', py: 1, borderColor: neutral.line, whiteSpace: wrapHeader ? 'normal' : 'nowrap' }}>
                       {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                     </TableCell>
                   )

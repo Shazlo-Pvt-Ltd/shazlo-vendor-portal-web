@@ -1,5 +1,6 @@
 // Copy for V-09 Review status. One module per screen keeps a later Hindi translation in one place.
 import { formatCount } from '../lib/format'
+import { statusWords } from './status'
 
 const hours = (h: number) => (h === 0 ? 'less than an hour' : h === 1 ? '1 hour' : `${formatCount(h)} hours`)
 
@@ -10,7 +11,8 @@ export const reviewCopy = {
   addProduct: 'Add product',
 
   tabsLabel: 'Show review items',
-  tabs: { all: 'All', waiting: 'Waiting', rejected: 'Sent back', approved: 'Approved' },
+  // Keys are the API's review states; labels are the seller's status words (#267).
+  tabs: { all: 'All', waiting: statusWords.inReview, rejected: statusWords.needsChanges, approved: statusWords.live },
 
   queue: 'Most items are reviewed within 24 hours.',
   oldest: (h: number) => `Your oldest waiting item has been in the queue for ${hours(h)}.`,
@@ -19,11 +21,11 @@ export const reviewCopy = {
   error: 'Your review items did not load. Check your connection and try again.',
 
   waiting: {
-    title: 'Waiting for review',
+    title: statusWords.inReview,
     count: (n: number) => `${formatCount(n)} item${n === 1 ? '' : 's'}`,
     submitted: (when: string, waited: string) => `Submitted ${when} · waiting ${waited}`,
     submittedEdit: (day: string) => `Submitted ${day} · the live version stays in the app`,
-    emptyTitle: 'Nothing waiting',
+    emptyTitle: 'Nothing in review',
     emptyBody: 'Items you submit show up here.',
   },
 
@@ -44,9 +46,9 @@ export const reviewCopy = {
     fixLabel: (title: string) => `Fix and resubmit ${title}`,
     emptyTitle: 'No decisions yet',
     emptyBody: 'Most items are reviewed within 24 hours. Decisions show up here.',
-    emptyRejectedTitle: 'Nothing sent back',
+    emptyRejectedTitle: 'Nothing needs changes',
     emptyRejectedBody: 'If the review team needs changes, the item shows up here with the reason.',
-    emptyApprovedTitle: 'Nothing approved yet',
+    emptyApprovedTitle: 'Nothing live yet',
     emptyApprovedBody: 'Approved items go live in the app within minutes and show up here.',
   },
 
@@ -61,7 +63,7 @@ export const reviewCopy = {
     steps: [
       { title: 'Submitted', body: 'Your item joins the queue. You can still see it, but not edit it.' },
       { title: 'Reviewed', body: 'Usually within 24 hours, by the Shazlo team.' },
-      { title: 'Live or sent back', body: 'Live items appear in the app within minutes. Sent-back items come with a reason.' },
+      { title: 'Live or sent back', body: 'Live items appear in the app within minutes. If something needs changes, we say why.' },
     ],
     checksTitle: 'What we check',
     checks: ['Front, back and close-up photos', 'Price matches the tag (MRP)', 'Category and fabric are right', 'Nothing on the prohibited list'],

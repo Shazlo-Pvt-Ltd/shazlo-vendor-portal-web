@@ -9,7 +9,8 @@
     "preview": "vite preview --strictPort",
     "api:types": "openapi-typescript openapi/vendor-admin.yaml -o src/api/schema.d.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

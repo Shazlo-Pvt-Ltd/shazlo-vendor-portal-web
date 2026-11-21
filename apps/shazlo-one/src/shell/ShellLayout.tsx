@@ -1,5 +1,5 @@
 import { Avatar, Box, Breadcrumbs, Divider, Drawer, IconButton, Link, List, ListItemButton, ListItemIcon, ListItemText, Stack, Typography, useMediaQuery, useTheme } from '@mui/material'
-import { brand, fontFamily, Logo, radius } from '@shazlo/ui'
+import { brand, fontFamily, Logo, navyText, radius } from '@shazlo/ui'
 import { Home, LogOut, Menu, Users, X } from 'lucide-react'
 import { Suspense, useId, useState, type ReactNode } from 'react'
 import { Link as RouterLink, Outlet, useLocation, useMatches, useNavigate } from 'react-router'
@@ -66,7 +66,7 @@ function NavLink({ to, label, icon, active, count, countLabel, inset = false, to
 
 function SectionLabel({ children }: { children: string }) {
   return (
-    <Typography component="p" variant="caption" sx={{ color: 'rgba(255, 252, 227, 0.55)', px: 1.5, pt: 2.5, pb: 0.75 }}>
+    <Typography component="p" variant="caption" sx={{ color: navyText.quiet, px: 1.5, pt: 2.5, pb: 0.75 }}>
       {children}
     </Typography>
   )

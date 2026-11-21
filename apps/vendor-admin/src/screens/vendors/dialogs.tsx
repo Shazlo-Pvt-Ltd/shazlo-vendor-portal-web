@@ -8,7 +8,7 @@ import { useVendorAction } from '../../api/queries'
 import type { components } from '../../api/schema'
 import { REASON_MIN, vendorActionsCopy } from '../../copy/vendors'
 import { fieldProps, noAsterisk } from '../../lib/forms'
-import { usePhone } from '../../lib/responsive'
+import { dialogActions, usePhone } from '../../lib/responsive'
 
 const copy = vendorActionsCopy
 type VendorDetail = components['schemas']['VendorDetail']
@@ -26,13 +26,15 @@ type ReasonProps = {
   onCancel: () => void
   // Resolves with a message to show on the field when the API rejects the text itself.
   onSubmit: (text: string) => Promise<string | void>
+  // When it has finished closing (after its transition), for whoever needs to place focus.
+  onExited?: () => void
 }
 
 // A consequential action that needs words: says what happens next, and the reason is required.
-export function ReasonDialog({ open, title, body, label, confirm, pending, onCancel, onSubmit }: ReasonProps) {
+export function ReasonDialog({ open, title, body, label, confirm, pending, onCancel, onSubmit, onExited }: ReasonProps) {
   const titleId = useId()
   const bodyId = useId()
-  const { register, handleSubmit, reset, setError, formState } = useForm<ReasonValues>({ resolver: zodResolver(reasonSchema), defaultValues: { text: '' } })
+  const { register, handleSubmit, reset, setError, setFocus, formState } = useForm<ReasonValues>({ resolver: zodResolver(reasonSchema), defaultValues: { text: '' } })
   const busy = formState.isSubmitting
   const phone = usePhone()
 
@@ -42,13 +44,23 @@ export function ReasonDialog({ open, title, body, label, confirm, pending, onCan
 
   const submit = handleSubmit(async ({ text }) => {
     const fieldError = await onSubmit(text.trim())
-    if (fieldError) setError('text', { type: 'server', message: fieldError }, { shouldFocus: true })
+    if (fieldError) setError('text', { type: 'server', message: fieldError })
   })
 
+  // A refused reason (by the form or by the API) puts focus back on the field, once it can take it:
+  // the field is disabled while the form submits, and a disabled field cannot be focused, so react-hook-form's
+  // own focus (made during the submit) only lands if the form has already re-enabled it.
+  const refused = formState.errors.text
+  useEffect(() => {
+    if (refused && !busy) setFocus('text')
+  }, [refused, busy, setFocus])
+
   return (
-    <Dialog open={open} onClose={busy ? undefined : onCancel} aria-labelledby={titleId} aria-describedby={bodyId} maxWidth="sm" fullWidth fullScreen={phone}>
+    // The field's autoFocus loses to the dialog's focus trap, which focuses the dialog itself; focus the
+    // field as the dialog starts to enter, so the reviewer can type at once (mouse or keyboard).
+    <Dialog open={open} onClose={busy ? undefined : onCancel} aria-labelledby={titleId} aria-describedby={bodyId} maxWidth="sm" fullWidth fullScreen={phone} slotProps={{ transition: { onEntering: () => setFocus('text'), onExited } }}>
       <form noValidate onSubmit={submit}>
-        <DialogTitle id={titleId} variant="h2" component="h2" sx={{ pb: 1 }}>
+        <DialogTitle id={titleId} variant="h2" component="h2" sx={{ pb: 1, overflowWrap: 'anywhere' }}>
           {title}
         </DialogTitle>
         <DialogContent>
@@ -59,7 +71,7 @@ export function ReasonDialog({ open, title, body, label, confirm, pending, onCan
             <TextField {...fieldProps(register('text'), formState.errors.text, copy.reasonHint)} label={label} multiline minRows={3} required autoFocus disabled={busy} slotProps={noAsterisk} />
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+        <DialogActions sx={dialogActions}>
           <Button variant="text" onClick={onCancel} disabled={busy}>
             {copy.cancel}
           </Button>

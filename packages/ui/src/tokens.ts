@@ -18,6 +18,11 @@ export const brand = {
 export const annotation = { raspberry: '#C2255C' } as const
 export const link = { text: '#2E6A93' } as const
 
+// Text on the navy chrome (Shazlo One's sidebar, phone drawer and sign-in panel). `quiet` is for
+// small secondary labels: off-white at 56% over navy, flattened to a solid colour. It is the faintest
+// such step that keeps 4.5:1 at caption size (55% measures 4.46:1).
+export const navyText = { quiet: '#96A8AB' } as const
+
 export const neutral = {
   ink: brand.ink,
   inkSecondary: brand.brown,
@@ -103,4 +108,4 @@ export const shadow = {
   overlay: '0 4px 12px rgba(23, 18, 14, 0.18)',
 } as const
 
-export const tokens = { brand, annotation, link, neutral, status, statusBackground, reviewStatus, fontFamily, typeScale, space, radius, shadow } as const
+export const tokens = { brand, annotation, link, navyText, neutral, status, statusBackground, reviewStatus, fontFamily, typeScale, space, radius, shadow } as const
