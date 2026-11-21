@@ -1,9 +1,15 @@
 import { screen } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { DEMO_LOGIN } from '../../mocks/db'
 import { renderApp } from '../../test/render'
 import { server } from '../../test/server'
+
+// The screen is lazy-loaded. Load it once before the first test, so that test waits for the
+// screen and not for the chunk: on a busy machine the chunk alone outlasts findBy's 1 s wait.
+beforeAll(async () => {
+  await import('./ForgotPassword')
+}, 60_000)
 
 describe('Forgot password', () => {
   it('asks for the work email', async () => {
