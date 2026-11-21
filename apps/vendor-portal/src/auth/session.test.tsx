@@ -29,7 +29,7 @@ describe('the seller session', () => {
     const first = await renderApp({ route: '/' })
     const signedInAs = first.context.session.get()
     expect(signedInAs).not.toBeNull()
-    expect(first.db.sessions.cookie).not.toBeNull()
+    expect(first.db.sessions.cookie).toEqual(expect.any(String))
     expect(storedValues().some((v) => v.includes(signedInAs!) || v.includes(first.db.sessions.cookie!))).toBe(false)
     first.unmount()
 

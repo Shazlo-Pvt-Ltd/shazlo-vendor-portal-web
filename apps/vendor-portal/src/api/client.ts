@@ -137,12 +137,21 @@ export function createApi({
   }
 
   async function call<T>(fn: (client: Client<paths>) => Promise<Result<T>>): Promise<T> {
-    const signedIn = tokens.get() !== null
+    const sentWith = tokens.get()
     let result = await send(fn)
-    if (result.response.status === 401 && signedIn) {
-      const renewal = await renew()
-      if (renewal.outcome === 'renewed') result = await send(fn)
-      else if (renewal.outcome === 'failed') throw renewal.error
+    if (result.response.status === 401 && sentWith !== null) {
+      const now = tokens.get()
+      if (now === sentWith) {
+        const renewal = await renew()
+        if (renewal.outcome === 'renewed') result = await send(fn)
+        else if (renewal.outcome === 'failed') throw renewal.error
+      } else if (now !== null) {
+        // Someone signed in, or a parallel caller already renewed, while this was out: try once
+        // with that session instead of rotating the cookie again.
+        result = await send(fn)
+      }
+      // Signed out while this was out: the 401 stands. A refresh now would turn the cookie,
+      // which may outlive a failed logout request, back into a session.
     }
     if (result.error !== undefined || !result.response.ok) throw toApiError(result.response, result.error)
     return result.data as T

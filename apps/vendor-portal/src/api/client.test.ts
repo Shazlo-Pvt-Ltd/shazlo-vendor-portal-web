@@ -127,6 +127,87 @@ describe('createApi', () => {
     expect(store.current).toBe('invite-session')
   })
 
+  // A request sent with one session can come back 401 after that session has ended or changed.
+  function slowExpiredMe() {
+    const calls: (string | null)[] = []
+    let answer: (() => void) | undefined
+    server.use(
+      http.get(`${BASE}/api/v1/vendor/me`, async ({ request }) => {
+        calls.push(request.headers.get('authorization'))
+        if (calls.length === 1) await new Promise<void>((resolve) => (answer = resolve))
+        return request.headers.get('authorization') === 'Bearer b1' ? HttpResponse.json({ ok: true }) : expired()
+      }),
+    )
+    return { calls, answered: () => answer !== undefined, answer: () => answer!() }
+  }
+
+  it('does not sign back in when a request comes back 401 after sign-out', async () => {
+    const me = slowExpiredMe()
+    const refresh = vi.fn(() => session('a2'))
+    server.use(http.post(`${BASE}/api/v1/vendor/auth/refresh`, refresh))
+    const store = memoryTokens('a1')
+    const api = createApi({ baseUrl: BASE, tokens: store })
+    const pending = api.call((c) => c.GET('/api/v1/vendor/me')).catch((e: unknown) => e)
+    await vi.waitFor(() => expect(me.answered()).toBe(true))
+    store.set(null) // the seller signs out while the request is out
+    me.answer()
+    expect(await pending).toMatchObject({ status: 401 })
+    // A refresh now would turn the still-valid cookie back into a session.
+    expect(refresh).not.toHaveBeenCalled()
+    expect(store.current).toBeNull()
+    expect(me.calls).toEqual(['Bearer a1'])
+  })
+
+  it('retries with the new session, without a refresh, when someone signed in while the request was out', async () => {
+    const me = slowExpiredMe()
+    const refresh = vi.fn(() => session('a2'))
+    server.use(http.post(`${BASE}/api/v1/vendor/auth/refresh`, refresh))
+    const store = memoryTokens('a1')
+    const api = createApi({ baseUrl: BASE, tokens: store })
+    const pending = api.call((c) => c.GET('/api/v1/vendor/me'))
+    await vi.waitFor(() => expect(me.answered()).toBe(true))
+    store.set('b1') // an accepted invite signs someone in while the request is out
+    me.answer()
+    expect(await pending).toEqual({ ok: true })
+    expect(refresh).not.toHaveBeenCalled() // rotating b1's cookie would be pointless
+    expect(store.current).toBe('b1')
+    expect(me.calls).toEqual(['Bearer a1', 'Bearer b1'])
+  })
+
+  it('signs out when the refresh is refused with 403', async () => {
+    server.use(
+      http.get(`${BASE}/api/v1/vendor/me`, expired),
+      http.post(`${BASE}/api/v1/vendor/auth/refresh`, () => HttpResponse.json({ message: 'Blocked', extra: { code: 'forbidden' } }, { status: 403 })),
+    )
+    const store = memoryTokens('a1')
+    const onSignedOut = vi.fn()
+    const api = createApi({ baseUrl: BASE, tokens: store, onSignedOut })
+    await expect(api.call((c) => c.GET('/api/v1/vendor/me'))).rejects.toMatchObject({ status: 401 })
+    expect(store.current).toBeNull()
+    expect(onSignedOut).toHaveBeenCalledOnce()
+  })
+
+  it('ends the request, instead of retrying it, when the seller signs out during the refresh', async () => {
+    let answer: (() => void) | undefined
+    const me = vi.fn(expired)
+    server.use(
+      http.get(`${BASE}/api/v1/vendor/me`, me),
+      http.post(`${BASE}/api/v1/vendor/auth/refresh`, async () => {
+        await new Promise<void>((resolve) => (answer = resolve))
+        return session('a2')
+      }),
+    )
+    const store = memoryTokens('a1')
+    const api = createApi({ baseUrl: BASE, tokens: store })
+    const pending = api.call((c) => c.GET('/api/v1/vendor/me')).catch((e: unknown) => e)
+    await vi.waitFor(() => expect(answer).toBeTypeOf('function'))
+    store.set(null)
+    answer!()
+    expect(await pending).toMatchObject({ status: 401 })
+    expect(store.current).toBeNull()
+    expect(me).toHaveBeenCalledOnce()
+  })
+
   describe('refresh() after a page load', () => {
     it('restores the session from the cookie', async () => {
       server.use(http.post(`${BASE}/api/v1/vendor/auth/refresh`, () => session('a9')))
