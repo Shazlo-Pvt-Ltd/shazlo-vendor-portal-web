@@ -103,6 +103,17 @@ describe('production HTTP application', () => {
     expect(json(response)).toEqual({ message: 'Route not found' })
   })
 
+  it.each([
+    ['GET', '/'],
+    ['GET', '/api/does/not/exist'],
+    ['POST', '/api/does-not-exist'],
+    ['DELETE', '/elsewhere/entirely'],
+  ])('returns the JSON 404 for %s %s at any depth and for any method', async (method, path) => {
+    const response = await request(path, { method })
+    expect(response.status).toBe(404)
+    expect(json(response)).toEqual({ message: 'Route not found' })
+  })
+
   it('rejects malformed JSON before any waitlist write', async () => {
     const response = await request('/api/waitlist/add', { method: 'POST', raw: '{bad json' })
     expect(response.status).toBe(400)
