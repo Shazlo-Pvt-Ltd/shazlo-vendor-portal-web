@@ -51,10 +51,32 @@ class ApiError(Exception):
         self.headers = headers
 
 
+class FieldProblems(Exception):
+    """Business-rule failures on named fields of the request body, answered like a pydantic
+    422 (`validation_error`, a `details` list with `loc`, `msg` and `type`), so the portal reads
+    both the same way. Keys are dot paths into the body (`pickup_address.pin`); messages are for
+    the seller and never repeat what was sent."""
+
+    def __init__(self, problems: dict[str, str], kind: str = "invalid") -> None:
+        super().__init__("request has invalid fields")
+        self.problems = problems
+        self.kind = kind
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
     async def api_error(request: Request, exc: ApiError) -> JSONResponse:
         return error_response(request, exc.status_code, exc.code, exc.message, headers=exc.headers)
+
+    @app.exception_handler(FieldProblems)
+    async def field_problems(request: Request, exc: FieldProblems) -> JSONResponse:
+        details = [
+            {"loc": ["body", *(key.split(".") if key else [])], "msg": message, "type": exc.kind}
+            for key, message in exc.problems.items()
+        ]
+        return error_response(
+            request, 422, "validation_error", "Request validation failed", details=details
+        )
 
     @app.exception_handler(RateLimited)
     async def rate_limited(request: Request, exc: RateLimited) -> JSONResponse:
