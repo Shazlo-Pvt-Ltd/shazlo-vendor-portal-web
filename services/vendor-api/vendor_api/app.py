@@ -15,16 +15,21 @@ from shazlo_security.refresh_tokens import RefreshTokenStore
 from vendor_api import __version__
 from vendor_api.api import (
     admin,
+    admin_commission,
     admin_outbox,
     admin_reviews,
     admin_vendors,
     assets,
     auth,
     brand_profile,
+    commission,
     health,
     jwks,
     product_import,
     products,
+    public,
+    size_charts,
+    store_details,
     submissions,
     team,
     vendor,
@@ -46,15 +51,19 @@ from vendor_api.services.assets import AssetService
 from vendor_api.services.auth import AuthService
 from vendor_api.services.brand_profiles import BrandProfileService
 from vendor_api.services.cloudinary import CloudinaryClient, ImageHost
+from vendor_api.services.commission import CommissionService
 from vendor_api.services.credentials import CredentialService
 from vendor_api.services.email import EmailService, build_sender
 from vendor_api.services.outbox import OutboxWriter
 from vendor_api.services.outbox_admin import OutboxAdminService
+from vendor_api.services.payout_cipher import PayoutCipher, parse_keys
 from vendor_api.services.product_import import ProductImportService
 from vendor_api.services.products import ProductService
 from vendor_api.services.review_decisions import ReviewDecisionService
 from vendor_api.services.review_queue import ReviewQueueService
 from vendor_api.services.signup import SignupService
+from vendor_api.services.size_charts import SizeChartService
+from vendor_api.services.store_details import StoreDetailsService
 from vendor_api.services.submissions import SubmissionService
 from vendor_api.services.team import TeamService
 from vendor_api.services.tokens import VENDOR_AUDIENCE as SELF_AUDIENCE
@@ -155,6 +164,14 @@ def create_app(
     app.state.vendor_accounts = VendorAccountService(
         app.state.sessions, events=app.state.outbox_writer
     )
+    # Settings always fill both in (a random key outside prod when unset).
+    payout_keys, payout_kid = settings.payout_encryption_keys, settings.payout_encryption_kid
+    if payout_keys is None or payout_kid is None:
+        raise RuntimeError("payout encryption keys are not configured")
+    app.state.payout_cipher = PayoutCipher(parse_keys(payout_keys.get_secret_value()), payout_kid)
+    app.state.store_details = StoreDetailsService(app.state.payout_cipher)
+    app.state.commissions = CommissionService()
+    app.state.size_charts = SizeChartService()
     app.state.readiness_checks = (
         readiness_checks
         if readiness_checks is not None
@@ -184,10 +201,15 @@ def create_app(
     v1.include_router(product_import.router)
     v1.include_router(products.router)
     v1.include_router(submissions.router)
+    v1.include_router(store_details.router)
+    v1.include_router(public.router)
+    v1.include_router(commission.router)
+    v1.include_router(size_charts.router)
     if settings.identity_jwks_url:
         v1.include_router(admin.router)
         v1.include_router(admin_reviews.router)
         v1.include_router(admin_vendors.router)
+        v1.include_router(admin_commission.router)
         v1.include_router(admin_outbox.router)
     app.include_router(v1)  # feature routers are added here
     return app
