@@ -1,22 +1,21 @@
-import { Box, Button, DialogActions, DialogContent, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material'
+import { Box, Button, DialogActions, DialogContent, MenuItem, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material'
 import { Banner, brand, neutral, radius, StatFigure, status } from '@shazlo/ui'
 import { AlertTriangle, Download, FileSpreadsheet } from 'lucide-react'
-import { useId } from 'react'
+import { useId, useMemo, useState } from 'react'
 import type { Schemas } from '../../api/model'
-import { catalogCopy } from '../../copy/catalog'
 import { importCopy } from '../../copy/import'
 import { formatCount } from '../../lib/format'
-import { errorReportCsv, saveFile } from './download'
+import { saveFile } from './download'
 import { actionsSx } from './layout'
+import { errorColumns, errorReportCsv, errorReportName, filterErrors, type ErrorFilter } from './rules'
 
 const copy = importCopy.review
 type Job = Schemas['ImportJob']
 type RowError = Job['errors'][number]
 
 const tabular = { fontVariantNumeric: 'tabular-nums' } as const
-
-// The column in the seller's words, from the template column when the check names one.
-const columnOf = (e: RowError) => (e.field ? catalogCopy.importColumns[e.field] : e.column || copy.wholeRow)
+/** Problems shown at once; the report has them all. */
+export const ERRORS_PAGE = 25
 
 function FileCard({ name, rows, onReplace }: { name: string; rows: number; onReplace: () => void }) {
   return (
@@ -50,21 +49,66 @@ function Fix({ message }: { message: string }) {
   )
 }
 
-// The rows to fix: a table on desktop, a list on phones (no sideways scrolling).
-function ErrorRows({ errors, title, wide }: { errors: RowError[]; title: string; wide: boolean }) {
+// The rows to fix (main's errors table in Build 2's design): a column filter and a search, pages of
+// 25, and the whole list as a CSV. A table on desktop, a list on phones (no sideways scrolling).
+function ErrorRows({ errors, title, wide, fileName, truncated }: { errors: RowError[]; title: string; wide: boolean; fileName: string; truncated: boolean }) {
   const titleId = useId()
+  const [filter, setFilter] = useState<ErrorFilter>({ column: '', query: '' })
+  const [page, setPage] = useState(0)
+  const columns = useMemo(() => errorColumns(errors), [errors])
+  const shown = useMemo(() => filterErrors(errors, filter), [errors, filter])
+  const last = Math.max(0, Math.ceil(shown.length / ERRORS_PAGE) - 1)
+  const current = Math.min(page, last)
+  const visible = shown.slice(current * ERRORS_PAGE, (current + 1) * ERRORS_PAGE)
+  const update = (next: Partial<ErrorFilter>) => {
+    setFilter((old) => ({ ...old, ...next }))
+    setPage(0)
+  }
+  const product = (e: RowError) => e.product ?? copy.noProduct
+
   return (
     <Box>
       <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 1, flexWrap: 'wrap', rowGap: 1 }}>
         <Typography id={titleId} variant="h3" component="h3">
           {title}
         </Typography>
-        <Button variant="text" size="small" onClick={() => saveFile(errorReportCsv(errors.map((e) => ({ ...e, column: columnOf(e) }))), copy.reportFileName)} startIcon={<Download size={16} strokeWidth={1.5} aria-hidden="true" />}>
+        <Button variant="text" size="small" onClick={() => saveFile(errorReportCsv(errors), errorReportName(fileName))} startIcon={<Download size={16} strokeWidth={1.5} aria-hidden="true" />}>
           {copy.downloadReport}
         </Button>
       </Stack>
-      {wide ? (
-        <TableContainer sx={{ maxHeight: 320, border: `1px solid ${neutral.line}`, borderRadius: `${radius.card}px` }}>
+      {truncated && (
+        <Box sx={{ mb: 1.5 }}>
+          <Banner tone="warning" title={copy.truncated(errors.length)} />
+        </Box>
+      )}
+      {errors.length > ERRORS_PAGE / 5 && (
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 1.5 }}>
+          <TextField select size="small" label={copy.filter.column} value={filter.column} onChange={(event) => update({ column: event.target.value })} sx={{ minWidth: 200 }} slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}>
+            <MenuItem value="">{copy.filter.all}</MenuItem>
+            {columns.map((column) => (
+              <MenuItem key={column} value={column}>
+                {column}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            size="small"
+            label={copy.filter.search}
+            value={filter.query}
+            onChange={(event) => update({ query: event.target.value })}
+            helperText={copy.filter.searchHint}
+            sx={{ flexGrow: 1 }}
+            slotProps={{ htmlInput: { enterKeyHint: 'search', autoComplete: 'off', maxLength: 100 } }}
+          />
+        </Stack>
+      )}
+      <Typography variant="body2" color="text.secondary" role="status" sx={{ mb: 1, ...tabular }}>
+        {copy.shown(shown.length, errors.length)}
+      </Typography>
+      {shown.length === 0 ? (
+        <Typography variant="body2">{copy.noMatch}</Typography>
+      ) : wide ? (
+        <TableContainer sx={{ maxHeight: 360, border: `1px solid ${neutral.line}`, borderRadius: `${radius.card}px` }}>
           <Table stickyHeader size="small" aria-labelledby={titleId}>
             <TableHead>
               <TableRow>
@@ -76,14 +120,14 @@ function ErrorRows({ errors, title, wide }: { errors: RowError[]; title: string;
               </TableRow>
             </TableHead>
             <TableBody>
-              {errors.map((e, i) => (
+              {visible.map((e, i) => (
                 <TableRow key={`${e.row}-${e.column}-${i}`} sx={{ verticalAlign: 'top', '&:last-of-type td': { borderBottom: 0 } }}>
                   <TableCell align="right" sx={tabular}>
                     {formatCount(e.row)}
                   </TableCell>
-                  <TableCell sx={{ overflowWrap: 'anywhere' }}>{e.product ?? copy.noProduct}</TableCell>
-                  <TableCell>{columnOf(e)}</TableCell>
-                  <TableCell>
+                  <TableCell sx={{ overflowWrap: 'anywhere' }}>{product(e)}</TableCell>
+                  <TableCell>{e.column}</TableCell>
+                  <TableCell sx={{ overflowWrap: 'anywhere' }}>
                     <Fix message={e.message} />
                   </TableCell>
                 </TableRow>
@@ -93,26 +137,41 @@ function ErrorRows({ errors, title, wide }: { errors: RowError[]; title: string;
         </TableContainer>
       ) : (
         <Box component="ul" role="list" aria-labelledby={titleId} sx={{ listStyle: 'none', p: 0, m: 0, borderTop: `1px solid ${neutral.line}` }}>
-          {errors.map((e, i) => (
+          {visible.map((e, i) => (
             <Box component="li" key={`${e.row}-${e.column}-${i}`} sx={{ py: 1.5, borderBottom: `1px solid ${neutral.line}` }}>
               <Typography variant="caption" color="text.secondary" component="div" sx={tabular}>
-                {copy.rowLabel(e.row)} · {columnOf(e)}
+                {copy.rowLabel(e.row)} · {e.column}
               </Typography>
               <Typography variant="body1" sx={{ overflowWrap: 'anywhere' }}>
-                {e.product ?? copy.noProduct}
+                {product(e)}
               </Typography>
-              <Typography variant="body2" component="div" sx={{ mt: 0.5 }}>
+              <Typography variant="body2" component="div" sx={{ mt: 0.5, overflowWrap: 'anywhere' }}>
                 <Fix message={e.message} />
               </Typography>
             </Box>
           ))}
         </Box>
       )}
+      {shown.length > ERRORS_PAGE && (
+        <Stack component="nav" aria-label={copy.pages} direction="row" spacing={1.5} sx={{ alignItems: 'center', justifyContent: 'space-between', pt: 1.5 }}>
+          <Typography variant="body2" color="text.secondary" sx={tabular}>
+            {copy.page(current * ERRORS_PAGE + 1, current * ERRORS_PAGE + visible.length, shown.length)}
+          </Typography>
+          <Stack direction="row" spacing={1}>
+            <Button variant="outlined" size="small" disabled={current === 0} onClick={() => setPage(current - 1)} sx={{ minHeight: { xs: 44, md: 32 } }}>
+              {copy.previous}
+            </Button>
+            <Button variant="outlined" size="small" disabled={current >= last} onClick={() => setPage(current + 1)} sx={{ minHeight: { xs: 44, md: 32 } }}>
+              {copy.next}
+            </Button>
+          </Stack>
+        </Stack>
+      )}
     </Box>
   )
 }
 
-// Step 3: what the check found, and creating the rows that passed as drafts.
+// Step 3: what the check found (nothing has been made yet), and saving the rows that passed as drafts.
 export function ReviewStep({ job, wide, creating, createError, onReplace, onCreate }: { job: Job; wide: boolean; creating: boolean; createError: string | null; onReplace: () => void; onCreate: () => void }) {
   const allClear = job.errors.length === 0
   // One row is one product.
@@ -133,9 +192,15 @@ export function ReviewStep({ job, wide, creating, createError, onReplace, onCrea
                 <StatFigure label={copy.stats.ok} value={formatCount(job.ok_rows)} baseline={copy.stats.okBaseline} />
                 <StatFigure label={copy.stats.errors} value={formatCount(job.error_rows)} baseline={copy.stats.errorsBaseline} />
               </Box>
-              <ErrorRows errors={job.errors} title={copy.errorsTitle(job.error_rows)} wide={wide} />
+              <ErrorRows errors={job.errors} title={copy.errorsTitle(job.error_rows)} wide={wide} fileName={job.file_name} truncated={job.errors_truncated} />
             </>
           )}
+          {job.unchanged > 0 && (
+            <Typography variant="body2" color="text.secondary">
+              {copy.unchanged(job.unchanged)}
+            </Typography>
+          )}
+          {job.ignored_columns.length > 0 && <Banner tone="info" title={copy.ignored(job.ignored_columns.join(', '))} />}
           {createError && (
             <Banner tone="error" title={copy.createFailed}>
               {createError}
@@ -145,7 +210,7 @@ export function ReviewStep({ job, wide, creating, createError, onReplace, onCrea
       </DialogContent>
       <DialogActions sx={{ ...actionsSx, flexDirection: { xs: 'column', md: 'row' }, alignItems: { xs: 'stretch', md: 'center' } }}>
         <Typography variant="body2" color="text.secondary" sx={{ flex: 1, minWidth: 0, mr: { md: 2 } }}>
-          {ready > 0 ? copy.footer(ready) : copy.nothingReady}
+          {ready > 0 ? copy.footer(ready) : allClear && job.unchanged > 0 ? copy.alreadyThere : copy.nothingReady}
         </Typography>
         {!allClear && (
           <Button variant="outlined" onClick={onReplace}>

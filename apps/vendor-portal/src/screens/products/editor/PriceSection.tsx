@@ -8,7 +8,7 @@ import { paths } from '../../../app/paths'
 import { productEditorCopy } from '../../../copy/productEditor'
 import { formatBps, sellerReceives } from '../../../lib/commission'
 import { formatINR } from '../../../lib/format'
-import { parseRupees, priceIssues, wholeRupees, type EditorValues } from './form'
+import { parseRupees, priceIssues, priceWaitsForSize, wholeRupees, type EditorValues } from './form'
 import { EditorSection, fieldId, type Problems } from './layout'
 
 const copy = productEditorCopy.price
@@ -45,7 +45,7 @@ function YouReceive({ pricePaise, invalid, commission }: { pricePaise: number | 
 export const PriceSection = memo(function PriceSection({ form, readOnly, live, commission, problems, idPrefix, plain }: { form: UseFormReturn<EditorValues>; readOnly: boolean; live: boolean; commission: Schemas['Commission'] | null; problems: Problems; idPrefix: string; plain?: boolean }) {
   const { register, control, getFieldState, trigger } = form
   const { errors } = useFormState({ control, name: ['mrp', 'price'] })
-  const [mrp, price] = useWatch({ control, name: ['mrp', 'price'] })
+  const [mrp, price, sizes] = useWatch({ control, name: ['mrp', 'price', 'sizes'] })
   const parsed = parseRupees(price)
   const invalid = Boolean(priceIssues({ mrp, price }, live).price)
   const pricePaise = !invalid && parsed.ok ? parsed.paise : null
@@ -71,6 +71,11 @@ export const PriceSection = memo(function PriceSection({ form, readOnly, live, c
           <TextField {...money('price')} label={copy.selling} error={Boolean(sellingError)} helperText={sellingError ?? copy.sellingHint} slotProps={slot} />
           <TextField {...money('mrp')} label={copy.mrp} error={Boolean(errors.mrp)} helperText={errors.mrp?.message ?? copy.mrpHint} slotProps={slot} />
         </Box>
+        {!readOnly && !invalid && priceWaitsForSize({ price, mrp, sizes }) && (
+          <Typography variant="body2" role="status">
+            {copy.waitsForSize}
+          </Typography>
+        )}
         <YouReceive pricePaise={pricePaise} invalid={invalid} commission={commission} />
         <Typography variant="body2" color="text.secondary">
           {copy.rule}

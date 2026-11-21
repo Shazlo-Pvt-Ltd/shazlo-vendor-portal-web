@@ -31,13 +31,17 @@ export default function ProductEditor() {
   // On /products/new the route already names the crumb "New product".
   useCrumb(id && product ? product.title || copy.untitled : null)
   const refetch = () => void query.refetch()
+  // "Load the latest" after the product changed elsewhere: read it again and start the form afresh.
+  const [round, setRound] = useState(0)
+  const reload = () => void query.refetch().then(() => setRound((n) => n + 1))
 
   if (id === undefined || id === session.adopted) {
-    return <Editor key={`new-${session.n}`} product={(id && product) || null} onCreated={(created) => setSession((s) => ({ ...s, adopted: created }))} onStale={refetch} />
+    return <Editor key={`new-${session.n}-${round}`} product={(id && product) || null} onCreated={(created) => setSession((s) => ({ ...s, adopted: created }))} onStale={refetch} onReload={reload} />
   }
   if (query.isPending) return <EditorSkeleton twoColumn={twoColumn} />
   if (query.isError) {
-    if (query.error instanceof ApiError && query.error.status === 404) {
+    // Another vendor's product, or none, is a 404; an address that is not a product id is vendor-api's 422.
+    if (query.error instanceof ApiError && (query.error.status === 404 || query.error.status === 422)) {
       return (
         <EmptyState
           illustration="box"
@@ -60,5 +64,5 @@ export default function ProductEditor() {
       </>
     )
   }
-  return <Editor key={id} product={product!} onStale={refetch} />
+  return <Editor key={`${id}-${round}`} product={product!} onStale={refetch} onReload={reload} />
 }

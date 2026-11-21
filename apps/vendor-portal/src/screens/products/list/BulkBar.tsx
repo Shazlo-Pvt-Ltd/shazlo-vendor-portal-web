@@ -2,7 +2,9 @@ import { Box, Button, Dialog, DialogActions, DialogContent, DialogContentText, D
 import { Banner, neutral, radius } from '@shazlo/ui'
 import { useId } from 'react'
 import type { Schemas } from '../../../api/model'
+import { useProduct } from '../../../api/queries'
 import { productsCopy } from '../../../copy/products'
+import { bulkDeleteText, deleteOutcome, deleteText, type DeleteOutcome } from '../deleteOutcome'
 
 const copy = productsCopy
 type Product = Schemas['ProductSummary']
@@ -35,37 +37,61 @@ export function BulkBar({ count, pending, onAction, onClear }: { count: number; 
   )
 }
 
-export function ArchiveDialog({ target, pending, onCancel, onConfirm }: { target: { ids: string[]; name?: string; open: boolean } | null; pending: boolean; onCancel: () => void; onConfirm: () => void }) {
+/** What the confirmation is about: one product from its row menu, or the selection. */
+export type DeleteTarget = { products: Product[]; open: boolean }
+
+// One product: what deleting does depends on whether it was ever sent for review, which only the
+// product read in full can say for a draft (main's delete rules, ../deleteOutcome.ts).
+function useOutcome(target: DeleteTarget | null): { outcome: DeleteOutcome; checking: boolean } {
+  const single = target?.products.length === 1 ? target.products[0]! : null
+  const draft = single?.status === 'draft' ? single : null
+  // Kept while the dialog fades out, so its words do not change.
+  const detail = useProduct(draft?.id)
+  if (!single) return { outcome: 'unknown', checking: false }
+  if (!draft) return { outcome: deleteOutcome(single), checking: false }
+  if (detail.isPending) return { outcome: 'unknown', checking: true }
+  return { outcome: detail.data ? deleteOutcome(detail.data) : 'unknown', checking: false }
+}
+
+export function DeleteDialog({ target, pending, onCancel, onConfirm }: { target: DeleteTarget | null; pending: boolean; onCancel: () => void; onConfirm: (outcome: DeleteOutcome) => void }) {
   const titleId = useId()
   const bodyId = useId()
-  const count = target?.ids.length ?? 0
+  const { outcome, checking } = useOutcome(target)
+  const items = target?.products ?? []
+  const single = items.length === 1 ? items[0]! : null
+  const text = single ? deleteText(single.title, outcome, single.status) : { ...bulkDeleteText(items), confirm: copy.deleteDialog.bulk.confirm }
   return (
     <Dialog open={target?.open ?? false} onClose={pending ? undefined : onCancel} aria-labelledby={titleId} aria-describedby={bodyId} maxWidth="xs" fullWidth>
-      <DialogTitle id={titleId} variant="h2" component="h2" sx={{ pb: 1 }}>
-        {count ? copy.archiveDialog.title(count, target?.name) : ''}
+      <DialogTitle id={titleId} variant="h2" component="h2" sx={{ pb: 1, overflowWrap: 'anywhere' }}>
+        {items.length ? text.title : ''}
       </DialogTitle>
       <DialogContent>
-        <DialogContentText id={bodyId} variant="body1">
-          {copy.archiveDialog.body(count)}
+        <DialogContentText id={bodyId} variant="body1" role={checking ? 'status' : undefined}>
+          {checking ? copy.deleteDialog.checking : text.body}
         </DialogContentText>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
-        <Button variant="text" onClick={onCancel} disabled={pending}>
-          {copy.archiveDialog.cancel}
+        <Button variant={text.confirm ? 'text' : 'outlined'} onClick={onCancel} disabled={pending}>
+          {text.confirm ? copy.deleteDialog.cancel : copy.deleteDialog.close}
         </Button>
-        <Button variant="contained" onClick={onConfirm} disabled={pending}>
-          {pending ? copy.bulk.archiving : copy.archiveDialog.confirm}
-        </Button>
+        {text.confirm && (
+          <Button variant="contained" onClick={() => onConfirm(outcome)} disabled={pending || checking}>
+            {pending ? copy.bulk.archiving : text.confirm}
+          </Button>
+        )}
       </DialogActions>
     </Dialog>
   )
 }
 
 // Only the actions that apply to the product's state are offered; nothing is shown disabled.
+// Sending is for drafts: vendor-api refuses a sent-back product until it has been changed. Nothing
+// in review can be archived until the decision.
 export function RowMenu({ target, onClose, onEdit, onAction }: { target: { anchor: HTMLElement; product: Product } | null; onClose: () => void; onEdit: (product: Product) => void; onAction: (action: BulkAction, product: Product) => void }) {
   const product = target?.product
-  const canSubmit = product?.status === 'draft' || product?.status === 'rejected'
-  const canArchive = product !== undefined && product.status !== 'archived'
+  const canSubmit = product?.status === 'draft'
+  const outcome = product ? deleteOutcome(product) : 'none'
+  const canDelete = outcome !== 'none' && outcome !== 'blocked'
   return (
     <Menu anchorEl={target?.anchor ?? null} open={target !== null} onClose={onClose} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}>
       {product && [
@@ -77,9 +103,9 @@ export function RowMenu({ target, onClose, onEdit, onAction }: { target: { ancho
             {copy.menu.submit}
           </MenuItem>
         ),
-        canArchive && (
+        canDelete && (
           <MenuItem key="archive" onClick={() => onAction('archive', product)}>
-            {copy.menu.archive}
+            {product.status === 'draft' ? copy.menu.delete : copy.menu.archive}
           </MenuItem>
         ),
       ]}
@@ -87,7 +113,7 @@ export function RowMenu({ target, onClose, onEdit, onAction }: { target: { ancho
   )
 }
 
-export type BulkOutcome = { tone: 'success' | 'warning' | 'error'; title: string; messages: string[] }
+export type BulkOutcome = { tone: 'success' | 'warning' | 'error'; title: string; messages: string[]; body?: string }
 
 // What a bulk action did, in the page (no toasts, spec §8): how many went through, and the
 // products that did not, each with the reason the API gave.
@@ -101,7 +127,7 @@ export function OutcomeBanner({ outcome, onClose }: { outcome: BulkOutcome; onCl
           ))}
         </Stack>
       )}
-      {outcome.tone === 'warning' && <Box sx={{ mt: 0.75 }}>{copy.results.failedBody}</Box>}
+      {outcome.tone === 'warning' && outcome.body && <Box sx={{ mt: 0.75 }}>{outcome.body}</Box>}
     </Banner>
   )
 }

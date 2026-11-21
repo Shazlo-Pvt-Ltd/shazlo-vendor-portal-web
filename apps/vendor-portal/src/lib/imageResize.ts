@@ -6,8 +6,12 @@
 // (HEIC) renamed to .jpg is still HEIC, and is converted like any other HEIC. Browsers that can open
 // HEIC (Safari) convert it; others cannot, and the seller is asked for a JPG instead.
 
+import { garmentColour } from '@shazlo/ui'
+
 export const MAX_EDGE = 2000
 export const QUALITY = 0.8
+/** What shows through a see-through photo once it is a JPEG. */
+export const MATTE = garmentColour.White
 
 export type ImageKind = 'jpeg' | 'png' | 'webp' | 'gif' | 'heic' | 'avif'
 type OutputKind = 'jpeg' | 'webp'
@@ -106,8 +110,8 @@ function relabel(file: File, kind: ImageKind | null): File {
 function draw(canvas: OffscreenCanvas | HTMLCanvasElement, image: Decoded, width: number, height: number): boolean {
   const ctx = canvas.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null
   if (!ctx) return false
-  // A JPEG has no transparency: a see-through PNG goes on white, not black.
-  ctx.fillStyle = '#FFFFFF'
+  // A JPEG has no transparency: a see-through PNG goes on white, not black (the theme's white).
+  ctx.fillStyle = MATTE
   ctx.fillRect(0, 0, width, height)
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
@@ -160,7 +164,7 @@ export async function prepareImage(file: File, { maxEdge = MAX_EDGE, quality = Q
   const kind = sniffImage(await readHead(file)) ?? kindFromType(file.type)
   if (!tools) return relabel(file, kind)
 
-  let image: Decoded | null = null
+  let image: Decoded | null
   try {
     image = await tools.decode(file)
   } catch {

@@ -50,13 +50,11 @@ export const productEditorCopy = {
     sizes: (count: number, stock: string) => `${formatCount(count)} ${count === 1 ? 'size' : 'sizes'} · ${stock} in stock`,
   },
 
+  // The words of the confirmation are main's delete rules (copy/products.ts deleteDialog).
   archive: {
-    menu: 'Archive product',
-    title: 'Archive this product?',
-    body: 'It leaves the app and moves to Archived.',
-    confirm: 'Archive product',
+    menu: { removed: 'Delete product', archived: 'Archive product' },
     cancel: 'Cancel',
-    done: 'Product archived. Find it under Archived.',
+    working: 'Working…',
   },
 
   banners: {
@@ -65,6 +63,14 @@ export const productEditorCopy = {
     editInReview: 'Your changes are in review. The live version stays in the app until we approve them.',
     archived: 'This product is archived, so shoppers cannot see it.',
     locked: 'This product is in review, so your last change was not saved. You can edit it again once our team has decided.',
+    // A save or send vendor-api refused because the product changed elsewhere.
+    archivedElsewhere: 'This product was archived, so your last change was not saved.',
+    gone: 'This product is no longer in your products (deleted somewhere else), so your last change was not saved.',
+    conflict: 'This product was changed somewhere else (another tab or someone on your team), so your last change was not saved.',
+    reload: 'Load the latest',
+    inReviewNow: 'This product is already in review. You can edit it again once our team has decided.',
+    nothingSinceSentBack: 'Nothing has changed since it was sent back. Change what our team asked for, then send it again.',
+    nothingNew: 'Nothing has changed since it was last sent. Change something, then send it again.',
     sent: 'Sent for review. We usually decide within 24 hours.',
     changesSent: 'Changes sent for review. The live version stays in the app until we approve them.',
     problems: catalogCopy.errors.product.submitProblems,
@@ -183,6 +189,8 @@ export const productEditorCopy = {
     mrp: 'MRP (optional)',
     mrpHint: 'The price on the tag, if it has one.',
     rule: 'Price rule: your price on Shazlo is never higher than anywhere else.',
+    // vendor-api keeps the price on each size, so a price needs a size before it can be saved.
+    waitsForSize: 'Add a size to save this price. It stays here until then.',
     receive: (receive: string, percent: string, commission: string) => `You receive ${receive} after ${percent} commission (${commission})`,
     receiveNoPrice: 'Add a selling price to see what you receive.',
     receiveFixPrice: 'Fix the selling price to see what you receive.',
@@ -215,10 +223,53 @@ export const productEditorCopy = {
     } as Record<string, string>,
   },
 
-  liveNote: {
-    title: 'What needs review again',
-    immediate: 'Price and stock: live immediately',
-    reviewed: 'Name, description, photos: reviewed first',
+  // Main's revision panel as a side card: what shoppers see now, beside the seller's changes. Every
+  // change to a live product, price and stock included, waits for review.
+  revision: {
+    title: 'Live in the app',
+    version: (n: number) => `Version ${formatCount(n)}`,
+    unchanged: 'Shoppers see this version. Changes you make here are checked by our team first; this version stays in the app until then.',
+    states: {
+      editing: 'Your changes, not sent yet',
+      in_review: 'Your changes, in review',
+      rejected: 'Your changes, sent back',
+      withdrawn: 'Your changes',
+    },
+    statesNote: {
+      editing: 'Send changes for review when you are ready. Shoppers see the live version until we approve them.',
+      in_review: 'Shoppers see the live version until we approve them.',
+      rejected: 'Fix what our team asked for, then send the changes again.',
+      withdrawn: 'Shoppers see the live version.',
+    },
+    columns: { live: 'Live', yours: 'Yours' },
+    labels: {
+      title: 'Name',
+      category: 'Product type',
+      gender: 'Gender',
+      colour: 'Main colour',
+      colours: 'Other colours',
+      material: 'Material',
+      description: 'Description',
+      sizes: 'Sizes and stock',
+      price: 'Selling price',
+      mrp: 'MRP',
+      photos: 'Photos',
+    },
+    none: 'None',
+    photos: (n: number) => `${photos(n)}`,
+    photosChanged: (n: number) => `${photos(n)}, changed`,
+  },
+
+  // Leaving with something not saved: photos on their way, a price waiting for a size, a failed save.
+  leave: {
+    title: 'Leave this product?',
+    photos: (n: number) => `${photos(n)} ${n === 1 ? 'is' : 'are'} not added yet.`,
+    price: 'The price is not saved yet: add a size first.',
+    notSaved: 'Your last change did not save.',
+    notStarted: 'This new product is not saved yet.',
+    lost: 'If you leave now, it is lost.',
+    stay: 'Stay',
+    leave: 'Leave anyway',
   },
 
   notFound: {

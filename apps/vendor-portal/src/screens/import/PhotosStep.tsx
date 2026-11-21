@@ -66,6 +66,8 @@ export function PhotosStep({ products, onViewDrafts }: { products: Draft[]; onVi
   const input = useRef<HTMLInputElement>(null)
   const folder = useRef<HTMLInputElement>(null)
   const seq = useRef(0)
+  // One run at a time, however fast "Add photos" is pressed.
+  const busy = useRef(false)
 
   const commit = (next: Entry[]) => {
     latest.current = next
@@ -87,6 +89,8 @@ export function PhotosStep({ products, onViewDrafts }: { products: Draft[]; onVi
   }
 
   async function upload() {
+    if (busy.current) return
+    busy.current = true
     setRunning(true)
     try {
       for (;;) {
@@ -103,13 +107,14 @@ export function PhotosStep({ products, onViewDrafts }: { products: Draft[]; onVi
         }
       }
     } finally {
+      busy.current = false
       setRunning(false)
     }
   }
 
   const retry = (key: string) => {
     patch(key, { state: 'waiting', error: null })
-    if (!running) void upload()
+    void upload()
   }
 
   const onDrop = async (event: DragEvent) => {

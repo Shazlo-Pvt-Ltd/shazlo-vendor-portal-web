@@ -84,6 +84,7 @@ export const productsCopy = {
     edit: 'Edit',
     submit: 'Send for review',
     archive: 'Archive',
+    delete: 'Delete',
   },
 
   bulk: {
@@ -97,20 +98,66 @@ export const productsCopy = {
   },
   results: {
     submitted: (n: number) => `${products(n)} sent for review`,
-    archived: (n: number) => `${products(n)} archived`,
-    notSubmitted: (n: number) => `${products(n)} could not be sent for review`,
-    notArchived: (n: number) => `${products(n)} could not be archived`,
+    archived: (n: number, drafts: boolean) => (drafts ? `${products(n)} archived or deleted` : `${products(n)} archived`),
+    // Some went, some did not: "3 of 5 sent for review", then each one that did not, with why.
+    someSubmitted: (done: number, total: number) => `${formatCount(done)} of ${formatCount(total)} sent for review`,
+    someArchived: (done: number, total: number) => `${formatCount(done)} of ${formatCount(total)} archived`,
+    notSubmitted: (n: number, name?: string) => (n === 1 && name ? `${name} could not be sent for review` : `${products(n)} could not be sent for review`),
+    notArchived: (n: number, name?: string) => (n === 1 && name ? `${name} could not be archived` : `${products(n)} could not be archived`),
+    // One product deleted or archived from its row menu.
+    deleted: (name: string) => `${name} was deleted.`,
+    archivedOne: (name: string) => `${name} was archived. Find it under Archived.`,
+    reason: (name: string, why: string) => `${name}: ${why}`,
+    // vendor-api's refusals that are not a list of what is missing, in plain words.
+    reasons: {
+      product_in_review: 'It is in review. Wait for our decision.',
+      nothing_to_submit: 'Nothing has changed since it was sent back. Fix what our team asked for, then send it again.',
+      product_archived: 'It is archived.',
+      product_not_found: 'It is no longer in your products.',
+    } as Record<string, string>,
     failedBody: 'Open each one, fix what is listed, then send it again.',
+    archiveFailedBody: 'Nothing else changed.',
     failedLabel: 'Products that need changes',
     failed: 'That did not go through.',
     dismiss: 'Dismiss',
   },
-  archiveDialog: {
-    title: (n: number, name?: string) => (n === 1 && name ? `Archive ${name}?` : `Archive ${products(n)}?`),
-    body: (n: number) =>
-      n === 1 ? 'It leaves the app and moves to Archived. You can restore it later.' : 'They leave the app and move to Archived. You can restore them later.',
-    confirm: 'Archive',
+  // Main's delete rules: a product never sent for review is deleted for good; one sent before is
+  // archived (kept, and off the app); one in review cannot be touched until the decision.
+  deleteDialog: {
+    removed: {
+      title: (name: string) => `Delete ${name}?`,
+      body: 'It has never been sent for review, so it will be deleted for good. This cannot be undone.',
+      confirm: 'Delete product',
+    },
+    archived: {
+      title: (name: string) => `Archive ${name}?`,
+      body: (live: boolean) =>
+        live
+          ? 'It has been sent for review before, so it is archived, not deleted: it leaves the app straight away and moves to Archived.'
+          : 'It has been sent for review before, so it is archived, not deleted, and moves to Archived.',
+      confirm: 'Archive product',
+    },
+    blocked: {
+      title: (name: string) => `${name} cannot be archived yet`,
+      body: 'It is in review. Wait for our decision, then archive it.',
+    },
+    unknown: {
+      title: (name: string) => `Delete or archive ${name}?`,
+      body: 'If it has never been sent for review, it will be deleted for good. If it has been sent before, it will be archived and move to Archived.',
+      confirm: 'Continue',
+    },
+    bulk: {
+      title: (n: number, drafts: boolean) => (drafts ? `Archive or delete ${products(n)}?` : `Archive ${products(n)}?`),
+      archived: 'Products sent for review before are archived, not deleted, and move to Archived.',
+      live: 'Live ones leave the app straight away.',
+      drafts: 'Drafts never sent for review are deleted for good; this cannot be undone.',
+      blocked: (n: number) => `${products(n)} ${n === 1 ? 'is' : 'are'} in review and will be skipped until our team decides.`,
+      confirm: 'Continue',
+    },
+    checking: 'Checking this product…',
+    checkFailed: 'We could not check this product. Close this and try again.',
     cancel: 'Cancel',
+    close: 'Close',
   },
 
   pagination: {

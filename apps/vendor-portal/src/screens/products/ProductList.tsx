@@ -3,7 +3,7 @@ import { type Theme } from '@mui/material/styles'
 import { Banner, brand, EmptyState, neutral, PageHeader } from '@shazlo/ui'
 import type { RowSelectionState } from '@tanstack/react-table'
 import { Plus, Upload } from 'lucide-react'
-import { lazy, Suspense, useCallback, useId, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router'
 import type { Schemas } from '../../api/model'
 import { useBulkProducts, useProducts } from '../../api/queries'
@@ -11,7 +11,8 @@ import { paths } from '../../app/paths'
 import { productsCopy as copy } from '../../copy/products'
 import { formatCount } from '../../lib/format'
 import { useIsPhone } from '../../shell/layout'
-import { ArchiveDialog, BulkBar, OutcomeBanner, RowMenu, type BulkAction, type BulkOutcome } from './list/BulkBar'
+import type { DeleteOutcome } from './deleteOutcome'
+import { BulkBar, DeleteDialog, OutcomeBanner, RowMenu, type BulkAction, type BulkOutcome, type DeleteTarget } from './list/BulkBar'
 import { DesktopFilters, MobileFilters } from './list/Filters'
 import { ProductCards } from './list/ProductCards'
 import { ProductTable } from './list/ProductTable'
@@ -198,7 +199,7 @@ export default function ProductList({ importOpen }: { importOpen?: boolean }) {
   const selectedIds = Object.keys(rowSelection).filter((id) => rowSelection[id])
   const [menu, setMenu] = useState<{ anchor: HTMLElement; product: Product } | null>(null)
   // Kept after closing (open: false) so the dialog keeps its words while it fades out.
-  const [confirm, setConfirm] = useState<{ ids: string[]; name?: string; open: boolean } | null>(null)
+  const [confirm, setConfirm] = useState<DeleteTarget | null>(null)
   const closeConfirm = () => setConfirm((c) => c && { ...c, open: false })
   const [outcomes, setOutcomes] = useState<BulkOutcome[]>([])
   // A notice handed over by another page (the editor after archiving), shown here until dismissed.
@@ -206,6 +207,8 @@ export default function ProductList({ importOpen }: { importOpen?: boolean }) {
   const [dismissed, setDismissed] = useState<string | null>(null)
   const notice = handed && dismissed !== location.key ? handed : null
   const [pending, setPending] = useState<BulkAction | null>(null)
+  // A second press before the first is done must not send everything twice.
+  const running = useRef(false)
 
   const importTo = { pathname: paths.bulkImport, search }
   const onSearch = useCallback((q: string) => update({ q }, { replace: true }), [update])
@@ -214,43 +217,71 @@ export default function ProductList({ importOpen }: { importOpen?: boolean }) {
   const clearSelection = () => setSelection({ key: selectionKey, rows: {} })
   const focusSelectAll = () => requestAnimationFrame(() => document.getElementById(selectAllId)?.focus())
 
-  async function run(action: BulkAction, ids: string[]) {
+  // Sends or archives products one call each (vendor-api has no bulk route) and says what happened
+  // in the page: all of them, some ("2 of 3 archived", then each one that did not, with why), or none.
+  async function run(action: BulkAction, products: Product[], outcome?: DeleteOutcome) {
+    if (running.current || products.length === 0) return
+    running.current = true
     setOutcomes([])
     setDismissed(location.key)
     setPending(action)
-    const name = (id: string) => data?.items.find((p) => p.id === id)?.title ?? id
+    const nameOf = (id: string) => products.find((p) => p.id === id)?.title ?? id
     try {
-      const { results } = await bulk.mutateAsync({ action, ids })
+      const { results } = await bulk.mutateAsync({ action, ids: products.map((p) => p.id) })
       const done = results.filter((r) => r.ok).length
       const failed = results.filter((r) => !r.ok)
-      const next: BulkOutcome[] = []
-      if (done) next.push({ tone: 'success', title: action === 'submit' ? copy.results.submitted(done) : copy.results.archived(done), messages: [] })
-      if (failed.length) {
-        next.push({
-          tone: 'warning',
-          title: action === 'submit' ? copy.results.notSubmitted(failed.length) : copy.results.notArchived(failed.length),
-          messages: failed.map((r) => r.message ?? `${name(r.id)}: ${copy.results.failed}`),
-        })
+      const total = results.length
+      const r = copy.results
+      const single = total === 1 ? products[0]! : null
+      // "Name: what to do". vendor-api's refusals get plain words; a missing requirement keeps the
+      // editor's sentence (the hook names the product when it has read it).
+      const why = (f: (typeof failed)[number]) => {
+        const name = nameOf(f.id)
+        const text = (f.code ? r.reasons[f.code] : undefined) ?? f.message ?? r.failed
+        return text.startsWith(`${name}: `) ? text : r.reason(name, text)
       }
-      setOutcomes(next)
+      if (failed.length === 0) {
+        let title: string
+        if (action === 'submit') title = r.submitted(done)
+        else if (single && outcome === 'removed') title = r.deleted(single.title)
+        else if (single && outcome === 'archived') title = r.archivedOne(single.title)
+        else title = r.archived(done, products.some((p) => p.status === 'draft'))
+        setOutcomes([{ tone: 'success', title, messages: [] }])
+      } else {
+        const title =
+          done > 0
+            ? action === 'submit' ? r.someSubmitted(done, total) : r.someArchived(done, total)
+            : action === 'submit' ? r.notSubmitted(failed.length, single?.title) : r.notArchived(failed.length, single?.title)
+        setOutcomes([{ tone: 'warning', title, messages: failed.map(why), body: action === 'submit' ? r.failedBody : undefined }])
+      }
       clearSelection()
     } catch (error) {
       setOutcomes([{ tone: 'error', title: copy.results.failed, messages: [error instanceof Error ? error.message : ''].filter(Boolean) }])
     } finally {
+      running.current = false
       setPending(null)
       closeConfirm()
     }
   }
 
-  const askArchive = (ids: string[], name?: string) => setConfirm({ ids, name, open: true })
-  const onBulk = (action: BulkAction) => (action === 'archive' ? askArchive(selectedIds) : void run('submit', selectedIds).then(focusSelectAll))
+  const selected = (ids: string[]) => (data?.items ?? []).filter((p) => ids.includes(p.id))
+  const askDelete = (products: Product[]) => setConfirm({ products, open: true })
+  const onBulk = (action: BulkAction) => (action === 'archive' ? askDelete(selected(selectedIds)) : void run('submit', selected(selectedIds)).then(focusSelectAll))
   const onRowAction = (action: BulkAction, product: Product) => {
     setMenu(null)
-    if (action === 'archive') askArchive([product.id], product.title)
-    else void run('submit', [product.id])
+    if (action === 'archive') askDelete([product])
+    else void run('submit', [product])
   }
   const openProduct = (product: Product) => navigate(paths.product(product.id))
   const closeImport = () => navigate({ pathname: paths.products, search })
+
+  // A page that no longer exists (a link past the end, or the last products on it archived): go
+  // to the last page there is, without adding a step to the history (main's rule).
+  const lastPage = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1
+  const stranded = data !== undefined && !query.isPlaceholderData && data.items.length === 0 && data.total > 0 && params.page > lastPage
+  useEffect(() => {
+    if (stranded) update({ page: lastPage }, { replace: true })
+  }, [stranded, lastPage, update])
 
   const noProducts = data !== undefined && data.counts.all === 0 && data.counts.archived === 0
   const items = data?.items
@@ -346,7 +377,7 @@ export default function ProductList({ importOpen }: { importOpen?: boolean }) {
       )}
 
       <RowMenu target={menu} onClose={() => setMenu(null)} onEdit={(product) => navigate(paths.product(product.id))} onAction={onRowAction} />
-      <ArchiveDialog target={confirm} pending={pending === 'archive'} onCancel={closeConfirm} onConfirm={() => confirm && void run('archive', confirm.ids).then(focusSelectAll)} />
+      <DeleteDialog target={confirm} pending={pending === 'archive'} onCancel={closeConfirm} onConfirm={(outcome) => confirm && void run('archive', confirm.products, outcome).then(focusSelectAll)} />
       {importOpen && (
         <Suspense fallback={null}>
           <BulkImportDialog onClose={closeImport} />

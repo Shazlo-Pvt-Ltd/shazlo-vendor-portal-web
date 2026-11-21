@@ -6,7 +6,7 @@ import { catalogCopy } from '../../../copy/catalog'
 import { productEditorCopy } from '../../../copy/productEditor'
 import { COLOURS, GENDERS, MAX_OTHER_COLOURS, PRODUCT_TYPES } from '../../../lib/catalog'
 import { CheckboxChips, RadioChips, type Choice } from './Choices'
-import type { EditorValues } from './form'
+import { LIMITS, type EditorValues } from './form'
 import { EditorSection, fieldId, type Problems } from './layout'
 
 const copy = productEditorCopy.about
@@ -30,7 +30,7 @@ export function NameField({ form, readOnly, problem, idPrefix }: { form: Form; r
       fullWidth
       error={Boolean(problem)}
       helperText={problem ?? copy.nameHint}
-      slotProps={{ input: { readOnly }, htmlInput: { autoComplete: 'off', enterKeyHint: 'next' } }}
+      slotProps={{ input: { readOnly }, htmlInput: { autoComplete: 'off', enterKeyHint: 'next', maxLength: LIMITS.title } }}
     />
   )
 }
@@ -113,7 +113,7 @@ export const AboutSection = memo(function AboutSection({ form, readOnly, problem
           )}
         />
         <OtherColours form={form} readOnly={readOnly} />
-        <TextField {...text('material')} label={copy.material} error={Boolean(problems.material)} helperText={problems.material ?? copy.materialHint} slotProps={{ input: { readOnly }, htmlInput: { autoComplete: 'off' } }} />
+        <TextField {...text('material')} label={copy.material} error={Boolean(problems.material)} helperText={problems.material ?? copy.materialHint} slotProps={{ input: { readOnly }, htmlInput: { autoComplete: 'off', maxLength: LIMITS.material } }} />
         <TextField
           {...text('description')}
           label={copy.description}
@@ -121,7 +121,7 @@ export const AboutSection = memo(function AboutSection({ form, readOnly, problem
           minRows={4}
           error={Boolean(problems.description)}
           helperText={problems.description ?? copy.descriptionHint}
-          slotProps={{ input: { readOnly } }}
+          slotProps={{ input: { readOnly }, htmlInput: { maxLength: LIMITS.description } }}
         />
       </Stack>
     </EditorSection>

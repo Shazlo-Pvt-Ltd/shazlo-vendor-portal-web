@@ -1,5 +1,5 @@
 import { Box, Button, DialogActions, DialogContent, Stack, Typography } from '@mui/material'
-import { Banner, fontFamily, neutral, radius } from '@shazlo/ui'
+import { Banner, neutral, radius } from '@shazlo/ui'
 import { Download } from 'lucide-react'
 import { useId } from 'react'
 import { useImportTemplate } from '../../api/queries'
@@ -10,6 +10,8 @@ import { saveFile } from './download'
 import { actionsSx } from './layout'
 
 const copy = importCopy.template
+// The display face at the body's size: the h3 style's face, the rest inherited from the line.
+const DISPLAY_FACE = { typography: 'h3', fontSize: 'inherit', lineHeight: 'inherit', fontWeight: 'inherit', letterSpacing: 'inherit' } as const
 
 // The 10 template columns (PDF §4), each with whether it is needed and the example row's value.
 export function ColumnGuide() {
@@ -33,7 +35,7 @@ export function ColumnGuide() {
               <Typography variant="body1" component="span">
                 {catalogCopy.importColumns[column]}
               </Typography>
-              <Typography variant="caption" component="span" color="text.secondary" sx={{ display: 'block', fontFamily: fontFamily.mono }}>
+              <Typography variant="mono" component="span" color="text.secondary" sx={{ display: 'block' }}>
                 {column}
               </Typography>
             </Box>
@@ -73,7 +75,7 @@ export function TemplateStep({ onNext }: { onNext: (downloaded: boolean) => void
           <ColumnGuide />
           <Box sx={{ bgcolor: neutral.canvas, border: `1px solid ${neutral.line}`, borderRadius: `${radius.card}px`, px: 2, py: 1.5 }}>
             <Typography variant="body1">
-              <Box component="span" sx={{ fontFamily: fontFamily.display }}>
+              <Box component="span" sx={DISPLAY_FACE}>
                 {copy.sizesLabel}
               </Box>{' '}
               {copy.sizesNote}

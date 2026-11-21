@@ -3,7 +3,9 @@ import { brand, neutral, radius, status } from '@shazlo/ui'
 import { AlertTriangle, FileSpreadsheet } from 'lucide-react'
 import { useRef, useState, type DragEvent } from 'react'
 import { importCopy } from '../../copy/import'
+import { formatCount } from '../../lib/format'
 import { actionsSx } from './layout'
+import { formatBytes, IMPORT_MAX_BYTES, IMPORT_MAX_ROWS } from './rules'
 
 const copy = importCopy.upload
 
@@ -72,7 +74,7 @@ export function UploadStep({ busy, error, notice, onFile, onBack }: { busy: stri
                 </Button>
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                {copy.hint}
+                {copy.hint(formatBytes(IMPORT_MAX_BYTES), formatCount(IMPORT_MAX_ROWS))}
               </Typography>
             </>
           )}

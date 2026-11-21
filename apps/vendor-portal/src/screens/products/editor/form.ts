@@ -8,6 +8,8 @@ type ProductInput = Schemas['ProductInput']
 
 const errors = productEditorCopy.price.errors
 export const MAX_STOCK = 99_999
+/** vendor-api's limits; the fields stop there, so nothing typed is refused later. */
+export const LIMITS = { title: 200, material: 80, description: 4000 } as const
 
 export type SizeRow = { size: string; stock: string }
 
@@ -26,10 +28,10 @@ export type EditorValues = {
 }
 
 // The last values the server holds, used where the form's own value is not safe to save.
-export type SavedBase = { sku: string | null; price: number | null; mrp: number | null; live: boolean }
+export type SavedBase = { sku: string | null; title: string; price: number | null; mrp: number | null; live: boolean }
 
 export function baseOf(product: Product | null): SavedBase {
-  return { sku: product?.sku ?? null, price: product?.price_paise ?? null, mrp: product?.mrp_paise ?? null, live: product?.status === 'approved' }
+  return { sku: product?.sku ?? null, title: product?.title ?? '', price: product?.price_paise ?? null, mrp: product?.mrp_paise ?? null, live: product?.status === 'approved' }
 }
 
 const amount = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 })
@@ -97,14 +99,15 @@ export function editorResolver(live: boolean): Resolver<EditorValues> {
 export const otherColoursFor = (values: Pick<EditorValues, 'mainColour' | 'otherColours'>) => values.otherColours.filter((c) => c !== values.mainColour)
 
 // What autosave sends. A price that fails the checks keeps the saved one, so a half-typed or
-// wrong price never reaches the server (on a live product it would reach shoppers at once).
+// wrong price never reaches the server. An emptied name keeps the saved one: vendor-api needs a
+// name, and would refuse the whole save.
 export function toInput(values: EditorValues, base: SavedBase): ProductInput {
   const issues = priceIssues(values, base.live)
   const ok = !issues.mrp && !issues.price
   const mrp = parseRupees(values.mrp)
   const price = parseRupees(values.price)
   return {
-    title: values.title.trim(),
+    title: values.title.trim() || base.title,
     gender: values.gender || null,
     category: values.category || null,
     main_colour: values.mainColour || null,
@@ -115,6 +118,32 @@ export function toInput(values: EditorValues, base: SavedBase): ProductInput {
     price_paise: ok && price.ok ? price.paise : base.price,
     variants: values.sizes.map((row) => ({ size: row.size, sku: base.sku ? sizeCode(base.sku, row.size) : '', stock: stockOf(row.stock) })),
   }
+}
+
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+
+/**
+ * Only what changed since the last save: every save reads the product fresh and applies just this,
+ * so another tab's (or a teammate's) changes to other fields survive. vendor-api keeps the price and
+ * MRP on every size, so the two always go together, and a change of sizes carries them.
+ */
+export function changedInput(next: ProductInput, last: ProductInput | null): ProductInput {
+  if (!last) return next
+  const out: Record<string, unknown> = {}
+  for (const key of Object.keys(next) as (keyof ProductInput)[]) {
+    if (!same(next[key], last[key])) out[key] = next[key]
+  }
+  if ('variants' in out || 'price_paise' in out || 'mrp_paise' in out) {
+    out.price_paise = next.price_paise
+    out.mrp_paise = next.mrp_paise
+  }
+  return out as ProductInput
+}
+
+/** A good selling price, but no size yet: vendor-api keeps the price on the sizes, so it cannot be saved yet. */
+export function priceWaitsForSize(values: Pick<EditorValues, 'price' | 'mrp' | 'sizes'>): boolean {
+  const price = parseRupees(values.price)
+  return values.sizes.length === 0 && price.ok && price.paise !== null && price.paise > 0
 }
 
 // The product as it stands on screen, for the send-for-review checks.

@@ -1,7 +1,7 @@
 import { Box, Dialog, IconButton, Stack, Step, StepLabel, Stepper, Typography } from '@mui/material'
 import { Banner, neutral } from '@shazlo/ui'
 import { X } from 'lucide-react'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import type { Schemas } from '../../api/model'
 import { useCommitImport, useImportJob, useStartImport } from '../../api/queries'
@@ -11,6 +11,7 @@ import { srOnly } from '../../lib/a11y'
 import { useNavMode } from '../../shell/layout'
 import { PhotosStep } from './PhotosStep'
 import { ReviewStep } from './ReviewStep'
+import { checkImportFile, failedFileMessage, fileErrorMessage, rowNames, withRowNames } from './rules'
 import { TemplateStep } from './TemplateStep'
 import { UploadStep } from './UploadStep'
 
@@ -32,11 +33,18 @@ export function BulkImportDialog({ onClose }: { onClose: () => void }) {
   const [fileName, setFileName] = useState('')
   const [jobId, setJobId] = useState<string | null>(null)
   const [created, setCreated] = useState<Schemas['ImportCommit']['products']>([])
+  // Refused before anything was sent (main's import rules): wrong type, empty, too large.
+  const [fileProblem, setFileProblem] = useState<string | null>(null)
+  // A CSV's product names by row, so the rows to fix say which product (vendor-api gives the row only).
+  const [names, setNames] = useState<ReadonlyMap<number, string>>(new Map())
   const start = useStartImport()
   const commit = useCommitImport()
   const job = useImportJob(stage === 'review' ? jobId : null)
+  // Saving makes drafts: a second press before the first is done must not save them twice.
+  const saving = useRef(false)
 
-  const checked = stage === 'review' && job.data?.status === 'ready' ? job.data : null
+  const ready = stage === 'review' && job.data?.status === 'ready' ? job.data : null
+  const checked = useMemo(() => (ready ? { ...ready, errors: withRowNames(ready.errors, names) } : null), [ready, names])
   const active = stage === 'template' ? 0 : stage === 'upload' || (stage === 'review' && !checked) ? 1 : stage === 'review' ? 2 : 3
   const stepLabel = copy.steps[active]!
 
@@ -50,15 +58,29 @@ export function BulkImportDialog({ onClose }: { onClose: () => void }) {
     commit.reset()
     setJobId(null)
     setDownloaded(false)
+    setFileProblem(null)
     setStage('upload')
   }
 
   const onFile = async (file: File) => {
     commit.reset()
+    start.reset()
+    // A new file starts a new check: what was said about the last one goes.
+    setJobId(null)
+    setStage('upload')
     setDownloaded(false)
+    const problem = checkImportFile(file)
+    setFileProblem(problem ?? null)
+    if (problem) return
     setFileName(file.name)
+    setNames(new Map())
     try {
-      const { job_id } = await start.mutateAsync(file)
+      const [{ job_id }, sheetNames] = await Promise.all([
+        start.mutateAsync(file),
+        // Only a CSV can be read here; a name that cannot be read just leaves the column blank.
+        /\.csv$/i.test(file.name) || file.type === 'text/csv' ? file.text().then(rowNames, () => new Map<number, string>()) : Promise.resolve(new Map<number, string>()),
+      ])
+      setNames(sheetNames)
       setJobId(job_id)
       setStage('review')
     } catch {
@@ -67,13 +89,16 @@ export function BulkImportDialog({ onClose }: { onClose: () => void }) {
   }
 
   const onCreate = async () => {
-    if (!jobId) return
+    if (!jobId || saving.current) return
+    saving.current = true
     try {
       const result = await commit.mutateAsync(jobId)
       setCreated(result.products)
       setStage('photos')
     } catch {
       // Shown in the step from commit.error.
+    } finally {
+      saving.current = false
     }
   }
 
@@ -90,15 +115,16 @@ export function BulkImportDialog({ onClose }: { onClose: () => void }) {
   } else if (stage === 'photos') {
     content = <PhotosStep products={created} onViewDrafts={() => navigate({ pathname: paths.products, search: '?status=draft' })} />
   } else if (checked) {
-    content = <ReviewStep job={checked} wide={!phone} creating={commit.isPending} createError={commit.error?.message ?? null} onReplace={toUpload} onCreate={() => void onCreate()} />
+    content = <ReviewStep job={checked} wide={!phone} creating={commit.isPending} createError={commit.error ? fileErrorMessage(commit.error, { saving: true }) : null} onReplace={toUpload} onCreate={() => void onCreate()} />
   } else {
     // Uploading, checking, or the check could not read the file.
-    const failed = stage === 'review' && (job.data?.status === 'failed' ? copy.upload.failed : job.isError ? job.error.message : null)
+    const failedJob = job.data?.status === 'failed' ? job.data.errors[0] : undefined
+    const failed = stage === 'review' && (failedJob ? failedFileMessage(failedJob) : job.data?.status === 'failed' ? copy.upload.failed : job.isError ? job.error.message : null)
     const busy = start.isPending ? copy.upload.sending(fileName) : stage === 'review' && !failed ? copy.upload.checking(fileName) : null
     content = (
       <UploadStep
         busy={busy}
-        error={failed || (start.error?.message ?? null)}
+        error={failed || fileProblem || (start.error ? fileErrorMessage(start.error) : null)}
         notice={downloaded ? copy.template.downloaded : null}
         onFile={(file) => void onFile(file)}
         onBack={() => setStage('template')}

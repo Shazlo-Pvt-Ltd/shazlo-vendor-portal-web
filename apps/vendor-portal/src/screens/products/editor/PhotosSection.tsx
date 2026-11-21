@@ -7,6 +7,7 @@ import { useMoveProductImage, useRemoveProductImage } from '../../../api/queries
 import { catalogCopy } from '../../../copy/catalog'
 import { productEditorCopy } from '../../../copy/productEditor'
 import { srOnly } from '../../../lib/a11y'
+import { SafeImage } from '../../../security/SafeImage'
 import { MAX_EXTRA_PHOTOS, NAMED_PHOTO_ANGLES, TRYON_REQUIRED, type NamedPhotoAngle, type PhotoAngle } from '../../../lib/catalog'
 import { EditorSection, firstEmptyTryonId, InlineProblem, slotId, type Problems } from './layout'
 import { planPhotos, type PendingPhoto, type PhotoGroup, type PhotoUploads } from './usePhotoUploads'
@@ -19,6 +20,8 @@ type Kind = 'named' | 'extra' | 'tryon'
 type Target = { image: Image; name: string; kind: Kind }
 
 const tile = { aspectRatio: '4 / 5', width: '100%', borderRadius: `${radius.card}px`, overflow: 'hidden', position: 'relative' } as const
+// The seller's photos come through SafeImage (https, the app's own paths or a blob: it made).
+const cover = { '& > img': { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } } as const
 
 function Slot({ label, note, children }: { label: string; note?: string; children: ReactNode }) {
   return (
@@ -87,8 +90,8 @@ function EmptyTile({ id, name, required, flagged, disabled, readOnly, onPick }: 
 
 function ImageTile({ image, name, readOnly, onOptions }: { image: Image; name: string; readOnly: boolean; onOptions: (anchor: HTMLElement) => void }) {
   return (
-    <Box sx={{ ...tile, bgcolor: neutral.placeholder, border: `1px solid ${neutral.line}` }}>
-      <Box component="img" src={image.url} alt={name} loading="lazy" sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+    <Box sx={{ ...tile, ...cover, bgcolor: neutral.placeholder, border: `1px solid ${neutral.line}` }}>
+      <SafeImage src={image.url} alt={name} />
       {!readOnly && (
         <IconButton
           aria-label={copy.options(name)}
@@ -103,38 +106,47 @@ function ImageTile({ image, name, readOnly, onOptions }: { image: Image; name: s
   )
 }
 
-// A photo on its way up: its preview right away, then its own progress, or why it failed with
-// Try again. The preview stays until the photo is added or the seller cancels it.
-function PendingTile({ upload, name, onRetry, onDiscard }: { upload: PendingPhoto; name: string; onRetry: () => void; onDiscard: () => void }) {
+// A photo on its way up: its preview right away, then its own progress and Cancel, or why it
+// failed with Try again (when trying again can help). The preview stays until the photo is added
+// or the seller cancels it.
+function PendingTile({ upload, name, onRetry, onCancel }: { upload: PendingPhoto; name: string; onRetry: () => void; onCancel: () => void }) {
   const failed = upload.state === 'failed'
+  const determinate = upload.state === 'uploading' && upload.progress !== null
   return (
     <>
-      <Box aria-busy={!failed} sx={{ ...tile, bgcolor: neutral.placeholder, border: failed ? `2px solid ${status.error}` : `1px solid ${neutral.line}` }}>
-        <Box component="img" src={upload.preview} alt="" sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: failed ? 0.4 : 0.6 }} />
+      <Box aria-busy={!failed} sx={{ ...tile, bgcolor: neutral.placeholder, border: failed ? `2px solid ${status.error}` : `1px solid ${neutral.line}`, '& > img': { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: failed ? 0.4 : 0.6 } }}>
+        <SafeImage src={upload.preview} alt="" />
         {!failed && (
           <Box sx={{ position: 'absolute', left: 0, right: 0, bottom: 0, bgcolor: neutral.surface, px: 1, py: 0.75 }}>
             <Typography variant="caption" component="p" sx={{ mb: 0.5 }}>
               {copy.states[upload.state as Exclude<PendingPhoto['state'], 'failed'>]}
             </Typography>
-            <LinearProgress aria-label={copy.progress(name)} sx={{ height: 3, borderRadius: 2, bgcolor: neutral.placeholder, '& .MuiLinearProgress-bar': { bgcolor: brand.brown } }} />
+            <LinearProgress
+              aria-label={copy.progress(name)}
+              variant={determinate ? 'determinate' : 'indeterminate'}
+              value={determinate ? Math.round((upload.progress ?? 0) * 100) : undefined}
+              sx={{ height: 3, borderRadius: 2, bgcolor: neutral.placeholder, '& .MuiLinearProgress-bar': { bgcolor: brand.brown } }}
+            />
           </Box>
         )}
       </Box>
-      {failed && (
-        <Box role="alert" sx={{ mt: 0.75 }}>
+      <Box role={failed ? 'alert' : undefined} sx={{ mt: 0.75 }}>
+        {failed && (
           <Typography variant="caption" component="p" sx={{ color: status.error }}>
             {copy.failed(upload.error ?? '')}
           </Typography>
-          <Stack direction="row" sx={{ flexWrap: 'wrap', columnGap: 1 }}>
+        )}
+        <Stack direction="row" sx={{ flexWrap: 'wrap', columnGap: 1 }}>
+          {failed && upload.retryable && (
             <Button size="small" onClick={onRetry} aria-label={copy.retryLabel(name)} sx={{ minHeight: 44, px: 1, ml: -1 }}>
               {copy.retry}
             </Button>
-            <Button size="small" color="inherit" onClick={onDiscard} aria-label={copy.discardLabel(name)} sx={{ minHeight: 44, px: 1 }}>
-              {copy.discard}
-            </Button>
-          </Stack>
-        </Box>
-      )}
+          )}
+          <Button size="small" color="inherit" onClick={onCancel} aria-label={copy.discardLabel(name)} sx={{ minHeight: 44, px: 1, ml: failed && upload.retryable ? 0 : -1 }}>
+            {copy.discard}
+          </Button>
+        </Stack>
+      </Box>
     </>
   )
 }
@@ -249,7 +261,7 @@ export const PhotosSection = memo(function PhotosSection({ productId, images, up
   const menuMoves = menuTarget ? moves(menuTarget) : {}
 
   function slotContent(name: string, image: Image | undefined, upload: PendingPhoto | undefined, kind: Kind, empty: ReactNode) {
-    if (upload) return <PendingTile upload={upload} name={name} onRetry={() => uploads.retry(upload.key)} onDiscard={() => uploads.discard(upload.key)} />
+    if (upload) return <PendingTile upload={upload} name={name} onRetry={() => uploads.retry(upload.key)} onCancel={() => uploads.cancel(upload.key)} />
     if (image) return <ImageTile image={image} name={name} readOnly={readOnly} onOptions={options({ image, name, kind })} />
     return empty
   }

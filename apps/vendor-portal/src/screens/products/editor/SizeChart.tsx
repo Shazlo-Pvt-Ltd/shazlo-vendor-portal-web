@@ -9,6 +9,7 @@ import { catalogCopy } from '../../../copy/catalog'
 import { productEditorCopy } from '../../../copy/productEditor'
 import { isValidMeasurement, MEASUREMENTS, productTypesInGroup, sizeChartGroupFor, sortSizes, type ProductType, type SizeChartGroup } from '../../../lib/catalog'
 import { ImageReadError, prepareImage } from '../../../lib/imageResize'
+import { SafeImage } from '../../../security/SafeImage'
 
 const copy = productEditorCopy.sizeChart
 const labels = catalogCopy.sizeChart
@@ -149,7 +150,11 @@ function ChartForm({ group, chart, sizes, readOnly }: { group: SizeChartGroup; c
         <Typography variant="body1" sx={{ mb: 1 }}>
           {copy.photoTitle}
         </Typography>
-        {photoUrl && <Box component="img" src={photoUrl} alt={copy.photoAlt} sx={{ display: 'block', maxWidth: 200, maxHeight: 240, objectFit: 'contain', borderRadius: `${radius.card}px`, border: `1px solid ${neutral.line}`, mb: 1 }} />}
+        {photoUrl && (
+          <Box sx={{ '& > img': { display: 'block', maxWidth: 200, maxHeight: 240, objectFit: 'contain', borderRadius: `${radius.card}px`, border: `1px solid ${neutral.line}`, mb: 1 } }}>
+            <SafeImage src={photoUrl} alt={copy.photoAlt} />
+          </Box>
+        )}
         {photo.busy && (
           <Box role="status" sx={{ maxWidth: 200, mb: 1 }}>
             <Typography variant="caption">{copy.photoUploading}</Typography>
