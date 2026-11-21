@@ -2,6 +2,8 @@ import { once } from 'node:events'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { Writable } from 'node:stream'
+import { readFileSync } from 'node:fs'
+import dotenv from 'dotenv'
 import mongoose from 'mongoose'
 import { MongoMemoryServer } from 'mongodb-memory-server-core'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -353,6 +355,12 @@ describe('unauthenticated legacy routes are off by default (#264)', () => {
 
   it.each(['true', ' TRUE '])('turns on only for an explicit true (%j)', (value) => {
     expect(legacyAdminEnabled({ LEGACY_ADMIN_ENABLED: value })).toBe(true)
+  })
+
+  it('stays off in a .env copied from .env.example, as the README setup says to do', () => {
+    const example = dotenv.parse(readFileSync(fileURLToPath(new URL('../.env.example', import.meta.url))))
+    expect(Object.keys(example)).toContain('LEGACY_ADMIN_ENABLED')
+    expect(legacyAdminEnabled(example)).toBe(false)
   })
 })
 
