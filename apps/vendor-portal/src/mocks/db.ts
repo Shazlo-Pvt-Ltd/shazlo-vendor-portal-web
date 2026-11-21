@@ -1,16 +1,5 @@
-import type { ProductType } from '../api/model'
-import type {
-  ApiPhotoAngle,
-  ApiSizeChartGroup,
-  CommissionOut,
-  SizeChartOut,
-  StoreBusiness,
-  StoreContact,
-  StoreDelivery,
-  StorePayment,
-  StorePayoutBody,
-  StoreReturns,
-} from '../api/wire'
+import type { BusinessDetails, Contact, Delivery, PayOnDelivery, PayoutInput, ProductType, Returns } from '../api/model'
+import type { ApiPhotoAngle, ApiSizeChartGroup } from '../api/wire'
 import { sizeCode } from '../lib/catalog'
 import { swatch, type SwatchVariant } from './swatch'
 
@@ -122,7 +111,7 @@ export interface ProductRecord {
 export interface AssetRecord {
   id: string
   vendor_id: string
-  kind: 'brand_logo' | 'brand_banner' | 'product_image'
+  kind: 'brand_logo' | 'brand_banner' | 'product_image' | 'size_chart'
   public_id: string
   url: string
   status: 'pending' | 'ready'
@@ -178,17 +167,29 @@ export interface StoreRecord {
   sells: 'women' | 'men' | 'both' | null
   city: string | null
   instagram_or_website: string | null
-  contact: StoreContact | null
-  delivery: StoreDelivery | null
-  returns: StoreReturns | null
-  payment: StorePayment | null
-  payout: StorePayoutBody | null
-  business: StoreBusiness
-  version: number
+  contact: Contact | null
+  delivery: Delivery | null
+  returns: Returns | null
+  payment: PayOnDelivery | null
+  payout: PayoutInput | null
+  business: BusinessDetails
   updated_at: string | null
 }
 
-export type SizeChartRecord = Pick<SizeChartOut, 'measurements' | 'photo_asset_id' | 'version' | 'updated_at'>
+/** The brand's commission as vendor-api stores it (`updated_at` set by every change). */
+export interface CommissionRecord {
+  state: 'not_set' | 'proposed' | 'sent_back' | 'agreed'
+  agreed_bps: number | null
+  proposed_bps: number | null
+  note: string | null
+  updated_at?: string | null
+}
+
+export interface SizeChartRecord {
+  measurements: Record<string, Record<string, number | null>>
+  photo_asset_id: string | null
+  updated_at: string | null
+}
 
 /** A failure the next matching request gets instead of its answer (for error states and the break-it tests). */
 export interface Fault {
@@ -215,7 +216,7 @@ export interface MockDb {
   tokens: Map<string, { kind: 'verify' | 'reset' | 'invite'; userId: string }>
   emails: { to: string; kind: 'verify' | 'reset' | 'invite' | 'exists'; token: string | null }[]
   stores: Map<string, StoreRecord>
-  commissions: Map<string, CommissionOut>
+  commissions: Map<string, CommissionRecord>
   brands: Map<string, BrandVersion[]>
   sizeCharts: Map<string, Partial<Record<ApiSizeChartGroup, SizeChartRecord>>>
   products: ProductRecord[]
@@ -459,16 +460,15 @@ function seedStore(updatedAt: string): StoreRecord {
     payment: { cash: true, upi: true },
     payout: null,
     business: { legal_name: 'Kalki Studio LLP', gstin: KALKI_GSTIN },
-    version: 4,
     updated_at: updatedAt,
   }
 }
 
 export function emptyStore(): StoreRecord {
-  return { sells: null, city: null, instagram_or_website: null, contact: null, delivery: null, returns: null, payment: null, payout: null, business: { legal_name: null, gstin: null }, version: 0, updated_at: null }
+  return { sells: null, city: null, instagram_or_website: null, contact: null, delivery: null, returns: null, payment: null, payout: null, business: { legal_name: null, gstin: null }, updated_at: null }
 }
 
-export const NOT_SET: CommissionOut = { state: 'not_set', agreed_bps: null, proposed_bps: null, note: null }
+export const NOT_SET: CommissionRecord = { state: 'not_set', agreed_bps: null, proposed_bps: null, note: null, updated_at: null }
 
 export function createDb({ now = () => new Date() }: { now?: () => Date } = {}): MockDb {
   const t = now().getTime()
@@ -511,7 +511,7 @@ export function createDb({ now = () => new Date() }: { now?: () => Date } = {}):
 
   db.stores.set(kalki.id, seedStore(at(17 * D)))
   db.stores.set(ruchi.id, emptyStore())
-  db.commissions.set(kalki.id, { state: 'agreed', agreed_bps: 1200, proposed_bps: null, note: null })
+  db.commissions.set(kalki.id, { state: 'agreed', agreed_bps: 1200, proposed_bps: null, note: null, updated_at: at(17 * D) })
   db.commissions.set(ruchi.id, NOT_SET)
 
   for (const seed of CATALOGUE) seedProduct(db, kalki.id, seed, t)
@@ -545,7 +545,6 @@ export function createDb({ now = () => new Date() }: { now?: () => Date } = {}):
         L: { bust: 96, waist: 82, hip: 104, length: 114 },
       },
       photo_asset_id: null,
-      version: 1,
       updated_at: at(9 * D),
     },
   })

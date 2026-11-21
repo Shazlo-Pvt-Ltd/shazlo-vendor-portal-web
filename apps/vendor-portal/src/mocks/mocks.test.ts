@@ -54,7 +54,9 @@ describe('mock auth behaves like vendor-api', () => {
     const { db, send, use } = api()
     const login = await send('POST', '/v1/auth/login', DEMO_LOGIN)
     expect(login.status).toBe(200)
-    expect(login.body).toMatchObject({ token_type: 'Bearer', expires_in: 900, user: { email: DEMO_LOGIN.email, role: 'owner' }, vendor: { name: 'Kalki Studio', commission: { state: 'agreed' } } })
+    expect(login.body).toMatchObject({ token_type: 'Bearer', expires_in: 900, user: { email: DEMO_LOGIN.email, role: 'owner' }, vendor: { name: 'Kalki Studio' } })
+    // As vendor-api (PR #281): the commission has its own route, not a place on the session.
+    expect(login.body.vendor).not.toHaveProperty('commission')
     expect(login.body).not.toHaveProperty('refresh_token')
     const first = db.cookie.vendor_refresh
     expect(first).toBeTruthy()

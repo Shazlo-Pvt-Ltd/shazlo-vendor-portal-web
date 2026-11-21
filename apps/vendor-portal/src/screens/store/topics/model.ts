@@ -1,4 +1,3 @@
-import { ApiError } from '../../../api/errors'
 import type { Schemas } from '../../../api/model'
 import { catalogCopy } from '../../../copy/catalog'
 import { storeCopy } from '../../../copy/store'
@@ -174,15 +173,13 @@ export function checkPayoutAnswers(a: PayoutAnswers): FieldErrors {
   return out
 }
 
-// The IFSC lookup (useIfsc) said there is no such bank. Shown like a server message: it goes once
-// the code changes, and the next lookup decides again.
-// The lookup's 404 says "no bank has this code" only with its own error code (ifsc_not_found). A
-// generic not_found is vendor-api without the lookup route (proposed.yaml): then the server checks
-// the code when the payout is saved, instead of every code being called unknown here.
-const ROUTE_MISSING = new Set(['not_found', 'unknown_error'])
-
-export function unknownIfsc(lookupError: unknown, key = 'ifsc'): FieldErrors {
-  return lookupError instanceof ApiError && lookupError.status === 404 && !ROUTE_MISSING.has(lookupError.code) ? { [key]: catalogCopy.errors.payout.ifscUnknown } : {}
+// What the IFSC lookup (useIfsc) says against saving a payout: nothing. vendor-api lists the banks
+// most sellers use; a well-formed code of a bank it does not list answers `404 ifsc_unknown` but
+// may still take a payout (the saved payout then has no bank name), and the code's format is
+// checked by checkPayout before. So the lookup only ever shows the bank's name, and a payout to
+// any well-formed IFSC can be saved, as vendor-api allows. Kept for the forms that ask it.
+export function unknownIfsc(_lookupError: unknown, _key = 'ifsc'): FieldErrors {
+  return {}
 }
 
 // The proposed rate as basis points: null when left empty, NaN when it does not read as a percentage.

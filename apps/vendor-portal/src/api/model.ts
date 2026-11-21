@@ -64,7 +64,8 @@ export type PayoutInput = BankPayoutInput | UpiPayoutInput
 export interface BankPayout {
   method: 'bank'
   holder_name: string
-  bank_name: string
+  /** From the IFSC; null for a bank vendor-api does not list (the payout is still good). */
+  bank_name: string | null
   account_last4: string
   ifsc: string
 }
@@ -109,7 +110,8 @@ export interface StoreDetails {
 export interface IfscBank {
   ifsc: string
   bank: string
-  branch: string
+  /** null until vendor-api has branch names (it bundles only the banks). */
+  branch: string | null
 }
 
 // ---- sign-up -------------------------------------------------------------------------------------
@@ -152,7 +154,7 @@ export interface Commission {
   agreed_bps: number | null
   proposed_bps: number | null
   note: string | null
-  /** vendor-api does not say when the commission last changed: always null. */
+  /** When the commission last changed; null before it ever did. */
   updated_at: string | null
 }
 export interface Me {

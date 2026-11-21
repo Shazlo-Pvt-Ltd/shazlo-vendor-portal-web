@@ -321,17 +321,17 @@ describe('V-02 Apply to sell: payouts and business details', () => {
     await typeIn(user, 'Account number', '5010 0123 4567 4821')
     await typeIn(user, 'Account number again', '5010 0123 4567 4812')
     await typeIn(user, 'IFSC code', 'hdfc0001234')
-    expect(await screen.findByText('HDFC Bank, Vastrapur, Ahmedabad')).toBeInTheDocument()
+    expect(await screen.findByText('HDFC Bank')).toBeInTheDocument()
     await next(user)
     expect(within(summary()).getAllByRole('link').map((l) => l.textContent)).toEqual(['The account numbers do not match. Type the same number in both fields.'])
 
-    // An IFSC of no known bank is caught on Continue.
+    // An IFSC of a bank vendor-api does not list yet is pointed out, so a typo is caught, but it does
+    // not stop the seller: vendor-api takes a payout to any well-formed IFSC.
     await typeIn(user, 'Account number again', '5010 0123 4567 4821')
     await typeIn(user, 'IFSC code', 'ABCD0001234')
-    await waitFor(() => expect(screen.queryByText(/HDFC Bank/)).toBeNull())
-    await new Promise((resolve) => setTimeout(resolve, 50))
-    await next(user)
-    expect(screen.getByRole('textbox', { name: 'IFSC code' })).toHaveAccessibleDescription('We could not find this IFSC code. Check it on your cheque book or bank app.')
+    expect(await screen.findByText('We do not know the bank for this code yet. Check it on your cheque book or bank app; you can still continue.')).toBeInTheDocument()
+    expect(screen.queryByText(/HDFC Bank/)).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'IFSC code' })).not.toHaveAttribute('aria-invalid', 'true')
 
     const kept = JSON.stringify(readDraft())
     expect(kept).toContain('Neel Threads')

@@ -22,7 +22,7 @@ import {
 import { reviewItemFromSubmission, reviewStateToStatus, submissionFromApi } from './adapters/reviews'
 import { signupBodyFromApplication, signupErrors } from './adapters/signup'
 import { sizeChartBody, sizeChartFromApi } from './adapters/sizeCharts'
-import { storeDetailsFromApi, storeErrors } from './adapters/storeDetails'
+import { ifscFromApi, storeDetailsFromApi, storeErrors } from './adapters/storeDetails'
 import { teamUserFromApi } from './adapters/team'
 import { downloadImportTemplate, importProducts } from './endpoints'
 import { ApiError, NetworkError } from './errors'
@@ -95,6 +95,7 @@ export const keys = {
   allSubmissions: ['submissions'] as const,
   importJob: (id: string) => ['import', id] as const,
   storeDetails: ['store-details'] as const,
+  commission: ['commission'] as const,
   ifsc: (code: string) => ['ifsc', code] as const,
   sizeChart: (group: Schemas['SizeChartGroup']) => ['size-chart', group] as const,
   sizeChartRaw: (group: Schemas['SizeChartGroup']) => ['size-chart-raw', group] as const,
@@ -206,6 +207,19 @@ function productIndex(qc: QueryClient, signal?: AbortSignal): Promise<Map<string
   })
 }
 
+/**
+ * `GET /v1/vendor/commission`: the whole team reads it. Read again every time the seller is read,
+ * because Shazlo changes it on its side and it used to come with the session (Build 2 refreshed
+ * `['me']` to see it). A read already under way is shared, and the result also feeds `useCommission`.
+ */
+function commission(qc: QueryClient, signal?: AbortSignal): Promise<Commission> {
+  return qc.fetchQuery({
+    queryKey: keys.commission,
+    staleTime: 0,
+    queryFn: async () => commissionFromApi(await callObject(client().GET('/v1/vendor/commission', { signal }))),
+  })
+}
+
 function storeDetails(qc: QueryClient, signal?: AbortSignal): Promise<StoreDetails> {
   return qc.fetchQuery({
     queryKey: keys.storeDetails,
@@ -251,9 +265,14 @@ export function useMe(enabled = true) {
     queryKey: keys.me,
     enabled,
     queryFn: async ({ signal }) => {
-      const [me, store, published, counts] = await Promise.all([
+      const [me, rate, store, published, counts] = await Promise.all([
         callObject(client().GET('/v1/vendor/me', { signal })),
-        // Store details are a proposed route: until vendor-api has it, "Store details" stays a to-do.
+        // Without the commission there is no rate to show, never a default one.
+        commission(qc, signal).catch((error: unknown) => {
+          if (isAbort(error)) throw error
+          return null
+        }),
+        // Without the store details, "Store details" stays a to-do on Home.
         storeDetails(qc, signal).catch((error: unknown) => {
           if (isAbort(error)) throw error
           return null
@@ -264,7 +283,7 @@ export function useMe(enabled = true) {
         }),
         productCounts(qc, signal),
       ])
-      return meFromApi({ me, store, brandLive: published !== null, counts })
+      return meFromApi({ me, commission: rate, store, brandLive: published !== null, counts })
     },
   })
 }
@@ -495,13 +514,14 @@ export function useStoreDetails(enabled = true) {
   })
 }
 
-// Bank and branch for an IFSC, looked up once the code has the right shape ("hdfc0001234" works).
-// A 404 (no such bank) is the query's error; it is not retried.
+// The bank for an IFSC, looked up once the code has the right shape ("hdfc0001234" works).
+// vendor-api answers 404 `ifsc_unknown` for a well-formed code of a bank it does not list, which a
+// payout may still use, and 422 `ifsc_format` for anything else. Neither is retried.
 export function useIfsc(code: string | null | undefined) {
   const ifsc = normaliseIfsc(code ?? '')
   return useQuery<IfscBank>({
     queryKey: keys.ifsc(ifsc),
-    queryFn: ({ signal }) => callObject(client().GET('/v1/public/ifsc/{code}', { params: { path: { code: ifsc } }, signal })),
+    queryFn: async ({ signal }) => ifscFromApi(await callObject(client().GET('/v1/public/ifsc/{code}', { params: { path: { code: ifsc } }, signal }))),
     enabled: isValidIfsc(ifsc),
     staleTime: Infinity,
     retry: false,
@@ -793,7 +813,7 @@ export function useRemoveProductImage(id: string) {
   return useProductWrite((imageId: string) => putContent(qc, id, (raw) => removeImage(contentFromInput({}, raw, newProductCode), imageId)))
 }
 
-const KIND: Record<UploadPurpose, AssetKind> = { logo: 'brand_logo', cover: 'brand_banner', product: 'product_image', size_chart: 'product_image' }
+const KIND: Record<UploadPurpose, AssetKind> = { logo: 'brand_logo', cover: 'brand_banner', product: 'product_image', size_chart: 'size_chart' }
 
 /** Sign → upload to Cloudinary → register (main's pipeline, api/uploads/upload.ts). */
 async function upload(file: File, purpose: UploadPurpose, options: { signal?: AbortSignal; onProgress?: (fraction: number) => void } = {}): Promise<UploadedImage> {
@@ -1017,13 +1037,25 @@ export function useSaveStoreSection() {
   })
 }
 
+/** The brand's commission (`GET /v1/vendor/commission`). `useMe` carries it too, as `vendor.commission`. */
+export function useCommission(enabled = true) {
+  return useQuery<Commission>({
+    queryKey: keys.commission,
+    enabled,
+    queryFn: async ({ signal }) => commissionFromApi(await callObject(client().GET('/v1/vendor/commission', { signal }))),
+  })
+}
+
 // Proposes a commission rate in basis points (1250 = 12.5%; parsePercent in src/lib/commission.ts).
+// Owner only (403 `forbidden` for staff). A 422 names `rate_bps`: out of 0-40% (pydantic's range
+// check) or `same_as_agreed` for the rate already agreed. The agreed rate stays until Shazlo decides.
 export function useProposeCommission() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (rateBps: number): Promise<Commission> => commissionFromApi(await callObject(client().POST('/v1/vendor/commission/proposal', { body: { rate_bps: rateBps } }))),
-    onSuccess: (commission) => {
-      qc.setQueryData<Me>(keys.me, (me) => (me ? { ...me, vendor: { ...me.vendor, commission, commission_bps: commission.agreed_bps } } : me))
+    onSuccess: (next) => {
+      qc.setQueryData(keys.commission, next)
+      qc.setQueryData<Me>(keys.me, (me) => (me ? { ...me, vendor: { ...me.vendor, commission: next, commission_bps: next.agreed_bps } } : me))
       void qc.invalidateQueries({ queryKey: keys.me })
     },
   })

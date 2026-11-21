@@ -4,7 +4,8 @@ import { getResponse, http, HttpResponse } from 'msw'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { addAsset, DEMO_LOGIN } from '../mocks/db'
-import { createHandlers } from '../mocks/handlers'
+import { createHandlers, decideCommission } from '../mocks/handlers'
+import { CommissionRuleError } from '../mocks/storeRules'
 import type { SessionStore } from '../session/store'
 import { validApplication } from '../test/fixtures'
 import { setupMockApi } from '../test/server'
@@ -13,6 +14,9 @@ import { ApiError, NetworkError } from './errors'
 import {
   useAddProductImage,
   useBrandPage,
+  useCommission,
+  useProposeCommission,
+  useSaveSizeChart,
   useMoveProductImage,
   useMe,
   useProduct,
@@ -87,7 +91,7 @@ describe('malformed and partial answers', () => {
   it('unknown states from the server are read safely: commission, submissions, team members', async () => {
     const w = await signedIn()
     server.use(
-      http.get('*/v1/vendor/me', () => HttpResponse.json({ user: { id: 'u', email: DEMO_LOGIN.email, role: 'owner', last_login_at: null }, vendor: { id: 'v', name: 'Kalki Studio', slug: 'k', status: 'approved', commission: { state: 'renegotiating', agreed_bps: 1200 } } })),
+      http.get('*/v1/vendor/commission', () => HttpResponse.json({ state: 'renegotiating', agreed_bps: 1200, proposed_bps: null, note: null, updated_at: null })),
       http.get('*/v1/vendor/users', () => HttpResponse.json([{ id: 'u', email: 'x@y.in', role: 'admin', status: 'frozen', last_login_at: null, created_at: '2026-11-01T10:00:00Z' }])),
       http.get('*/v1/vendor/submissions', () => HttpResponse.json({ items: [{ subject: 'product', id: 's', sku: 'KS-AJR-014', title: 'x', version: 1, status: 'escalated', reason: null, submitted_at: '2026-11-01T10:00:00Z', decided_at: null }], total: 1, limit: 50, offset: 0 })),
     )
@@ -102,10 +106,10 @@ describe('malformed and partial answers', () => {
     expect(reviews.result.current.data!.items).toEqual([])
   })
 
-  it('vendor-api as it is today, without the proposed routes, still gives a Home', async () => {
+  it('vendor-api before PR #281, without the store details and commission routes, still gives a Home', async () => {
     const w = await signedIn()
     const missing = () => HttpResponse.json({ error: { code: 'not_found', message: 'Not Found', request_id: 'r' } }, { status: 404 })
-    server.use(http.get('*/v1/vendor/store-details', missing), http.get('*/v1/vendor/me', () => HttpResponse.json({ user: { id: 'u', email: DEMO_LOGIN.email, role: 'owner', last_login_at: null }, vendor: { id: 'v', name: 'Kalki Studio', slug: 'k', status: 'approved' } })))
+    server.use(http.get('*/v1/vendor/store-details', missing), http.get('*/v1/vendor/commission', missing))
     const me = renderHook(() => useMe(), { wrapper: w })
     await waitFor(() => expect(me.result.current.isSuccess).toBe(true))
     expect(me.result.current.data).toMatchObject({ vendor: { commission: { state: 'not_set', agreed_bps: null } }, setup: { store_details: false }, user: { name: DEMO_LOGIN.email } })
@@ -343,6 +347,138 @@ describe('two tabs editing the same field (product version, proposed)', () => {
     })
     expect(puts).toBe(1)
     expect(kurta.working!.content.title).toBe('Title from tab A')
+  })
+})
+
+describe('store details against vendor-api\'s real rules (PR #281)', () => {
+  async function refused(section: 'brand' | 'contact' | 'delivery' | 'payout' | 'business', body: unknown) {
+    const w = await signedIn()
+    const save = renderHook(() => useSaveStoreSection(), { wrapper: w })
+    let error: unknown
+    await act(async () => {
+      error = await save.result.current.mutateAsync({ section, body } as never).catch((e: unknown) => e)
+    })
+    expect(error).toBeInstanceOf(ApiError)
+    expect((error as ApiError).status).toBe(422)
+    return (error as ApiError).fields
+  }
+
+  it('refuses letters that only look like ASCII ones in a UPI ID, an IFSC, a GST number and a link', async () => {
+    expect(await refused('payout', { method: 'upi', upi_id: '\u212Aalki@okhdfcbank' })).toEqual({ upi_id: 'Enter a UPI ID like name@okhdfcbank.' })
+    expect(await refused('payout', { method: 'bank', holder_name: 'Kalki', account_number: '50100123454821', ifsc: '\u017FBIN0001234' })).toEqual({ ifsc: 'Enter an IFSC like HDFC0001234.' })
+    expect(await refused('business', { legal_name: null, gstin: '27\u017FAPFU0939F1ZV' })).toEqual({ gstin: 'Check the GST number: 15 characters, like 27AAPFU0939F1ZV.' })
+    expect(await refused('brand', { sells: 'women', city: 'Ahmedabad', instagram_or_website: '@kalk\u0131.studio' })).toEqual({ instagram_or_website: 'Enter an Instagram handle like @yourbrand or a website.' })
+  })
+
+  it('refuses names and places that only look blank, or hide characters, on the field they are in', async () => {
+    expect(await refused('contact', { name: '\u3164\u3164', phone: '9825012345', email: 'kiran@kalkistudio.in' })).toEqual({ name: 'This looks empty. Type the text itself.' })
+    expect(await refused('contact', { name: 'Kiran\u202EhahS', phone: '9825012345', email: 'kiran@kalkistudio.in' })).toEqual({ name: 'Remove hidden or control characters from this text.' })
+    expect(await refused('delivery', { mode: 'own', areas: { all_india: false, places: ['Surat\u200B'] }, delivery_days: '2_3' })).toEqual({ 'areas.places': 'Remove hidden or control characters from this text.' })
+    expect(await refused('delivery', { mode: 'shazlo', pickup_address: { line1: '\u2800', area: 'Ambawadi', city: 'Ahmedabad', pin: '380015' } })).toEqual({ 'pickup_address.line1': 'This looks empty. Type the text itself.' })
+  })
+
+  it('keeps the payout\'s number to itself: sending a masked number back is refused, the saved one stays', async () => {
+    const fields = await refused('payout', { method: 'bank', holder_name: 'Kalki', account_number: '•••• 4821', ifsc: 'HDFC0001234' })
+    expect(fields).toEqual({ account_number: 'An account number has 9 to 18 digits.' })
+    expect(await refused('payout', { method: 'bank', holder_name: 'Kalki', account_number: '50100123454821', ifsc: 'HDFC0001234', upi_id: 'kalki@okhdfcbank' })).toEqual({ upi_id: 'Send a UPI ID only with the UPI method.' })
+  })
+})
+
+describe('size charts against vendor-api\'s real rules (PR #281)', () => {
+  async function refusedChart(group: 'tops' | 'bottoms', measurements: Record<string, unknown>) {
+    const w = await signedIn()
+    const save = renderHook(() => useSaveSizeChart(group), { wrapper: w })
+    let error: unknown
+    await act(async () => {
+      error = await save.result.current.mutateAsync({ measurements: measurements as never, photo_url: null }).catch((e: unknown) => e)
+    })
+    expect(error).toMatchObject({ status: 422 })
+    return (error as ApiError).fields
+  }
+  const cm = 'Enter centimetres above 0 and up to 300, with at most one decimal place.'
+
+  it('refuses huge, fractional and too-small measurements, each on its own size and measurement', async () => {
+    expect(await refusedChart('tops', { M: { chest: 1e300 }, L: { chest: 91.25 }, XL: { chest: 0.04 }, S: { chest: 96.5 } })).toEqual({
+      'measurements.M.chest': cm,
+      'measurements.L.chest': cm,
+      'measurements.XL.chest': cm,
+    })
+  })
+
+  it('refuses sizes and measurements that are not the group\'s', async () => {
+    expect(await refusedChart('tops', { 32: { chest: 80 } })).toEqual({ 'measurements.32': 'This size is not used for this kind of product.' })
+    expect(await refusedChart('tops', { M: { inseam: 80 } })).toEqual({ 'measurements.M': 'Use chest, shoulder, sleeve, length for this chart.' })
+    expect(await refusedChart('bottoms', { XXXXL: { waist: 80 } })).toEqual({ measurements: 'Use the sizes XS, S, M, L, XL, XXL, 3XL, One size, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40.' })
+  })
+
+  it('takes a waist size for bottoms and keeps whole tenths', async () => {
+    const w = await signedIn()
+    const save = renderHook(() => useSaveSizeChart('bottoms'), { wrapper: w })
+    let chart: Awaited<ReturnType<typeof save.result.current.mutateAsync>> | undefined
+    await act(async () => {
+      chart = await save.result.current.mutateAsync({ measurements: { 32: { waist: 81.3, hip: null } }, photo_url: null })
+    })
+    expect(chart!.measurements).toEqual({ 32: { waist: 81.3, hip: null, inseam: null, length: null } })
+  })
+
+  it('a product photo is not a size chart photo', async () => {
+    const w = await signedIn()
+    const productPhoto = [...db().assets.values()].find((a) => a.kind === 'product_image')!
+    server.use(
+      http.get('*/v1/vendor/size-charts/:group', ({ params }) => HttpResponse.json({ group: params.group, measurements: {}, photo_asset_id: productPhoto.id, photo_url: productPhoto.url, updated_at: null })),
+    )
+    const save = renderHook(() => useSaveSizeChart('tops'), { wrapper: w })
+    let error: unknown
+    await act(async () => {
+      error = await save.result.current.mutateAsync({ measurements: {}, photo_url: productPhoto.url }).catch((e: unknown) => e)
+    })
+    expect((error as ApiError).fields).toEqual({ photo_asset_id: 'Choose one of your uploaded size chart photos.' })
+  })
+})
+
+describe('the commission state machine (PR #281)', () => {
+  const kalki = () => db().vendors.find((v) => v.name === 'Kalki Studio')!.id
+
+  it('runs proposed → (changed) → agreed, refuses the agreed rate again, and sends back with a note', async () => {
+    const w = await signedIn()
+    const propose = renderHook(() => useProposeCommission(), { wrapper: w })
+    await act(async () => {
+      await propose.result.current.mutateAsync(1000)
+    })
+    // Shazlo looked at 1000, the brand changed it to 900 meanwhile: approving what it saw is refused.
+    await act(async () => {
+      await propose.result.current.mutateAsync(900)
+    })
+    expect(() => decideCommission(db(), kalki(), { approve: 1000 })).toThrow(expect.objectContaining({ status: 409, code: 'commission_changed' }))
+    decideCommission(db(), kalki(), { approve: 900 })
+    // Nothing waits now: approving again or sending back is a 409.
+    expect(() => decideCommission(db(), kalki(), { approve: 900 })).toThrow(expect.objectContaining({ status: 409, code: 'no_proposal' }))
+    expect(() => decideCommission(db(), kalki(), { sendBack: 'Please propose 10% instead.' })).toThrow(CommissionRuleError)
+    let error: unknown
+    await act(async () => {
+      error = await propose.result.current.mutateAsync(900).catch((e: unknown) => e)
+    })
+    expect(error).toMatchObject({ status: 422 })
+    expect((error as ApiError).fields).toEqual({ rate_bps: 'That is already your agreed rate.' })
+    await act(async () => {
+      await propose.result.current.mutateAsync(1500)
+    })
+    expect(() => decideCommission(db(), kalki(), { sendBack: 'Too short' })).toThrow(expect.objectContaining({ status: 422, code: 'note_length' }))
+    decideCommission(db(), kalki(), { sendBack: 'We can do 12% for your first quarter.' })
+    // What the brand sees when it next opens the page.
+    const after = renderHook(() => useCommission(), { wrapper: wrapper() })
+    await waitFor(() => expect(after.result.current.isSuccess).toBe(true))
+    expect(after.result.current.data).toMatchObject({ state: 'sent_back', agreed_bps: 900, proposed_bps: 1500, note: 'We can do 12% for your first quarter.' })
+  })
+
+  it('refuses a rate outside 0-40% or not a whole number of basis points on the rate field', async () => {
+    const w = await signedIn()
+    const propose = renderHook(() => useProposeCommission(), { wrapper: w })
+    const errors: unknown[] = []
+    await act(async () => {
+      for (const bps of [4001, -1, 1250.5]) errors.push(await propose.result.current.mutateAsync(bps).catch((e: unknown) => e))
+    })
+    expect(errors.map((e) => Object.keys((e as ApiError).fields))).toEqual([['rate_bps'], ['rate_bps'], ['rate_bps']])
   })
 })
 

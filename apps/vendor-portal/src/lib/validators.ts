@@ -2,6 +2,11 @@
 // so both accept and reject exactly the same input. Pure functions with no copy: messages live in
 // src/copy/catalog.ts and the field checks that use them in src/lib/storeDetails.ts.
 
+// Typed text that is plain ASCII. Upper- and lower-casing turn some other letters into ASCII ones
+// (ſ → S, ı → I, the Kelvin sign → k), so codes are checked as typed first, as vendor-api does: a
+// stored IFSC, UPI ID or GST number could otherwise hold letters that only look right.
+const isAscii = (raw: string) => /^[\x20-\x7E]*$/.test(raw)
+
 // ---- phone, email, links -------------------------------------------------------------------
 
 // Indian mobiles: ten digits starting 6–9, typed with or without +91 / 0 and spaces or dashes.
@@ -49,7 +54,7 @@ export function normaliseIfsc(raw: string): string {
 
 // Accepts lower case and spaces ("hdfc 0001234"); check the normalised code against the pattern.
 export function isValidIfsc(raw: string): boolean {
-  return IFSC_PATTERN.test(normaliseIfsc(raw))
+  return isAscii(raw.trim()) && IFSC_PATTERN.test(normaliseIfsc(raw))
 }
 
 // ---- bank account --------------------------------------------------------------------------
@@ -82,7 +87,7 @@ export function normaliseUpiId(raw: string): string {
 }
 
 export function isValidUpiId(raw: string): boolean {
-  return UPI_PATTERN.test(normaliseUpiId(raw))
+  return isAscii(raw.trim()) && UPI_PATTERN.test(normaliseUpiId(raw))
 }
 
 // "kalki.studio@okhdfcbank" → "ka•••@okhdfcbank": enough to recognise, not enough to reuse.
@@ -116,6 +121,7 @@ export function gstinCheckChar(first14: string): string {
 
 // State codes 01–38, 97 (other territory) or 99 (centre), the right shape, and the check character.
 export function isValidGstin(raw: string): boolean {
+  if (!isAscii(raw.trim())) return false
   const g = normaliseGstin(raw)
   if (!GSTIN_PATTERN.test(g)) return false
   const state = Number(g.slice(0, 2))

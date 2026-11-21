@@ -70,7 +70,8 @@ describe('Store details: changing one topic', () => {
     await typeIn(user, 'Account number', '5010 0123 4548 21')
     await typeIn(user, 'Account number again', '5010 0123 4548 21')
     await typeIn(user, 'IFSC code', 'hdfc0001234')
-    expect(await screen.findByText(/^HDFC Bank, /)).toBeInTheDocument()
+    // vendor-api names the bank; it has no branch names yet.
+    expect(await screen.findByText('HDFC Bank')).toBeInTheDocument()
     await save(user)
 
     expect(await screen.findByText('Payouts saved.', {}, SLOW)).toBeInTheDocument()
@@ -171,7 +172,6 @@ describe('Store details: one topic, when things go wrong', () => {
   })
 
   it.each([
-    ['an IFSC no bank has', 'abcd0001234', 'IFSC code'],
     ['an IFSC without the 0', 'HDFC1001234', 'IFSC code'],
   ])('refuses %s', async (_what, typed, label) => {
     const { user } = await openSection('payout')
@@ -183,6 +183,19 @@ describe('Store details: one topic, when things go wrong', () => {
     await save(user)
     await waitFor(() => expect(screen.getByRole('textbox', { name: label })).toHaveAttribute('aria-invalid', 'true'))
     expect(store().payout).toBeNull()
+  })
+
+  it('saves a payout to a bank vendor-api does not list, without a bank name (PR #281)', async () => {
+    const { user } = await openSection('payout')
+    await user.click(screen.getByRole('radio', { name: 'Bank account' }))
+    await typeIn(user, 'Account holder name', 'Kalki Studio LLP')
+    await typeIn(user, 'Account number', '123456789042')
+    await typeIn(user, 'Account number again', '123456789042')
+    await typeIn(user, 'IFSC code', 'abcd0001234')
+    await save(user)
+    expect(await screen.findByText('Payouts saved.', {}, SLOW)).toBeInTheDocument()
+    expect(store().payout).toEqual({ method: 'bank', holder_name: 'Kalki Studio LLP', account_number: '123456789042', ifsc: 'ABCD0001234' })
+    expect(value(screen.getByRole('region', { name: 'Payouts' }), 'Paid to')).toHaveTextContent('Bank account •••• 9042')
   })
 
   it.each([

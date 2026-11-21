@@ -1,11 +1,12 @@
 /**
- * Build 2's `Me` is the session (`GET /v1/vendor/me`) plus the setup checklist, which vendor-api
- * does not keep: it is worked out from the store details, the published brand page and the product
- * counts (`GET /v1/vendor/products?status=…&limit=1` totals).
+ * Build 2's `Me` is the session (`GET /v1/vendor/me`), the commission (`GET /v1/vendor/commission`,
+ * its own route in vendor-api) and the setup checklist, which vendor-api does not keep: it is worked
+ * out from the store details, the published brand page and the product counts
+ * (`GET /v1/vendor/products?status=…&limit=1` totals).
  */
 import type { Commission, CommissionState, Me, StoreDetails } from '../model'
 import type { MeIn } from '../wire'
-import { oneOf } from './common'
+import { isoOrNull, oneOf } from './common'
 
 /** Live products to aim for on Home's setup list. */
 export const LIVE_TARGET = 10
@@ -22,7 +23,7 @@ export function commissionFromApi(value: unknown): Commission {
     agreed_bps: bps(c.agreed_bps),
     proposed_bps: bps(c.proposed_bps),
     note: typeof c.note === 'string' ? c.note : null,
-    updated_at: null,
+    updated_at: isoOrNull(c.updated_at),
   }
 }
 
@@ -33,6 +34,8 @@ export function vendorStatusFromApi(value: unknown): Me['vendor']['status'] {
 
 export interface MeParts {
   me: MeIn
+  /** `GET /v1/vendor/commission`; null when it could not be read (there is no default rate). */
+  commission: unknown
   store: StoreDetails | null
   /** A version of the brand page has been approved. */
   brandLive: boolean
@@ -40,8 +43,8 @@ export interface MeParts {
   counts: { all: number; approved: number }
 }
 
-export function meFromApi({ me, store, brandLive, counts }: MeParts): Me {
-  const commission = commissionFromApi(me.vendor?.commission)
+export function meFromApi({ me, commission: rawCommission, store, brandLive, counts }: MeParts): Me {
+  const commission = commissionFromApi(rawCommission)
   const email = typeof me.user?.email === 'string' ? me.user.email : ''
   const contact = store?.contact
   const isContact = contact !== null && contact !== undefined && contact.email.trim().toLowerCase() === email.trim().toLowerCase()

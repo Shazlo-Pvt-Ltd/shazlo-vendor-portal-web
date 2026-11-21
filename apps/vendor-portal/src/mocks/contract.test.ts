@@ -154,8 +154,13 @@ describe('the mock API against the contract', () => {
     ok((await send('put', '/v1/vendor/store-details/payment', { body: { cash: true, upi: false } })).status)
     ok((await send('put', '/v1/vendor/store-details/payout', { body: { method: 'bank', holder_name: 'Kalki Studio LLP', account_number: '50100123454821', ifsc: 'HDFC0001234' } })).status)
     ok((await send('put', '/v1/vendor/store-details/business', { body: { legal_name: 'Kalki Studio LLP', gstin: null } })).status)
+    ok((await send('get', '/v1/vendor/commission')).status)
     ok((await send('post', '/v1/vendor/commission/proposal', { body: { rate_bps: 1000 } })).status)
     expect((await send('post', '/v1/vendor/commission/proposal', { body: { rate_bps: 99999 } })).status).toBe(422)
+    expect((await send('post', '/v1/vendor/commission/proposal', { body: { rate_bps: 1200 } })).status).toBe(422)
+    expect((await send('put', '/v1/vendor/store-details/contact', { body: { name: 'ㅤ', phone: '9825012345', email: 'kiran@kalkistudio.in' } })).status).toBe(422)
+    ok((await send('put', '/v1/vendor/store-details/payout', { body: { method: 'bank', holder_name: 'Kalki Studio LLP', account_number: '123456789042', ifsc: 'ZZZZ0001234' } })).status)
+    ok((await send('put', '/v1/vendor/store-details/payout', { body: { method: 'upi', upi_id: 'Kalki.Studio@OKHDFCBANK' } })).status)
 
     ok((await send('get', '/v1/vendor/size-charts/dresses')).status)
     ok((await send('put', '/v1/vendor/size-charts/tops', { body: { measurements: { M: { chest: 102, shoulder: 45 } }, photo_asset_id: null } })).status)
@@ -177,6 +182,16 @@ describe('the mock API against the contract', () => {
     logoForm.append('file', new Blob(['png'], { type: 'image/png' }), 'logo.png')
     await send('post', '/v1_1/shazlo-demo/image/upload', { raw: logoForm, origin: 'https://api.cloudinary.com' })
     const logoAsset = await send('post', '/v1/vendor/assets', { body: { public_id: logo.body.public_id } })
+    // A size chart photo is its own kind of asset.
+    const chartSigned = await send('post', '/v1/vendor/assets/sign', { body: { kind: 'size_chart', content_type: 'image/jpeg', size_bytes: 700 } })
+    const chartForm = new FormData()
+    for (const [k, v] of Object.entries(chartSigned.body.fields as unknown as Record<string, string>)) chartForm.append(k, v)
+    chartForm.append('file', new Blob(['jpeg'], { type: 'image/jpeg' }), 'chart.jpg')
+    await send('post', '/v1_1/shazlo-demo/image/upload', { raw: chartForm, origin: 'https://api.cloudinary.com' })
+    const chartPhoto = await send('post', '/v1/vendor/assets', { body: { public_id: chartSigned.body.public_id } })
+    ok((await send('put', '/v1/vendor/size-charts/jackets', { body: { measurements: { L: { chest: 108.5 } }, photo_asset_id: chartPhoto.body.id } })).status)
+    expect((await send('put', '/v1/vendor/size-charts/jackets', { body: { measurements: {}, photo_asset_id: asset.body.id } })).status).toBe(422)
+    expect((await send('put', '/v1/vendor/size-charts/tops', { body: { measurements: { M: { chest: 1e300 } } } })).status).toBe(422)
 
     // Brand page.
     const draft = await send('get', '/v1/vendor/brand-profile')

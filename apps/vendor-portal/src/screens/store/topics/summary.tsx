@@ -25,9 +25,9 @@ export function formatPhone(raw: string): string {
   return d ? `${d.slice(0, 5)} ${d.slice(5)}` : raw.trim()
 }
 
-// "HDFC Bank •••• 4821", or the masked UPI ID.
+// "HDFC Bank •••• 4821" ("Bank account •••• 4821" for a bank vendor-api does not list), or the masked UPI ID.
 export function payoutLine(p: Schemas['Payout']): string {
-  return p.method === 'bank' ? `${p.bank_name} ${maskAccountNumber(p.account_last4)}` : p.upi_id
+  return p.method === 'bank' ? `${p.bank_name ?? catalogCopy.payoutMethods.bank} ${maskAccountNumber(p.account_last4)}` : p.upi_id
 }
 
 export function brandRows(b: { brand_name: string; sells: Schemas['Sells'] | null | ''; city: string | null; instagram_or_website: string | null }, { storeName = true } = {}): Row[] {

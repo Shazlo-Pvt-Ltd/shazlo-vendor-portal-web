@@ -27,266 +27,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/auth/login": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Sign in (the vendor now carries its commission)
-         * @description Unchanged except that `vendor` is `ProposedVendorSummary`. Sets the `vendor_refresh` HttpOnly cookie.
-         */
-        post: operations["login"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * A new access token from the refresh cookie
-         * @description Typed here (openapi.json leaves the body untyped); `vendor` is `ProposedVendorSummary`. Rotates the cookie.
-         */
-        post: operations["refresh"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/change-password": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Change the password (the vendor now carries its commission) */
-        post: operations["changePassword"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/me": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The signed-in user and vendor (the vendor now carries its commission) */
-        get: operations["me"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/commission/proposal": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * The brand proposes a commission rate
-         * @description Basis points, 0 to 4000 (1200 = 12%). An agreed rate stays in force while Shazlo decides.
-         *     422 outside the range or when it equals the agreed rate. There is no default rate anywhere.
-         */
-        post: operations["proposeCommission"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/store-details": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The brand's store details
-         * @description The details given at sign-up, editable after approval, with the required sections still missing. A product cannot be submitted until `complete` is true.
-         */
-        get: operations["getStoreDetails"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/store-details/brand": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Who the brand sells for, the city it ships from, Instagram or website
-         * @description The store name itself changes only through Shazlo.
-         */
-        put: operations["saveStoreBrand"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/store-details/contact": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** The contact person, mobile number and email */
-        put: operations["saveStoreContact"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/store-details/delivery": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** Who delivers */
-        put: operations["saveStoreDelivery"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/store-details/returns": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** Return window, condition and refund time */
-        put: operations["saveStoreReturns"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/store-details/payment": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** Payment on delivery (cash and/or UPI) */
-        put: operations["saveStorePayment"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/store-details/payout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Where Shazlo pays the brand
-         * @description Takes the full account number, which is only ever returned masked. 422 when the IFSC is unknown.
-         */
-        put: operations["saveStorePayout"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/store-details/business": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** Legal business name and GST number (both optional) */
-        put: operations["saveStoreBusiness"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/public/ifsc/{code}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Bank and branch for an IFSC
-         * @description Public, because sign-up asks for payouts. 422 when the code is not in the IFSC format, 404 when no bank has it.
-         */
-        get: operations["lookupIfsc"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/vendor/products": {
         parameters: {
             query?: never;
@@ -380,32 +120,6 @@ export interface paths {
          */
         get: operations["listSubmissions"];
         put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/size-charts/{group}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                group: components["schemas"]["SizeChartGroup"];
-            };
-            cookie?: never;
-        };
-        /**
-         * The brand's size chart for a group of product types
-         * @description An empty chart (`version` 0, `updated_at` null) when none is saved.
-         */
-        get: operations["getSizeChart"];
-        /**
-         * Replaces the brand's size chart for the group
-         * @description Centimetres, every value optional, and/or a photo of the brand's own chart. An empty chart deletes it.
-         */
-        put: operations["saveSizeChart"];
         post?: never;
         delete?: never;
         options?: never;
@@ -571,189 +285,11 @@ export interface components {
         };
         /** @description The store-details sections given at sign-up; each one optional, each the same body as its `PUT /v1/vendor/store-details/{section}`. */
         SignupStoreDetails: {
-            delivery?: components["schemas"]["StoreDelivery"];
-            returns?: components["schemas"]["StoreReturns"];
-            payment?: components["schemas"]["StorePayment"];
-            payout?: components["schemas"]["StorePayoutBody"];
-            business?: components["schemas"]["StoreBusiness"];
-        };
-        /**
-         * @description Delivery time in days when the brand delivers itself (1_2 = 1-2 days).
-         * @enum {string}
-         */
-        DeliveryDays: "1_2" | "2_3" | "3_5" | "5_7";
-        PickupAddress: {
-            /** @description House or shop number, building and street. */
-            line1: string;
-            area: string;
-            city: string;
-            pin: string;
-        };
-        /** @description Shazlo's delivery service picks up orders from the pickup address. */
-        DeliveryByShazlo: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            mode: "shazlo";
-            pickup_address: components["schemas"]["PickupAddress"];
-        };
-        /** @description The brand delivers itself, to all of India or to the listed cities and PIN codes. */
-        DeliveryByBrand: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            mode: "own";
-            areas: {
-                all_india: boolean;
-                /** @description Cities or 6-digit PIN codes; empty when all_india is true. */
-                places: string[];
-            };
-            delivery_days: components["schemas"]["DeliveryDays"];
-        };
-        StoreDelivery: components["schemas"]["DeliveryByShazlo"] | components["schemas"]["DeliveryByBrand"];
-        /** @description With `window_days` 0 (no returns) `condition` and `refund_days` are stored as null whatever is sent; with 7, 14 or 30 both are required. */
-        StoreReturns: {
-            /** @enum {integer} */
-            window_days: 0 | 7 | 14 | 30;
-            /** @enum {string|null} */
-            condition: "unworn_with_tags" | "any_reason" | "damaged_or_wrong" | null;
-            /**
-             * @description Working days after pickup until the refund.
-             * @enum {integer|null}
-             */
-            refund_days: 2 | 5 | 7 | null;
-        };
-        /** @description How shoppers can pay on delivery; at least one must be true. */
-        StorePayment: {
-            cash: boolean;
-            upi: boolean;
-        };
-        BankPayoutBody: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            method: "bank";
-            holder_name: string;
-            /** @description 9 to 18 digits; spaces are ignored. Never returned. */
-            account_number: string;
-            /** @description Like HDFC0001234; must belong to a known bank. */
-            ifsc: string;
-        };
-        UpiPayoutBody: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            method: "upi";
-            /** @description Like name@okhdfcbank. */
-            upi_id: string;
-        };
-        StorePayoutBody: components["schemas"]["BankPayoutBody"] | components["schemas"]["UpiPayoutBody"];
-        /** @description A saved bank account, masked. */
-        BankPayoutOut: {
-            /** @enum {string} */
-            method: "bank";
-            holder_name: string;
-            /** @description From the IFSC, like HDFC Bank. */
-            bank_name: string;
-            account_last4: string;
-            ifsc: string;
-        };
-        /** @description A saved UPI ID, masked. */
-        UpiPayoutOut: {
-            /** @enum {string} */
-            method: "upi";
-            /** @description Masked, like "ka•••@okhdfcbank". */
-            upi_id: string;
-        };
-        StorePayoutOut: components["schemas"]["BankPayoutOut"] | components["schemas"]["UpiPayoutOut"];
-        StoreContact: {
-            name: string;
-            /** @description Indian mobile; stored as 10 digits. */
-            phone: string;
-            email: string;
-        };
-        /** @description Optional; empty strings are stored as null. */
-        StoreBusiness: {
-            legal_name: string | null;
-            /** @description 15 characters with a valid check character. */
-            gstin: string | null;
-        };
-        StoreBrandBody: {
-            sells: components["schemas"]["Sells"];
-            city: string;
-            /** @description Null or empty clears it. */
-            instagram_or_website: string | null;
-        };
-        StoreBrandOut: {
-            /** @description Read-only here; Shazlo changes the store name on request. */
-            brand_name: string;
-            sells: components["schemas"]["Sells"] | null;
-            city: string | null;
-            instagram_or_website: string | null;
-        };
-        /**
-         * @description A required section. Business details are optional and never missing.
-         * @enum {string}
-         */
-        StoreSection: "brand" | "contact" | "delivery" | "returns" | "payment" | "payout";
-        StoreDetailsOut: {
-            brand: components["schemas"]["StoreBrandOut"];
-            contact: components["schemas"]["StoreContact"] | null;
-            delivery: components["schemas"]["StoreDelivery"] | null;
-            returns: components["schemas"]["StoreReturns"] | null;
-            payment: components["schemas"]["StorePayment"] | null;
-            /** @description Always masked. */
-            payout: components["schemas"]["StorePayoutOut"] | null;
-            business: components["schemas"]["StoreBusiness"];
-            /** @description Required sections not yet complete, in page order. */
-            missing: components["schemas"]["StoreSection"][];
-            /** @description True when missing is empty. */
-            complete: boolean;
-            version: number;
-            /** Format: date-time */
-            updated_at: string | null;
-        };
-        IfscOut: {
-            /** @description The code in upper case. */
-            ifsc: string;
-            /** @description Like HDFC Bank. */
-            bank: string;
-            /** @description Like Navrangpura, Ahmedabad. */
-            branch: string;
-        };
-        /**
-         * @description not_set - no rate yet; proposed - the brand's rate waits for Shazlo; sent_back - Shazlo sent it back with a note; agreed - a rate is in force.
-         * @enum {string}
-         */
-        CommissionState: "not_set" | "proposed" | "sent_back" | "agreed";
-        /** @description Per-brand commission; there is no default rate. `agreed_bps` can be set in every state (a new proposal does not replace the agreed rate until Shazlo approves it). */
-        CommissionOut: {
-            state: components["schemas"]["CommissionState"];
-            /** @description The rate in force, in basis points (1200 = 12%). */
-            agreed_bps: number | null;
-            /** @description The brand's latest proposal while proposed or sent_back. */
-            proposed_bps: number | null;
-            /** @description Shazlo's note when it sent the proposal back. */
-            note: string | null;
-        };
-        CommissionProposalBody: {
-            rate_bps: number;
-        };
-        /** @description VendorSummary plus the vendor's commission. */
-        ProposedVendorSummary: components["schemas"]["VendorSummary"] & {
-            commission: components["schemas"]["CommissionOut"];
-        };
-        /** @description Me with `vendor` as ProposedVendorSummary. */
-        ProposedMe: components["schemas"]["Me"] & {
-            vendor: components["schemas"]["ProposedVendorSummary"];
-        };
-        /** @description SessionResponse with `vendor` as ProposedVendorSummary. */
-        ProposedSessionResponse: components["schemas"]["SessionResponse"] & {
-            vendor: components["schemas"]["ProposedVendorSummary"];
+            delivery?: components["schemas"]["DeliveryIn"];
+            returns?: components["schemas"]["ReturnsIn"];
+            payment?: components["schemas"]["PaymentIn"];
+            payout?: components["schemas"]["PayoutIn"];
+            business?: components["schemas"]["BusinessIn"];
         };
         /**
          * @description front, back, detail and worn are the 4 required product photos (one each); extra holds up to 4 more; tryon holds the 5 required try-on photos of real people wearing it.
@@ -928,44 +464,6 @@ export interface components {
             /** @enum {string} */
             type: "missing";
         };
-        /**
-         * @description Product types share a chart by group; sarees, dupattas and stoles have none.
-         * @enum {string}
-         */
-        SizeChartGroup: "bottoms" | "tops" | "dresses" | "jackets";
-        /**
-         * @description Centimetres by size, then by measurement: {"M": {"bust": 96, "waist": 84, "hip": null}}.
-         *     The group's measurements: bottoms - waist, hip, inseam, length; tops and jackets - chest,
-         *     shoulder, sleeve, length; dresses - bust, waist, hip, length. Saved sizes come back with
-         *     every measurement of the group (null when blank); wholly blank sizes are dropped.
-         */
-        SizeChartMeasurements: {
-            [key: string]: {
-                [key: string]: number | null;
-            };
-        };
-        SizeChartBody: {
-            measurements: components["schemas"]["SizeChartMeasurements"];
-            /**
-             * Format: uuid
-             * @description A photo of the brand's own chart: an uploaded product_image asset.
-             */
-            photo_asset_id: string | null;
-        };
-        SizeChartOut: {
-            group: components["schemas"]["SizeChartGroup"];
-            measurements: components["schemas"]["SizeChartMeasurements"];
-            /** Format: uuid */
-            photo_asset_id: string | null;
-            photo_url: string | null;
-            /** @description 0 when nothing is saved. */
-            version: number;
-            /**
-             * Format: date-time
-             * @description Null when nothing is saved.
-             */
-            updated_at: string | null;
-        };
         /** @description BrandProfileBody with `price_min_paise`/`price_max_paise` optional and `based_in` added. */
         ProposedBrandProfileBody: {
             brand_name: string;
@@ -991,6 +489,75 @@ export interface components {
         ProposedDraftOut: components["schemas"]["DraftOut"] & {
             based_in: string | null;
         };
+        /** AreasIn */
+        AreasIn: {
+            /** All India */
+            all_india: boolean;
+            /** Places */
+            places?: string[];
+        };
+        /** PickupAddressIn */
+        PickupAddressIn: {
+            /** Area */
+            area: string;
+            /** City */
+            city: string;
+            /** Line1 */
+            line1: string;
+            /** Pin */
+            pin: string;
+        };
+        /** DeliveryIn */
+        DeliveryIn: {
+            areas?: components["schemas"]["AreasIn"] | null;
+            /** Delivery Days */
+            delivery_days?: string | null;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "shazlo" | "own";
+            pickup_address?: components["schemas"]["PickupAddressIn"] | null;
+        };
+        /** ReturnsIn */
+        ReturnsIn: {
+            /** Condition */
+            condition?: string | null;
+            /** Refund Days */
+            refund_days?: number | null;
+            /** Window Days */
+            window_days: number;
+        };
+        /** PaymentIn */
+        PaymentIn: {
+            /** Cash */
+            cash: boolean;
+            /** Upi */
+            upi: boolean;
+        };
+        /** PayoutIn */
+        PayoutIn: {
+            /** Account Number */
+            account_number?: string | null;
+            /** Holder Name */
+            holder_name?: string | null;
+            /** Ifsc */
+            ifsc?: string | null;
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "bank" | "upi";
+            /** Upi Id */
+            upi_id?: string | null;
+        };
+        /** BusinessIn */
+        BusinessIn: {
+            /** Gstin */
+            gstin?: string | null;
+            /** Legal Name */
+            legal_name?: string | null;
+        };
         /**
          * Message
          * @description The one answer for every outcome of signup and resend, so none reveals if an email exists.
@@ -1003,70 +570,6 @@ export interface components {
              * @default accepted
              */
             status: string;
-        };
-        /** LoginRequest */
-        LoginRequest: {
-            /** Email */
-            email: string;
-            /** Password */
-            password: string;
-        };
-        /** UserProfile */
-        UserProfile: {
-            /** Email */
-            email: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Last Login At */
-            last_login_at: string | null;
-            /** Role */
-            role: string;
-        };
-        /** VendorSummary */
-        VendorSummary: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Name */
-            name: string;
-            /** Slug */
-            slug: string;
-            /** Status */
-            status: string;
-        };
-        /**
-         * SessionResponse
-         * @description The refresh token is never in the body; it is only ever in the HttpOnly cookie.
-         */
-        SessionResponse: {
-            /** Access Token */
-            access_token: string;
-            /** Expires In */
-            expires_in: number;
-            /**
-             * Token Type
-             * @default Bearer
-             */
-            token_type: string;
-            user: components["schemas"]["UserProfile"];
-            vendor: components["schemas"]["VendorSummary"];
-        };
-        /** ChangePasswordRequest */
-        ChangePasswordRequest: {
-            /** Current Password */
-            current_password: string;
-            /** New Password */
-            new_password: string;
-        };
-        /** Me */
-        Me: {
-            user: components["schemas"]["UserProfile"];
-            vendor: components["schemas"]["VendorSummary"];
         };
         /**
          * Gender
@@ -1469,359 +972,6 @@ export interface operations {
             429: components["responses"]["Error"];
         };
     };
-    login: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LoginRequest"];
-            };
-        };
-        responses: {
-            /** @description Signed in */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProposedSessionResponse"];
-                };
-            };
-            401: components["responses"]["Error"];
-            403: components["responses"]["Error"];
-            422: components["responses"]["Error"];
-            429: components["responses"]["Error"];
-        };
-    };
-    refresh: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vendor_refresh?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description New session */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProposedSessionResponse"];
-                };
-            };
-            401: components["responses"]["Error"];
-            403: components["responses"]["Error"];
-            409: components["responses"]["Error"];
-        };
-    };
-    changePassword: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ChangePasswordRequest"];
-            };
-        };
-        responses: {
-            /** @description Password changed; a new session */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProposedSessionResponse"];
-                };
-            };
-            400: components["responses"]["Error"];
-            422: components["responses"]["Error"];
-        };
-    };
-    me: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Me */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProposedMe"];
-                };
-            };
-            401: components["responses"]["Error"];
-        };
-    };
-    proposeCommission: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CommissionProposalBody"];
-            };
-        };
-        responses: {
-            /** @description Waiting for Shazlo */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CommissionOut"];
-                };
-            };
-            401: components["responses"]["Error"];
-            422: components["responses"]["Error"];
-        };
-    };
-    getStoreDetails: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Store details */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StoreDetailsOut"];
-                };
-            };
-            401: components["responses"]["Error"];
-        };
-    };
-    saveStoreBrand: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["StoreBrandBody"];
-            };
-        };
-        responses: {
-            /** @description Saved */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StoreDetailsOut"];
-                };
-            };
-            401: components["responses"]["Error"];
-            422: components["responses"]["Error"];
-        };
-    };
-    saveStoreContact: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["StoreContact"];
-            };
-        };
-        responses: {
-            /** @description Saved */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StoreDetailsOut"];
-                };
-            };
-            401: components["responses"]["Error"];
-            422: components["responses"]["Error"];
-        };
-    };
-    saveStoreDelivery: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["StoreDelivery"];
-            };
-        };
-        responses: {
-            /** @description Saved */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StoreDetailsOut"];
-                };
-            };
-            401: components["responses"]["Error"];
-            422: components["responses"]["Error"];
-        };
-    };
-    saveStoreReturns: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["StoreReturns"];
-            };
-        };
-        responses: {
-            /** @description Saved */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StoreDetailsOut"];
-                };
-            };
-            401: components["responses"]["Error"];
-            422: components["responses"]["Error"];
-        };
-    };
-    saveStorePayment: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["StorePayment"];
-            };
-        };
-        responses: {
-            /** @description Saved */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StoreDetailsOut"];
-                };
-            };
-            401: components["responses"]["Error"];
-            422: components["responses"]["Error"];
-        };
-    };
-    saveStorePayout: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["StorePayoutBody"];
-            };
-        };
-        responses: {
-            /** @description Saved */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StoreDetailsOut"];
-                };
-            };
-            401: components["responses"]["Error"];
-            422: components["responses"]["Error"];
-        };
-    };
-    saveStoreBusiness: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["StoreBusiness"];
-            };
-        };
-        responses: {
-            /** @description Saved */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StoreDetailsOut"];
-                };
-            };
-            401: components["responses"]["Error"];
-            422: components["responses"]["Error"];
-        };
-    };
-    lookupIfsc: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                code: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Bank branch */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IfscOut"];
-                };
-            };
-            404: components["responses"]["Error"];
-            422: components["responses"]["Error"];
-        };
-    };
     listProducts: {
         parameters: {
             query?: {
@@ -1988,59 +1138,6 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
-            422: components["responses"]["Error"];
-        };
-    };
-    getSizeChart: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                group: components["schemas"]["SizeChartGroup"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Size chart */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SizeChartOut"];
-                };
-            };
-            401: components["responses"]["Error"];
-            404: components["responses"]["Error"];
-        };
-    };
-    saveSizeChart: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                group: components["schemas"]["SizeChartGroup"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SizeChartBody"];
-            };
-        };
-        responses: {
-            /** @description Saved */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SizeChartOut"];
-                };
-            };
-            401: components["responses"]["Error"];
-            404: components["responses"]["Error"];
             422: components["responses"]["Error"];
         };
     };

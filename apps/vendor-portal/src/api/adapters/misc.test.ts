@@ -10,7 +10,6 @@ describe('sizeChartFromApi', () => {
     measurements: { M: { bust: 91, waist: 77, hip: null, length: 113 } },
     photo_asset_id: 'asset-chart',
     photo_url: 'https://res.cloudinary.com/x/chart.jpg',
-    version: 2,
     updated_at: '2026-11-10T10:00:00Z',
   }
 
@@ -23,9 +22,13 @@ describe('sizeChartFromApi', () => {
     })
   })
 
-  it('drops values that are not numbers and groups it does not know', () => {
-    const odd = sizeChartFromApi({ ...out, group: 'hats' as never, measurements: { M: { bust: 'wide' }, L: 'big' } as never })
-    expect(odd).toMatchObject({ group: 'dresses', measurements: { M: { bust: null } } })
+  it('drops values that are not numbers, and keeps the group it asked for when the answer names another', () => {
+    const odd = sizeChartFromApi({ ...out, group: 'hats', measurements: { M: { bust: 'wide' }, L: 'big' } as never }, 'tops')
+    expect(odd).toMatchObject({ group: 'tops', measurements: { M: { bust: null } } })
+  })
+
+  it('an empty chart (nothing saved) has no photo and no date', () => {
+    expect(sizeChartFromApi({ group: 'jackets', measurements: {}, photo_asset_id: null, photo_url: null, updated_at: null })).toEqual({ group: 'jackets', measurements: {}, photo_url: null, updated_at: null })
   })
 
   it('writes the photo by asset id', () => {

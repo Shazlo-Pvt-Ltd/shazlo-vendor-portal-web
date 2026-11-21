@@ -2,6 +2,7 @@ import { Box, InputAdornment, Link, Stack, Typography } from '@mui/material'
 import { link as linkColour } from '@shazlo/ui'
 import { CircleCheck } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { ApiError } from '../../../api/errors'
 import type { Schemas } from '../../../api/model'
 import { useIfsc } from '../../../api/queries'
 import { catalogCopy } from '../../../copy/catalog'
@@ -174,15 +175,23 @@ export function PaymentFields({ values, onChange, errors }: FieldsProps<PaymentA
 
 const METHODS: Option<Schemas['PayoutInput']['method']>[] = PAYOUT_METHODS.map((value) => ({ value, label: catalogCopy.payoutMethods[value] }))
 
-// The bank and branch for a well-formed IFSC, as a check that the code is right.
+// The bank and branch for a well-formed IFSC, as a check that the code is right. A bank vendor-api
+// does not list yet is pointed out (a typo shows up here) without stopping the seller: vendor-api
+// takes a payout to any well-formed IFSC.
 function IfscBank({ ifsc }: { ifsc: string }) {
   const lookup = useIfsc(ifsc)
+  const notListed = lookup.error instanceof ApiError && lookup.error.code === 'ifsc_unknown'
   return (
     <Box role="status" sx={{ minHeight: 0 }}>
       {lookup.data && (
         <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 1, color: linkColour.text }}>
           <CircleCheck size={16} strokeWidth={1.75} aria-hidden="true" />
-          {copy.payout.ifscFound(lookup.data.bank, lookup.data.branch)}
+          {lookup.data.branch ? copy.payout.ifscFound(lookup.data.bank, lookup.data.branch) : lookup.data.bank}
+        </Typography>
+      )}
+      {notListed && (
+        <Typography variant="body2" sx={{ mt: 1, color: 'text.secondary' }}>
+          {copy.payout.ifscNotListed}
         </Typography>
       )}
     </Box>

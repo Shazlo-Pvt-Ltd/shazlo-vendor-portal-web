@@ -18,21 +18,21 @@ info:
     - `x-extends: X` means the schema is the real schema X plus new fields (an `allOf`).
       `x-replaces: X` means a full copy of X with the changes its description lists; it is used
       where a field becomes optional or nullable, which an `allOf` cannot express.
-    - Where an operation only gains a field in its answer (the vendor's `commission` on `/v1/vendor/me`,
-      login, refresh and change-password), the client keeps the real typing and the adapters read the
-      new field defensively, so the portal works with vendor-api as it is today.
     - When vendor-api ships a route, move it into `openapi.json` and delete it here; then run
       `npm run api:generate` and `npm run api:proposed` in `apps/vendor-portal`.
 
     Not in the plan's list, but needed to keep Build 2's screens working (agree with vendor-api):
     `based_in` on the brand profile; `proposed_commission_bps` and `price_rule_accepted` on sign-up;
-    drafts may have no category, gender or price (submit lists what is missing); a size chart's
-    photo is an uploaded `product_image` asset.
+    drafts may have no category, gender or price (submit lists what is missing).
 
     Added after the first review, to replace reads the portal makes today: list rows with price,
     stock, photo, colour, gender and the working state, with list filters and sorts
     (`GET /v1/vendor/products`); `product_id` and `was_live` on submissions; and a `version` check on the product
     `PUT` (409 `version_conflict`).
+    Shipped by vendor-api in PR #281 and so removed from here: the store details
+    (`GET /v1/vendor/store-details` and a `PUT` per section), the IFSC lookup, the commission
+    (`GET /v1/vendor/commission` and the proposal; it is not on the session or `/v1/vendor/me`) and
+    the size charts. The sign-up's `store_details` below now names vendor-api's own section bodies.
 servers:
   - url: http://localhost:8002
 
@@ -55,166 +55,6 @@ paths:
         '202': { description: Accepted, content: { application/json: { schema: { $ref: '../../../services/vendor-api/openapi.json#/components/schemas/Message' } } } }
         '422': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/Error' }
-
-  # ---- 3. Commission rides on the session and /me ---------------------------------------------
-  /v1/auth/login:
-    post:
-      operationId: login
-      x-proposal: true
-      summary: Sign in (the vendor now carries its commission)
-      description: Unchanged except that `vendor` is `ProposedVendorSummary`. Sets the `vendor_refresh` HttpOnly cookie.
-      requestBody:
-        required: true
-        content: { application/json: { schema: { $ref: '../../../services/vendor-api/openapi.json#/components/schemas/LoginRequest' } } }
-      responses:
-        '200': { description: Signed in, content: { application/json: { schema: { $ref: '#/components/schemas/ProposedSessionResponse' } } } }
-        '401': { $ref: '#/components/responses/Error' }
-        '403': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
-        '429': { $ref: '#/components/responses/Error' }
-  /v1/auth/refresh:
-    post:
-      operationId: refresh
-      x-proposal: true
-      summary: A new access token from the refresh cookie
-      description: Typed here (openapi.json leaves the body untyped); `vendor` is `ProposedVendorSummary`. Rotates the cookie.
-      parameters:
-        - { name: vendor_refresh, in: cookie, required: false, schema: { type: [string, 'null'] } }
-      responses:
-        '200': { description: New session, content: { application/json: { schema: { $ref: '#/components/schemas/ProposedSessionResponse' } } } }
-        '401': { $ref: '#/components/responses/Error' }
-        '403': { $ref: '#/components/responses/Error' }
-        '409': { $ref: '#/components/responses/Error' }
-  /v1/auth/change-password:
-    post:
-      operationId: changePassword
-      x-proposal: true
-      summary: Change the password (the vendor now carries its commission)
-      requestBody:
-        required: true
-        content: { application/json: { schema: { $ref: '../../../services/vendor-api/openapi.json#/components/schemas/ChangePasswordRequest' } } }
-      responses:
-        '200': { description: Password changed; a new session, content: { application/json: { schema: { $ref: '#/components/schemas/ProposedSessionResponse' } } } }
-        '400': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
-  /v1/vendor/me:
-    get:
-      operationId: me
-      x-proposal: true
-      summary: The signed-in user and vendor (the vendor now carries its commission)
-      responses:
-        '200': { description: Me, content: { application/json: { schema: { $ref: '#/components/schemas/ProposedMe' } } } }
-        '401': { $ref: '#/components/responses/Error' }
-  /v1/vendor/commission/proposal:
-    post:
-      operationId: proposeCommission
-      x-proposal: true
-      summary: The brand proposes a commission rate
-      description: |
-        Basis points, 0 to 4000 (1200 = 12%). An agreed rate stays in force while Shazlo decides.
-        422 outside the range or when it equals the agreed rate. There is no default rate anywhere.
-      requestBody:
-        required: true
-        content: { application/json: { schema: { $ref: '#/components/schemas/CommissionProposalBody' } } }
-      responses:
-        '200': { description: Waiting for Shazlo, content: { application/json: { schema: { $ref: '#/components/schemas/CommissionOut' } } } }
-        '401': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
-
-  # ---- 2. Store details -----------------------------------------------------------------------
-  /v1/vendor/store-details:
-    get:
-      operationId: getStoreDetails
-      x-proposal: true
-      summary: The brand's store details
-      description: The details given at sign-up, editable after approval, with the required sections still missing. A product cannot be submitted until `complete` is true.
-      responses:
-        '200': { description: Store details, content: { application/json: { schema: { $ref: '#/components/schemas/StoreDetailsOut' } } } }
-        '401': { $ref: '#/components/responses/Error' }
-  /v1/vendor/store-details/brand:
-    put:
-      operationId: saveStoreBrand
-      x-proposal: true
-      summary: Who the brand sells for, the city it ships from, Instagram or website
-      description: The store name itself changes only through Shazlo.
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StoreBrandBody' } } } }
-      responses:
-        '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/StoreDetailsOut' } } } }
-        '401': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
-  /v1/vendor/store-details/contact:
-    put:
-      operationId: saveStoreContact
-      x-proposal: true
-      summary: The contact person, mobile number and email
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StoreContact' } } } }
-      responses:
-        '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/StoreDetailsOut' } } } }
-        '401': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
-  /v1/vendor/store-details/delivery:
-    put:
-      operationId: saveStoreDelivery
-      x-proposal: true
-      summary: Who delivers
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StoreDelivery' } } } }
-      responses:
-        '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/StoreDetailsOut' } } } }
-        '401': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
-  /v1/vendor/store-details/returns:
-    put:
-      operationId: saveStoreReturns
-      x-proposal: true
-      summary: Return window, condition and refund time
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StoreReturns' } } } }
-      responses:
-        '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/StoreDetailsOut' } } } }
-        '401': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
-  /v1/vendor/store-details/payment:
-    put:
-      operationId: saveStorePayment
-      x-proposal: true
-      summary: Payment on delivery (cash and/or UPI)
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StorePayment' } } } }
-      responses:
-        '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/StoreDetailsOut' } } } }
-        '401': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
-  /v1/vendor/store-details/payout:
-    put:
-      operationId: saveStorePayout
-      x-proposal: true
-      summary: Where Shazlo pays the brand
-      description: Takes the full account number, which is only ever returned masked. 422 when the IFSC is unknown.
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StorePayoutBody' } } } }
-      responses:
-        '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/StoreDetailsOut' } } } }
-        '401': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
-  /v1/vendor/store-details/business:
-    put:
-      operationId: saveStoreBusiness
-      x-proposal: true
-      summary: Legal business name and GST number (both optional)
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StoreBusiness' } } } }
-      responses:
-        '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/StoreDetailsOut' } } } }
-        '401': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
-  /v1/public/ifsc/{code}:
-    get:
-      operationId: lookupIfsc
-      x-proposal: true
-      summary: Bank and branch for an IFSC
-      description: Public, because sign-up asks for payouts. 422 when the code is not in the IFSC format, 404 when no bank has it.
-      parameters:
-        - { name: code, in: path, required: true, schema: { type: string, maxLength: 20 } }
-      responses:
-        '200': { description: Bank branch, content: { application/json: { schema: { $ref: '#/components/schemas/IfscOut' } } } }
-        '404': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
 
   # ---- 4. Products ----------------------------------------------------------------------------
   /v1/vendor/products:
@@ -314,31 +154,6 @@ paths:
       responses:
         '200': { description: A page of submissions, content: { application/json: { schema: { $ref: '#/components/schemas/ProposedSubmissionPageOut' } } } }
         '401': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
-
-  # ---- 5. Size charts -------------------------------------------------------------------------
-  /v1/vendor/size-charts/{group}:
-    parameters:
-      - { name: group, in: path, required: true, schema: { $ref: '#/components/schemas/SizeChartGroup' } }
-    get:
-      operationId: getSizeChart
-      x-proposal: true
-      summary: The brand's size chart for a group of product types
-      description: An empty chart (`version` 0, `updated_at` null) when none is saved.
-      responses:
-        '200': { description: Size chart, content: { application/json: { schema: { $ref: '#/components/schemas/SizeChartOut' } } } }
-        '401': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
-    put:
-      operationId: saveSizeChart
-      x-proposal: true
-      summary: Replaces the brand's size chart for the group
-      description: Centimetres, every value optional, and/or a photo of the brand's own chart. An empty chart deletes it.
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SizeChartBody' } } } }
-      responses:
-        '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/SizeChartOut' } } } }
-        '401': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
   # ---- 6. Bulk import -------------------------------------------------------------------------
@@ -494,234 +309,11 @@ components:
       additionalProperties: false
       description: The store-details sections given at sign-up; each one optional, each the same body as its `PUT /v1/vendor/store-details/{section}`.
       properties:
-        delivery: { $ref: '#/components/schemas/StoreDelivery' }
-        returns: { $ref: '#/components/schemas/StoreReturns' }
-        payment: { $ref: '#/components/schemas/StorePayment' }
-        payout: { $ref: '#/components/schemas/StorePayoutBody' }
-        business: { $ref: '#/components/schemas/StoreBusiness' }
-
-    # ---- 2. store details ----------------------------------------------------------------------
-    DeliveryDays:
-      type: string
-      x-proposal: true
-      enum: ['1_2', '2_3', '3_5', '5_7']
-      description: Delivery time in days when the brand delivers itself (1_2 = 1-2 days).
-    PickupAddress:
-      type: object
-      x-proposal: true
-      required: [line1, area, city, pin]
-      properties:
-        line1: { type: string, minLength: 1, maxLength: 200, description: 'House or shop number, building and street.' }
-        area: { type: string, minLength: 1, maxLength: 120 }
-        city: { type: string, minLength: 1, maxLength: 120 }
-        pin: { type: string, pattern: '^[1-9][0-9]{5}$' }
-    DeliveryByShazlo:
-      type: object
-      x-proposal: true
-      description: Shazlo's delivery service picks up orders from the pickup address.
-      required: [mode, pickup_address]
-      properties:
-        mode: { type: string, enum: [shazlo] }
-        pickup_address: { $ref: '#/components/schemas/PickupAddress' }
-    DeliveryByBrand:
-      type: object
-      x-proposal: true
-      description: The brand delivers itself, to all of India or to the listed cities and PIN codes.
-      required: [mode, areas, delivery_days]
-      properties:
-        mode: { type: string, enum: [own] }
-        areas:
-          type: object
-          required: [all_india, places]
-          properties:
-            all_india: { type: boolean }
-            places: { type: array, maxItems: 50, items: { type: string }, description: 'Cities or 6-digit PIN codes; empty when all_india is true.' }
-        delivery_days: { $ref: '#/components/schemas/DeliveryDays' }
-    StoreDelivery:
-      x-proposal: true
-      oneOf:
-        - { $ref: '#/components/schemas/DeliveryByShazlo' }
-        - { $ref: '#/components/schemas/DeliveryByBrand' }
-      discriminator: { propertyName: mode, mapping: { shazlo: '#/components/schemas/DeliveryByShazlo', own: '#/components/schemas/DeliveryByBrand' } }
-    StoreReturns:
-      type: object
-      x-proposal: true
-      description: With `window_days` 0 (no returns) `condition` and `refund_days` are stored as null whatever is sent; with 7, 14 or 30 both are required.
-      required: [window_days, condition, refund_days]
-      properties:
-        window_days: { type: integer, enum: [0, 7, 14, 30] }
-        condition: { type: [string, 'null'], enum: [unworn_with_tags, any_reason, damaged_or_wrong, null] }
-        refund_days: { type: [integer, 'null'], enum: [2, 5, 7, null], description: 'Working days after pickup until the refund.' }
-    StorePayment:
-      type: object
-      x-proposal: true
-      description: How shoppers can pay on delivery; at least one must be true.
-      required: [cash, upi]
-      properties:
-        cash: { type: boolean }
-        upi: { type: boolean }
-    BankPayoutBody:
-      type: object
-      x-proposal: true
-      required: [method, holder_name, account_number, ifsc]
-      properties:
-        method: { type: string, enum: [bank] }
-        holder_name: { type: string, minLength: 1, maxLength: 200 }
-        account_number: { type: string, description: '9 to 18 digits; spaces are ignored. Never returned.' }
-        ifsc: { type: string, description: 'Like HDFC0001234; must belong to a known bank.' }
-    UpiPayoutBody:
-      type: object
-      x-proposal: true
-      required: [method, upi_id]
-      properties:
-        method: { type: string, enum: [upi] }
-        upi_id: { type: string, description: 'Like name@okhdfcbank.' }
-    StorePayoutBody:
-      x-proposal: true
-      oneOf:
-        - { $ref: '#/components/schemas/BankPayoutBody' }
-        - { $ref: '#/components/schemas/UpiPayoutBody' }
-      discriminator: { propertyName: method, mapping: { bank: '#/components/schemas/BankPayoutBody', upi: '#/components/schemas/UpiPayoutBody' } }
-    BankPayoutOut:
-      type: object
-      x-proposal: true
-      description: A saved bank account, masked.
-      required: [method, holder_name, bank_name, account_last4, ifsc]
-      properties:
-        method: { type: string, enum: [bank] }
-        holder_name: { type: string }
-        bank_name: { type: string, description: 'From the IFSC, like HDFC Bank.' }
-        account_last4: { type: string, pattern: '^[0-9]{4}$' }
-        ifsc: { type: string }
-    UpiPayoutOut:
-      type: object
-      x-proposal: true
-      description: A saved UPI ID, masked.
-      required: [method, upi_id]
-      properties:
-        method: { type: string, enum: [upi] }
-        upi_id: { type: string, description: 'Masked, like "ka•••@okhdfcbank".' }
-    StorePayoutOut:
-      x-proposal: true
-      oneOf:
-        - { $ref: '#/components/schemas/BankPayoutOut' }
-        - { $ref: '#/components/schemas/UpiPayoutOut' }
-    StoreContact:
-      type: object
-      x-proposal: true
-      required: [name, phone, email]
-      properties:
-        name: { type: string, minLength: 1, maxLength: 200 }
-        phone: { type: string, description: 'Indian mobile; stored as 10 digits.' }
-        email: { type: string }
-    StoreBusiness:
-      type: object
-      x-proposal: true
-      description: Optional; empty strings are stored as null.
-      required: [legal_name, gstin]
-      properties:
-        legal_name: { type: [string, 'null'], maxLength: 200 }
-        gstin: { type: [string, 'null'], description: '15 characters with a valid check character.' }
-    StoreBrandBody:
-      type: object
-      x-proposal: true
-      required: [sells, city, instagram_or_website]
-      properties:
-        sells: { $ref: '#/components/schemas/Sells' }
-        city: { type: string, minLength: 1, maxLength: 120 }
-        instagram_or_website: { type: [string, 'null'], maxLength: 300, description: 'Null or empty clears it.' }
-    StoreBrandOut:
-      type: object
-      x-proposal: true
-      required: [brand_name, sells, city, instagram_or_website]
-      properties:
-        brand_name: { type: string, description: 'Read-only here; Shazlo changes the store name on request.' }
-        sells: { oneOf: [{ $ref: '#/components/schemas/Sells' }, { type: 'null' }] }
-        city: { type: [string, 'null'] }
-        instagram_or_website: { type: [string, 'null'] }
-    StoreSection:
-      type: string
-      x-proposal: true
-      enum: [brand, contact, delivery, returns, payment, payout]
-      description: A required section. Business details are optional and never missing.
-    StoreDetailsOut:
-      type: object
-      x-proposal: true
-      required: [brand, contact, delivery, returns, payment, payout, business, missing, complete, version, updated_at]
-      properties:
-        brand: { $ref: '#/components/schemas/StoreBrandOut' }
-        contact: { oneOf: [{ $ref: '#/components/schemas/StoreContact' }, { type: 'null' }] }
-        delivery: { oneOf: [{ $ref: '#/components/schemas/StoreDelivery' }, { type: 'null' }] }
-        returns: { oneOf: [{ $ref: '#/components/schemas/StoreReturns' }, { type: 'null' }] }
-        payment: { oneOf: [{ $ref: '#/components/schemas/StorePayment' }, { type: 'null' }] }
-        payout: { oneOf: [{ $ref: '#/components/schemas/StorePayoutOut' }, { type: 'null' }], description: 'Always masked.' }
-        business: { $ref: '#/components/schemas/StoreBusiness' }
-        missing: { type: array, items: { $ref: '#/components/schemas/StoreSection' }, description: 'Required sections not yet complete, in page order.' }
-        complete: { type: boolean, description: 'True when missing is empty.' }
-        version: { type: integer, minimum: 0 }
-        updated_at: { type: [string, 'null'], format: date-time }
-    IfscOut:
-      type: object
-      x-proposal: true
-      required: [ifsc, bank, branch]
-      properties:
-        ifsc: { type: string, description: 'The code in upper case.' }
-        bank: { type: string, description: 'Like HDFC Bank.' }
-        branch: { type: string, description: 'Like Navrangpura, Ahmedabad.' }
-
-    # ---- 3. commission -------------------------------------------------------------------------
-    CommissionState:
-      type: string
-      x-proposal: true
-      enum: [not_set, proposed, sent_back, agreed]
-      description: not_set - no rate yet; proposed - the brand's rate waits for Shazlo; sent_back - Shazlo sent it back with a note; agreed - a rate is in force.
-    CommissionOut:
-      type: object
-      x-proposal: true
-      description: Per-brand commission; there is no default rate. `agreed_bps` can be set in every state (a new proposal does not replace the agreed rate until Shazlo approves it).
-      required: [state, agreed_bps, proposed_bps, note]
-      properties:
-        state: { $ref: '#/components/schemas/CommissionState' }
-        agreed_bps: { type: [integer, 'null'], minimum: 0, maximum: 4000, description: 'The rate in force, in basis points (1200 = 12%).' }
-        proposed_bps: { type: [integer, 'null'], minimum: 0, maximum: 4000, description: "The brand's latest proposal while proposed or sent_back." }
-        note: { type: [string, 'null'], description: "Shazlo's note when it sent the proposal back." }
-    CommissionProposalBody:
-      type: object
-      x-proposal: true
-      additionalProperties: false
-      required: [rate_bps]
-      properties:
-        rate_bps: { type: integer, minimum: 0, maximum: 4000 }
-    ProposedVendorSummary:
-      x-proposal: true
-      x-extends: VendorSummary
-      description: VendorSummary plus the vendor's commission.
-      allOf:
-        - $ref: '../../../services/vendor-api/openapi.json#/components/schemas/VendorSummary'
-        - type: object
-          required: [commission]
-          properties:
-            commission: { x-proposal: true, $ref: '#/components/schemas/CommissionOut' }
-    ProposedMe:
-      x-proposal: true
-      x-extends: Me
-      description: Me with `vendor` as ProposedVendorSummary.
-      allOf:
-        - $ref: '../../../services/vendor-api/openapi.json#/components/schemas/Me'
-        - type: object
-          required: [vendor]
-          properties:
-            vendor: { $ref: '#/components/schemas/ProposedVendorSummary' }
-    ProposedSessionResponse:
-      x-proposal: true
-      x-extends: SessionResponse
-      description: SessionResponse with `vendor` as ProposedVendorSummary.
-      allOf:
-        - $ref: '../../../services/vendor-api/openapi.json#/components/schemas/SessionResponse'
-        - type: object
-          required: [vendor]
-          properties:
-            vendor: { $ref: '#/components/schemas/ProposedVendorSummary' }
+        delivery: { $ref: '../../../services/vendor-api/openapi.json#/components/schemas/DeliveryIn' }
+        returns: { $ref: '../../../services/vendor-api/openapi.json#/components/schemas/ReturnsIn' }
+        payment: { $ref: '../../../services/vendor-api/openapi.json#/components/schemas/PaymentIn' }
+        payout: { $ref: '../../../services/vendor-api/openapi.json#/components/schemas/PayoutIn' }
+        business: { $ref: '../../../services/vendor-api/openapi.json#/components/schemas/BusinessIn' }
 
     # ---- 4. products ---------------------------------------------------------------------------
     PhotoAngle:
@@ -925,43 +517,6 @@ components:
         loc: { type: array, minItems: 1, maxItems: 1, items: { $ref: '#/components/schemas/SubmitRequirement' } }
         msg: { type: string }
         type: { type: string, enum: [missing] }
-
-    # ---- 5. size charts ------------------------------------------------------------------------
-    SizeChartGroup:
-      type: string
-      x-proposal: true
-      enum: [bottoms, tops, dresses, jackets]
-      description: Product types share a chart by group; sarees, dupattas and stoles have none.
-    SizeChartMeasurements:
-      type: object
-      x-proposal: true
-      description: |
-        Centimetres by size, then by measurement: {"M": {"bust": 96, "waist": 84, "hip": null}}.
-        The group's measurements: bottoms - waist, hip, inseam, length; tops and jackets - chest,
-        shoulder, sleeve, length; dresses - bust, waist, hip, length. Saved sizes come back with
-        every measurement of the group (null when blank); wholly blank sizes are dropped.
-      additionalProperties:
-        type: object
-        additionalProperties: { type: [number, 'null'], exclusiveMinimum: 0, maximum: 300 }
-    SizeChartBody:
-      type: object
-      x-proposal: true
-      additionalProperties: false
-      required: [measurements, photo_asset_id]
-      properties:
-        measurements: { $ref: '#/components/schemas/SizeChartMeasurements' }
-        photo_asset_id: { type: [string, 'null'], format: uuid, description: "A photo of the brand's own chart: an uploaded product_image asset." }
-    SizeChartOut:
-      type: object
-      x-proposal: true
-      required: [group, measurements, photo_asset_id, photo_url, version, updated_at]
-      properties:
-        group: { $ref: '#/components/schemas/SizeChartGroup' }
-        measurements: { $ref: '#/components/schemas/SizeChartMeasurements' }
-        photo_asset_id: { type: [string, 'null'], format: uuid }
-        photo_url: { type: [string, 'null'] }
-        version: { type: integer, minimum: 0, description: '0 when nothing is saved.' }
-        updated_at: { type: [string, 'null'], format: date-time, description: 'Null when nothing is saved.' }
 
     # ---- 7. brand profile ----------------------------------------------------------------------
     ProposedBrandProfileBody:

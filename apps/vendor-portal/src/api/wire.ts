@@ -9,35 +9,34 @@ import type { components as RealComponents } from './schema'
 type Real = RealComponents['schemas']
 type Proposed = ProposedComponents['schemas']
 
-// ---- session and me ------------------------------------------------------------------------------
-export type SessionOut = Proposed['ProposedSessionResponse']
-/** A session as the client types it today (the vendor's commission not yet guaranteed). */
-export type SessionIn = Real['SessionResponse']
-export type MeOut = Proposed['ProposedMe']
-/** `/v1/vendor/me` as the client types it today: the commission may or may not be there yet. */
-export type MeIn = Real['Me'] & { vendor: { commission?: unknown } }
+// ---- session, me and commission ------------------------------------------------------------------
+export type SessionOut = Real['SessionResponse']
+export type SessionIn = SessionOut
+export type MeOut = Real['Me']
+export type MeIn = MeOut
 export type UserProfileOut = Real['UserProfile']
-export type VendorSummaryOut = Proposed['ProposedVendorSummary']
-export type CommissionOut = Proposed['CommissionOut']
-export type CommissionState = Proposed['CommissionState']
+export type VendorSummaryOut = Real['VendorSummary']
+/** `GET /v1/vendor/commission` (its own route; not on the session). `state` is not_set, proposed, sent_back or agreed. */
+export type CommissionOut = Real['CommissionOut']
+export type CommissionProposalIn = Real['ProposalIn']
 export type MessageOut = Real['Message']
 
 // ---- sign-up -------------------------------------------------------------------------------------
 export type SignupBody = Proposed['ProposedSignupRequest']
 export type SignupStoreDetails = Proposed['SignupStoreDetails']
 
-// ---- store details -------------------------------------------------------------------------------
-export type StoreDetailsOut = Proposed['StoreDetailsOut']
-export type StoreSectionName = Proposed['StoreSection']
-export type StoreBrandBody = Proposed['StoreBrandBody']
-export type StoreContact = Proposed['StoreContact']
-export type StoreDelivery = Proposed['StoreDelivery']
-export type StoreReturns = Proposed['StoreReturns']
-export type StorePayment = Proposed['StorePayment']
-export type StorePayoutBody = Proposed['StorePayoutBody']
-export type StorePayoutOut = Proposed['StorePayoutOut']
-export type StoreBusiness = Proposed['StoreBusiness']
-export type IfscOut = Proposed['IfscOut']
+// ---- store details (real since PR #281) ----------------------------------------------------------
+/** Flat, as Build 2 drew it; the topics are loosely typed objects, read defensively. */
+export type StoreDetailsOut = Real['StoreDetailsOut']
+export type StoreBrandIn = Real['BrandIn']
+export type StoreContactIn = Real['ContactIn']
+export type StoreDeliveryIn = Real['DeliveryIn']
+export type StoreReturnsIn = Real['ReturnsIn']
+export type StorePaymentIn = Real['PaymentIn']
+export type StorePayoutIn = Real['PayoutIn']
+export type StoreBusinessIn = Real['BusinessIn']
+/** `GET /v1/public/ifsc/{code}`; `branch` is null until vendor-api bundles RBI's list. */
+export type IfscOut = Real['IfscBankOut']
 
 // ---- products ------------------------------------------------------------------------------------
 export type ProductOut = Proposed['ProposedProductOut']
@@ -76,7 +75,8 @@ export type DraftOut = Proposed['ProposedDraftOut']
 export type BrandProfileOut = Proposed['ProposedBrandProfileOut']
 export type BrandProfileBody = Proposed['ProposedBrandProfileBody']
 
-// ---- size charts ---------------------------------------------------------------------------------
-export type SizeChartOut = Proposed['SizeChartOut']
-export type SizeChartBody = Proposed['SizeChartBody']
-export type ApiSizeChartGroup = Proposed['SizeChartGroup']
+// ---- size charts (real since PR #281) ------------------------------------------------------------
+export type SizeChartOut = Real['SizeChartOut']
+export type SizeChartBody = Real['SizeChartIn']
+/** vendor-api takes the group as a free path segment and answers 404 for anything else. */
+export type ApiSizeChartGroup = 'bottoms' | 'tops' | 'dresses' | 'jackets'

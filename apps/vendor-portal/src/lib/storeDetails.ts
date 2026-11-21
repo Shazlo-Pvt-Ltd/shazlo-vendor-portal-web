@@ -237,7 +237,7 @@ export function normaliseBusiness(input: Partial<Schemas['BusinessDetails']>): S
 }
 
 // What the API returns for a saved payout: never the full account number or UPI ID.
-export function maskPayout(input: Schemas['PayoutInput'], bankName: string): Schemas['Payout'] {
+export function maskPayout(input: Schemas['PayoutInput'], bankName: string | null): Schemas['Payout'] {
   return input.method === 'bank'
     ? { method: 'bank', holder_name: input.holder_name, bank_name: bankName, account_last4: accountLast4(input.account_number), ifsc: normaliseIfsc(input.ifsc) }
     : { method: 'upi', upi_id: maskUpiId(input.upi_id) }

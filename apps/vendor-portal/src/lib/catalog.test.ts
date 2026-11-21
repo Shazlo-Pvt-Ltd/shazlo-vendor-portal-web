@@ -50,6 +50,8 @@ describe('product types and size charts', () => {
   it('takes centimetres above 0, up to 300, with one decimal place', () => {
     for (const ok of [96, 96.5, 0.5, 300, 1.1]) expect(isValidMeasurement(ok)).toBe(true)
     for (const bad of [0, -1, 301, 96.55, Number.NaN, '96', null]) expect(isValidMeasurement(bad)).toBe(false)
+    // Above 0 but no whole tenth, and too large to be a measurement (vendor-api refuses both).
+    for (const bad of [1e-12, 0.04, 1e300, Number.POSITIVE_INFINITY]) expect(isValidMeasurement(bad)).toBe(false)
   })
 })
 

@@ -23,9 +23,15 @@ describe('the client is typed with the real and the proposed routes', () => {
     expectTypeOf<NonNullable<Product['working']>['main_colour']>().toEqualTypeOf<string | null>()
   })
 
-  it('keeps the real typing where the proposal only adds a field to the answer', () => {
+  it('uses the real routes vendor-api shipped (PR #281), with nothing proposed on top', () => {
     expectTypeOf<ApiPaths['/v1/vendor/me']>().toEqualTypeOf<Real['/v1/vendor/me']>()
     expectTypeOf<ApiPaths['/v1/auth/login']>().toEqualTypeOf<Real['/v1/auth/login']>()
+    expectTypeOf<ApiPaths['/v1/vendor/store-details']>().toEqualTypeOf<Real['/v1/vendor/store-details']>()
+    expectTypeOf<ApiPaths['/v1/vendor/store-details/payout']>().toEqualTypeOf<Real['/v1/vendor/store-details/payout']>()
+    expectTypeOf<ApiPaths['/v1/vendor/commission']>().toEqualTypeOf<Real['/v1/vendor/commission']>()
+    expectTypeOf<ApiPaths['/v1/vendor/commission/proposal']>().toEqualTypeOf<Real['/v1/vendor/commission/proposal']>()
+    expectTypeOf<ApiPaths['/v1/vendor/size-charts/{group}']>().toEqualTypeOf<Real['/v1/vendor/size-charts/{group}']>()
+    expectTypeOf<ApiPaths['/v1/public/ifsc/{code}']>().toEqualTypeOf<Real['/v1/public/ifsc/{code}']>()
   })
 
   it('takes the proposed list and submissions, with their new fields and filters', () => {
@@ -35,11 +41,6 @@ describe('the client is typed with the real and the proposed routes', () => {
     expectTypeOf<Row['thumbnail_url']>().toEqualTypeOf<string | null>()
     type Body = NonNullable<ApiPaths['/v1/vendor/products/{product_id}']['put']['requestBody']>['content']['application/json']
     expectTypeOf<Body['version']>().toEqualTypeOf<number | undefined>()
-  })
-
-  it('adds the routes only the proposal has', () => {
-    expectTypeOf<ApiPaths['/v1/vendor/store-details']['get']>().toEqualTypeOf<Proposed['/v1/vendor/store-details']['get']>()
-    expectTypeOf<ApiPaths['/v1/public/ifsc/{code}']['get']>().toEqualTypeOf<Proposed['/v1/public/ifsc/{code}']['get']>()
   })
 
   it('is a type-only module at run time', () => {

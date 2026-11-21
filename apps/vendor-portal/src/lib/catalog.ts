@@ -96,7 +96,8 @@ export function isMeasurementOf(group: SizeChartGroup, value: string): value is 
 export const MEASUREMENT_MAX_CM = 300
 
 export function isValidMeasurement(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= MEASUREMENT_MAX_CM && Math.abs(value * 10 - Math.round(value * 10)) < 1e-9
+  // Whole tenths, at least one: 1e-12 is above 0 but is no tenth of a centimetre (vendor-api's rule).
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= MEASUREMENT_MAX_CM && Math.round(value * 10) >= 1 && Math.abs(value * 10 - Math.round(value * 10)) < 1e-9
 }
 
 // ---- sizes ------------------------------------------------------------------------------------

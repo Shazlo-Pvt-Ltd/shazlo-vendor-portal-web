@@ -89,3 +89,34 @@ describe('bank account, PIN, phone, email, link', () => {
     expect(isValidLink('kalki studio')).toBe(false)
   })
 })
+
+// vendor-api refuses letters that only look like ASCII ones (PR #281): upper- or lower-casing
+// would turn them into the real letters (ſ → S, ı → I, the Kelvin sign → k), so a stored code or
+// link could hold something that only looks like the brand's. The portal refuses them too.
+describe('look-alike letters', () => {
+  it('are refused in an IFSC', () => {
+    expect(isValidIfsc('ſBIN0001234')).toBe(false)
+    expect(isValidIfsc('hdfc0001234')).toBe(true)
+  })
+
+  it('are refused in a UPI ID', () => {
+    expect(isValidUpiId('Kalki@okhdfcbank')).toBe(false)
+    expect(isValidUpiId('kalki@okhdfcbank')).toBe(true)
+  })
+
+  it('are refused in a GSTIN', () => {
+    // A GSTIN with an S in it, valid as typed in capitals or in small letters.
+    const first14 = '27SAPFU0939F1Z'
+    const gstin = first14 + gstinCheckChar(first14)
+    expect(isValidGstin(gstin)).toBe(true)
+    expect(isValidGstin(gstin.toLowerCase())).toBe(true)
+    // The long s upper-cases to S, so only the check as typed refuses it.
+    expect(isValidGstin('27' + 'ſ' + gstin.slice(3))).toBe(false)
+  })
+
+  it('are refused in an Instagram handle or website', () => {
+    expect(isValidLink('@kalk' + 'ı' + '.studio')).toBe(false)
+    expect(isValidLink('kalk' + 'ı' + 'studio.in')).toBe(false)
+    expect(isValidLink('Kalkistudio.in')).toBe(false)
+  })
+})

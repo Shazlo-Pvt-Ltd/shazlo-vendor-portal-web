@@ -69,6 +69,7 @@ export const storeCopy = {
     ifsc: 'IFSC code',
     ifscHint: 'The 11-character code on your cheque book, like HDFC0001234.',
     ifscFound: (bank: string, branch: string) => `${bank}, ${branch}`,
+    ifscNotListed: 'We do not know the bank for this code yet. Check it on your cheque book or bank app; you can still continue.',
     upi: 'UPI ID',
     upiHint: 'Like name@okhdfcbank.',
     accountMismatch: 'The account numbers do not match. Type the same number in both fields.',

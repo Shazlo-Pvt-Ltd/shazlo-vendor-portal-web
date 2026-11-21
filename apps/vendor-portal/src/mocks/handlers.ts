@@ -23,7 +23,6 @@ import { catalogCopy } from '../copy/catalog'
 import {
   isColour,
   isSize,
-  isSizeChartGroup,
   MAX_EXTRA_PHOTOS,
   MAX_OTHER_COLOURS,
   MAX_TRYON_PHOTOS,
@@ -33,27 +32,7 @@ import {
   type SubmitRequirement,
 } from '../lib/catalog'
 import { checkCommissionBps } from '../lib/commission'
-import {
-  checkBrand,
-  checkBusiness,
-  checkContact,
-  checkDelivery,
-  checkPayOnDelivery,
-  checkPayout,
-  checkReturns,
-  checkSizeChart,
-  maskPayout,
-  normaliseBrand,
-  normaliseBusiness,
-  normaliseContact,
-  normaliseDelivery,
-  normalisePayOnDelivery,
-  normalisePayout,
-  normaliseReturns,
-  normaliseSizeChart,
-  storeDetailsMissing,
-  type FieldErrors,
-} from '../lib/storeDetails'
+import type { FieldErrors } from '../lib/storeDetails'
 import {
   ACCESS_TTL_SECONDS,
   CLOUD_NAME,
@@ -71,8 +50,31 @@ import {
   type UserRecord,
   type VendorRecord,
 } from './db'
-import { lookupIfsc } from './ifsc'
 import { checkCsv, IMPORT_TEMPLATE } from './imports'
+import {
+  approve,
+  CHART_GROUPS,
+  checkChart,
+  checkSection,
+  COMMISSION_MAX_BPS,
+  CommissionRuleError,
+  lookupIfsc,
+  maskedPayout,
+  normaliseBusiness,
+  normaliseChart,
+  normaliseContact,
+  normaliseDelivery,
+  normalisePayment,
+  normalisePayout,
+  normaliseReturns,
+  propose,
+  readSection,
+  sendBack,
+  setRate,
+  type ChartGroup,
+  type Detail,
+  type Terms,
+} from './storeRules'
 import { swatch } from './swatch'
 
 // Mock vendor-api: the real `/v1` routes (services/vendor-api/openapi.json) and the proposed ones
@@ -153,11 +155,19 @@ function vendorOf(db: MockDb, user: UserRecord): VendorRecord {
 }
 
 function commissionOf(db: MockDb, vendorId: string): CommissionOut {
-  return db.commissions.get(vendorId) ?? NOT_SET
+  const c = db.commissions.get(vendorId) ?? NOT_SET
+  return { state: c.state, agreed_bps: c.agreed_bps, proposed_bps: c.proposed_bps, note: c.note, updated_at: c.updated_at ?? null }
 }
 
-function vendorSummary(db: MockDb, vendor: VendorRecord): VendorSummaryOut {
-  return { id: vendor.id, name: vendor.name, slug: vendor.slug, status: vendor.status, commission: commissionOf(db, vendor.id) }
+/** The commission as the state machine sees it. */
+function termsOf(db: MockDb, vendorId: string): Terms {
+  const c = db.commissions.get(vendorId) ?? NOT_SET
+  return { state: c.state, agreed_bps: c.agreed_bps, proposed_bps: c.proposed_bps, note: c.note }
+}
+
+// vendor-api's VendorSummary: no commission (that has its own route, GET /v1/vendor/commission).
+function vendorSummary(_db: MockDb, vendor: VendorRecord): VendorSummaryOut {
+  return { id: vendor.id, name: vendor.name, slug: vendor.slug, status: vendor.status }
 }
 
 const profileOf = (user: UserRecord) => ({ id: user.id, email: user.email, role: user.role, last_login_at: user.last_login_at })
@@ -175,36 +185,36 @@ function storeOf(db: MockDb, vendorId: string): StoreRecord {
   return store
 }
 
-const SECTION_OF_TOPIC = { brand: 'brand', contact: 'contact', delivery: 'delivery', returns: 'returns', pay_on_delivery: 'payment', payout: 'payout' } as const
-
-function storeMissing(store: StoreRecord) {
-  return storeDetailsMissing({
-    sells: store.sells,
-    city: store.city,
-    instagram_or_website: store.instagram_or_website,
-    contact: store.contact,
-    delivery: store.delivery,
-    returns: store.returns,
-    pay_on_delivery: store.payment,
-    payout: store.payout,
-  }).map((topic) => SECTION_OF_TOPIC[topic])
+/** Required topics not saved yet, in page order (vendor-api's `missing_topics`: saved, not re-checked). */
+function storeMissing(store: StoreRecord): string[] {
+  const present: Record<string, boolean> = {
+    brand: store.sells !== null && store.city !== null,
+    contact: store.contact !== null,
+    delivery: store.delivery !== null,
+    returns: store.returns !== null,
+    pay_on_delivery: store.payment !== null,
+    payout: store.payout !== null,
+  }
+  return ['brand', 'contact', 'delivery', 'returns', 'pay_on_delivery', 'payout'].filter((topic) => !present[topic])
 }
 
+/** vendor-api's flat answer; the payout masked. */
 function storeOut(db: MockDb, vendor: VendorRecord): StoreDetailsOut {
   const s = storeOf(db, vendor.id)
   const missing = storeMissing(s)
-  const bank = s.payout?.method === 'bank' ? lookupIfsc(s.payout.ifsc) : null
   return {
-    brand: { brand_name: vendor.name, sells: s.sells, city: s.city, instagram_or_website: s.instagram_or_website },
-    contact: s.contact,
-    delivery: s.delivery,
-    returns: s.returns,
-    payment: s.payment,
-    payout: s.payout ? maskPayout(s.payout, bank?.ok ? bank.bank.bank : 'Bank') : null,
-    business: s.business,
+    brand_name: vendor.name,
+    sells: s.sells,
+    city: s.city,
+    instagram_or_website: s.instagram_or_website,
+    contact: s.contact ? { ...s.contact } : null,
+    delivery: s.delivery ? (structuredClone(s.delivery) as unknown as Record<string, unknown>) : null,
+    returns: s.returns ? { ...s.returns } : null,
+    pay_on_delivery: s.payment ? { ...s.payment } : null,
+    payout: s.payout ? maskedPayout(s.payout) : null,
+    business: { ...s.business },
     missing,
     complete: missing.length === 0,
-    version: s.version,
     updated_at: s.updated_at,
   }
 }
@@ -277,9 +287,15 @@ function sizeChartOut(db: MockDb, vendorId: string, group: ApiSizeChartGroup): S
     measurements: saved?.measurements ?? {},
     photo_asset_id: saved?.photo_asset_id ?? null,
     photo_url: assetUrl(db, saved?.photo_asset_id ?? null),
-    version: saved?.version ?? 0,
     updated_at: saved?.updated_at ?? null,
   }
+}
+
+/** A broken commission rule as vendor-api answers it: a 422 on the field (its own `type`), or a 409. */
+function commissionFailure(db: MockDb, error: unknown): Response {
+  if (!(error instanceof CommissionRuleError)) throw error
+  if (error.status === 422 && error.field) return invalid(db, { [error.field]: error.message }, { type: error.code })
+  return fail(db, error.status, error.code, error.message)
 }
 
 // ---- sessions ------------------------------------------------------------------------------------
@@ -630,20 +646,24 @@ export function createHandlers(getDb: GetDb, { base = '*' }: { base?: string } =
       return resolver({ db, request, params, user, vendor })
     })
 
-  /** One `PUT /v1/vendor/store-details/{section}`: check, normalise, save, answer with every section. */
-  const section = (name: string, check: (body: unknown) => FieldErrors, save: (store: StoreRecord, body: never) => FieldErrors | void) =>
+  /**
+   * One `PUT /v1/vendor/store-details/{section}`, as vendor-api does it: payout and business are the
+   * owner's; the body's shape first (pydantic: types, unknown fields, length caps, hidden or
+   * blank-looking text), then the section's rules, then the normal form is saved.
+   */
+  const section = (name: string, save: (store: StoreRecord, body: Record<string, unknown>) => void, { owner = false }: { owner?: boolean } = {}) =>
     http.put(at(`/v1/vendor/store-details/${name}`), authed(async ({ db, request, vendor }) => {
       const read = await readJson(request)
       if (!read.ok) return badJson(db)
-      const problems = check(read.body)
-      if (hasErrors(problems)) return invalid(db, problems)
+      const shape = readSection(name, read.body)
+      if (shape.length > 0) return fail(db, 422, 'validation_error', 'Request validation failed', shape)
+      const problems = checkSection(name, read.body)
+      if (hasErrors(problems)) return invalid(db, problems, { type: 'invalid' })
       const store = storeOf(db, vendor.id)
-      const late = save(store, read.body as never)
-      if (late && hasErrors(late)) return invalid(db, late)
-      store.version += 1
+      save(store, read.body)
       store.updated_at = iso()
       return json(db, storeOut(db, vendor))
-    }))
+    }, { owner }))
 
   function findProduct(db: MockDb, vendor: VendorRecord, id: string): ProductRecord | undefined {
     return db.products.find((p) => p.id === id && p.vendor_id === vendor.id)
@@ -699,19 +719,25 @@ export function createHandlers(getDb: GetDb, { base = '*' }: { base?: string } =
       if (typeof b.password !== 'string' || b.password.length < 1) fields.password = 'String should have at least 1 character'
       if (typeof b.terms_accepted !== 'boolean') fields.terms_accepted = 'Input should be a valid boolean'
       if (typeof b.price_rule_accepted !== 'boolean') fields.price_rule_accepted = 'Input should be a valid boolean'
-      Object.assign(fields, checkBrand({ sells: b.sells, city: b.city, instagram_or_website: b.website_or_instagram }))
+      const brandShape = readSection('brand', { sells: b.sells, city: b.city, ...(b.website_or_instagram === undefined ? {} : { instagram_or_website: b.website_or_instagram }) })
+      if (brandShape.length > 0) for (const d of brandShape) fields[d.loc[1] === 'instagram_or_website' ? 'website_or_instagram' : String(d.loc[1])] = d.msg
+      else {
+        const brandRules = checkSection('brand', { sells: b.sells, city: b.city, instagram_or_website: b.website_or_instagram })
+        for (const [key, message] of Object.entries(brandRules)) fields[key === 'instagram_or_website' ? 'website_or_instagram' : key] = message
+      }
       if (b.proposed_commission_bps !== undefined && b.proposed_commission_bps !== null) {
         const problem = checkCommissionBps(b.proposed_commission_bps)
         if (problem) fields.proposed_commission_bps = problem
       }
       const details = (typeof b.store_details === 'object' && b.store_details !== null ? b.store_details : {}) as Record<string, unknown>
-      const sectionChecks: [string, (v: unknown) => FieldErrors][] = [['delivery', checkDelivery], ['returns', checkReturns], ['payment', checkPayOnDelivery], ['payout', checkPayout], ['business', checkBusiness]]
-      for (const [name, check] of sectionChecks) {
+      // Each section is the same body as its PUT, checked by the same rules (an unlisted bank is fine).
+      for (const name of ['delivery', 'returns', 'payment', 'payout', 'business']) {
         if (details[name] === undefined) continue
-        for (const [key, message] of Object.entries(check(details[name]))) fields[`store_details.${name}.${key === 'pay_on_delivery' ? '' : key}`.replace(/\.$/, '')] = message
-      }
-      if (details.payout && typeof details.payout === 'object' && (details.payout as { method?: unknown }).method === 'bank' && !fields['store_details.payout.ifsc'] && !lookupIfsc(String((details.payout as { ifsc?: unknown }).ifsc ?? '')).ok) {
-        fields['store_details.payout.ifsc'] = catalogCopy.errors.payout.ifscUnknown
+        const shape = readSection(name, details[name])
+        const problems = shape.length > 0
+          ? Object.fromEntries(shape.map((d) => [d.loc.slice(1).join('.'), d.msg]))
+          : checkSection(name, details[name] as Record<string, unknown>)
+        for (const [key, message] of Object.entries(problems)) fields[`store_details.${name}.${key === 'pay_on_delivery' ? '' : key}`.replace(/\.$/, '')] = message
       }
       if (hasErrors(fields)) return invalid(db, fields)
       if (b.terms_accepted !== true) return fail(db, 422, 'terms_not_accepted', 'Accept the terms to sign up')
@@ -732,19 +758,18 @@ export function createHandlers(getDb: GetDb, { base = '*' }: { base?: string } =
       db.vendors.push(vendor)
       db.users.push(owner)
       const store = emptyStore()
-      const brand = normaliseBrand({ sells: b.sells as never, city: String(b.city), instagram_or_website: (b.website_or_instagram as string | null | undefined) ?? null })
-      Object.assign(store, { sells: brand.sells, city: brand.city, instagram_or_website: brand.instagram_or_website })
+      Object.assign(store, { sells: b.sells, city: String(b.city).trim(), instagram_or_website: (typeof b.website_or_instagram === 'string' ? b.website_or_instagram.trim() : '') || null })
       store.contact = normaliseContact({ name: String(b.contact_name), phone: String(b.phone), email })
-      if (details.delivery) store.delivery = normaliseDelivery(details.delivery as never)
-      if (details.returns) store.returns = normaliseReturns(details.returns as never)
-      if (details.payment) store.payment = normalisePayOnDelivery(details.payment as never)
-      if (details.payout) store.payout = normalisePayout(details.payout as never)
-      if (details.business) store.business = normaliseBusiness(details.business as never)
-      store.version = 1
+      const sectionOf = (name: string) => details[name] as Record<string, unknown>
+      if (details.delivery) store.delivery = normaliseDelivery(sectionOf('delivery'))
+      if (details.returns) store.returns = normaliseReturns(sectionOf('returns'))
+      if (details.payment) store.payment = normalisePayment(sectionOf('payment'))
+      if (details.payout) store.payout = normalisePayout(sectionOf('payout'))
+      if (details.business) store.business = normaliseBusiness(sectionOf('business'))
       store.updated_at = now
       db.stores.set(vendor.id, store)
       const bps = b.proposed_commission_bps
-      db.commissions.set(vendor.id, typeof bps === 'number' ? { state: 'proposed', agreed_bps: null, proposed_bps: bps, note: null } : NOT_SET)
+      db.commissions.set(vendor.id, typeof bps === 'number' ? { state: 'proposed', agreed_bps: null, proposed_bps: bps, note: null, updated_at: now } : { ...NOT_SET })
       const token = nextToken(db, 'verify')
       db.tokens.set(token, { kind: 'verify', userId: owner.id })
       db.emails.push({ to: email, kind: 'verify', token })
@@ -824,79 +849,101 @@ export function createHandlers(getDb: GetDb, { base = '*' }: { base?: string } =
     // ---- me, commission, store details ---------------------------------------------------------
     http.get(at('/v1/vendor/me'), authed(({ db, user, vendor }) => json(db, { user: profileOf(user), vendor: vendorSummary(db, vendor) } satisfies MeOut))),
 
+    http.get(at('/v1/vendor/commission'), authed(({ db, vendor }) => json(db, commissionOf(db, vendor.id)))),
+
+    // Owner only. Pydantic checks the rate (a whole number from 0 to 4000) before the rules run.
     http.post(at('/v1/vendor/commission/proposal'), authed(async ({ db, request, vendor }) => {
       const read = await readJson(request)
       if (!read.ok) return badJson(db)
+      const shape: Detail[] = Object.keys(read.body).filter((k) => k !== 'rate_bps').map((k) => ({ loc: ['body', k], msg: 'Extra inputs are not permitted', type: 'extra_forbidden' }))
       const rate = read.body.rate_bps
-      const problem = checkCommissionBps(rate)
-      if (problem) return invalid(db, { rate_bps: problem })
-      const current = commissionOf(db, vendor.id)
-      if (rate === current.agreed_bps) return invalid(db, { rate_bps: catalogCopy.errors.commission.sameAsAgreed })
-      // The agreed rate stays in force until Shazlo approves the new one.
-      const next: CommissionOut = { state: 'proposed', agreed_bps: current.agreed_bps, proposed_bps: rate as number, note: null }
-      db.commissions.set(vendor.id, next)
-      return json(db, next)
-    })),
+      if (rate === undefined) shape.push({ loc: ['body', 'rate_bps'], msg: 'Field required', type: 'missing' })
+      else if (typeof rate !== 'number' || !Number.isInteger(rate)) shape.push({ loc: ['body', 'rate_bps'], msg: 'Input should be a valid integer', type: 'int_type' })
+      else if (rate < 0) shape.push({ loc: ['body', 'rate_bps'], msg: 'Input should be greater than or equal to 0', type: 'greater_than_equal' })
+      else if (rate > COMMISSION_MAX_BPS) shape.push({ loc: ['body', 'rate_bps'], msg: `Input should be less than or equal to ${COMMISSION_MAX_BPS}`, type: 'less_than_equal' })
+      if (shape.length > 0) return fail(db, 422, 'validation_error', 'Request validation failed', shape)
+      try {
+        const next = propose(termsOf(db, vendor.id), rate as number)
+        db.commissions.set(vendor.id, { ...next, updated_at: iso() })
+      } catch (error) {
+        return commissionFailure(db, error)
+      }
+      return json(db, commissionOf(db, vendor.id))
+    }, { owner: true })),
 
     http.get(at('/v1/vendor/store-details'), authed(({ db, vendor }) => json(db, storeOut(db, vendor)))),
-    section('brand', checkBrand, (store, body: { sells: 'women'; city: string; instagram_or_website: string | null }) => {
-      const brand = normaliseBrand(body)
-      Object.assign(store, { sells: brand.sells, city: brand.city, instagram_or_website: brand.instagram_or_website })
+    section('brand', (store, b) => {
+      store.sells = b.sells as StoreRecord['sells']
+      store.city = String(b.city).trim()
+      store.instagram_or_website = (typeof b.instagram_or_website === 'string' ? b.instagram_or_website.trim() : '') || null
     }),
-    section('contact', checkContact, (store, body: never) => {
-      store.contact = normaliseContact(body)
+    section('contact', (store, b) => {
+      store.contact = normaliseContact(b)
     }),
-    section('delivery', checkDelivery, (store, body: never) => {
-      store.delivery = normaliseDelivery(body)
+    section('delivery', (store, b) => {
+      store.delivery = normaliseDelivery(b)
     }),
-    section('returns', checkReturns, (store, body: never) => {
-      store.returns = normaliseReturns(body)
+    section('returns', (store, b) => {
+      store.returns = normaliseReturns(b)
     }),
-    section('payment', checkPayOnDelivery, (store, body: never) => {
-      store.payment = normalisePayOnDelivery(body)
+    section('payment', (store, b) => {
+      store.payment = normalisePayment(b)
     }),
-    section('payout', checkPayout, (store, body: { method: 'bank'; ifsc: string } | { method: 'upi' }) => {
-      if (body.method === 'bank' && !lookupIfsc(body.ifsc).ok) return { ifsc: catalogCopy.errors.payout.ifscUnknown }
-      store.payout = normalisePayout(body as never)
-    }),
-    section('business', checkBusiness, (store, body: never) => {
-      store.business = normaliseBusiness(body)
-    }),
+    section('payout', (store, b) => {
+      store.payout = normalisePayout(b)
+    }, { owner: true }),
+    section('business', (store, b) => {
+      store.business = normaliseBusiness(b)
+    }, { owner: true }),
 
     http.get(at('/v1/public/ifsc/:code'), open(({ db, params }) => {
-      const found = lookupIfsc(param(params, 'code'))
-      if (found.ok) return json(db, found.bank)
-      return found.reason === 'format'
-        ? invalid(db, { code: catalogCopy.errors.payout.ifscFormat }, { prefix: ['path'] })
-        : fail(db, 404, 'ifsc_not_found', catalogCopy.errors.payout.ifscUnknown)
+      const code = param(params, 'code')
+      let found: ReturnType<typeof lookupIfsc>
+      try {
+        // An IFSC is 11 characters; spaces are allowed, so vendor-api leaves some room.
+        if (code.length > 32) throw new RangeError('too long')
+        found = lookupIfsc(code)
+      } catch {
+        return fail(db, 422, 'ifsc_format', 'Enter an IFSC like HDFC0001234.')
+      }
+      if (!found) return fail(db, 404, 'ifsc_unknown', 'We do not know the bank for this IFSC.')
+      return HttpResponse.json(found, { headers: { 'X-Request-ID': requestId(db), 'Cache-Control': 'public, max-age=86400' } })
     })),
 
     // ---- size charts ---------------------------------------------------------------------------
     http.get(at('/v1/vendor/size-charts/:group'), authed(({ db, params, vendor }) => {
       const group = param(params, 'group')
-      if (!isSizeChartGroup(group)) return fail(db, 404, 'not_found', 'There is no size chart for that group.')
-      return json(db, sizeChartOut(db, vendor.id, group))
+      if (!(CHART_GROUPS as readonly string[]).includes(group)) return fail(db, 404, 'not_found', 'There is no size chart for that group: use bottoms, tops, dresses or jackets.')
+      return json(db, sizeChartOut(db, vendor.id, group as ChartGroup))
     })),
     http.put(at('/v1/vendor/size-charts/:group'), authed(async ({ db, request, params, vendor }) => {
       const group = param(params, 'group')
-      if (!isSizeChartGroup(group)) return fail(db, 404, 'not_found', 'There is no size chart for that group.')
+      if (!(CHART_GROUPS as readonly string[]).includes(group)) return fail(db, 404, 'not_found', 'There is no size chart for that group: use bottoms, tops, dresses or jackets.')
       const read = await readJson(request)
       if (!read.ok) return badJson(db)
-      const fields = { ...extraFields(read.body, ['measurements', 'photo_asset_id']), ...checkSizeChart(group, { measurements: read.body.measurements }) }
+      const shape: Detail[] = Object.keys(read.body).filter((k) => k !== 'measurements' && k !== 'photo_asset_id').map((k) => ({ loc: ['body', k], msg: 'Extra inputs are not permitted', type: 'extra_forbidden' }))
+      const measurements = read.body.measurements
+      if (measurements === undefined) shape.push({ loc: ['body', 'measurements'], msg: 'Field required', type: 'missing' })
+      else if (typeof measurements !== 'object' || measurements === null || Array.isArray(measurements)) shape.push({ loc: ['body', 'measurements'], msg: 'Input should be a valid dictionary', type: 'dict_type' })
       const photo = read.body.photo_asset_id ?? null
+      if (photo !== null && (typeof photo !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(photo))) shape.push({ loc: ['body', 'photo_asset_id'], msg: 'Input should be a valid UUID', type: 'uuid_parsing' })
+      if (shape.length > 0) return fail(db, 422, 'validation_error', 'Request validation failed', shape)
+      const rows = measurements as Record<string, unknown>
+      const problems = checkChart(group as ChartGroup, rows)
+      if (hasErrors(problems)) return invalid(db, problems, { type: 'invalid' })
       if (photo !== null) {
-        const asset = typeof photo === 'string' ? db.assets.get(photo) : undefined
-        if (!asset || asset.vendor_id !== vendor.id || asset.status !== 'ready') fields.photo_asset_id = 'Use a photo you uploaded.'
+        const asset = db.assets.get(photo as string)
+        if (!asset || asset.vendor_id !== vendor.id || asset.kind !== 'size_chart' || asset.status !== 'ready') {
+          return invalid(db, { photo_asset_id: 'Choose one of your uploaded size chart photos.' }, { type: 'invalid' })
+        }
       }
-      if (hasErrors(fields)) return invalid(db, fields)
       const charts = db.sizeCharts.get(vendor.id) ?? {}
       db.sizeCharts.set(vendor.id, charts)
-      const measurements = normaliseSizeChart(group, (read.body.measurements ?? {}) as never)
-      const previous = charts[group]
-      // An empty chart is the same as none saved.
-      if (Object.keys(measurements).length === 0 && photo === null) delete charts[group]
-      else charts[group] = { measurements, photo_asset_id: photo as string | null, version: (previous?.version ?? 0) + 1, updated_at: iso() }
-      return json(db, sizeChartOut(db, vendor.id, group))
+      const saved = normaliseChart(group as ChartGroup, rows)
+      // A chart with no measurements and no photo is the same as none: saving one deletes it.
+      if (Object.keys(saved).length === 0 && photo === null) delete charts[group as ChartGroup]
+      else charts[group as ChartGroup] = { measurements: saved, photo_asset_id: photo as string | null, updated_at: iso() }
+      return json(db, sizeChartOut(db, vendor.id, group as ChartGroup))
     })),
 
     // ---- brand page ----------------------------------------------------------------------------
@@ -937,7 +984,7 @@ export function createHandlers(getDb: GetDb, { base = '*' }: { base?: string } =
       if (!read.ok) return badJson(db)
       const fields = extraFields(read.body, ['kind', 'content_type', 'size_bytes'])
       const kind = read.body.kind
-      if (kind !== 'brand_logo' && kind !== 'brand_banner' && kind !== 'product_image') fields.kind = "Input should be 'brand_logo', 'brand_banner' or 'product_image'"
+      if (kind !== 'brand_logo' && kind !== 'brand_banner' && kind !== 'product_image' && kind !== 'size_chart') fields.kind = "Input should be 'brand_logo', 'brand_banner', 'product_image' or 'size_chart'"
       if (!IMAGE_TYPES.includes(read.body.content_type as never)) fields.content_type = "Input should be 'image/jpeg', 'image/png' or 'image/webp'"
       if (!isIntIn(read.body.size_bytes, 1, 1_099_511_627_776)) fields.size_bytes = 'Input should be greater than 0'
       if (hasErrors(fields)) return invalid(db, fields)
@@ -1333,4 +1380,17 @@ export function decide(db: MockDb, target: { productId?: string; brandOf?: strin
       pending.state = 'rejected'
     }
   }
+}
+
+/**
+ * Shazlo's side of the commission (`/v1/admin/vendors/{id}/commission/...`), for tests and the demo:
+ * approve the proposal the reviewer saw, send it back with a note, or set a rate. Throws
+ * `CommissionRuleError` as vendor-api would answer (409 no_proposal, 409 commission_changed, 422 note).
+ */
+export function decideCommission(db: MockDb, vendorId: string, step: { approve: number } | { sendBack: string } | { set: number; note?: string }): CommissionOut {
+  const now = db.now().toISOString()
+  const current = termsOf(db, vendorId)
+  const next = 'approve' in step ? approve(current, step.approve) : 'sendBack' in step ? sendBack(current, step.sendBack) : setRate(current, step.set, step.note ?? null)
+  db.commissions.set(vendorId, { ...next, updated_at: now })
+  return commissionOf(db, vendorId)
 }

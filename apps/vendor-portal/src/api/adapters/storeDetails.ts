@@ -1,26 +1,19 @@
 /**
- * Store details: vendor-api (proposed) answers in sections (`brand`, `contact`, `delivery`,
- * `returns`, `payment`, `payout`, `business`); Build 2's screens read one flat object where the
- * payment section is "pay on delivery". Section bodies are the same shapes both ways.
+ * Store details (`GET /v1/vendor/store-details`, vendor-api since PR #281). The answer is flat, as
+ * Build 2 drew it, but its topics are loosely typed objects, so each is read defensively. Payouts
+ * come back masked: the bank (null for a bank vendor-api does not list) and the last four digits,
+ * or a masked UPI ID; the number itself never comes back and is never sent again.
  */
 import { SELLS } from '../../lib/catalog'
 import { DELIVERY_DAYS, REFUND_DAYS, RETURN_CONDITIONS, RETURN_WINDOWS, STORE_TOPICS } from '../../lib/storeDetails'
 import { remapFieldErrors } from '../errors'
-import type { BusinessDetails, Contact, Delivery, PayOnDelivery, Payout, Returns, StoreDetails, StoreTopic } from '../model'
-import type { StoreDetailsOut } from '../wire'
-import { asArray, isoOrNull, oneOf } from './common'
+import type { BusinessDetails, Contact, Delivery, IfscBank, PayOnDelivery, Payout, Returns, StoreDetails, StoreTopic } from '../model'
+import type { IfscOut, StoreDetailsOut } from '../wire'
+import { asArray, isoOrNull, oneOf, textOrNull } from './common'
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 const str = (value: unknown): string | null => (typeof value === 'string' ? value : null)
 
-const TOPIC_FOR_SECTION: Record<string, StoreTopic> = {
-  brand: 'brand',
-  contact: 'contact',
-  delivery: 'delivery',
-  returns: 'returns',
-  payment: 'pay_on_delivery',
-  payout: 'payout',
-}
 
 function contactOf(value: unknown): Contact | null {
   if (!isObject(value)) return null
@@ -66,9 +59,10 @@ function paymentOf(value: unknown): PayOnDelivery | null {
 function payoutOf(value: unknown): Payout | null {
   if (!isObject(value)) return null
   if (value.method === 'bank') {
-    const [holder, bank, last4, ifsc] = [str(value.holder_name), str(value.bank_name), str(value.account_last4), str(value.ifsc)]
-    if (holder === null || bank === null || last4 === null || ifsc === null) return null
-    return { method: 'bank', holder_name: holder, bank_name: bank, account_last4: last4, ifsc }
+    const [holder, last4, ifsc] = [str(value.holder_name), str(value.account_last4), str(value.ifsc)]
+    if (holder === null || last4 === null || ifsc === null) return null
+    // A bank vendor-api does not list has no name; the payout is still good.
+    return { method: 'bank', holder_name: holder, bank_name: textOrNull(value.bank_name), account_last4: last4, ifsc }
   }
   if (value.method === 'upi') {
     const upi = str(value.upi_id)
@@ -83,18 +77,18 @@ function businessOf(value: unknown): BusinessDetails {
 }
 
 export function storeDetailsFromApi(out: StoreDetailsOut): StoreDetails {
-  const brand: Record<string, unknown> = isObject(out.brand) ? out.brand : {}
-  const missingTopics = new Set(asArray(out.missing).map((section) => TOPIC_FOR_SECTION[String(section)]).filter((t): t is StoreTopic => t !== undefined))
-  const missing = STORE_TOPICS.filter((topic) => missingTopics.has(topic))
+  // vendor-api names the missing topics as the screens do; one it may add later is left out.
+  const named = new Set(asArray(out.missing).map(String))
+  const missing = STORE_TOPICS.filter((topic: StoreTopic) => named.has(topic))
   return {
-    brand_name: str(brand.brand_name) ?? '',
-    sells: oneOf(SELLS, brand.sells) ?? null,
-    city: str(brand.city),
-    instagram_or_website: str(brand.instagram_or_website),
+    brand_name: str(out.brand_name) ?? '',
+    sells: oneOf(SELLS, out.sells) ?? null,
+    city: str(out.city),
+    instagram_or_website: str(out.instagram_or_website),
     contact: contactOf(out.contact),
     delivery: deliveryOf(out.delivery),
     returns: returnsOf(out.returns),
-    pay_on_delivery: paymentOf(out.payment),
+    pay_on_delivery: paymentOf(out.pay_on_delivery),
     payout: payoutOf(out.payout),
     business: businessOf(out.business),
     missing,
@@ -103,15 +97,23 @@ export function storeDetailsFromApi(out: StoreDetailsOut): StoreDetails {
   }
 }
 
+/** The bank behind an IFSC. vendor-api has no branch names yet (`branch` is null). */
+export function ifscFromApi(out: IfscOut): IfscBank {
+  return { ifsc: str(out.ifsc) ?? '', bank: str(out.bank) ?? '', branch: textOrNull(out.branch) }
+}
+
 const UNION_TAGS = new Set(['shazlo', 'own', 'bank', 'upi'])
 
 /**
- * A section's 422 keys, as the section form names its fields ("pickup_address.pin"). Pydantic puts
- * the union member's tag first for a delivery or payout body ("shazlo.pickup_address.pin").
+ * A section's 422 keys, as the section form names its fields. vendor-api's are dot paths into the
+ * body ("pickup_address.pin", "pay_on_delivery"), the form's own; a problem with one delivery place
+ * ("areas.places.2", like hidden characters in it) goes on the places field. A union tag in front
+ * ("shazlo.pickup_address.pin", pydantic's way for a union body) is dropped, should one appear.
  */
 export function storeFieldKey(key: string): string {
   const [head, ...rest] = key.split('.')
-  return head !== undefined && UNION_TAGS.has(head) && rest.length > 0 ? rest.join('.') : key
+  const path = head !== undefined && UNION_TAGS.has(head) && rest.length > 0 ? rest.join('.') : key
+  return /^areas\.places\.\d+$/.test(path) ? 'areas.places' : path
 }
 
 export function storeErrors(error: unknown): unknown {

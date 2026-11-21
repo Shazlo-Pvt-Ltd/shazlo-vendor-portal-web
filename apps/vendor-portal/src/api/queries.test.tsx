@@ -4,6 +4,7 @@ import { http } from 'msw'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { DEMO_LOGIN, DEMO_STAFF, REASONS } from '../mocks/db'
+import { decideCommission } from '../mocks/handlers'
 import type { SessionStore } from '../session/store'
 import { validApplication } from '../test/fixtures'
 import { setupMockApi } from '../test/server'
@@ -12,6 +13,11 @@ import { ApiError } from './errors'
 import {
   useAddProductImage,
   useBrandPage,
+  useCommission,
+  useIfsc,
+  useSaveSizeChart,
+  useStoreDetails,
+  useUploadImage,
   useBulkProducts,
   useCommitImport,
   useCreateProduct,
@@ -451,6 +457,122 @@ describe('the product version (proposed)', () => {
     })
     expect(sent).toEqual([before, before + 1])
     expect(kurta.version).toBe(before + 2)
+  })
+})
+
+describe('store details, commission, IFSC and size charts on vendor-api\'s real routes (PR #281)', () => {
+  it('saving one section sends only that section: the masked payout is neither sent again nor wiped', async () => {
+    const { wrapper } = await signedIn()
+    const bodies: Record<string, unknown>[] = []
+    server.use(
+      http.put('*/v1/vendor/store-details/:section', async ({ request }) => {
+        bodies.push((await request.clone().json()) as Record<string, unknown>)
+      }),
+    )
+    const save = renderHook(() => useSaveStoreSection(), { wrapper })
+    await act(async () => {
+      await save.result.current.mutateAsync({ section: 'payout', body: { method: 'bank', holder_name: 'Kalki Studio LLP', account_number: '5010 0123 4567 4821', ifsc: 'hdfc0001234' } })
+    })
+    const kalkiStore = () => [...db().stores.values()][0]!
+    expect(kalkiStore().payout).toEqual({ method: 'bank', holder_name: 'Kalki Studio LLP', account_number: '5010012345674821', ifsc: 'HDFC0001234' })
+    let details: Awaited<ReturnType<typeof save.result.current.mutateAsync>> | undefined
+    await act(async () => {
+      details = await save.result.current.mutateAsync({ section: 'contact', body: { name: 'Kiran Shah', phone: '+91 98250 12345', email: 'Orders@KalkiStudio.in' } })
+    })
+    expect(Object.keys(bodies[1]!).sort()).toEqual(['email', 'name', 'phone'])
+    expect(details).toMatchObject({
+      contact: { name: 'Kiran Shah', phone: '9825012345', email: 'orders@kalkistudio.in' },
+      payout: { method: 'bank', holder_name: 'Kalki Studio LLP', bank_name: 'HDFC Bank', account_last4: '4821', ifsc: 'HDFC0001234' },
+      complete: true,
+    })
+    expect(JSON.stringify(details)).not.toContain('5010012345674821')
+    expect(kalkiStore().payout).toMatchObject({ account_number: '5010012345674821' })
+  })
+
+  it('a payout to a bank vendor-api does not list is saved, without a bank name', async () => {
+    const { wrapper } = await signedIn()
+    const save = renderHook(() => useSaveStoreSection(), { wrapper })
+    let details: Awaited<ReturnType<typeof save.result.current.mutateAsync>> | undefined
+    await act(async () => {
+      details = await save.result.current.mutateAsync({ section: 'payout', body: { method: 'bank', holder_name: 'Kalki Studio LLP', account_number: '123456789042', ifsc: 'ZZZZ0001234' } })
+    })
+    expect(details!.payout).toEqual({ method: 'bank', holder_name: 'Kalki Studio LLP', bank_name: null, account_last4: '9042', ifsc: 'ZZZZ0001234' })
+    const lookup = renderHook(() => useIfsc('zzzz0001234'), { wrapper })
+    await waitFor(() => expect(lookup.result.current.isError).toBe(true))
+    expect(lookup.result.current.error).toMatchObject({ status: 404, code: 'ifsc_unknown' })
+  })
+
+  it('the IFSC lookup names the bank (no branch yet), and is not asked about a malformed code', async () => {
+    const { wrapper } = setup()
+    const known = renderHook(() => useIfsc(' hdfc 0001234 '), { wrapper })
+    await waitFor(() => expect(known.result.current.isSuccess).toBe(true))
+    expect(known.result.current.data).toEqual({ ifsc: 'HDFC0001234', bank: 'HDFC Bank', branch: null })
+    const bad = renderHook(() => useIfsc('HDFC123'), { wrapper })
+    expect(bad.result.current.fetchStatus).toBe('idle')
+  })
+
+  it('staff read the store details and the commission but cannot change the payout, the business details or the rate', async () => {
+    const { wrapper } = await signedIn(DEMO_STAFF)
+    const details = renderHook(() => useStoreDetails(), { wrapper })
+    await waitFor(() => expect(details.result.current.isSuccess).toBe(true))
+    const rate = renderHook(() => useCommission(), { wrapper })
+    await waitFor(() => expect(rate.result.current.data).toMatchObject({ state: 'agreed', agreed_bps: 1200 }))
+    const save = renderHook(() => useSaveStoreSection(), { wrapper })
+    const propose = renderHook(() => useProposeCommission(), { wrapper })
+    const refused: unknown[] = []
+    await act(async () => {
+      refused.push(await save.result.current.mutateAsync({ section: 'payout', body: { method: 'upi', upi_id: 'kalki@okhdfcbank' } }).catch((e: unknown) => e))
+      refused.push(await save.result.current.mutateAsync({ section: 'business', body: { legal_name: 'Kalki Studio LLP', gstin: null } }).catch((e: unknown) => e))
+      refused.push(await propose.result.current.mutateAsync(1000).catch((e: unknown) => e))
+    })
+    for (const error of refused) expect(error).toMatchObject({ status: 403, code: 'forbidden' })
+    await act(async () => {
+      await save.result.current.mutateAsync({ section: 'returns', body: { window_days: 14, condition: 'any_reason', refund_days: 2 } })
+    })
+  })
+
+  it('the commission is read from its own route and keeps when it last changed', async () => {
+    const { wrapper } = await signedIn()
+    const rate = renderHook(() => useCommission(), { wrapper })
+    await waitFor(() => expect(rate.result.current.isSuccess).toBe(true))
+    expect(rate.result.current.data!.updated_at).toMatch(/^\d{4}-/)
+    const propose = renderHook(() => useProposeCommission(), { wrapper })
+    await act(async () => {
+      await propose.result.current.mutateAsync(1100)
+    })
+    await waitFor(() => expect(rate.result.current.data).toMatchObject({ state: 'proposed', agreed_bps: 1200, proposed_bps: 1100 }))
+  })
+
+  it('refreshing the seller reads the commission again: a rate Shazlo changed shows at once, not after the cache runs out', async () => {
+    const { queryClient, wrapper } = await signedIn()
+    const me = renderHook(() => useMe(), { wrapper })
+    const rate = renderHook(() => useCommission(), { wrapper })
+    await waitFor(() => expect(me.result.current.data?.vendor.commission).toMatchObject({ state: 'agreed', agreed_bps: 1200 }))
+    await waitFor(() => expect(rate.result.current.data).toMatchObject({ state: 'agreed', agreed_bps: 1200 }))
+    const kalki = db().vendors.find((v) => v.name === 'Kalki Studio')!.id
+    decideCommission(db(), kalki, { set: 1500, note: 'New category rates from December' })
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ['me'] })
+    })
+    await waitFor(() => expect(me.result.current.data?.vendor).toMatchObject({ commission_bps: 1500, commission: { state: 'agreed', agreed_bps: 1500 } }))
+    await waitFor(() => expect(rate.result.current.data).toMatchObject({ state: 'agreed', agreed_bps: 1500 }))
+  })
+
+  it('a size chart photo is uploaded as a size_chart asset and saved by its id', async () => {
+    const { wrapper } = await signedIn()
+    const upload = renderHook(() => useUploadImage(), { wrapper })
+    let photo: { key: string; url: string } | undefined
+    await act(async () => {
+      photo = await upload.result.current.mutateAsync({ file: new File(['chart'], 'chart.jpg', { type: 'image/jpeg' }), purpose: 'size_chart' })
+    })
+    expect(db().assets.get(photo!.key)).toMatchObject({ kind: 'size_chart', status: 'ready' })
+    const save = renderHook(() => useSaveSizeChart('tops'), { wrapper })
+    let chart: Awaited<ReturnType<typeof save.result.current.mutateAsync>> | undefined
+    await act(async () => {
+      chart = await save.result.current.mutateAsync({ measurements: { M: { chest: 102, shoulder: 45.5 } }, photo_url: photo!.url })
+    })
+    expect(chart).toMatchObject({ group: 'tops', photo_url: photo!.url, measurements: { M: { chest: 102, shoulder: 45.5, sleeve: null, length: null } } })
+    expect([...db().sizeCharts.values()][0]!.tops).toMatchObject({ photo_asset_id: photo!.key })
   })
 })
 
