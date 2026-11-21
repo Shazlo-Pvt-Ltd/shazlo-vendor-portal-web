@@ -56,7 +56,8 @@ export async function expectAccessible(page: Page, testInfo: TestInfo) {
   const results = await new AxeBuilder({ page }).include('iframe[title="Vendors"]').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
   const blocking = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')
   await testInfo.attach('axe-violations', { body: JSON.stringify(results.violations, null, 2), contentType: 'application/json' })
-  // One line per element: where it is (frame >> element), its text, and what axe measured.
-  const lines = blocking.flatMap((v) => v.nodes.map((n) => `${v.id}: ${n.target.join(' >> ')} "${n.html.replace(/<[^>]+>/g, '').slice(0, 60)}" ${n.any[0]?.message ?? v.help}`))
+  // One line per element: where it is (frame >> element), the start of its markup (quoted as text,
+  // never rendered), and what axe measured.
+  const lines = blocking.flatMap((v) => v.nodes.map((n) => `${v.id}: ${n.target.join(' >> ')} ${JSON.stringify(n.html.slice(0, 80))} ${n.any[0]?.message ?? v.help}`))
   expect(lines).toEqual([])
 }
