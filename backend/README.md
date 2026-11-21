@@ -62,7 +62,7 @@ Over the budget, a route answers `429` with `{ "message": "Too many requests, pl
 The client address is Express's `req.ip`, which depends on **`TRUST_PROXY`**:
 
 - **Unset** (local development, tests): the TCP peer. Behind a proxy this would make every visitor share the proxy's address and therefore one budget, so on Render (where `RENDER` is set) the server **refuses to start** without it. Set `TRUST_PROXY=false` to run there without trusting any proxy on purpose.
-- **A hop count** such as `1`: the address that many entries from the right of `X-Forwarded-For`, which the proxies add and the client cannot forge. A comma-separated list of proxy addresses or subnets (`loopback`, `10.0.0.0/8`) also works.
+- **A hop count**: the address that many entries from the right of `X-Forwarded-For`, which the proxies add and the client cannot forge. A comma-separated list of proxy addresses or subnets (`loopback`, `10.0.0.0/8`) also works. **On Render, start with `2`**: a request goes client → Cloudflare → Render's proxy → app and arrives with `X-Forwarded-For: <client>, <Cloudflare edge>`, so `1` would make every visitor look like a Cloudflare address. Render does not remove an `X-Forwarded-For` the client sends, which is why the count must not be too high either. Render does not document the chain, so confirm it with the check below.
 - `true`, or a subnet that covers every address (`0.0.0.0/0`, `::/0`), is **refused at startup**: it would trust an `X-Forwarded-For` that the client writes itself. Do not combine subnets that together cover the internet either.
 
 To check the value after a deploy, without writing anything to the database (an empty body is refused before any query, but it still counts):
