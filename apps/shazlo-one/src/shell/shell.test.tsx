@@ -1,4 +1,5 @@
 import { createMessage } from '@shazlo/shell-protocol'
+import { navyText } from '@shazlo/ui'
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderShell } from '../test/render'
@@ -68,6 +69,12 @@ describe('navy sidebar', () => {
     expect(within(nav).getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page')
     await waitFor(() => expect(within(nav).getByRole('link', { name: /^Vendors\s*, 14 waiting$/ })).toBeInTheDocument())
     for (const name of ['Review queue', 'All vendors', 'Publishing', 'Admins & roles']) expect(within(nav).getByRole('link', { name })).toBeInTheDocument()
+  })
+
+  it('draws its section labels in the AA-tested quiet colour, not a fainter one', async () => {
+    await renderShell({ route: '/' })
+    const nav = await screen.findByRole('navigation', { name: 'Shazlo One sections' })
+    for (const label of ['Modules', 'Administration']) expect(await within(nav).findByText(label)).toHaveStyle({ color: navyText.quiet })
   })
 
   it('hides administration from reviewers and blocks the page', async () => {
