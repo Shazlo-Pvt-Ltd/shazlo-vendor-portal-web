@@ -41,8 +41,15 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vendor_api.core.errors import ApiError
-from vendor_api.db.models import ActorType, Vendor, VendorStatus, VendorStatusEvent
+from vendor_api.db.models import (
+    ActorType,
+    CommissionState,
+    Vendor,
+    VendorStatus,
+    VendorStatusEvent,
+)
 from vendor_api.services.auth import AuthService
+from vendor_api.services.commission import state_condition as commission_state_condition
 from vendor_api.services.email import EmailTemplate, OutgoingEmail
 from vendor_api.services.outbox import OutboxWriter
 
@@ -148,12 +155,15 @@ class VendorAccountService:
         search: str | None,
         limit: int,
         offset: int,
+        commission: CommissionState | None = None,
     ) -> VendorPage:
         """Pending vendors come oldest first (the application that has waited longest is on top);
         any other status, or all, newest first."""
         conditions: list[Any] = []
         if status is not None:
             conditions.append(Vendor.status == status)
+        if commission is not None:
+            conditions.append(commission_state_condition(commission))
         if search:
             pattern = _like(search.lower())
             conditions.append(

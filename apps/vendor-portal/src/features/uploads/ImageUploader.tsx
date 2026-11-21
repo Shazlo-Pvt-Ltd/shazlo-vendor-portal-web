@@ -8,6 +8,7 @@ const KIND_LABEL: Record<AssetKind, string> = {
   brand_logo: 'logo',
   brand_banner: 'banner',
   product_image: 'image',
+  size_chart: 'size chart',
 }
 
 interface Props {

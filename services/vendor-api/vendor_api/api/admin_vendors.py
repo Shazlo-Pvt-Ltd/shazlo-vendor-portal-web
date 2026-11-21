@@ -16,11 +16,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from vendor_api.api.admin import AdminRequest, Reviewer, reviewer_dependency
 from vendor_api.api.auth import no_store
+from vendor_api.api.commission import CommissionOut, Commissions, commission_out
 from vendor_api.api.deps import Emails
-from vendor_api.db.models import Vendor, VendorStatus, VendorStatusEvent
+from vendor_api.api.store_details import Service as StoreDetails
+from vendor_api.api.store_details import StoreDetailsOut, store_details_of_vendor
+from vendor_api.db.models import CommissionState, Vendor, VendorStatus, VendorStatusEvent
 from vendor_api.db.session import get_session
+from vendor_api.services.commission import CommissionService, CommissionView
 from vendor_api.services.vendor_accounts import (
     MAX_PAGE_SIZE,
+    VENDOR_NOT_FOUND,
     VendorAccountService,
     VendorAction,
     VendorDetail,
@@ -94,6 +99,8 @@ class VendorOut(BaseModel):
     # The admin who last changed the status (an identity-api id).
     status_changed_by: uuid.UUID | None
     created_at: datetime
+    # The brand's commission (#265): `state` not_set, proposed, sent_back or agreed.
+    commission: CommissionOut
 
 
 class VendorPageOut(BaseModel):
@@ -117,7 +124,7 @@ class VendorDetailOut(VendorOut):
     events: list[StatusEventOut]
 
 
-def vendor_out(vendor: Vendor) -> VendorOut:
+def vendor_out(vendor: Vendor, commission: CommissionView) -> VendorOut:
     return VendorOut(
         id=vendor.id,
         name=vendor.name,
@@ -134,6 +141,7 @@ def vendor_out(vendor: Vendor) -> VendorOut:
         status_changed_at=vendor.status_changed_at,
         status_changed_by=vendor.status_changed_by,
         created_at=vendor.created_at,
+        commission=commission_out(commission),
     )
 
 
@@ -148,9 +156,10 @@ def _event(event: VendorStatusEvent) -> StatusEventOut:
     )
 
 
-def detail_out(detail: VendorDetail) -> VendorDetailOut:
+def detail_out(detail: VendorDetail, commission: CommissionView) -> VendorDetailOut:
     return VendorDetailOut(
-        **vendor_out(detail.vendor).model_dump(), events=[_event(e) for e in detail.events]
+        **vendor_out(detail.vendor, commission).model_dump(),
+        events=[_event(e) for e in detail.events],
     )
 
 
@@ -159,12 +168,17 @@ async def list_vendors(
     response: Response,
     db: Db,
     accounts: Accounts,
+    commissions: Commissions,
     status: Annotated[
         Literal["pending", "approved", "rejected", "suspended", "all"],
         Query(description="`pending` (default), `approved`, `rejected`, `suspended` or `all`"),
     ] = "pending",
     q: Annotated[
         str | None, Query(max_length=100, description="Part of the name, slug or email")
+    ] = None,
+    commission: Annotated[
+        CommissionState | None,
+        Query(description="Only brands whose commission is in this state (`proposed`: to review)"),
     ] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 25,
     offset: Annotated[int, Query(ge=0, le=100_000)] = 0,
@@ -176,11 +190,13 @@ async def list_vendors(
         db,
         status=None if status == "all" else VendorStatus(status),
         search=q.strip() if q else None,
+        commission=commission,
         limit=limit,
         offset=offset,
     )
+    terms = await commissions.views(db, [v.id for v in page.items])
     return VendorPageOut(
-        items=[vendor_out(v) for v in page.items],
+        items=[vendor_out(v, terms[v.id]) for v in page.items],
         total=page.total,
         limit=page.limit,
         offset=page.offset,
@@ -189,11 +205,25 @@ async def list_vendors(
 
 @router.get("/{vendor_id}")
 async def get_vendor(
-    vendor_id: uuid.UUID, response: Response, db: Db, accounts: Accounts
+    vendor_id: uuid.UUID, response: Response, db: Db, accounts: Accounts, commissions: Commissions
 ) -> VendorDetailOut:
-    """One vendor with its status history."""
+    """One vendor with its status history and commission."""
     no_store(response)
-    return detail_out(await accounts.get_vendor(db, vendor_id))
+    detail = await accounts.get_vendor(db, vendor_id)
+    return detail_out(detail, await commissions.get(db, vendor_id))
+
+
+@router.get("/{vendor_id}/store-details")
+async def get_vendor_store_details(
+    vendor_id: uuid.UUID, response: Response, db: Db, service: StoreDetails
+) -> StoreDetailsOut:
+    """A vendor's store details as the vendor sees them: payouts masked (bank, last four digits
+    or a masked UPI ID), never the number. `404` for an unknown vendor."""
+    no_store(response)
+    found = await store_details_of_vendor(db, service, vendor_id)
+    if found is None:
+        raise VENDOR_NOT_FOUND
+    return found
 
 
 async def _change(
@@ -206,11 +236,13 @@ async def _change(
     accounts: VendorAccountService,
     emails: Emails,
     admin: Reviewer,
+    commissions: CommissionService,
 ) -> VendorDetailOut:
     no_store(response)
     change = await accounts.change_status(db, vendor_id, admin.id, action, reason)
     emails.queue(background, change.email)  # after the commit: nothing is sent for a rollback
-    return detail_out(await accounts.get_vendor(db, vendor_id))
+    detail = await accounts.get_vendor(db, vendor_id)
+    return detail_out(detail, await commissions.get(db, vendor_id))
 
 
 @router.post("/{vendor_id}/approve")
@@ -223,6 +255,7 @@ async def approve_vendor(
     accounts: Accounts,
     emails: Emails,
     admin: Reviewer,
+    commissions: Commissions,
 ) -> VendorDetailOut:
     """Approves a pending, rejected or suspended vendor, and tells it by email. `409
     invalid_status_transition` for one that is already approved."""
@@ -236,6 +269,7 @@ async def approve_vendor(
         accounts,
         emails,
         admin,
+        commissions,
     )
 
 
@@ -249,6 +283,7 @@ async def reject_vendor(
     accounts: Accounts,
     emails: Emails,
     admin: Reviewer,
+    commissions: Commissions,
 ) -> VendorDetailOut:
     """Rejects a **pending** vendor (a reason is required, and the vendor is told it). Ends every
     session of the vendor at once. `409 invalid_status_transition` otherwise: an approved vendor
@@ -263,6 +298,7 @@ async def reject_vendor(
         accounts,
         emails,
         admin,
+        commissions,
     )
 
 
@@ -276,6 +312,7 @@ async def suspend_vendor(
     accounts: Accounts,
     emails: Emails,
     admin: Reviewer,
+    commissions: Commissions,
 ) -> VendorDetailOut:
     """Suspends an **approved** vendor (a reason is required, and the vendor is told it). Ends
     every session of the vendor at once: it cannot sign in or refresh, and its access tokens stop
@@ -291,4 +328,5 @@ async def suspend_vendor(
         accounts,
         emails,
         admin,
+        commissions,
     )
