@@ -9,6 +9,16 @@ node_modules/
 # Private signing keys (identity-api `generate-key` writes to .keys/)
 .keys/
 *.pem
+# Other private keys and cloud credentials
+*.key
+id_rsa*
+id_ecdsa*
+id_ed25519*
+*.p12
+*.pfx
+credentials*.json
+serviceAccount*.json
+service-account*.json
 
 # Build output
 dist/
@@ -34,3 +44,7 @@ __pycache__/
 !.vscode/extensions.json
 .idea/
 .DS_Store
+
+# Claude Code: per-person settings and agent worktrees
+.claude/settings.local.json
+.claude/worktrees/
