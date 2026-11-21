@@ -45,9 +45,9 @@ describe('V-09 Review status: header and queue', () => {
     expect(screen.getByText('Everything you have sent to the Shazlo review team, and what they decided.')).toBeInTheDocument()
     const tabs = await screen.findByRole('tablist', { name: 'Show review items' })
     await waitFor(() => expect(within(tabs).getByRole('tab', { name: 'All 26' })).toHaveAttribute('aria-selected', 'true'))
-    expect(within(tabs).getByRole('tab', { name: 'Waiting 5' })).toHaveAttribute('aria-selected', 'false')
-    expect(within(tabs).getByRole('tab', { name: 'Sent back 2' })).toBeInTheDocument()
-    expect(within(tabs).getByRole('tab', { name: 'Approved 19' })).toBeInTheDocument()
+    expect(within(tabs).getByRole('tab', { name: 'In review 5' })).toHaveAttribute('aria-selected', 'false')
+    expect(within(tabs).getByRole('tab', { name: 'Needs changes 2' })).toBeInTheDocument()
+    expect(within(tabs).getByRole('tab', { name: 'Live 19' })).toBeInTheDocument()
   })
 
   it('says how long the oldest item has waited', async () => {
@@ -64,11 +64,11 @@ describe('V-09 Review status: header and queue', () => {
     })
     await renderApp({ route: '/review?tab=waiting' })
     // The sidebar count comes from the same summary as the queue time.
-    expect(await screen.findByRole('link', { name: /^Review status\s*, 0 waiting$/ }, { timeout: 5000 })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: /^Review status\s*, 0 in review$/ }, { timeout: 5000 })).toBeInTheDocument()
     expect(screen.getByText('Most items are reviewed within 24 hours.')).toBeInTheDocument()
     expect(screen.queryByText(/oldest waiting item/)).toBeNull()
-    const waiting = await screen.findByRole('region', { name: 'Waiting for review' })
-    expect(await within(waiting).findByRole('heading', { name: 'Nothing waiting' })).toBeInTheDocument()
+    const waiting = await screen.findByRole('region', { name: 'In review' })
+    expect(await within(waiting).findByRole('heading', { name: 'Nothing in review' })).toBeInTheDocument()
     expect(within(waiting).getByText('Items you submit show up here.')).toBeInTheDocument()
   })
 })
@@ -76,19 +76,19 @@ describe('V-09 Review status: header and queue', () => {
 describe('V-09 Review status: lists', () => {
   it('lists waiting items with their type, submission time and wait', async () => {
     await renderApp({ route: '/review' })
-    const waiting = await screen.findByRole('region', { name: 'Waiting for review' })
+    const waiting = await screen.findByRole('region', { name: 'In review' })
     await waitFor(() => expect(within(waiting).getAllByRole('listitem')).toHaveLength(5))
     expect(within(waiting).getByText('5 items')).toBeInTheDocument()
 
     const skirt = rowOf(waiting, 'Dabu Print Wrap Skirt')
     expect(within(skirt).getByText('Product')).toBeInTheDocument()
     expect(skirt).toHaveTextContent('Submitted yesterday, 18:40 · waiting 19 h')
-    expect(within(skirt).getByText('Pending review')).toBeInTheDocument()
+    expect(within(skirt).getByText('In review', { selector: '[data-status="pending"]' })).toBeInTheDocument()
 
     const shirt = rowOf(waiting, 'Handloom Cotton Shirt — Rust')
     expect(within(shirt).getByText('Edit to a live product')).toBeInTheDocument()
     expect(shirt).toHaveTextContent('Submitted yesterday · the live version stays in the app')
-    expect(within(shirt).getByText('Edit in review')).toBeInTheDocument()
+    expect(within(shirt).getByText('Changes in review', { selector: '[data-status="editInReview"]' })).toBeInTheDocument()
     expect(within(waiting).getByRole('link', { name: 'Handloom Cotton Shirt — Rust' })).toHaveAttribute('href', '/products/p_004')
   })
 
@@ -98,6 +98,8 @@ describe('V-09 Review status: lists', () => {
     await waitFor(() => expect(within(decided).getAllByRole('listitem')).toHaveLength(21))
 
     const ajrakh = rowOf(decided, 'Ajrakh Block-Print Kurta')
+    // The pill names the state; the line says what the team did, and when.
+    expect(within(ajrakh).getByText('Needs changes', { selector: '[data-status="sentBack"]' })).toBeInTheDocument()
     expect(ajrakh).toHaveTextContent('Sent back today, 11:40')
     // The reason itself comes from the mock seed; check it is quoted in full.
     expect(ajrakh).toHaveTextContent(/“Back photo is missing.*”/)
@@ -131,35 +133,35 @@ describe('V-09 Review status: lists', () => {
 describe('V-09 Review status: tabs', () => {
   it('keeps the chosen tab in the address and shows only its list', async () => {
     const { user, router } = await renderApp({ route: '/review' })
-    await screen.findByRole('tab', { name: 'Waiting 5' })
+    await screen.findByRole('tab', { name: 'In review 5' })
 
-    await user.click(screen.getByRole('tab', { name: 'Waiting 5' }))
+    await user.click(screen.getByRole('tab', { name: 'In review 5' }))
     expect(tabParam(router)).toBe('waiting')
-    expect(screen.getByRole('tab', { name: 'Waiting 5' })).toHaveAttribute('aria-selected', 'true')
-    expect(within(screen.getByRole('region', { name: 'Waiting for review' })).getAllByRole('listitem')).toHaveLength(5)
+    expect(screen.getByRole('tab', { name: 'In review 5' })).toHaveAttribute('aria-selected', 'true')
+    expect(within(screen.getByRole('region', { name: 'In review' })).getAllByRole('listitem')).toHaveLength(5)
     expect(screen.queryByRole('region', { name: 'Recently decided' })).toBeNull()
 
-    await user.click(screen.getByRole('tab', { name: 'Sent back 2' }))
+    await user.click(screen.getByRole('tab', { name: 'Needs changes 2' }))
     expect(tabParam(router)).toBe('rejected')
-    expect(screen.queryByRole('region', { name: 'Waiting for review' })).toBeNull()
+    expect(screen.queryByRole('region', { name: 'In review' })).toBeNull()
     expect(within(screen.getByRole('region', { name: 'Recently decided' })).getAllByRole('listitem')).toHaveLength(2)
 
-    await user.click(screen.getByRole('tab', { name: 'Approved 19' }))
+    await user.click(screen.getByRole('tab', { name: 'Live 19' }))
     expect(tabParam(router)).toBe('approved')
     const approved = screen.getByRole('region', { name: 'Recently decided' })
     expect(within(approved).getAllByRole('listitem')).toHaveLength(19)
-    expect(within(approved).queryByText('Sent back')).toBeNull()
+    expect(within(approved).queryByText('Needs changes')).toBeNull()
 
     await user.click(screen.getByRole('tab', { name: 'All 26' }))
     expect(tabParam(router)).toBeNull()
-    expect(screen.getByRole('region', { name: 'Waiting for review' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'In review' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Recently decided' })).toBeInTheDocument()
   })
 
   it('opens on the tab named in the link', async () => {
     await renderApp({ route: '/review?tab=rejected' })
-    await waitFor(() => expect(screen.getByRole('tab', { name: 'Sent back 2' })).toHaveAttribute('aria-selected', 'true'))
-    expect(screen.getByRole('tabpanel', { name: 'Sent back 2' })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Needs changes 2' })).toHaveAttribute('aria-selected', 'true'))
+    expect(screen.getByRole('tabpanel', { name: 'Needs changes 2' })).toBeInTheDocument()
     const decided = screen.getByRole('region', { name: 'Recently decided' })
     expect(within(decided).getAllByRole('listitem')).toHaveLength(2)
   })
@@ -175,7 +177,7 @@ describe('V-09 Review status: tabs', () => {
     })
     await renderApp({ route: '/review?tab=rejected' })
     const decided = await screen.findByRole('region', { name: 'Recently decided' })
-    expect(await within(decided).findByRole('heading', { name: 'Nothing sent back' })).toBeInTheDocument()
+    expect(await within(decided).findByRole('heading', { name: 'Nothing needs changes' })).toBeInTheDocument()
   })
 
   it('points a new seller to their first product when nothing has been sent', async () => {

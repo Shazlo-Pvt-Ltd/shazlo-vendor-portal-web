@@ -1,18 +1,10 @@
 import type { Schemas } from '../api/client'
 import { formatCount } from '../lib/format'
+import { productStatusWords, statusWords } from './status'
 
 // Copy for Products (V-06). Product types and genders are labelled in ./catalog.ts. One module per
 // screen keeps a later Hindi translation in one place.
 const products = (n: number) => `${formatCount(n)} ${n === 1 ? 'product' : 'products'}`
-
-// A product's status in plain words, here and in the editor.
-const statuses = {
-  draft: 'Draft',
-  pending_review: 'In review',
-  approved: 'Live',
-  rejected: 'Needs changes',
-  archived: 'Archived',
-} satisfies Record<Schemas['ProductStatus'], string>
 
 export const productsCopy = {
   title: 'Products',
@@ -21,16 +13,17 @@ export const productsCopy = {
   laptopNote: 'Easier on a laptop',
   addProduct: 'Add product',
   tabsLabel: 'Product status',
-  statuses,
-  changesInReview: 'Changes in review',
+  // A product's status in plain words, here and in the editor (#267: the same words everywhere).
+  statuses: productStatusWords,
+  changesInReview: statusWords.changesInReview,
   // Status tabs, in order; `status` is what each one filters by.
   tabs: [
     { key: 'all', label: 'All', status: undefined },
-    { key: 'approved', label: 'Live', status: 'approved' },
-    { key: 'pending_review', label: 'In review', status: 'pending_review' },
-    { key: 'rejected', label: 'Needs changes', status: 'rejected' },
-    { key: 'draft', label: 'Drafts', status: 'draft' },
-    { key: 'archived', label: 'Archived', status: 'archived' },
+    { key: 'approved', label: statusWords.live, status: 'approved' },
+    { key: 'pending_review', label: statusWords.inReview, status: 'pending_review' },
+    { key: 'rejected', label: statusWords.needsChanges, status: 'rejected' },
+    { key: 'draft', label: statusWords.drafts, status: 'draft' },
+    { key: 'archived', label: statusWords.archived, status: 'archived' },
   ] as const satisfies readonly { key: keyof Schemas['StatusCounts']; label: string; status?: Schemas['ProductStatus'] }[],
 
   search: {
@@ -134,7 +127,7 @@ export const productsCopy = {
   },
   emptyTab: {
     approved: { title: 'Nothing is live yet', body: 'Products appear here once our team approves them.' },
-    pending_review: { title: 'Nothing is waiting for review', body: 'Products you send for review wait here until our team decides.' },
+    pending_review: { title: 'Nothing is in review', body: 'Products you send for review wait here until our team decides.' },
     rejected: { title: 'Nothing needs changes', body: 'If our team asks for changes, the product shows up here with the reason.' },
     draft: { title: 'No drafts', body: 'Products you start but have not sent for review are kept here.' },
     archived: { title: 'Nothing archived', body: 'Archived products leave the app and are kept here.' },

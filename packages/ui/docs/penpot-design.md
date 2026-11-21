@@ -49,6 +49,12 @@ Review states retain their icon and label in addition to color: **Live** is blue
 tint/wine. `reviewStatus` exposes the paired foreground/background values.
 Raspberry is exported separately as `annotation`, never as a product status.
 
+`StatusPill`'s default labels (`statusPillLabel`) are the admin's words. The
+seller portal names the same states differently (*In review*, *Needs changes*,
+*Changes in review*), so it always passes `label` through its own pill
+(`apps/vendor-portal/src/components/StatusPill.tsx`). The colour and icon
+follow `status` either way.
+
 ## Implementation choices
 
 The board gives color/font roles, not numeric type sizes, spacing, radii or a

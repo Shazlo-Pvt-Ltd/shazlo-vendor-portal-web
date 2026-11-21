@@ -68,7 +68,7 @@ What the evidence says, and what we do with it:
 - One **"What to do next"** card with one yellow button: the first unfinished setup task (store details,
   brand page, first product), otherwise "Add product".
 - A setup task list (until finished), each row a plain status word: *Done*, *To do*.
-- **"Needs your changes"**: sent-back items with the reason in plain words and **Fix this**.
+- **"Needs changes"**: items the review team sent back, with the reason in plain words and **Fix this**.
 - Counts as quiet text rows that link to Products filtered by status (Live 18 · In review 4 · Drafts 3), not tiles.
 - The setup banner no longer appears on every page; it lives on Home only.
 
@@ -147,6 +147,11 @@ Order: **Photos → About the product → Sizes and stock → Price**, then subm
 - `inputmode` and `autocomplete` on every field that has one. No `type="number"`.
 - Transitions off under `prefers-reduced-motion`.
 - Plain words. No SKU, variant, listing, QC, catalogue in seller-facing text.
+- One set of status words (#267). A product or the brand page is *Live*, *In review*, *Needs changes*,
+  *Draft* or *Archived*. An edit to something already live is *Changes in review*, and an approval on its way
+  to the app is *Publishing*. Every pill, tab, figure, count row and section heading uses these words, from
+  `apps/vendor-portal/src/copy/status.ts`. What someone did stays a verb with a time: *Sent for review*,
+  *Approved*, *Sent back today, 11:40*. The admin keeps its own words (*Pending review*, *Sent back*).
 - Web app: manifest, theme colour, `viewport-fit=cover`, safe-area padding on bars and sticky footers, `100dvh`,
   `overscroll-behavior-y: contain` on forms, Back on every inner page.
 

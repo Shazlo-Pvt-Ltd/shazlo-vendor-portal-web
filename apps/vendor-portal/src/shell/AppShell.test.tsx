@@ -51,7 +51,7 @@ describe('desktop shell (1024 px and wider)', () => {
     expect(nav.closest('[data-nav]')).toHaveAttribute('data-nav', 'sidebar')
     expect(within(nav).getByRole('link', { name: /Overview/ })).toHaveAttribute('aria-current', 'page')
     await waitFor(() => expect(within(nav).getByRole('link', { name: /^Products\s*, 27$/ })).toBeInTheDocument())
-    expect(within(nav).getByRole('link', { name: /^Review status\s*, 5 waiting$/ })).toBeInTheDocument()
+    expect(within(nav).getByRole('link', { name: /^Review status\s*, 5 in review$/ })).toBeInTheDocument()
     for (const name of ['Brand page', 'Bulk import', 'Team', 'Help & support']) {
       expect(within(nav).getByRole('link', { name })).toBeInTheDocument()
     }
@@ -79,10 +79,13 @@ describe('desktop shell (1024 px and wider)', () => {
   it('lists review decisions behind the bell, with a dot only for what needs changes', async () => {
     const { user } = await renderApp({ route: '/', viewport: LAPTOP })
     // Two products were sent back; only the one from this week is new. Approvals never light the bell.
-    const bell = await screen.findByRole('button', { name: 'Notifications, 1 needs your changes' })
+    const bell = await screen.findByRole('button', { name: 'Notifications, 1 needs changes' })
     await user.click(bell)
     const menu = await screen.findByRole('menu')
-    expect(within(menu).getByText(/Ajrakh Block-Print Kurta was sent back/)).toBeInTheDocument()
+    // The sentence says what the team did; the pill names the state in the seller's words (#267).
+    const ajrakh = within(menu).getByText(/Ajrakh Block-Print Kurta was sent back/).closest('[role="menuitem"]') as HTMLElement
+    expect(within(ajrakh).getByText('Needs changes', { selector: '[data-status="sentBack"]' })).toBeInTheDocument()
+    expect(within(menu).queryByText('Sent back')).toBeNull()
     expect(within(menu).getByText(/Bandhani Silk Dupatta is live/)).toBeInTheDocument()
     expect(within(menu).getByRole('menuitem', { name: 'See all review decisions' })).toBeInTheDocument()
     await user.keyboard('{Escape}')

@@ -4,6 +4,8 @@ import { neutral, radius, reviewStatus } from '../tokens'
 
 export type PillStatus = 'live' | 'pending' | 'sentBack' | 'draft' | 'editInReview' | 'publishing' | 'archived' | 'suspended'
 
+// Default words, as the admin says them. An app that names a state differently passes `label`
+// (the seller portal does: "In review", "Needs changes"; #267). Colour and icon follow `status`.
 export const statusPillLabel: Record<PillStatus, string> = {
   live: 'Live',
   pending: 'Pending review',
