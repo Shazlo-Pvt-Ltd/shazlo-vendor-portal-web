@@ -109,9 +109,12 @@ function Email({ member, me }: { member: TeamUser; me: boolean }) {
 // When someone last signed in: "Yesterday", "18 Nov"; the exact time on hover and for machines.
 function LastSignIn({ at, long }: { at: string | null; long?: boolean }) {
   if (!at) return <>{long ? copy.notSignedInYet : copy.neverSignedIn}</>
+  const relative = formatRelative(at)
+  // In the sentence ("Last signed in just now") the time starts in lower case; on its own it does not.
+  const shown = long ? relative.charAt(0).toLowerCase() + relative.slice(1) : relative
   const when = (
     <time dateTime={at} title={`${formatDate(at)}, ${formatTime(at)}`}>
-      {formatRelative(at)}
+      {shown}
     </time>
   )
   return long ? <>{copy.lastSignedIn} {when}</> : when

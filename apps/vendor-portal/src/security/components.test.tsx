@@ -127,6 +127,15 @@ describe('PasswordField', () => {
     expect(input.getAttribute('autocomplete')).toBe('current-password')
   })
 
+  it('shows Build 2\'s eye icon as the toggle, with the words only for assistive tech', async () => {
+    render(<PasswordField purpose="current" label="Password" />)
+    const toggle = screen.getByRole('button', { name: 'Show password' })
+    expect(toggle.textContent).toBe('')
+    expect(toggle.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
+    await userEvent.click(toggle)
+    expect(screen.getByRole('button', { name: 'Hide password' }).querySelector('svg[aria-hidden="true"]')).not.toBeNull()
+  })
+
   it('is a password input the user can type into', async () => {
     render(<PasswordField purpose="current" label="Password" />)
     await typeFast(userEvent, screen.getByLabelText('Password'), 'hunter2')

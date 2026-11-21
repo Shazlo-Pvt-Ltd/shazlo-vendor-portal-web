@@ -80,7 +80,7 @@ export const hubsCopy = {
     notSignedInYet: 'Has not signed in yet',
     onlyYou: 'Nobody else is on your team yet. Invite someone above.',
     resend: 'Resend invite',
-    resendLabel: (email: string) => `Resend the invite to ${email}`,
+    resendLabel: (email: string) => `Resend invite to ${email}`,
     turnOff: 'Turn off',
     turnOffLabel: (email: string) => `Turn off ${email}`,
     turnOn: 'Turn on',

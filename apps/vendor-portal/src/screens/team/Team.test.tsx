@@ -69,11 +69,23 @@ describe('Team (owners)', () => {
     const cards = within(within(people()).getByRole('list', { name: 'Team members' })).getAllByRole('listitem')
     expect(cards).toHaveLength(3)
     expect(within(row(DEMO_INVITED)).getByText(/Has not signed in yet/)).toBeInTheDocument()
-    expect(within(row(DEMO_INVITED)).getByRole('button', { name: `Resend the invite to ${DEMO_INVITED}` })).toBeInTheDocument()
+    // Mid-sentence, the relative time starts in lower case.
+    expect(row(DEMO_LOGIN.email).textContent).toContain('Last signed in just now')
+    expect(within(row(DEMO_INVITED)).getByRole('button', { name: `Resend invite to ${DEMO_INVITED}` })).toBeInTheDocument()
     const limit = viewport === 'mobile' ? 358 : 720
     for (const el of container.querySelectorAll('*')) {
       const { width, minWidth } = getComputedStyle(el)
       for (const value of [width, minWidth]) if (value.endsWith('px')) expect(parseFloat(value), `${el.className} is ${value} wide`).toBeLessThanOrEqual(limit)
+    }
+  })
+
+  it('names every action button starting with the words it shows, so voice control can find it', async () => {
+    await open(1280)
+    const buttons = within(people()).getAllByRole('button')
+    expect(buttons.length).toBeGreaterThan(0)
+    for (const button of buttons) {
+      const visible = (button.textContent ?? '').trim()
+      expect(button.getAttribute('aria-label') ?? visible, `"${visible}" button`).toMatch(new RegExp(`^${visible.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
     }
   })
 
@@ -120,7 +132,7 @@ describe('Team (owners)', () => {
 
   it('resends an invite', async () => {
     const { user } = await open()
-    await user.click(within(row(DEMO_INVITED)).getByRole('button', { name: `Resend the invite to ${DEMO_INVITED}` }))
+    await user.click(within(row(DEMO_INVITED)).getByRole('button', { name: `Resend invite to ${DEMO_INVITED}` }))
     expect(await screen.findByText(`Invite sent again to ${DEMO_INVITED}.`)).toBeInTheDocument()
     expect(db().emails).toEqual([expect.objectContaining({ to: DEMO_INVITED, kind: 'invite' })])
   })
@@ -130,7 +142,7 @@ describe('Team (owners)', () => {
     const lists = countLists()
     const { user } = await open()
     const before = lists.lists
-    await user.click(within(row(DEMO_INVITED)).getByRole('button', { name: `Resend the invite to ${DEMO_INVITED}` }))
+    await user.click(within(row(DEMO_INVITED)).getByRole('button', { name: `Resend invite to ${DEMO_INVITED}` }))
     expect(await screen.findByRole('alert')).toHaveTextContent('This person has already chosen a password, so there is no invite to resend.')
     await waitFor(() => expect(lists.lists).toBeGreaterThan(before))
   })
@@ -162,7 +174,7 @@ describe('Team (owners)', () => {
     expect(await screen.findByText(`${DEMO_INVITED} is turned on. Send the invite again so they can choose a password.`)).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull(), { timeout: 10_000 })
     expect(within(row(DEMO_INVITED)).getByText('Invited')).toBeInTheDocument()
-    expect(within(row(DEMO_INVITED)).getByRole('button', { name: `Resend the invite to ${DEMO_INVITED}` })).toBeInTheDocument()
+    expect(within(row(DEMO_INVITED)).getByRole('button', { name: `Resend invite to ${DEMO_INVITED}` })).toBeInTheDocument()
   })
 
   it('changes nothing when the confirmation is cancelled', async () => {
