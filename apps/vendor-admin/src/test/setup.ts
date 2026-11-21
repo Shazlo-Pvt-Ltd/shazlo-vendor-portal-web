@@ -35,7 +35,7 @@ globalThis.ResizeObserver ??= class {
 if (!URL.createObjectURL) URL.createObjectURL = () => 'blob:mock'
 if (!URL.revokeObjectURL) URL.revokeObjectURL = () => {}
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => {
   cleanup()
   server.resetHandlers()

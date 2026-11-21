@@ -38,5 +38,5 @@ export async function startMockIdentity() {
     localStorage.removeItem(KEY)
     window.location.assign('/sign-in')
   }
-  await worker.start({ onUnhandledRequest: 'bypass', quiet: true })
+  await worker.start({ onUnhandledFrame: 'bypass', quiet: true })
 }

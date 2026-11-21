@@ -227,8 +227,10 @@ describe('A-05 Product review: approving', () => {
     p.history.unshift({ at: new Date(NOW.getTime() - 5 * 60_000).toISOString(), event: 'approved', by: 'Rahul Desai' })
     await tickAll(user)
     await user.click(screen.getByRole('button', { name: 'Approve and publish' }))
-    expect(await screen.findByText('Someone else decided this while you were reviewing.')).toBeInTheDocument()
+    // The page first says "someone else decided" alone, then again with who and when once it has
+    // reloaded the item: wait for the settled page, or the first message can be swapped out from under the check.
     expect(await screen.findByText('Already approved by Rahul Desai · Today, 13:35.')).toBeInTheDocument()
+    expect(screen.getByText('Someone else decided this while you were reviewing.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Approve and publish' })).toBeNull()
   })
 
