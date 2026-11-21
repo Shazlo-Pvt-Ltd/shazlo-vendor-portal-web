@@ -6,11 +6,10 @@ import { useId, useMemo, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router'
 import { z } from 'zod'
-import { ApiError } from '../../api/client'
+import { ApiError } from '../../api/errors'
 
 import { useAcceptInvite, useInvite } from '../../api/queries'
 import { paths } from '../../app/paths'
-import { useSession } from '../../auth/session'
 import { onboardingCopy } from '../../copy/onboarding'
 import { fieldProps } from '../../lib/forms'
 import { AuthLayout, AuthTitle } from './AuthLayout'
@@ -81,7 +80,6 @@ function RuleList({ id, rules }: { id: string; rules: Record<RuleKey, boolean> }
 }
 
 function PasswordForm({ token, invite, onExpired, onAccepted }: { token: string; invite: Invite; onExpired: () => void; onAccepted: () => void }) {
-  const { adopt } = useSession()
   const navigate = useNavigate()
   const accept = useAcceptInvite()
   const [showPassword, setShowPassword] = useState(false)
@@ -97,10 +95,10 @@ function PasswordForm({ token, invite, onExpired, onAccepted }: { token: string;
   const onSubmit = handleSubmit(async (values) => {
     setFailure(null)
     try {
-      const pair = await accept.mutateAsync({ token, password: values.password })
+      await accept.mutateAsync({ token, password: values.password })
       onAccepted()
-      adopt(pair)
-      navigate(paths.overview, { replace: true })
+      // Setting a password does not sign in (vendor-api ends every session of the user): sign in with it.
+      void navigate(paths.signIn, { replace: true })
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) onExpired()
       else if (error instanceof ApiError && error.fields.password) setError('password', { type: 'server', message: error.fields.password }, { shouldFocus: true })

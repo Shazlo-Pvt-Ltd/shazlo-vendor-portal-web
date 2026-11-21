@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react'
-import type { AssetKind, AssetOut } from './rules'
-import { isAbort, uploadImage, type UploadDeps, type UploadStage } from './upload'
+import type { AssetKind, AssetOut } from '../../api/uploads/rules'
+import { isAbort, uploadImage, type UploadDeps, type UploadStage } from '../../api/uploads/upload'
 
 export type UploadStatus = 'queued' | UploadStage | 'ready' | 'error' | 'cancelled'
 

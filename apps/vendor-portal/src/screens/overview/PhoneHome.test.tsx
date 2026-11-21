@@ -1,7 +1,7 @@
 import { screen, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { beforeAll, describe, expect, it } from 'vitest'
-import type { Schemas } from '../../api/client'
+import type { Schemas } from '../../api/model'
 import { renderApp } from '../../test/render'
 import { server } from '../../test/server'
 

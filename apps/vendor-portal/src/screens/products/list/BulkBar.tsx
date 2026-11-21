@@ -1,7 +1,7 @@
 import { Box, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Menu, MenuItem, Stack, Typography } from '@mui/material'
 import { Banner, neutral, radius } from '@shazlo/ui'
 import { useId } from 'react'
-import type { Schemas } from '../../../api/client'
+import type { Schemas } from '../../../api/model'
 import { productsCopy } from '../../../copy/products'
 
 const copy = productsCopy

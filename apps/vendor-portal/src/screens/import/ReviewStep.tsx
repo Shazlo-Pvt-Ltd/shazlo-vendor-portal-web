@@ -2,7 +2,7 @@ import { Box, Button, DialogActions, DialogContent, Stack, Table, TableBody, Tab
 import { Banner, brand, neutral, radius, StatFigure, status } from '@shazlo/ui'
 import { AlertTriangle, Download, FileSpreadsheet } from 'lucide-react'
 import { useId } from 'react'
-import type { Schemas } from '../../api/client'
+import type { Schemas } from '../../api/model'
 import { catalogCopy } from '../../copy/catalog'
 import { importCopy } from '../../copy/import'
 import { formatCount } from '../../lib/format'

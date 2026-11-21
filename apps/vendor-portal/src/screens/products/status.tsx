@@ -1,5 +1,5 @@
 import { Typography } from '@mui/material'
-import type { Schemas } from '../../api/client'
+import type { Schemas } from '../../api/model'
 import { productsCopy } from '../../copy/products'
 
 type HasStatus = Pick<Schemas['ProductSummary'], 'status' | 'edit_in_review'>

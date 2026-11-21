@@ -4,7 +4,7 @@ import { flexRender, getCoreRowModel, useReactTable, type ColumnDef, type RowSel
 import { MoreHorizontal } from 'lucide-react'
 import { useMemo, type MouseEvent, type ReactNode } from 'react'
 import { Link as RouterLink } from 'react-router'
-import type { Schemas } from '../../../api/client'
+import type { Schemas } from '../../../api/model'
 import { paths } from '../../../app/paths'
 import { ProductThumb } from '../../../components/ProductThumb'
 import { productsCopy } from '../../../copy/products'

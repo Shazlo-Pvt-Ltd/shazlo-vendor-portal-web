@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Schemas } from '../../api/client'
+import type { Schemas } from '../../api/model'
 import { brandCopy as copy } from '../../copy/brand'
 
 export type Profile = Schemas['BrandProfile']

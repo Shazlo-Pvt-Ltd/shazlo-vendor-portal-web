@@ -2,7 +2,7 @@ import { Box, Button, ButtonBase, IconButton, LinearProgress, Link, ListItemIcon
 import { brand, neutral, radius, status } from '@shazlo/ui'
 import { ArrowLeft, ArrowRight, Camera, ImageOff, ImagePlus, MoreHorizontal, Plus, Replace, Star, Trash2 } from 'lucide-react'
 import { memo, useId, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
-import type { Schemas } from '../../../api/client'
+import type { Schemas } from '../../../api/model'
 import { useMoveProductImage, useRemoveProductImage } from '../../../api/queries'
 import { catalogCopy } from '../../../copy/catalog'
 import { productEditorCopy } from '../../../copy/productEditor'

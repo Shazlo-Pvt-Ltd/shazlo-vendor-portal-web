@@ -10,30 +10,32 @@ npm ci
 npm run dev -w @shazlo/vendor-portal
 ```
 
-The app starts with a **mock API** in the browser (Mock Service Worker), seeded with the wireframes' seller,
-Kalki Studio: 27 products, two sent back, a brand-page draft, store details complete except payouts (so
-products cannot be sent for review until a payout is saved), commission agreed at 12%, and a size chart for
-dresses and kurtas. The seed is described at the top of `src/mocks/db.ts`. Demo sign-in, mock data only:
+It talks to vendor-api at `VITE_VENDOR_API_URL` (required). For a demo without vendor-api, start it with
+`VITE_MOCK_API=on VITE_VENDOR_API_URL=http://localhost:8002 npm run dev -w @shazlo/vendor-portal`: a Mock
+Service Worker answers vendor-api's routes (and the proposed ones) from memory, seeded with the wireframes'
+seller, Kalki Studio: 27 products, two sent back, a brand-page draft, store details complete except payouts
+(so products cannot be sent for review until a payout is saved), commission agreed at 12%, and a size chart
+for dresses and kurtas. The seed is described at the top of `src/mocks/db.ts`. Nothing is stored on the
+device: a reload starts the demo again and asks to sign in. Demo sign-in, mock data only:
 
-| Email | Password |
-|---|---|
-| `kiran@kalkistudio.in` | `ajrakh-indigo-26` |
+| Email | Password | |
+|---|---|---|
+| `kiran@kalkistudio.in` | `ajrakh-indigo-26` | owner |
+| `meera@kalkistudio.in` | `block-print-staff-26` | staff |
+| `ruchi@ruchiprints.in` | `suspended-shop-26` | a suspended brand (shows the blocked page) |
 
-The set-password screen works with `/set-password?token=invite-kalki-demo`. Mock data persists in
-`localStorage`; run `shazloResetDemo()` in the browser console to start over.
-
-To use a real vendor-api instead: `VITE_MOCK_API=off VITE_VENDOR_API_URL=http://localhost:8001 npm run dev -w @shazlo/vendor-portal`.
+The invite link `/accept-invite?token=invite-kalki-demo` sets a password for the invited staff member.
 
 ## How it is built
 
 | Area | Where |
 |---|---|
-| API contract (portal side, until vendor-api serves its own) | `openapi/vendor-portal.yaml`; routes marked `x-proposal` need agreeing with vendor-api |
-| Generated types | `npm run api:types -w @shazlo/vendor-portal` → `src/api/schema.d.ts` |
-| Client | `src/api/client.ts` (openapi-fetch; one shared token refresh; error envelope → `ApiError`) |
-| Reads and writes | `src/api/queries.ts` (TanStack Query hooks; every cache key and invalidation) |
+| API contract | vendor-api's `services/vendor-api/openapi.json`, plus what the portal still needs from it in `openapi/proposed.yaml` (every route and field marked `x-proposal`; issue #265) |
+| Generated types | `npm run api:generate -w @shazlo/vendor-portal` → `src/api/schema.d.ts`; `npm run api:proposed` → `src/api/proposed.d.ts` (never edit either by hand) |
+| Client | `src/api/client.ts` (openapi-fetch, typed with the real and proposed routes; one shared token refresh; error envelope → `ApiError`) |
+| Reads and writes | `src/api/queries.ts` (TanStack Query hooks; every cache key and invalidation). Screens see only the view models in `src/api/model.ts`; `src/api/adapters/*` translate to and from vendor-api |
 | Option lists and rules | `src/lib/catalog.ts` (product types, size-chart groups, sizes, colours, photo slots, submit check, import parsing), `src/lib/storeDetails.ts` (store-details checks and completeness), `src/lib/validators.ts` (IFSC, GSTIN, UPI, PIN, phone), `src/lib/commission.ts`; labels and messages in `src/copy/catalog.ts`. Screens and the mock API both use them |
-| Mock API | `src/mocks` (handlers follow the contract; delete each handler when its endpoint ships) |
+| Mock API | `src/mocks`: vendor-api's real and proposed routes, in memory only (tests, and the demo with `VITE_MOCK_API=on`); `src/mocks/contract.test.ts` checks every answer against the contract |
 | Session | `src/auth` ("Keep me signed in" uses localStorage, otherwise the tab's sessionStorage) |
 | Shell | `src/shell` (desktop sidebar, phone tab bar, setup banner, notifications) |
 | Screens | `src/screens/*` (V-01 to V-09); copy in `src/copy/*` so a translation touches one file per screen |

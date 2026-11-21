@@ -1,6 +1,40 @@
 import createClient from 'openapi-fetch'
 import { ApiError, NetworkError, errorFromResponse } from './errors'
-import type { paths } from './schema'
+import type { paths as ProposedPaths } from './proposed'
+import type { paths as RealPaths } from './schema'
+
+type HttpMethod = 'get' | 'put' | 'post' | 'delete' | 'options' | 'head' | 'patch' | 'trace'
+
+/** The methods a path item defines; openapi-typescript writes the others as `method?: never`. */
+type DefinedMethods<Item> = {
+  [M in HttpMethod & keyof Item]-?: [Exclude<Item[M], undefined>] extends [never] ? never : M
+}[HttpMethod & keyof Item]
+
+type MergeItem<Real, Proposed> = Omit<Real, DefinedMethods<Proposed>> & Pick<Proposed, DefinedMethods<Proposed>>
+
+/**
+ * Routes whose only change in the proposal is a new field in the answer (the vendor's
+ * `commission`). They keep the real typing: what vendor-api sends today still type-checks, and the
+ * adapters read the new field as unknown until vendor-api ships it (`commissionFromApi`).
+ */
+export type AnswerOnlyAdditions = '/v1/vendor/me' | '/v1/auth/login' | '/v1/auth/refresh' | '/v1/auth/change-password'
+
+/**
+ * Every route the portal may call: vendor-api's real ones (`schema.d.ts`, from `openapi.json`) and
+ * the ones it still has to build (`proposed.d.ts`, from `openapi/proposed.yaml`). A method in the
+ * proposal replaces the same method of the same path; the path's other methods stay real.
+ */
+export type ApiPaths = {
+  [P in keyof RealPaths | keyof ProposedPaths]: P extends AnswerOnlyAdditions & keyof RealPaths
+    ? RealPaths[P]
+    : P extends keyof ProposedPaths
+      ? P extends keyof RealPaths
+        ? MergeItem<RealPaths[P], ProposedPaths[P]>
+        : ProposedPaths[P]
+      : P extends keyof RealPaths
+        ? RealPaths[P]
+        : never
+}
 
 export const DEFAULT_TIMEOUT_MS = 15_000
 /** For the bulk import, which uploads a whole spreadsheet and is validated row by row. */
@@ -31,7 +65,7 @@ export type ApiClient = ReturnType<typeof createApiClient>
 
 /**
  * The only way the portal talks to vendor-api. Paths, parameters and bodies are typed from
- * `openapi.json`. It always sends the cookie (the refresh cookie must reach `/v1/auth/*`), adds the
+ * `openapi.json` and `openapi/proposed.yaml` ({@link ApiPaths}). It always sends the cookie (the refresh cookie must reach `/v1/auth/*`), adds the
  * access token, and throws instead of returning an error object:
  * - {@link ApiError} for any non-2xx answer;
  * - {@link NetworkError} when nothing answers or the timeout passes;
@@ -109,7 +143,7 @@ export function createApiClient(options: ApiClientOptions) {
     }
   }
 
-  return createClient<paths>({
+  return createClient<ApiPaths>({
     baseUrl: options.baseUrl,
     credentials: 'include',
     fetch: apiFetch,

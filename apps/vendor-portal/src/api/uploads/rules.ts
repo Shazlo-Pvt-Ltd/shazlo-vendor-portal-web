@@ -1,5 +1,5 @@
 import { CLOUDINARY_UPLOAD_ORIGIN } from '../../security/headers'
-import type { components } from '../../api/schema'
+import type { components } from '../schema'
 
 export type AssetKind = components['schemas']['AssetKind']
 export type AssetOut = components['schemas']['AssetOut']

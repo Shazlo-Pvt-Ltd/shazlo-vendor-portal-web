@@ -49,7 +49,7 @@ Where this spec and a wireframe disagree, this spec wins.
 | Before vendor-api exists | Mock Service Worker handlers that follow `docs/05-api-design.md` §5; each is deleted when its endpoint ships |
 | Forms | React Hook Form + Zod; one schema per form gives both validation and types |
 | Tables | TanStack Table for logic, MUI Table for markup |
-| API client | `openapi-fetch`, typed from an OpenAPI contract (`apps/vendor-portal/openapi/vendor-portal.yaml` until vendor-api serves its own) |
+| API client | `openapi-fetch`, typed from vendor-api's `services/vendor-api/openapi.json` plus the routes the portal still needs, in `apps/vendor-portal/openapi/proposed.yaml` (issue #265); screens see view models (`src/api/model.ts`) through adapters |
 | Component preview | The existing `packages/ui` demo page grows with each shared component |
 | Visual regression | Playwright screenshots at 1440 px and 390 px in CI |
 | Shared components | `packages/ui` from the start; screens stay in the app |

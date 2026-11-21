@@ -1,4 +1,4 @@
-import type { Schemas } from '../api/client'
+import type { Schemas } from '../api/model'
 import { catalogCopy } from '../copy/catalog'
 import { payout } from './format'
 

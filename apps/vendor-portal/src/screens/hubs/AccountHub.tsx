@@ -1,12 +1,12 @@
 import { Skeleton } from '@mui/material'
 import { PageHeader } from '@shazlo/ui'
-import { HelpCircle, LogOut, Users } from 'lucide-react'
-import { useNavigate } from 'react-router'
+import { HelpCircle, KeyRound, LogOut, Users } from 'lucide-react'
 import { useMe } from '../../api/queries'
 import { paths } from '../../app/paths'
-import { useSession } from '../../auth/session'
 import { hubsCopy } from '../../copy/hubs'
-import { HubList } from './HubList'
+import { useSession } from '../../session/AuthProvider'
+import { useSignOut } from '../../session/useSignOut'
+import { HubList, type HubRow } from './HubList'
 
 const copy = hubsCopy.account
 
@@ -17,21 +17,20 @@ function Person() {
   return copy.person(me.data.user.name, me.data.role === 'vendor_staff' ? copy.staff : copy.owner)
 }
 
-// The phone Account tab (spec §3): Team, Help & support, Sign out. Works at every width.
+// The phone Account tab (spec §3): Team (owners only), password, Help & support, Sign out. Works at every width.
 export default function AccountHub() {
-  const { signOut } = useSession()
-  const navigate = useNavigate()
+  const { role } = useSession()
+  const signOut = useSignOut()
+  const rows: HubRow[] = [
+    ...(role === 'owner' ? [{ key: 'team', title: copy.team.title, body: copy.team.body, icon: Users, to: paths.team }] : []),
+    { key: 'password', title: copy.password.title, body: copy.password.body, icon: KeyRound, to: paths.accountPassword },
+    { key: 'help', title: copy.help.title, body: copy.help.body, icon: HelpCircle, to: paths.help },
+    { key: 'sign-out', title: copy.signOut, icon: LogOut, onClick: () => void signOut() },
+  ]
   return (
     <>
       <PageHeader title={copy.title} subtitle={<Person />} />
-      <HubList
-        label={copy.listLabel}
-        rows={[
-          { key: 'team', title: copy.team.title, body: copy.team.body, icon: Users, to: paths.team },
-          { key: 'help', title: copy.help.title, body: copy.help.body, icon: HelpCircle, to: paths.help },
-          { key: 'sign-out', title: copy.signOut, icon: LogOut, onClick: () => void signOut().then(() => navigate(paths.signIn, { replace: true })) },
-        ]}
-      />
+      <HubList label={copy.listLabel} rows={rows} />
     </>
   )
 }

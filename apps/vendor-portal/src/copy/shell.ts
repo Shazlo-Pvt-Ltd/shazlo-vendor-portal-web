@@ -19,6 +19,7 @@ export const shellCopy = {
   backTo: (label: string) => ` to ${label}`,
   approvedSeller: 'Approved seller',
   suspendedSeller: 'Suspended seller',
+  pendingSeller: 'In review',
   owner: 'Owner',
   staff: 'Staff',
   viewLivePage: 'View live brand page',

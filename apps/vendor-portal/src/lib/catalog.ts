@@ -1,4 +1,5 @@
-import type { Schemas } from '../api/client'
+import { garmentColour, multicolourSwatch, type GarmentColourName } from '@shazlo/ui'
+import type { Schemas } from '../api/model'
 import { catalogCopy } from '../copy/catalog'
 
 // The option lists and product rules of the seller portal, in one place. Screens and the mock API
@@ -148,38 +149,39 @@ export interface Colour {
   border: boolean
 }
 
-const solid = (name: string, hex: string, border = false): Colour => ({ name, hex, swatch: hex, border })
+// The hex values are named tokens in @shazlo/ui (garmentColour), like every colour in the app.
+const solid = (name: GarmentColourName, border = false): Colour => ({ name, hex: garmentColour[name], swatch: garmentColour[name], border })
 
 export const COLOURS: readonly Colour[] = [
-  solid('Black', '#1F1D1B'),
-  solid('White', '#FFFFFF', true),
-  solid('Ivory', '#F3EEDF', true),
-  solid('Beige', '#D9C3A0', true),
-  solid('Brown', '#6B4A32'),
-  solid('Rust', '#A4502B'),
-  solid('Maroon', '#6E1F2A'),
-  solid('Red', '#B3261E'),
-  solid('Pink', '#E59AB0'),
-  solid('Peach', '#F2B591', true),
-  solid('Orange', '#E07A2E'),
-  solid('Mustard', '#C99A2E'),
-  solid('Yellow', '#EFC94C', true),
-  solid('Olive', '#6B6B2E'),
-  solid('Green', '#3E7B4F'),
-  solid('Sage', '#9CAF88'),
-  solid('Teal', '#2A7A7A'),
-  solid('Blue', '#3466A8'),
-  solid('Indigo', '#2E3F6E'),
-  solid('Navy', '#1F2A44'),
-  solid('Purple', '#6A4C93'),
-  solid('Lavender', '#B9A7D6', true),
-  solid('Grey', '#8A8A8A'),
-  solid('Gold', '#C9A64B'),
-  solid('Silver', '#BFC3C7', true),
+  solid('Black'),
+  solid('White', true),
+  solid('Ivory', true),
+  solid('Beige', true),
+  solid('Brown'),
+  solid('Rust'),
+  solid('Maroon'),
+  solid('Red'),
+  solid('Pink'),
+  solid('Peach', true),
+  solid('Orange'),
+  solid('Mustard'),
+  solid('Yellow', true),
+  solid('Olive'),
+  solid('Green'),
+  solid('Sage'),
+  solid('Teal'),
+  solid('Blue'),
+  solid('Indigo'),
+  solid('Navy'),
+  solid('Purple'),
+  solid('Lavender', true),
+  solid('Grey'),
+  solid('Gold'),
+  solid('Silver', true),
   {
     name: 'Multicolour',
     hex: null,
-    swatch: 'conic-gradient(#B3261E, #E07A2E, #EFC94C, #3E7B4F, #3466A8, #6A4C93, #B3261E)',
+    swatch: multicolourSwatch,
     border: false,
   },
 ]

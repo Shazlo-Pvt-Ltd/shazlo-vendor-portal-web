@@ -1,5 +1,5 @@
-import { getApiClient } from '../../api/instance'
-import { ApiError, NetworkError } from '../../api/errors'
+import { getApiClient } from '../instance'
+import { ApiError, NetworkError } from '../errors'
 import {
   ALLOWED_CONTENT_TYPES,
   DEFAULT_MAX_BYTES,

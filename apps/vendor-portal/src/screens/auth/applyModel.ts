@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Schemas } from '../../api/client'
+import type { Schemas } from '../../api/model'
 import {
   DELIVERY_DAYS,
   DELIVERY_MODES,

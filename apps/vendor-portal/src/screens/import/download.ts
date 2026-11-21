@@ -1,4 +1,4 @@
-import type { Schemas } from '../../api/client'
+import type { Schemas } from '../../api/model'
 import { importCopy } from '../../copy/import'
 
 // Hands the seller a file: a Blob URL clicked through a temporary download link.

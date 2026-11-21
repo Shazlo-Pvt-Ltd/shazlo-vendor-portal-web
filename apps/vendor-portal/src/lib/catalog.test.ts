@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Schemas } from '../api/client'
+import type { Schemas } from '../api/model'
 import { catalogCopy } from '../copy/catalog'
 import {
   ALL_SIZES,

@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { beforeAll, describe, expect, it } from 'vitest'
-import type { Schemas } from '../../api/client'
+import type { Schemas } from '../../api/model'
 import { renderApp } from '../../test/render'
 import { server } from '../../test/server'
 
@@ -89,7 +89,7 @@ describe('Account page (the phone Account tab)', () => {
     const { user, router } = await renderApp({ route: '/account', viewport: 'mobile' })
     const list = await screen.findByRole('navigation', { name: 'Account pages' }, SLOW)
     await user.click(within(list).getByRole('button', { name: 'Sign out' }))
-    await waitFor(() => expect(router.state.location.pathname).toBe('/sign-in'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
   })
 
   it('leads back to Account from Team on phones', async () => {

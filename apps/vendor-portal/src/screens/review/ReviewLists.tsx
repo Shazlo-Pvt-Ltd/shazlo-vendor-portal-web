@@ -3,7 +3,7 @@ import { brand, EmptyState, neutral, radius, SectionCard, StatusPill, type Illus
 import { Info } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link as RouterLink } from 'react-router'
-import type { Schemas } from '../../api/client'
+import type { Schemas } from '../../api/model'
 import { ProductThumb } from '../../components/ProductThumb'
 import { reviewCopy as copy } from '../../copy/review'
 import { reviewPill } from '../../lib/status'

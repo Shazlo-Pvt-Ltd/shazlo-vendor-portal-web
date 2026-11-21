@@ -1,4 +1,4 @@
-import type { Schemas } from '../api/client'
+import type { Schemas } from '../api/model'
 import type { Measurement, NamedPhotoAngle } from '../lib/catalog'
 
 // Labels and messages for the shared option lists (values in src/lib/catalog.ts) and the store

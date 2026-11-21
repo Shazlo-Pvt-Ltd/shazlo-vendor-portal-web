@@ -12,7 +12,9 @@
     "test": "vitest run",
     "e2e": "playwright test",
     "api:generate": "openapi-typescript ../../services/vendor-api/openapi.json -o src/api/schema.d.ts",
-    "api:check": "openapi-typescript ../../services/vendor-api/openapi.json -o src/api/schema.d.ts --check"
+    "api:check": "openapi-typescript ../../services/vendor-api/openapi.json -o src/api/schema.d.ts --check",
+    "api:proposed": "openapi-typescript openapi/proposed.yaml -o src/api/proposed.d.ts",
+    "api:proposed:check": "openapi-typescript openapi/proposed.yaml -o src/api/proposed.d.ts --check"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

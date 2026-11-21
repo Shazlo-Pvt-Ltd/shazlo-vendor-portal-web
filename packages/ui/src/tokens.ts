@@ -104,3 +104,56 @@ export const shadow = {
 } as const
 
 export const tokens = { brand, annotation, link, neutral, status, statusBackground, reviewStatus, fontFamily, typeScale, space, radius, shadow } as const
+
+// Garment colours a seller picks for a product (Build 2's named swatches, spec §7). They are
+// catalogue data, not interface colours: they describe the product and are never text or a fill
+// behind text. `multicolourSwatch` is the Multicolour chip's background.
+export const garmentColour = {
+  Black: '#1F1D1B',
+  White: '#FFFFFF',
+  Ivory: '#F3EEDF',
+  Beige: '#D9C3A0',
+  Brown: '#6B4A32',
+  Rust: '#A4502B',
+  Maroon: '#6E1F2A',
+  Red: '#B3261E',
+  Pink: '#E59AB0',
+  Peach: '#F2B591',
+  Orange: '#E07A2E',
+  Mustard: '#C99A2E',
+  Yellow: '#EFC94C',
+  Olive: '#6B6B2E',
+  Green: '#3E7B4F',
+  Sage: '#9CAF88',
+  Teal: '#2A7A7A',
+  Blue: '#3466A8',
+  Indigo: '#2E3F6E',
+  Navy: '#1F2A44',
+  Purple: '#6A4C93',
+  Lavender: '#B9A7D6',
+  Grey: '#8A8A8A',
+  Gold: '#C9A64B',
+  Silver: '#BFC3C7',
+} as const
+
+export type GarmentColourName = keyof typeof garmentColour
+
+const rainbow = [garmentColour.Red, garmentColour.Orange, garmentColour.Yellow, garmentColour.Green, garmentColour.Blue, garmentColour.Purple, garmentColour.Red]
+export const multicolourSwatch = `conic-gradient(${rainbow.join(', ')})`
+
+// The seller portal's demo photos (block-print swatches and simple figures wearing them), drawn
+// in natural-dye colours. Demo data only; no screen uses these for interface colour.
+export const demoPhotoPalette = {
+  grounds: ['#2E3F6E', '#8C2F25', '#A4502B', '#EFE6D2', '#C99A2E', '#2B2522', '#5C6B4E', '#D9C3A0'],
+  // Light grounds get a dark print and dark grounds a light one, so no swatch comes out blank.
+  lightGrounds: ['#EFE6D2', '#D9C3A0', '#C99A2E'],
+  darkInks: ['#8C2F25', '#2E3F6E', '#2B2522'],
+  lightInks: ['#EFE6D2', '#F3D9A4'],
+  // Try-on backdrops and skin tones vary by photo, like five people in five rooms.
+  walls: ['#E9E2D6', '#DCE3E0', '#EADBD3', '#E2E0EC', '#DDE6D5'],
+  studioWall: '#EFE9DF',
+  skins: ['#C68B5E', '#8D5A3B', '#E0AC7E', '#A8714A', '#B97D52'],
+  hair: '#2B2522',
+  legs: '#3A3330',
+  shade: '#000000',
+} as const

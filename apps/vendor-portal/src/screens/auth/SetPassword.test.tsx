@@ -108,7 +108,7 @@ describe('V-03 Set password', () => {
       'Invite links work once and expire after 7 days. Email partners@shazlo.store and we will send a new one.',
     )
     expect(screen.getByRole('link', { name: 'partners@shazlo.store' })).toHaveAttribute('href', 'mailto:partners@shazlo.store')
-    expect(screen.getByRole('link', { name: 'Go to sign in' })).toHaveAttribute('href', '/sign-in')
+    expect(screen.getByRole('link', { name: 'Go to sign in' })).toHaveAttribute('href', '/login')
     expect(screen.queryByLabelText('New password')).toBeNull()
   })
 

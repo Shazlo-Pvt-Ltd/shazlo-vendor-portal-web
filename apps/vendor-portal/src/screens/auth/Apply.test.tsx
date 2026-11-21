@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
-import type { Schemas } from '../../api/client'
+import type { Schemas } from '../../api/model'
 import type { ApplyDraft } from './applyModel'
 import { checkApplication } from '../../lib/storeDetails'
 import { renderApp } from '../../test/render'
@@ -44,7 +44,7 @@ function saveDraft(page: number, change: (a: Stored) => void = () => {}) {
 
 async function openAt(page: number, options: { change?: (a: Stored) => void; viewport?: 'mobile' | 'desktop' } = {}) {
   saveDraft(page, options.change)
-  const view = await renderApp({ route: '/apply', signedIn: false, viewport: options.viewport })
+  const view = await renderApp({ route: '/signup', signedIn: false, viewport: options.viewport })
   await screen.findByRole('heading', { level: 1 }, SLOW)
   return view
 }
@@ -65,13 +65,13 @@ async function typeIn(user: User, label: string, text: string) {
 
 describe('V-02 Apply to sell: the pages', () => {
   it('starts with what you will need, then one topic per page with Step x of 7', async () => {
-    const { user } = await renderApp({ route: '/apply', signedIn: false })
+    const { user } = await renderApp({ route: '/signup', signedIn: false })
     expect(await screen.findByRole('heading', { level: 1, name: 'Apply to sell' }, SLOW)).toBeInTheDocument()
     expect(screen.getByText('Tell us about your brand in 7 short steps. It takes about 8 minutes.')).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 2, name: 'What you will need' })).toBeInTheDocument()
     expect(screen.getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Your pickup address', 'Your bank account or UPI ID', 'Your GST number, if you have one'])
     expect(screen.getByText(/We save your answers on this device/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/sign-in')
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
     // One yellow button per screen.
     expect(document.querySelectorAll('.MuiButton-contained')).toHaveLength(1)
 
@@ -90,7 +90,7 @@ describe('V-02 Apply to sell: the pages', () => {
   })
 
   it('checks the brand page only on Continue, lists the problems at the top and clears each once fixed', async () => {
-    const { user } = await renderApp({ route: '/apply', signedIn: false })
+    const { user } = await renderApp({ route: '/signup', signedIn: false })
     await user.click(await screen.findByRole('button', { name: 'Start' }, SLOW))
     await screen.findByRole('heading', { level: 1, name: 'Your brand' })
     const name = screen.getByRole('textbox', { name: 'Store name' })
@@ -396,7 +396,7 @@ describe('V-02 Apply to sell: check answers and send', () => {
     expect(screen.getByText('Our team reviews it within 2 working days.')).toBeInTheDocument()
     expect(screen.getByText('We agree your commission with you before you start selling.')).toBeInTheDocument()
     expect(screen.getByText('If it is approved, we email asha@neelthreads.in a link to set your password.')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute('href', '/sign-in')
+    expect(screen.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute('href', '/login')
   })
 
   it('adds the proposed commission and business details when given', async () => {
@@ -496,7 +496,7 @@ describe('V-02 Apply to sell: the draft on this device', () => {
   })
 
   it('saves answers as they are typed', async () => {
-    const { user } = await renderApp({ route: '/apply', signedIn: false })
+    const { user } = await renderApp({ route: '/signup', signedIn: false })
     await user.click(await screen.findByRole('button', { name: 'Start' }, SLOW))
     await user.type(await screen.findByRole('textbox', { name: 'Store name' }), 'Neel')
     expect(JSON.parse(localStorage.getItem(DRAFT_KEY) ?? 'null')).toMatchObject({ page: 1, brand: { brand_name: 'Neel' } })
@@ -505,7 +505,7 @@ describe('V-02 Apply to sell: the draft on this device', () => {
   it('throws away drafts of the old form and drafts it cannot read', async () => {
     localStorage.setItem(OLD_DRAFT_KEY, JSON.stringify({ step: 2, brand: { brand_name: 'Kalki Studio', city: 'Ahmedabad', instagram_or_website: '' } }))
     localStorage.setItem(DRAFT_KEY, '{"page": 3, "brand": ')
-    await renderApp({ route: '/apply', signedIn: false })
+    await renderApp({ route: '/signup', signedIn: false })
     expect(await screen.findByRole('heading', { level: 1, name: 'Apply to sell' }, SLOW)).toBeInTheDocument()
     expect(screen.queryByText('Picked up where you left off')).toBeNull()
     expect(localStorage.getItem(OLD_DRAFT_KEY)).toBeNull()

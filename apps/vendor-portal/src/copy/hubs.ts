@@ -25,6 +25,7 @@ export const hubsCopy = {
     owner: 'Owner',
     staff: 'Staff',
     team: { title: 'Team', body: 'People who manage this store with you.' },
+    password: { title: 'Password', body: 'Change the password you sign in with.' },
     help: { title: 'Help & support', body: 'Answers about reviews, photos and payouts.' },
     signOut: 'Sign out',
   },

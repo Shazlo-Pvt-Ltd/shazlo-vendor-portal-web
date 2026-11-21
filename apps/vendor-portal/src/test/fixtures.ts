@@ -1,4 +1,4 @@
-import type { Schemas } from '../api/client'
+import type { Schemas } from '../api/model'
 
 // A complete Build 2 sign-up (V-02) that passes every check: the brand delivers itself, takes no
 // returns, and is paid into an HDFC account. Tests change one field at a time from here.

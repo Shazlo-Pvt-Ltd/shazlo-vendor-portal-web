@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../api/errors'
 import { ImageUploader } from './ImageUploader'
-import { assetOut, deferred, fakeDeps, image } from './testing'
+import { assetOut, deferred, fakeDeps, image } from '../../api/uploads/testing'
 
 // `applyAccept: false` lets a test hand the input a file its `accept` list would have hidden: a drag
 // and drop, or a browser that ignores `accept`, can do exactly that, so the code must refuse it itself.
@@ -128,7 +128,7 @@ describe('cancel and retry', () => {
 
   it('shows an expired signature as a normal upload, because it was replaced automatically', async () => {
     let sends = 0
-    const { deps, calls } = fakeDeps({ send: async () => { sends += 1; if (sends === 1) { const { UploadRejected } = await import('./upload'); throw new UploadRejected(401) } } })
+    const { deps, calls } = fakeDeps({ send: async () => { sends += 1; if (sends === 1) { const { UploadRejected } = await import('../../api/uploads/upload'); throw new UploadRejected(401) } } })
     render(<ImageUploader kind="brand_logo" label="Brand logo" onUploaded={() => {}} deps={deps} />)
     await setup().upload(fileInput(), image('logo.png'))
     await screen.findByText('Uploaded')

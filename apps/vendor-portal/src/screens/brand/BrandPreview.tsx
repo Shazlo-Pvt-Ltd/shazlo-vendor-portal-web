@@ -2,7 +2,7 @@ import { Box, Skeleton, Stack, ToggleButton, ToggleButtonGroup, Typography } fro
 import { brand, fontFamily, neutral, radius } from '@shazlo/ui'
 import { Eye, ImageIcon, MapPin, RotateCcw, Truck, type LucideIcon } from 'lucide-react'
 import { memo, useId, useState, type ReactNode } from 'react'
-import type { Schemas } from '../../api/client'
+import type { Schemas } from '../../api/model'
 import { useProducts, useStoreDetails } from '../../api/queries'
 import { brandCopy as copy } from '../../copy/brand'
 import { catalogCopy } from '../../copy/catalog'

@@ -1,6 +1,6 @@
 import { PageHeader } from '@shazlo/ui'
 import { Percent, SlidersHorizontal, Store } from 'lucide-react'
-import type { Schemas } from '../../api/client'
+import type { Schemas } from '../../api/model'
 import { useMe } from '../../api/queries'
 import { paths } from '../../app/paths'
 import { hubsCopy } from '../../copy/hubs'

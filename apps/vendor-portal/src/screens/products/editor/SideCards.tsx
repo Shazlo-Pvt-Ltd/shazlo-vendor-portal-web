@@ -3,7 +3,7 @@ import { brand, neutral, radius, SectionCard, status, statusBackground } from '@
 import { Check, Clock } from 'lucide-react'
 import { memo, useId } from 'react'
 import { Link as RouterLink } from 'react-router'
-import type { Schemas } from '../../../api/client'
+import type { Schemas } from '../../../api/model'
 import { useStoreDetails } from '../../../api/queries'
 import { paths } from '../../../app/paths'
 import { productEditorCopy } from '../../../copy/productEditor'

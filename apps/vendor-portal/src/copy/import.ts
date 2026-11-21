@@ -1,4 +1,4 @@
-import type { Schemas } from '../api/client'
+import type { Schemas } from '../api/model'
 import { formatCount } from '../lib/format'
 
 // Copy for Bulk import (V-08). Column labels are in ./catalog.ts (importColumns). One module per

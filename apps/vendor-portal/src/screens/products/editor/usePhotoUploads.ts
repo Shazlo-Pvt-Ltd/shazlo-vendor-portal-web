@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Schemas } from '../../../api/client'
+import type { Schemas } from '../../../api/model'
 import { useAddProductImage } from '../../../api/queries'
 import { catalogCopy } from '../../../copy/catalog'
 import { productEditorCopy } from '../../../copy/productEditor'

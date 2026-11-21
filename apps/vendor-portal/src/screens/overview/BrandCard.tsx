@@ -1,7 +1,7 @@
 import { Box, Button, Skeleton, Stack, Typography } from '@mui/material'
 import { Banner, SectionCard, StatusPill, type PillStatus } from '@shazlo/ui'
 import { Link as RouterLink } from 'react-router'
-import type { Schemas } from '../../api/client'
+import type { Schemas } from '../../api/model'
 import { useBrandPage } from '../../api/queries'
 import { paths } from '../../app/paths'
 import { changedFieldList, overviewCopy } from '../../copy/overview'

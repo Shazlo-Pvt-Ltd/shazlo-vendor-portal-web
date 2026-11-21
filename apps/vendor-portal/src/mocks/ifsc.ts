@@ -1,4 +1,4 @@
-import type { Schemas } from '../api/client'
+import type { Schemas } from '../api/model'
 import { isValidIfsc, normaliseIfsc } from '../lib/validators'
 
 // Stand-in for an IFSC directory (vendor-api would use RBI's list or Razorpay's IFSC API). The

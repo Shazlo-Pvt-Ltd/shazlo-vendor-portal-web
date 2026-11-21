@@ -2,7 +2,7 @@ import { Box, Button, Link, Skeleton, Stack, Typography, useMediaQuery } from '@
 import type { Theme } from '@mui/material/styles'
 import { Banner, brand, EmptyState, neutral, SectionCard, StatusPill } from '@shazlo/ui'
 import { Link as RouterLink } from 'react-router'
-import type { Schemas } from '../../api/client'
+import type { Schemas } from '../../api/model'
 import { useReviews } from '../../api/queries'
 import { paths } from '../../app/paths'
 import { ProductThumb } from '../../components/ProductThumb'

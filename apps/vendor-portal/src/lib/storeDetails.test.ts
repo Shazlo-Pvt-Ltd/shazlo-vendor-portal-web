@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Schemas } from '../api/client'
+import type { Schemas } from '../api/model'
 import { validApplication } from '../test/fixtures'
 import { checkCommissionBps, formatBps, parsePercent, sellerReceives } from './commission'
 import {

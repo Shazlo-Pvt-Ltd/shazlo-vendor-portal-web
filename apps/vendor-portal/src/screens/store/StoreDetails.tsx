@@ -2,7 +2,7 @@ import { Box, Button, Card, Link, Skeleton, Stack, Typography } from '@mui/mater
 import { Banner, neutral, PageHeader, radius, SectionCard } from '@shazlo/ui'
 import { useEffect, useRef, type ReactNode } from 'react'
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router'
-import type { Schemas } from '../../api/client'
+import type { Schemas } from '../../api/model'
 import { useMe, useStoreDetails } from '../../api/queries'
 import { paths } from '../../app/paths'
 import { storeCopy as copy } from '../../copy/store'

@@ -1,7 +1,7 @@
 import { Box, Card, CardActionArea, LinearProgress, Skeleton, Stack, Typography } from '@mui/material'
 import { neutral } from '@shazlo/ui'
 import { Link as RouterLink } from 'react-router'
-import type { Schemas } from '../../../api/client'
+import type { Schemas } from '../../../api/model'
 import { paths } from '../../../app/paths'
 import { ProductThumb } from '../../../components/ProductThumb'
 import { productsCopy } from '../../../copy/products'

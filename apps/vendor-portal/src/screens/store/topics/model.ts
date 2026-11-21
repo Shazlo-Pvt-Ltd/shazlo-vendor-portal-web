@@ -1,4 +1,5 @@
-import { ApiError, type Schemas } from '../../../api/client'
+import { ApiError } from '../../../api/errors'
+import type { Schemas } from '../../../api/model'
 import { catalogCopy } from '../../../copy/catalog'
 import { storeCopy } from '../../../copy/store'
 import { checkCommissionBps, parsePercent } from '../../../lib/commission'

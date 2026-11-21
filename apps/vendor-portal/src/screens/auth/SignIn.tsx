@@ -1,24 +1,29 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Box, Button, Checkbox, Divider, FormControlLabel, IconButton, InputAdornment, Link, Stack, TextField, Typography } from '@mui/material'
-import { Banner, brand, fontFamily } from '@shazlo/ui'
-import { Eye, EyeOff, Layers, ShieldCheck, Wallet } from 'lucide-react'
-import { useId, useState } from 'react'
+import { Box, Button, Divider, Link, Stack, TextField, Typography } from '@mui/material'
+import { Banner, brand } from '@shazlo/ui'
+import { Layers, ShieldCheck, Wallet } from 'lucide-react'
+import { useEffect, useId, useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router'
+import { Link as RouterLink, useLocation, useNavigate } from 'react-router'
 import { z } from 'zod'
-import { ApiError } from '../../api/client'
 import { paths } from '../../app/paths'
-import { safeNext, useSession } from '../../auth/session'
 import { authCopy } from '../../copy/auth'
-import { AuthLayout, AuthTitle } from './AuthLayout'
+import { frameCopy } from '../../copy/frame'
+import { srOnly } from '../../lib/a11y'
 import { fieldProps } from '../../lib/forms'
+import { PasswordField } from '../../security/PasswordField'
+import { registerSensitiveReset } from '../../security/sensitiveState'
+import { useCountdown } from '../../session/useCountdown'
+import { useLogin } from '../../session/useLogin'
+import { AuthLayout, AuthTitle } from './AuthLayout'
 
 const copy = authCopy.signIn
+// The longest address vendor-api accepts.
+const EMAIL_MAX = 320
 
 const schema = z.object({
-  identifier: z.string().trim().min(1, copy.errors.emailRequired).email(copy.errors.emailFormat),
+  email: z.string().trim().min(1, copy.errors.emailRequired).max(EMAIL_MAX, copy.errors.emailFormat).email(copy.errors.emailFormat),
   password: z.string().min(1, copy.errors.passwordRequired),
-  remember: z.boolean(),
 })
 type Values = z.infer<typeof schema>
 
@@ -31,7 +36,7 @@ function WhySell() {
       <Typography variant="informal" sx={{ color: brand.brown, mb: 1 }}>
         {authCopy.why.tagline}
       </Typography>
-      <Typography id={id} variant="h1" component="h2" sx={{ fontFamily: fontFamily.display, fontSize: '2.25rem', fontWeight: 400, lineHeight: 1.15, mb: 4 }}>
+      <Typography id={id} variant="display2" component="h2" sx={{ fontSize: '2.25rem', lineHeight: 1.15, mb: 4 }}>
         {authCopy.why.title}
       </Typography>
       <Stack component="ul" spacing={3} sx={{ listStyle: 'none', p: 0, m: 0 }}>
@@ -58,56 +63,71 @@ function WhySell() {
   )
 }
 
+/**
+ * V-01. Signs in through the session (src/session): the access token stays in memory and the
+ * refresh cookie keeps the seller signed in, so there is no "keep me signed in". Once signed in,
+ * the `PublicOnly` guard sends the seller to `?next` (checked by safeReturnTo) or Home. The
+ * password leaves the form the moment it is sent.
+ */
 export default function SignIn() {
-  const { signIn } = useSession()
+  const login = useLogin()
+  const location = useLocation()
   const navigate = useNavigate()
-  const [params] = useSearchParams()
-  const [showPassword, setShowPassword] = useState(false)
+  const countdown = useCountdown()
   const [failure, setFailure] = useState<string | null>(null)
-  const { register, handleSubmit, formState } = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { identifier: '', password: '', remember: false } })
+  const { register, handleSubmit, formState, setValue, setFocus } = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { email: '', password: '' } })
+  const expired = (location.state as { expired?: boolean } | null)?.expired === true
 
-  const onSubmit = handleSubmit(async ({ identifier, password, remember }) => {
+  // A typed password never outlives the session that ends (sign-out in another tab, for one).
+  useEffect(() => registerSensitiveReset(() => setValue('password', '')), [setValue])
+
+  const onSubmit = handleSubmit(async ({ email, password }) => {
+    if (countdown.active) return
     setFailure(null)
-    try {
-      await signIn(identifier, password, remember)
-      navigate(safeNext(params.get('next')), { replace: true })
-    } catch (error) {
-      setFailure(error instanceof ApiError ? error.message : 'Something went wrong. Try again.')
+    setValue('password', '')
+    const result = await login.submit(email, password)
+    if (result.ok) return
+    if (result.reason === 'blocked') {
+      // The explanation page lives behind the signed-in guard; it never loops back here.
+      void navigate(paths.overview, { replace: true })
+      return
     }
+    // "Too many attempts" is said once, by the countdown; anything else by the error banner.
+    if (result.retryAfter) countdown.start(result.retryAfter)
+    else setFailure(result.message)
+    setFocus('password')
   })
 
+  const busy = formState.isSubmitting || login.pending
   return (
     <AuthLayout aside={<WhySell />}>
       <AuthTitle title={copy.title} subtitle={copy.subtitle} />
       <Box component="form" noValidate onSubmit={onSubmit}>
         <Stack spacing={2.5}>
+          {expired && !failure && <Banner tone="info" title={frameCopy.sessionEnded} />}
           {failure && <Banner tone="error" title={failure} />}
-          <TextField label={copy.email} type="email" autoComplete="username" inputMode="email" {...fieldProps(register('identifier'), formState.errors.identifier)} />
-          <TextField
-            label={copy.password}
-            type={showPassword ? 'text' : 'password'}
-            autoComplete="current-password"
-            {...fieldProps(register('password'), formState.errors.password)}
-            slotProps={{
-              input: {
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton aria-label={showPassword ? copy.hidePassword : copy.showPassword} onClick={() => setShowPassword((s) => !s)} edge="end">
-                      {showPassword ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              },
-            }}
-          />
-          <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
-            <FormControlLabel control={<Checkbox {...register('remember')} />} label={copy.remember} />
-            <Link component={RouterLink} to={paths.forgotPassword}>
+          {countdown.active && (
+            <Banner
+              tone="warning"
+              title={
+                <>
+                  <Box component="span" sx={srOnly}>
+                    {copy.waitAnnounced}
+                  </Box>
+                  <span aria-hidden="true">{copy.wait(countdown.remaining)}</span>
+                </>
+              }
+            />
+          )}
+          <TextField label={copy.email} type="email" autoComplete="username" inputMode="email" {...fieldProps(register('email'), formState.errors.email)} />
+          <PasswordField purpose="current" label={copy.password} {...fieldProps(register('password'), formState.errors.password)} />
+          <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 1 }}>
+            <Link component={RouterLink} to={paths.forgotPassword} sx={{ display: 'inline-flex', alignItems: 'center', minHeight: 44 }}>
               {copy.forgot}
             </Link>
           </Stack>
-          <Button type="submit" variant="contained" size="large" fullWidth disabled={formState.isSubmitting}>
-            {formState.isSubmitting ? copy.submitting : copy.submit}
+          <Button type="submit" variant="contained" size="large" fullWidth disabled={busy || countdown.active}>
+            {busy ? copy.submitting : copy.submit}
           </Button>
         </Stack>
       </Box>

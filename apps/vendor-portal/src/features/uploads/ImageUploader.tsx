@@ -1,7 +1,7 @@
 import { Box, Button, FormHelperText, LinearProgress, Stack, Typography } from '@mui/material'
 import { useId, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 import { SafeImage } from '../../security/SafeImage'
-import { acceptedMessage, ALLOWED_CONTENT_TYPES, DEFAULT_MAX_BYTES, type AssetKind, type AssetOut } from './rules'
+import { acceptedMessage, ALLOWED_CONTENT_TYPES, DEFAULT_MAX_BYTES, type AssetKind, type AssetOut } from '../../api/uploads/rules'
 import { useImageUploads, type UploadItem, type UseImageUploadsOptions } from './useImageUploads'
 
 const KIND_LABEL: Record<AssetKind, string> = {

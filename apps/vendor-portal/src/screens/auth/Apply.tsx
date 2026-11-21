@@ -1,7 +1,7 @@
 import { Box } from '@mui/material'
 import { Banner } from '@shazlo/ui'
 import { useEffect, useRef, useState } from 'react'
-import { ApiError } from '../../api/client'
+import { ApiError } from '../../api/errors'
 import { useApply, useIfsc } from '../../api/queries'
 import { onboardingCopy } from '../../copy/onboarding'
 import type { FieldErrors } from '../../lib/storeDetails'

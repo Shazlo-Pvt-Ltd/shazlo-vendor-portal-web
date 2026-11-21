@@ -1,5 +1,5 @@
 import type { FieldErrors, Resolver } from 'react-hook-form'
-import type { Schemas } from '../../../api/client'
+import type { Schemas } from '../../../api/model'
 import { productEditorCopy } from '../../../copy/productEditor'
 import { sizeCode, sortSizes, type Gender, type ProductForSubmit, type ProductType } from '../../../lib/catalog'
 

@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { ApiError, NetworkError } from '../../api/errors'
+import { ApiError, NetworkError } from '../errors'
 import { DEFAULT_MAX_BYTES, acceptedMessage, checkFile, isTrustedUploadUrl } from './rules'
 import { UploadError, UploadRejected, isAbort, uploadImage, xhrSend, type UploadStage } from './upload'
 import { API_KEY, SIGNATURE, UPLOAD_URL, assetOut, fakeDeps, image, rejected, signResponse } from './testing'

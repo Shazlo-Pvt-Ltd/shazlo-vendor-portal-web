@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router'
-import type { Schemas } from '../../../api/client'
+import type { Schemas } from '../../../api/model'
 import type { ProductFilters } from '../../../api/queries'
 import { productsCopy, type SortKey, type StockKey } from '../../../copy/products'
 

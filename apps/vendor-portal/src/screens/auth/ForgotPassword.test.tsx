@@ -11,7 +11,7 @@ describe('Forgot password', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Reset your password' })).toBeInTheDocument()
     expect(screen.getByLabelText('Work email')).toHaveAttribute('autocomplete', 'username')
     expect(screen.getByRole('button', { name: 'Send reset link' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute('href', '/sign-in')
+    expect(screen.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute('href', '/login')
   })
 
   it('checks the email before sending and focuses it', async () => {
@@ -36,7 +36,7 @@ describe('Forgot password', () => {
     const title = await screen.findByRole('heading', { level: 1, name: 'Check your email' })
     expect(document.activeElement).toContainElement(title)
     expect(screen.getByText(`If an account exists for ${address}, we have sent a link to reset your password. It expires in 30 minutes.`)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute('href', '/sign-in')
+    expect(screen.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute('href', '/login')
     expect(screen.queryByLabelText('Work email')).toBeNull()
   })
 

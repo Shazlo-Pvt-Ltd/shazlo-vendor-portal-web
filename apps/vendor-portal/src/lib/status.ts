@@ -1,5 +1,5 @@
 import type { PillStatus } from '@shazlo/ui'
-import type { Schemas } from '../api/client'
+import type { Schemas } from '../api/model'
 
 // Review decisions (docs/05: approved, rejected…) shown in seller words (Live, Sent back…).
 // Products use the plain status words in copy/products.ts.

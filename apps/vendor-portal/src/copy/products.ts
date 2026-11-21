@@ -1,4 +1,4 @@
-import type { Schemas } from '../api/client'
+import type { Schemas } from '../api/model'
 import { formatCount } from '../lib/format'
 
 // Copy for Products (V-06). Product types and genders are labelled in ./catalog.ts. One module per
