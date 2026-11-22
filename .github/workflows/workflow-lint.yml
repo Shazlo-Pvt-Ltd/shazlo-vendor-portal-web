@@ -3,16 +3,19 @@ name: workflow-lint
 # Lints the GitHub Actions workflows and dependabot.yml:
 # - zizmor: security audit (template injection, excessive permissions, unpinned actions, leaked
 #   credentials, ...). Results go to code scanning (tool "zizmor"); the job itself does not fail.
-# - actionlint: correctness (expressions, contexts, shellcheck on `run:` scripts). Fails the job.
+# - actionlint: correctness (expressions, contexts, shellcheck on `run:` scripts), and shellcheck
+#   on the scripts in .github/scripts that workflows run. Fails the job.
 on:
   pull_request:
     paths:
       - ".github/workflows/**"
+      - ".github/scripts/**"
       - ".github/dependabot.yml"
   push:
     branches: [main]
     paths:
       - ".github/workflows/**"
+      - ".github/scripts/**"
       - ".github/dependabot.yml"
   schedule:
     # zizmor's online audits (known-vulnerable or impostor action commits) change without a push.
@@ -46,18 +49,23 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
       - name: Run zizmor
+        # A PR from a fork gets a read-only token, which cannot upload to code scanning: there the
+        # findings go to the job log instead, without failing the job.
+        continue-on-error: ${{ github.event.pull_request.head.repo.fork == true }}
         uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
         with:
           # The action installs this exact version from hash-pinned wheels.
           version: 1.32.0
           persona: regular
-          # Uploads SARIF with category "zizmor".
-          advanced-security: true
+          # Uploads SARIF with category "zizmor", except from a fork (see above).
+          advanced-security: ${{ github.event.pull_request.head.repo.fork != true }}
 
   actionlint:
     name: actionlint
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -73,3 +81,6 @@ jobs:
       # shellcheck is preinstalled on ubuntu-latest; actionlint runs it on every `run:` script.
       - name: Run actionlint
         run: '"$RUNNER_TEMP/actionlint" -color'
+      - name: Run shellcheck on .github/scripts
+        if: ${{ !cancelled() }}
+        run: shellcheck .github/scripts/*.sh

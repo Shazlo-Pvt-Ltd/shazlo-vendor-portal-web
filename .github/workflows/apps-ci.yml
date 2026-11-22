@@ -44,7 +44,7 @@ jobs:
           # portal's generated API types are checked against services/vendor-api/openapi.json.
           web=$( {
             printf '%s\n' "$files" | grep -E '^docs/adr/0003-contract/|^services/vendor-api/openapi\.json$'
-            printf '%s\n' "$files" | grep -Ev '^(services/|packages/py-|docker/|docs/)|^docker-compose\.yml$|^\.env\.example$|^\.gitleaks\.toml$|^\.github/workflows/(services-ci|codeql|footer_removal|dependency-review|osv-scanner|pip-audit|scorecard|secret-scan|workflow-lint)\.yml$'
+            printf '%s\n' "$files" | grep -Ev '^(services/|packages/py-|docker/|docs/)|^docker-compose\.yml$|^\.env\.example$|^\.gitleaks\.toml$|^\.github/scripts/check-gitleaks-allowlist\.sh$|^\.github/workflows/(services-ci|codeql|footer_removal|dependency-review|osv-scanner|pip-audit|scorecard|secret-scan|workflow-lint)\.yml$'
           } || true)
           deps=$(printf '%s\n' "$files" | grep -E '(^|/)package(-lock)?\.json$' || true)
           echo "web=$([ -n "$web" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"

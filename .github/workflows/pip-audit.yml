@@ -49,6 +49,8 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -75,6 +77,10 @@ jobs:
             "$RUNNER_TEMP/project/bin/python" -m pip install --quiet --disable-pip-version-check -r requirements-shared.txt
           fi
           "$RUNNER_TEMP/project/bin/python" -m pip install --quiet --disable-pip-version-check -e '.[dev]'
+          # services-ci also installs the stub receiver for vendor-api's publishing end-to-end test.
+          if [ "$PROJECT_DIR" = services/vendor-api ]; then
+            "$RUNNER_TEMP/project/bin/python" -m pip install --quiet --disable-pip-version-check               --config-settings editable_mode=compat -e ../central-stub
+          fi
       - name: Install pip-audit
         run: |
           python -m venv "$RUNNER_TEMP/pip-audit"

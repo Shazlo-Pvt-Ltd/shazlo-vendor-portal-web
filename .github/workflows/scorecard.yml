@@ -26,6 +26,8 @@ jobs:
       actions: read # workflow runs, for the CI-Tests check
       security-events: write # uploads the SARIF report to code scanning
     steps:
+      # No `ref:`: Scorecard runs only on the default branch (schedule, manual), which is what
+      # the default checkout gives, and reads most of what it scores through the API.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

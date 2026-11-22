@@ -19,6 +19,8 @@ jobs:
     name: dependency-review
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       # The summary goes to the job log and the run summary only: a PR comment needs
       # `pull-requests: write`, which fork PRs do not get.
