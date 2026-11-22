@@ -55,7 +55,7 @@ const baseCss = `
 ::selection { background: ${brand.cream}; color: ${neutral.ink}; }
 :root { caret-color: ${brand.brown}; accent-color: ${brand.brown}; }
 :focus-visible { outline: 2px solid ${brand.navy}; outline-offset: 2px; }
-b, strong { font-weight: 400; color: ${neutral.ink}; }
+b, strong { font-family: ${fontFamily.display}; font-weight: 600; color: ${neutral.ink}; }
 a { text-underline-offset: 0.18em; }
 `
 
@@ -85,7 +85,8 @@ function baseOptions({ voyage }: ShazloThemeOptions): ThemeOptions {
     shape: { borderRadius: radius.control },
     typography: {
       fontFamily: fontFamily.body,
-      // Ovo ships one weight; anything heavier would be synthesised by the browser.
+      // Ovo ships one weight; anything heavier would be synthesised by the browser. Emphasis uses
+      // Bodoni Moda instead (subtitle, button, overline, table headings, b/strong; see tokens.emphasis).
       fontWeightMedium: 400,
       fontWeightBold: 400,
       pageTitle: {
@@ -116,6 +117,12 @@ function baseOptions({ voyage }: ShazloThemeOptions): ThemeOptions {
       MuiTypography: {
         defaultProps: {
           variantMapping: { pageTitle: 'h1', display1: 'h1', display2: 'h2', stat: 'p', mono: 'code', informal: 'p' },
+        },
+      },
+      // Column headings read as headings: Bodoni Moda semibold in ink, apart from the rows.
+      MuiTableCell: {
+        styleOverrides: {
+          head: { fontFamily: fontFamily.display, fontWeight: 600, color: neutral.ink },
         },
       },
       MuiButton: {

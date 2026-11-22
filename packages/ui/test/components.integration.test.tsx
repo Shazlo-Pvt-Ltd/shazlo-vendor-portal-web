@@ -3,7 +3,7 @@ import { ThemeProvider } from '@mui/material'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { Banner, EmptyState, Logo, PageHeader, SectionCard, SnackbarProvider, StatFigure, StatusPill, statusPillLabel, theme, useSnackbar, type PillStatus } from '../src'
+import { Banner, EmptyState, Logo, Monogram, PageHeader, SectionCard, SnackbarProvider, StatFigure, StatusPill, statusPillLabel, theme, useSnackbar, type PillStatus } from '../src'
 
 const wrap = (ui: ReactNode) => render(<ThemeProvider theme={theme}>{ui}</ThemeProvider>)
 afterEach(cleanup)
@@ -100,6 +100,35 @@ describe('Logo', () => {
     wrap(<Logo product="Seller" />)
     expect(screen.getByRole('img', { name: 'Shazlo' })).toBeInTheDocument()
     expect(screen.getByText('Seller')).toBeInTheDocument()
+  })
+
+  it('draws the new wordmark as a mask in the tone asked for, navy on light pages by default', () => {
+    wrap(<Logo />)
+    const mark = screen.getByRole('img', { name: 'Shazlo' })
+    expect(mark).toHaveAttribute('data-tone', 'navy')
+    expect(mark.tagName).not.toBe('IMG')
+    cleanup()
+    wrap(<Logo tone="amber" product="One" />)
+    expect(screen.getByRole('img', { name: 'Shazlo' })).toHaveAttribute('data-tone', 'amber')
+  })
+
+  it('keeps the wordmark proportions at any height', () => {
+    wrap(<Logo height={40} />)
+    const mark = screen.getByRole('img', { name: 'Shazlo' })
+    expect(mark.style.height || getComputedStyle(mark).height).toBe('40px')
+    // 312 × 93 px source: width follows the height.
+    expect(getComputedStyle(mark).width).toBe(`${Math.round((40 * 312) / 93)}px`)
+  })
+})
+
+describe('Monogram', () => {
+  it('is the S mark, named for screen readers unless it is decoration', () => {
+    wrap(<Monogram size={32} />)
+    const mark = screen.getByRole('img', { name: 'Shazlo' })
+    expect(getComputedStyle(mark).width).toBe('32px')
+    cleanup()
+    wrap(<Monogram decorative />)
+    expect(screen.queryByRole('img')).toBeNull()
   })
 })
 

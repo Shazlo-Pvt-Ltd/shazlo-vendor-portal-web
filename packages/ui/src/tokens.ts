@@ -69,7 +69,8 @@ export interface TypeStyle {
 }
 
 // Sizes are implementation choices retained from the original theme, not Penpot measurements.
-// Ovo and Schoolbell ship a single regular weight; avoid synthetic bold for body text.
+// Ovo and Schoolbell ship a single regular weight, so emphasis (labels, names, buttons, table
+// headings) switches to Bodoni Moda's real semibold rather than a synthesised bold.
 export const typeScale = {
   // Editorial page titles (options board: "Editorial"); 32 px on phones.
   pageTitle: { family: 'display', size: 48, lineHeight: 54, weight: 400, letterSpacing: -0.6 },
@@ -79,15 +80,21 @@ export const typeScale = {
   h2: { family: 'display', size: 18, lineHeight: 26, weight: 600, letterSpacing: -0.2 },
   h3: { family: 'display', size: 15, lineHeight: 22, weight: 600, letterSpacing: -0.1 },
   body: { family: 'body', size: 14, lineHeight: 20, weight: 400, letterSpacing: 0 },
-  bodyStrong: { family: 'body', size: 14, lineHeight: 20, weight: 400, letterSpacing: 0 },
+  bodyStrong: { family: 'display', size: 14, lineHeight: 20, weight: 600, letterSpacing: 0 },
   small: { family: 'body', size: 13, lineHeight: 18, weight: 400, letterSpacing: 0 },
-  smallStrong: { family: 'body', size: 13, lineHeight: 18, weight: 400, letterSpacing: 0 },
+  smallStrong: { family: 'display', size: 13, lineHeight: 18, weight: 600, letterSpacing: 0 },
   caption: { family: 'body', size: 12, lineHeight: 16, weight: 400, letterSpacing: 0 },
-  overline: { family: 'body', size: 11, lineHeight: 16, weight: 400, letterSpacing: 0.6 },
+  overline: { family: 'display', size: 11, lineHeight: 16, weight: 600, letterSpacing: 0.8 },
   stat: { family: 'display', size: 28, lineHeight: 34, weight: 600, letterSpacing: -0.6 },
   informal: { family: 'informal', size: 16, lineHeight: 24, weight: 400, letterSpacing: 0 },
   mono: { family: 'mono', size: 12, lineHeight: 16, weight: 400, letterSpacing: 0 },
 } as const satisfies Record<string, TypeStyle>
+
+// Emphasis for short text inside Ovo copy: Bodoni Moda at a weight it really has.
+export const emphasis = {
+  semibold: { fontFamily: fontFamily.display, fontWeight: 600 },
+  bold: { fontFamily: fontFamily.display, fontWeight: 700 },
+} as const
 
 // Retained geometry choices. MUI's theme.spacing(n) keeps its 8 px unit.
 export const space = [0, 4, 8, 12, 16, 20, 24, 32, 40, 48, 64] as const
@@ -103,7 +110,7 @@ export const shadow = {
   overlay: '0 4px 12px rgba(23, 18, 14, 0.18)',
 } as const
 
-export const tokens = { brand, annotation, link, neutral, status, statusBackground, reviewStatus, fontFamily, typeScale, space, radius, shadow } as const
+export const tokens = { brand, annotation, link, neutral, status, statusBackground, reviewStatus, fontFamily, typeScale, emphasis, space, radius, shadow } as const
 
 // Garment colours a seller picks for a product (Build 2's named swatches, spec §7). They are
 // catalogue data, not interface colours: they describe the product and are never text or a fill
