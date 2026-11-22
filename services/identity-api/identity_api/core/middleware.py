@@ -9,7 +9,8 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from identity_api.core.logging import request_id_var
 
 REQUEST_ID_HEADER = "X-Request-ID"
-_VALID_REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+# Checked with `fullmatch`: with `match`, `$` also matches before a trailing newline.
+_VALID_REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{1,64}")
 
 logger = logging.getLogger("identity_api.access")
 
@@ -29,7 +30,7 @@ class RequestIdMiddleware:
         # below) instead of a UnicodeDecodeError and a 500.
         raw = dict(scope["headers"]).get(REQUEST_ID_HEADER.lower().encode(), b"")
         incoming = raw.decode("latin-1")
-        request_id = incoming if _VALID_REQUEST_ID.match(incoming) else uuid.uuid4().hex
+        request_id = incoming if _VALID_REQUEST_ID.fullmatch(incoming) else uuid.uuid4().hex
         scope.setdefault("state", {})["request_id"] = request_id
         token = request_id_var.set(request_id)
         started = time.perf_counter()

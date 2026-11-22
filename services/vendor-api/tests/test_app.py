@@ -61,8 +61,8 @@ def test_unsafe_request_id_is_replaced(settings: Settings) -> None:
 
 @pytest.mark.parametrize(
     "value",
-    [b"\xff\xfe", b"caf\xe9", b"a" * 65, b"", b"id with space"],
-    ids=["not-utf8", "latin-1", "too-long", "empty", "space"],
+    [b"\xff\xfe", b"caf\xe9", b"a" * 65, b"", b"id with space", b"trace-123\n"],
+    ids=["not-utf8", "latin-1", "too-long", "empty", "space", "trailing-newline"],
 )
 async def test_a_request_id_that_is_not_safe_ascii_is_replaced_not_a_500(
     settings: Settings, value: bytes
