@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: |
     What the seller portal needs from vendor-api that `services/vendor-api/openapi.json` does not
-    have yet (issue #265). The decided plan is `docs/ui-plan/build2-on-main.md`, "Proposed
+    have yet (issue #288; #265 was closed by PR 281). The decided plan is `docs/ui-plan/build2-on-main.md`, "Proposed
     additions". Every operation here, and every field it adds, is marked `x-proposal: true`.
 
     How to read this file:

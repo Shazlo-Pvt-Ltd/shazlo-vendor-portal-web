@@ -27,7 +27,7 @@ behaviour into Build 2 (`src/lib/` or next to the screen), so nothing main teste
   `{error: {code, message, request_id, details}}`, `version` for optimistic concurrency), every operation
   marked `x-proposal: true`. They are generated into `src/api/proposed.d.ts`, and the client is typed with
   both. When vendor-api ships a route, it moves to `openapi.json` and leaves `proposed.yaml`. This file is
-  what issue #265 asks the backend to build.
+  what issue #288 asks the backend to build (PR 281 shipped what #265 asked for).
 - **Screens never see API shapes.** `src/api/model.ts` holds the view models the Build 2 screens already
   use (product, store details, me, review item …). `src/api/adapters/*.ts` map real/proposed shapes to and
   from them. `src/api/queries.ts` keeps Build 2's hook names and return shapes, implemented with main's
