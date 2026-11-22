@@ -1,5 +1,6 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { countdownClock } from '../../test/countdown'
 import { typeFast } from '../../test/typeFast'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
@@ -85,8 +86,9 @@ describe('the verify-email page', () => {
 
   it('counts down on a 429', async () => {
     server.use(http.post(`${BASE}/v1/auth/verify-email`, () => HttpResponse.json({ error: { code: 'rate_limited', message: 'x' } }, { status: 429, headers: { 'Retry-After': '30' } })))
+    const countdown = countdownClock(30)
     renderRoute('/verify-email#token=abc123')
-    expect((await screen.findByRole('alert')).textContent).toMatch(/Try again in (30|29) s\./)
+    countdown((await screen.findByRole('alert')).textContent, /Try again in (\d+) s\./)
     expect((screen.getByRole('button', { name: 'Try again' }) as HTMLButtonElement).disabled).toBe(true)
   })
 })
@@ -138,8 +140,10 @@ describe('asking for a new link', () => {
     server.use(http.post(`${BASE}/v1/auth/resend-verification`, () => HttpResponse.json({ error: { code: 'rate_limited', message: 'x' } }, { status: 429, headers: { 'Retry-After': '90' } })))
     const user = await openExpired()
     await typeFast(user, screen.getByLabelText('Email address'), 'asha@kala.example')
+    const countdown = countdownClock(90)
     await user.click(screen.getByRole('button', { name: 'Send a new link' }))
     expect(await screen.findByText('Too many attempts.')).toBeTruthy()
-    await waitFor(() => expect(screen.getByRole('button', { name: /Send again in (90|89) s/ })).toBeTruthy())
+    const button = await screen.findByRole('button', { name: /Send again in \d+ s/ })
+    countdown(button.textContent, /Send again in (\d+) s/)
   })
 })

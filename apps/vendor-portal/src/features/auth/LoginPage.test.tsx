@@ -1,6 +1,7 @@
 import { QueryClient } from '@tanstack/react-query'
 import { cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { countdownClock } from '../../test/countdown'
 import { typeFast } from '../../test/typeFast'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
@@ -100,8 +101,9 @@ describe('login', () => {
   it('counts down on a 429 and blocks another try until it ends', async () => {
     server.use(http.post(`${BASE}/v1/auth/login`, () => apiErrorResponse(429, 'rate_limited', 'slow', { 'Retry-After': '45' })))
     const { user } = await open()
+    const countdown = countdownClock(45)
     await signIn(user)
-    expect(await screen.findByText(/Try again in (45|44) s\./)).toBeTruthy()
+    countdown((await screen.findByText(/Try again in \d+ s\./)).textContent, /Try again in (\d+) s\./)
     expect((screen.getByRole('button', { name: 'Sign in' }) as HTMLButtonElement).disabled).toBe(true)
   })
 

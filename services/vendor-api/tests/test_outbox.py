@@ -17,6 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from vendor_api.db.models import OutboxEvent
 
+# Only for values whose time does not matter. A time compared with the database clock is taken
+# when the test runs (`datetime.now(UTC)`), not when the module was imported: the suite can run
+# for a long time before it gets here.
 NOW = datetime.now(UTC)
 
 
@@ -248,7 +251,7 @@ async def test_the_content_of_an_event_never_changes(
 
 async def test_delivery_state_may_change_without_a_status_change(session: AsyncSession) -> None:
     event = await saved(session)
-    later = NOW + timedelta(hours=1)
+    later = datetime.now(UTC) + timedelta(hours=1)
     await update(
         session,
         event,
@@ -423,7 +426,7 @@ async def test_the_claim_takes_only_due_events_one_version_per_aggregate(
     waiting = await saved(session, version=1)
     behind = await saved(session, aggregate_id=waiting.aggregate_id, version=2)
     other = await saved(session)
-    not_due = await saved(session, next_attempt_at=NOW + timedelta(hours=1))
+    not_due = await saved(session, next_attempt_at=datetime.now(UTC) + timedelta(hours=1))
     delivered = await in_status(session, "sent", version=1)
     after_delivered = await saved(session, aggregate_id=delivered.aggregate_id, version=2)
 

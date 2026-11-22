@@ -40,7 +40,9 @@ export function PageHeader({ title, description, actions }: Props) {
           {title}
         </Typography>
         {description ? (
-          <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+          // Text is a paragraph. Anything else (a chip, a row of them) may hold a `<div>`, which a
+          // `<p>` cannot contain, so it gets a `<div>` instead.
+          <Typography component={typeof description === 'string' ? 'p' : 'div'} color="text.secondary" sx={{ mt: 0.5 }}>
             {description}
           </Typography>
         ) : null}

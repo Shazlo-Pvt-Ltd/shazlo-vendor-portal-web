@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
 from shazlo_security.keys import (
     KeyConfigError,
@@ -98,6 +98,31 @@ def test_malformed_json_is_rejected_without_echoing_it(settings: KeyRingConfig) 
     assert error.value.__cause__ is None
     assert error.value.__context__ is None
     assert error.value.__suppress_context__ is True
+
+
+@pytest.mark.parametrize(
+    "keys_json",
+    ['["a list"]', '"a string"', '{"test-key-1": 42}', '{"test-key-1": null}', "null"],
+    ids=["list", "string", "number-value", "null-value", "null"],
+)
+def test_keys_json_must_be_an_object_of_pem_strings(
+    settings: KeyRingConfig, keys_json: str
+) -> None:
+    with pytest.raises(KeyConfigError, match="JSON object"):
+        load_keyring(override(settings, keys_json=keys_json))
+
+
+def test_a_key_that_is_not_rsa_is_rejected(settings: KeyRingConfig) -> None:
+    """Only RS256 is issued and verified, so an EC key must fail at startup, not at the first
+    login."""
+    ec_key = ec.generate_private_key(ec.SECP256R1())
+    pem = ec_key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ).decode()
+    with pytest.raises(KeyConfigError, match="not an RSA key"):
+        load_keyring(override(settings, keys_json=json.dumps({"ec-key": pem})))
 
 
 def test_short_keys_are_rejected(settings: KeyRingConfig) -> None:

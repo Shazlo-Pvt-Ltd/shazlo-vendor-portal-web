@@ -112,8 +112,9 @@ class SignupRequest(BaseModel):
     phone: str = Field(pattern=PHONE_PATTERN)
     product_type: str = Field(min_length=1, max_length=100)
     website_or_instagram: str | None = Field(default=None, max_length=300)
-    price_min_paise: int = Field(ge=0, le=MAX_PAISE)
-    price_max_paise: int = Field(ge=0, le=MAX_PAISE)
+    # Strict: a JSON integer only (lax parsing would take `false` as 0 and "999" as 999).
+    price_min_paise: int = Field(ge=0, le=MAX_PAISE, strict=True)
+    price_max_paise: int = Field(ge=0, le=MAX_PAISE, strict=True)
     password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
     terms_accepted: bool
 
