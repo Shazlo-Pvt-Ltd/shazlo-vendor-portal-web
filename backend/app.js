@@ -19,12 +19,28 @@ const BODY_LIMIT = "100kb";
 // routes: any case, with or without a trailing slash.
 const CATALOG_PATH = /^\/api\/upload\/products\/?$/i;
 
+// The admin and catalog-upload routes have no authentication, so they are mounted
+// only when LEGACY_ADMIN_ENABLED=true (local development). Leave it unset on deployed services.
+export function legacyAdminEnabled(env = process.env) {
+  return String(env.LEGACY_ADMIN_ENABLED ?? "").trim().toLowerCase() === "true";
+}
+
+// CORS_ORIGIN is a comma-separated list of allowed origins. Unset (undefined) keeps every origin
+// allowed. Not null: CodeQL treats a null origin as permissive, even behind the check below.
+export function corsOrigins(env = process.env) {
+  const origins = String(env.CORS_ORIGIN ?? "")
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+  return origins.length ? origins : undefined;
+}
+
 /**
  * Builds the HTTP application. Keep HTTP composition separate from database connection and
  * process lifecycle: tests use this same application with a disposable local MongoDB instance.
  *
  * @param {object} [options]
- * @param {object} [options.env] where settings such as TRUST_PROXY are read; defaults to process.env
+ * @param {object} [options.env] where TRUST_PROXY, LEGACY_ADMIN_ENABLED and CORS_ORIGIN are read; defaults to process.env
  * @param {object} [options.rateLimits] per-class `{ windowMs, limit }` overrides (lib/rateLimits.js)
  * @param {boolean|number|string[]} [options.trustProxy] Express `trust proxy`; defaults to env.TRUST_PROXY
  */
@@ -37,15 +53,18 @@ export function createApp({
   // req.ip, which every rate limiter keys on, depends on this (see lib/trustProxy.js).
   app.set("trust proxy", trustProxy);
   app.disable("x-powered-by");
-  app.use(cors());
+  const origins = corsOrigins(env);
+  app.use(cors(origins ? { origin: origins } : undefined));
   // Small bodies everywhere (forms and admin actions), except the catalog upload.
   const formJson = express.json({ limit: BODY_LIMIT });
   app.use((req, res, next) => (CATALOG_PATH.test(req.path) ? next() : formJson(req, res, next)));
   app.use(express.urlencoded({ extended: true, limit: BODY_LIMIT }));
   app.use("/api/waitlist", createWaitlistRouter({ rateLimits }));
   app.use("/api", createBrandRouter({ rateLimits }));
-  app.use("/api/upload", createUploadRouter({ rateLimits }));
-  app.use("/api/admin", createAdminRouter({ rateLimits }));
+  if (legacyAdminEnabled(env)) {
+    app.use("/api/upload", createUploadRouter({ rateLimits }));
+    app.use("/api/admin", createAdminRouter({ rateLimits }));
+  }
 
   app.get("/api/health", (req, res) => {
     res.status(200).json({

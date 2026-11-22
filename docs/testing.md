@@ -211,7 +211,7 @@ active batch when the prior queue is exhausted.
 The real HTTP/MongoDB test also reproduced catalog self-approval: an uploaded
 product with `status: "approved"` and reviewer fields was persisted as approved.
 The upload route now forces `pending` and removes caller-supplied decision fields.
-This closes that input path only; the legacy admin endpoints remain public.
+This closes that input path only; the legacy admin endpoints have no authentication and are mounted only when `LEGACY_ADMIN_ENABLED=true`.
 
 `backend/app.js` separates the existing HTTP composition from `server.js` database
 startup and signal handlers. Routes, response shapes and startup commands are

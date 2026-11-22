@@ -1,6 +1,6 @@
 # Shazlo backend (legacy)
 
-A Node.js/Express backend with MongoDB for the consumer waitlist, brand registration, catalog upload and the old seller approval screens. **It is the legacy service**: the rewrite replaces its vendor and admin parts with `services/vendor-api` and `services/identity-api` and leaves it untouched until Phase 8 of the [roadmap](../docs/ROADMAP.md). It has no authentication: the admin endpoints below are public, but every route that touches the database is rate-limited per client address (see [Rate limits](#rate-limits)).
+A Node.js/Express backend with MongoDB for the consumer waitlist, brand registration, catalog upload and the old seller approval screens. **It is the legacy service**: the rewrite replaces its vendor and admin parts with `services/vendor-api` and `services/identity-api` and leaves it untouched until Phase 8 of the [roadmap](../docs/ROADMAP.md). It has no authentication, so the admin and upload endpoints below are **off by default**: they are mounted only when `LEGACY_ADMIN_ENABLED=true`, which is for local development. On a deployed service leave it unset; those routes then answer `404`. Every route that touches the database is rate-limited per client address (see [Rate limits](#rate-limits)).
 
 ## Prerequisites
 
@@ -15,7 +15,7 @@ A Node.js/Express backend with MongoDB for the consumer waitlist, brand registra
    npm ci
    ```
 
-2. **Environment setup:** copy `.env.example` to `.env` and set `MONGODB_URI` (the connection string with your credentials) and, for image uploads, the three `CLOUDINARY_*` values. `PORT` defaults to 5000. Behind a proxy (Render), also set `TRUST_PROXY` (see [Rate limits](#rate-limits)). `JWT_SECRET` and `CORS_ORIGIN` are in the example file but no code reads them today.
+2. **Environment setup:** copy `.env.example` to `.env` and set `MONGODB_URI` (the connection string with your credentials) and, for image uploads, the three `CLOUDINARY_*` values. `PORT` defaults to 5000. Behind a proxy (Render), also set `TRUST_PROXY` (see [Rate limits](#rate-limits)). The example sets `LEGACY_ADMIN_ENABLED=false`; change it to `true` in your local `.env` only, to mount the unauthenticated `/api/admin` and `/api/upload` routes that the legacy admin screens call at `http://localhost:5000`. `CORS_ORIGIN` is a comma-separated list of allowed origins (for example `https://shazlo.store,https://www.shazlo.store`); unset, every origin is allowed and the server logs a warning, so set it wherever the service is deployed. `JWT_SECRET` is in the example file but no code reads it.
 
 3. **Database setup:** none. Mongoose creates the collections on first use. With Atlas, allow your IP address in Network Access.
 
@@ -37,9 +37,9 @@ Mounted in `app.js`:
 | `GET /api/health` | Health check |
 | `POST /api/waitlist/add` | Add `{ name, email, gender, city }` to the waitlist; a repeated email answers `200` with `alreadyAdded: true` |
 | `POST /api/register-brand` | Register a brand |
-| `POST /api/upload/images` | Upload images (multipart field `images`) to Cloudinary and return their URLs |
-| `POST /api/upload/products` | Save `{ products, sellerId }`; every product is stored as `pending` |
-| `GET /api/admin/sellers` | List sellers |
+| `POST /api/upload/images` (only with `LEGACY_ADMIN_ENABLED=true`) | Upload images (multipart field `images`) to Cloudinary and return their URLs |
+| `POST /api/upload/products` (only with `LEGACY_ADMIN_ENABLED=true`) | Save `{ products, sellerId }`; every product is stored as `pending` |
+| `GET /api/admin/sellers` (all `/api/admin` routes: only with `LEGACY_ADMIN_ENABLED=true`) | List sellers |
 | `GET /api/admin/products`, `GET /api/admin/products/:sellerId` | List products, or one seller's |
 | `PUT /api/admin/products/:productId/approve`, `PUT /api/admin/products/:productId/reject` | Approve or reject a product |
 
@@ -54,8 +54,8 @@ Each client address gets a budget per 15 minutes (`lib/rateLimits.js`):
 | Public forms | `POST /api/waitlist/add` and `POST /api/register-brand`, each on its own | 50 |
 | Pre-registration (not mounted) | `register` | 5 |
 | Lookups | pre-registration `confirm`, `check` and `stats` (not mounted) | 60 |
-| Uploads | `POST /api/upload/images` and `POST /api/upload/products`, together | 30 |
-| Admin | every `/api/admin` route, together | 300 |
+| Uploads (only with `LEGACY_ADMIN_ENABLED=true`) | `POST /api/upload/images` and `POST /api/upload/products`, together | 30 |
+| Admin (only with `LEGACY_ADMIN_ENABLED=true`) | every `/api/admin` route, together | 300 |
 
 Over the budget, a route answers `429` with `{ "message": "Too many requests, please try again later." }` and the `RateLimit` and `RateLimit-Policy` headers. `GET /api/health` and unknown routes are not limited: they do not touch the database. IPv6 clients are counted per /56, so one client cannot rotate through its own addresses. The counts live in the process's memory: a restart resets them, and running more than one instance would need a shared store.
 
@@ -96,6 +96,8 @@ If network B is also limited, `TRUST_PROXY` is too low (every visitor shares one
 PORT=5000
 MONGODB_URI=your_mongodb_connection_string
 TRUST_PROXY=
+CORS_ORIGIN=
+LEGACY_ADMIN_ENABLED=
 CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
@@ -112,4 +114,4 @@ The integration suite starts its own disposable MongoDB process (it downloads th
 
 ## Deployment
 
-There is no Dockerfile or deployment configuration for this service in the repository. It enables CORS for every origin and has no authentication, so it is not production-ready as it stands. Its rate limits need `TRUST_PROXY` set wherever it runs behind a proxy.
+There is no Dockerfile or deployment configuration for this service in the repository. It has no authentication: keep `LEGACY_ADMIN_ENABLED` unset, set `CORS_ORIGIN` to the site's origins and `TRUST_PROXY` wherever it runs behind a proxy (its rate limits need it), and it is still not production-ready as it stands.

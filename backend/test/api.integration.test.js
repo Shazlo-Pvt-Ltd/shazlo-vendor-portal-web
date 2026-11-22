@@ -7,12 +7,14 @@ import { gzipSync } from 'node:zlib'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Writable } from 'node:stream'
+import { readFileSync } from 'node:fs'
+import dotenv from 'dotenv'
 import mongoose from 'mongoose'
 import { MongoMemoryServer } from 'mongodb-memory-server-core'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { v2 as cloudinary } from 'cloudinary'
 import express from 'express'
-import { createApp } from '../app.js'
+import { corsOrigins, createApp, legacyAdminEnabled } from '../app.js'
 import { createPreRegisterRouter } from '../routes/preRegister.js'
 import Brand from '../models/Brand.js'
 import Product from '../models/Product.js'
@@ -22,12 +24,18 @@ import PreRegister from '../models/PreRegister.js'
 let mongo
 let server
 let baseUrl
+let legacyServer
+let legacyUrl
 
 // Every route class with the same budget. The shared server below makes far more requests from
 // 127.0.0.1 than any production budget allows; the rate limiting suite builds its own
 // applications with tiny budgets.
 const budgets = (limit) => ({ publicSubmit: { limit }, preRegistration: { limit }, lookup: { limit }, upload: { limit }, admin: { limit } })
+// The admin and upload routes have no authentication and are mounted only with
+// LEGACY_ADMIN_ENABLED=true (#264): `app` is the default composition, `legacyApp` mounts them.
+const LEGACY = { LEGACY_ADMIN_ENABLED: 'true' }
 const app = createApp({ rateLimits: budgets(100_000) })
+const legacyApp = createApp({ env: LEGACY, rateLimits: budgets(100_000) })
 
 async function listen(application) {
   const instance = application.listen(0, '127.0.0.1')
@@ -74,6 +82,9 @@ async function request(path, { method = 'GET', body, raw, headers = {}, base = b
 }
 const json = (response) => JSON.parse(response.text)
 const post = (path, body, options = {}) => request(path, { method: 'POST', body, ...options })
+// The admin and upload routes, on the application that mounts them.
+const legacyRequest = (path, options) => request(path, { ...options, base: legacyUrl })
+const legacyPost = (path, body) => legacyRequest(path, { method: 'POST', body })
 // Multipart image upload: each file is [contents, name, declared type].
 const imageForm = (files) => {
   const form = new FormData()
@@ -95,6 +106,9 @@ beforeAll(async () => {
   server = app.listen(0, '127.0.0.1')
   await once(server, 'listening')
   baseUrl = `http://127.0.0.1:${server.address().port}`
+  legacyServer = legacyApp.listen(0, '127.0.0.1')
+  await once(legacyServer, 'listening')
+  legacyUrl = `http://127.0.0.1:${legacyServer.address().port}`
 })
 
 beforeEach(async () => {
@@ -107,7 +121,9 @@ beforeEach(async () => {
 
 afterEach(() => vi.restoreAllMocks())
 afterAll(async () => {
-  if (server) await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
+  for (const s of [server, legacyServer]) {
+    if (s) await new Promise((resolve, reject) => s.close((error) => error ? reject(error) : resolve()))
+  }
   await mongoose.disconnect()
   if (mongo) await mongo.stop()
 })
@@ -125,7 +141,7 @@ describe('production HTTP application', () => {
       await import('./server.js');
     `], {
       cwd: fileURLToPath(new URL('../', import.meta.url)),
-      env: { ...process.env, MONGODB_URI: mongo.getUri('bootstrap_tests'), PORT: '0', TRUST_PROXY: '' },
+      env: { ...process.env, MONGODB_URI: mongo.getUri('bootstrap_tests'), PORT: '0', TRUST_PROXY: '', LEGACY_ADMIN_ENABLED: '' },
       stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
     })
     try {
@@ -133,10 +149,9 @@ describe('production HTTP application', () => {
       const response = await fetch(`http://127.0.0.1:${address.port}/api/health`, { signal: AbortSignal.timeout(5000) })
       expect(response.status).toBe(200)
       expect(await response.json()).toMatchObject({ status: 'OK' })
-      // The production composition applies the default budgets (300 admin requests per 900 s).
+      // The production composition leaves the unauthenticated admin routes off (#264).
       const admin = await fetch(`http://127.0.0.1:${address.port}/api/admin/sellers`, { signal: AbortSignal.timeout(5000) })
-      expect(admin.status).toBe(200)
-      expect(admin.headers.get('ratelimit-policy')).toMatch(/q=300;\s*w=900/)
+      expect(admin.status).toBe(404)
       expect(admin.headers.get('x-powered-by')).toBeNull()
       // Public forms allow 50 per 15 minutes, so a campus or office network sharing one address
       // is not locked out of the waitlist after a handful of sign-ups.
@@ -249,32 +264,32 @@ describe('request size limits', () => {
     const products = Array.from({ length: 300 }, (_, i) => productInput({ productId: `KS-${i}`, description: 'd'.repeat(500) }))
     const body = { sellerId: seller.id, products }
     expect(JSON.stringify(body).length).toBeGreaterThan(100 * 1024)
-    const response = await post('/api/upload/products', body)
+    const response = await legacyPost('/api/upload/products', body)
     expect(response.status).toBe(200)
     expect(await Product.countDocuments()).toBe(300)
   })
 
   it.each(['image/jpeg', 'image/heic'])('accepts a %s photo', async (type) => {
     cloudinaryAnswers({ url: 'https://images.example.test/photo' })
-    const response = await fetch(`${baseUrl}/api/upload/images`, { method: 'POST', body: imageForm([['photo', 'photo', type]]) })
+    const response = await fetch(`${legacyUrl}/api/upload/images`, { method: 'POST', body: imageForm([['photo', 'photo', type]]) })
     expect(response.status).toBe(200)
   })
 
   it.each(['application/octet-stream', ''])('accepts an iPhone photo named .heic that the browser sends as %j', async (type) => {
     cloudinaryAnswers({ url: 'https://images.example.test/photo' })
-    const response = await fetch(`${baseUrl}/api/upload/images`, { method: 'POST', body: imageForm([['photo', 'IMG_0001.HEIC', type]]) })
+    const response = await fetch(`${legacyUrl}/api/upload/images`, { method: 'POST', body: imageForm([['photo', 'IMG_0001.HEIC', type]]) })
     expect(response.status).toBe(200)
   })
 
   it('still refuses an unnamed binary that is not a .heic or .heif file', async () => {
-    const response = await fetch(`${baseUrl}/api/upload/images`, {
+    const response = await fetch(`${legacyUrl}/api/upload/images`, {
       method: 'POST', body: imageForm([['MZ', 'setup.exe', 'application/octet-stream']]),
     })
     expect(response.status).toBe(415)
   })
 
   it('refuses an SVG, which can carry script', async () => {
-    const response = await fetch(`${baseUrl}/api/upload/images`, {
+    const response = await fetch(`${legacyUrl}/api/upload/images`, {
       method: 'POST', body: imageForm([['<svg onload="alert(1)"/>', 'logo.svg', 'image/svg+xml']]),
     })
     expect(response.status).toBe(415)
@@ -282,7 +297,7 @@ describe('request size limits', () => {
 
   it('rejects a file that does not declare an allowed image type', async () => {
     const upload = vi.spyOn(cloudinary.uploader, 'upload_stream')
-    const response = await fetch(`${baseUrl}/api/upload/images`, {
+    const response = await fetch(`${legacyUrl}/api/upload/images`, {
       method: 'POST', body: imageForm([['<script>', 'page.html', 'text/html']]),
     })
     expect(response.status).toBe(415)
@@ -292,7 +307,7 @@ describe('request size limits', () => {
 
   it('rejects an image over 5 MB', async () => {
     const upload = vi.spyOn(cloudinary.uploader, 'upload_stream')
-    const response = await fetch(`${baseUrl}/api/upload/images`, {
+    const response = await fetch(`${legacyUrl}/api/upload/images`, {
       method: 'POST', body: imageForm([[new Uint8Array(5 * 1024 * 1024 + 1), 'large.png']]),
     })
     expect(response.status).toBe(413)
@@ -303,7 +318,7 @@ describe('request size limits', () => {
   it('rejects more than 20 images in one request', async () => {
     const upload = vi.spyOn(cloudinary.uploader, 'upload_stream')
     const files = Array.from({ length: 21 }, (_, i) => [`image ${i}`, `${i}.png`])
-    const response = await fetch(`${baseUrl}/api/upload/images`, { method: 'POST', body: imageForm(files) })
+    const response = await fetch(`${legacyUrl}/api/upload/images`, { method: 'POST', body: imageForm(files) })
     expect(response.status).toBe(413)
     expect(await response.json()).toEqual({ message: 'At most 20 images per request' })
     expect(upload).not.toHaveBeenCalled()
@@ -316,7 +331,7 @@ describe('request size limits', () => {
     const upload = vi.spyOn(cloudinary.uploader, 'upload_stream')
     const form = imageForm([['image', 'image.png']])
     for (const [name, value] of fields) form.append(name, value)
-    const response = await fetch(`${baseUrl}/api/upload/images`, { method: 'POST', body: form })
+    const response = await fetch(`${legacyUrl}/api/upload/images`, { method: 'POST', body: form })
     expect(response.status).toBe(413)
     expect(upload).not.toHaveBeenCalled()
   })
@@ -324,7 +339,7 @@ describe('request size limits', () => {
   it('answers a truncated multipart body with 400, not 500', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const upload = vi.spyOn(cloudinary.uploader, 'upload_stream')
-    const response = await request('/api/upload/images', {
+    const response = await legacyRequest('/api/upload/images', {
       method: 'POST',
       headers: { 'Content-Type': 'multipart/form-data; boundary=edge' },
       raw: '--edge\r\nContent-Disposition: form-data; name="images"; filename="a.png"\r\nContent-Type: image/png\r\n\r\nabc',
@@ -337,7 +352,7 @@ describe('request size limits', () => {
   it('rejects files sent under another field name', async () => {
     const form = new FormData()
     form.append('other', new Blob(['image'], { type: 'image/png' }), 'image.png')
-    const response = await fetch(`${baseUrl}/api/upload/images`, { method: 'POST', body: form })
+    const response = await fetch(`${legacyUrl}/api/upload/images`, { method: 'POST', body: form })
     expect(response.status).toBe(400)
     expect(await response.json()).toEqual({ message: 'Invalid upload: send images in the multipart field "images"' })
   })
@@ -350,7 +365,7 @@ describe('request size limits', () => {
     [{ sellerId: '507f1f77bcf86cd799439011', products: [null] }, 'Products must be a list of 1 to 1000 objects'],
     [{ sellerId: '507f1f77bcf86cd799439011', products: [] }, 'Products must be a list of 1 to 1000 objects'],
   ])('rejects the catalog upload %j', async (body, message) => {
-    const response = await post('/api/upload/products', body)
+    const response = await legacyPost('/api/upload/products', body)
     expect(response.status).toBe(400)
     expect(json(response)).toEqual({ message })
     expect(await Product.countDocuments()).toBe(0)
@@ -359,7 +374,7 @@ describe('request size limits', () => {
   it('rejects a catalog of more than 1000 products', async () => {
     const seller = await Brand.create(brandInput())
     const products = Array.from({ length: 1001 }, (_, i) => ({ productId: `KS-${i}` }))
-    const response = await post('/api/upload/products', { sellerId: seller.id, products })
+    const response = await legacyPost('/api/upload/products', { sellerId: seller.id, products })
     expect(response.status).toBe(400)
     expect(await Product.countDocuments()).toBe(0)
   })
@@ -435,16 +450,16 @@ describe('brand registration', () => {
   })
 })
 
-describe('catalog upload and moderation persistence (legacy routes have no authentication)', () => {
+describe('catalog upload and moderation persistence (routes mounted with LEGACY_ADMIN_ENABLED=true)', () => {
   it.each([{ products: [] }, { sellerId: '507f1f77bcf86cd799439011' }])('rejects an incomplete upload without creating products', async (body) => {
-    const response = await post('/api/upload/products', body)
+    const response = await legacyPost('/api/upload/products', body)
     expect(response.status).toBe(400)
     expect(await Product.countDocuments()).toBe(0)
   })
 
   it('assigns the requested seller to each product and defaults to pending', async () => {
     const seller = await Brand.create(brandInput())
-    const response = await post('/api/upload/products', {
+    const response = await legacyPost('/api/upload/products', {
       sellerId: seller.id, products: [productInput({ sellerId: new mongoose.Types.ObjectId() }), productInput({ productId: 'KS-002' })],
     })
     expect(response.status).toBe(200)
@@ -455,7 +470,7 @@ describe('catalog upload and moderation persistence (legacy routes have no authe
 
   it('cannot bypass moderation by uploading approval fields in the catalog', async () => {
     const seller = await Brand.create(brandInput())
-    const response = await post('/api/upload/products', {
+    const response = await legacyPost('/api/upload/products', {
       sellerId: seller.id,
       products: [productInput({ status: 'approved', approvedBy: seller.id, approvedAt: '2020-01-01T00:00:00Z' })],
     })
@@ -469,7 +484,7 @@ describe('catalog upload and moderation persistence (legacy routes have no authe
   it('keeps a validation failure from inserting any products in the batch', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const seller = await Brand.create(brandInput())
-    const response = await post('/api/upload/products', {
+    const response = await legacyPost('/api/upload/products', {
       sellerId: seller.id, products: [productInput(), productInput({ name: undefined })],
     })
     expect(response.status).toBe(500)
@@ -480,7 +495,7 @@ describe('catalog upload and moderation persistence (legacy routes have no authe
     const seller = await Brand.create(brandInput())
     const other = await Brand.create({ ...brandInput(), email: 'other@example.test' })
     await Product.create([productInput({ sellerId: seller.id }), productInput({ sellerId: other.id, productId: 'OTHER' })])
-    const response = await request(`/api/admin/products/${seller.id}`)
+    const response = await legacyRequest(`/api/admin/products/${seller.id}`)
     expect(response.status).toBe(200)
     expect(json(response).products).toHaveLength(1)
     expect(json(response).products[0]).toMatchObject({ productId: 'KS-001', sellerId: { _id: seller.id, email: 'kiran@example.test' } })
@@ -489,8 +504,8 @@ describe('catalog upload and moderation persistence (legacy routes have no authe
   it('lists registered sellers and the complete product catalog', async () => {
     const seller = await Brand.create(brandInput())
     await Product.create(productInput({ sellerId: seller.id }))
-    expect(json(await request('/api/admin/sellers')).sellers).toHaveLength(1)
-    expect(json(await request('/api/admin/products')).products).toHaveLength(1)
+    expect(json(await legacyRequest('/api/admin/sellers')).sellers).toHaveLength(1)
+    expect(json(await legacyRequest('/api/admin/products')).products).toHaveLength(1)
   })
 
   it('persists approval status, reviewer and decision time, then rejection', async () => {
@@ -498,20 +513,20 @@ describe('catalog upload and moderation persistence (legacy routes have no authe
     const reviewer = new mongoose.Types.ObjectId()
     const product = await Product.create(productInput({ sellerId: seller.id }))
     const earliest = Date.now()
-    const response = await request(`/api/admin/products/${product.id}/approve`, { method: 'PUT', body: { adminId: reviewer.toString() } })
+    const response = await legacyRequest(`/api/admin/products/${product.id}/approve`, { method: 'PUT', body: { adminId: reviewer.toString() } })
     expect(response.status).toBe(200)
     const approved = await Product.findById(product.id).lean()
     expect(approved.status).toBe('approved')
     expect(String(approved.approvedBy)).toBe(reviewer.toString())
     expect(approved.approvedAt.getTime()).toBeGreaterThanOrEqual(earliest)
     expect(approved.approvedAt.getTime()).toBeLessThanOrEqual(Date.now())
-    const rejection = await request(`/api/admin/products/${product.id}/reject`, { method: 'PUT' })
+    const rejection = await legacyRequest(`/api/admin/products/${product.id}/reject`, { method: 'PUT' })
     expect(rejection.status).toBe(200)
     expect((await Product.findById(product.id).lean()).status).toBe('rejected')
   })
 
   it.each(['approve', 'reject'])('returns 404 for %s of a missing product without creating one', async (action) => {
-    const response = await request(`/api/admin/products/${new mongoose.Types.ObjectId()}/${action}`, { method: 'PUT', body: {} })
+    const response = await legacyRequest(`/api/admin/products/${new mongoose.Types.ObjectId()}/${action}`, { method: 'PUT', body: {} })
     expect(response.status).toBe(404)
     expect(json(response)).toEqual({ message: 'Product not found' })
     expect(await Product.countDocuments()).toBe(0)
@@ -519,7 +534,7 @@ describe('catalog upload and moderation persistence (legacy routes have no authe
 
   it('rejects a missing image before contacting Cloudinary', async () => {
     const upload = vi.spyOn(cloudinary.uploader, 'upload_stream')
-    const response = await post('/api/upload/images', {})
+    const response = await legacyPost('/api/upload/images', {})
     expect(response.status).toBe(400)
     expect(upload).not.toHaveBeenCalled()
   })
@@ -535,7 +550,7 @@ describe('catalog upload and moderation persistence (legacy routes have no authe
     const form = new FormData()
     form.append('images', new Blob(['first'], { type: 'image/png' }), 'first.png')
     form.append('images', new Blob(['second'], { type: 'image/png' }), 'second.png')
-    const response = await fetch(`${baseUrl}/api/upload/images`, { method: 'POST', body: form })
+    const response = await fetch(`${legacyUrl}/api/upload/images`, { method: 'POST', body: form })
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ urls: ['https://images.example.test/first', 'https://images.example.test/second'] })
     expect(bytes).toEqual(['first', 'second'])
@@ -548,7 +563,7 @@ describe('catalog upload and moderation persistence (legacy routes have no authe
     }))
     const form = new FormData()
     form.append('images', new Blob(['image'], { type: 'image/png' }), 'image.png')
-    const response = await fetch(`${baseUrl}/api/upload/images`, { method: 'POST', body: form })
+    const response = await fetch(`${legacyUrl}/api/upload/images`, { method: 'POST', body: form })
     expect(response.status).toBe(500)
     expect(await response.json()).toMatchObject({ message: 'Upload failed' })
   })
@@ -558,8 +573,8 @@ describe('requests without a body (Express 5 leaves req.body undefined)', () => 
   // fetch always sends Content-Length: 0, which body-parser parses to {}. A request with neither
   // Content-Length nor Transfer-Encoding (curl -X POST, for one) is the case that reaches the handler
   // with req.body undefined, so write it by hand.
-  async function bodiless(method, path) {
-    const { port } = new URL(baseUrl)
+  async function bodiless(method, path, base = baseUrl) {
+    const { port } = new URL(base)
     const socket = net.connect(Number(port), '127.0.0.1')
     let raw = ''
     socket.setEncoding('utf8').on('data', (chunk) => { raw += chunk })
@@ -582,7 +597,7 @@ describe('requests without a body (Express 5 leaves req.body undefined)', () => 
   it('approves a product when the optional approver is left out', async () => {
     const seller = await Brand.create(brandInput())
     const product = await Product.create(productInput({ sellerId: seller.id }))
-    const response = await bodiless('PUT', `/api/admin/products/${product.id}/approve`)
+    const response = await bodiless('PUT', `/api/admin/products/${product.id}/approve`, legacyUrl)
     expect(response.status).toBe(200)
     expect((await Product.findById(product.id).lean()).status).toBe('approved')
   })
@@ -628,7 +643,7 @@ describe('NoSQL injection (CodeQL js/sql-injection)', () => {
   it.each([...operators, 'admin123', ['507f1f77bcf86cd799439011']])('rejects the approver id %j and leaves the product pending', async (adminId) => {
     const seller = await Brand.create(brandInput())
     const product = await Product.create(productInput({ sellerId: seller.id }))
-    const response = await request(`/api/admin/products/${product.id}/approve`, { method: 'PUT', body: { adminId } })
+    const response = await legacyRequest(`/api/admin/products/${product.id}/approve`, { method: 'PUT', body: { adminId } })
     expect(response.status).toBe(400)
     expect(json(response)).toEqual({ message: 'Invalid admin id' })
     expect(await Product.findById(product.id).lean()).toMatchObject({ status: 'pending' })
@@ -640,7 +655,7 @@ describe('NoSQL injection (CodeQL js/sql-injection)', () => {
     ['GET', '/api/admin/products/not-an-id', 'Invalid seller id'],
     ['GET', '/api/admin/products/aaaaaaaaaaaa', 'Invalid seller id'],
   ])('answers %s %s with 400 instead of a cast failure', async (method, path, message) => {
-    const response = await request(path, { method, body: method === 'PUT' ? {} : undefined })
+    const response = await legacyRequest(path, { method, body: method === 'PUT' ? {} : undefined })
     expect(response.status).toBe(400)
     expect(json(response)).toEqual({ message })
   })
@@ -671,7 +686,7 @@ describe('NoSQL injection (CodeQL js/sql-injection)', () => {
     // Population still works, because Mongoose marks the $in filters it builds itself as trusted.
     const seller = await Brand.create(brandInput())
     await Product.create(productInput({ sellerId: seller.id }))
-    const response = await request('/api/admin/products')
+    const response = await legacyRequest('/api/admin/products')
     expect(json(response).products[0].sellerId.email).toBe('kiran@example.test')
   })
 
@@ -692,7 +707,7 @@ describe('NoSQL injection (CodeQL js/sql-injection)', () => {
 })
 
 describe('rate limiting (CodeQL js/missing-rate-limiting)', () => {
-  const limited = () => createApp({ rateLimits: budgets(2) })
+  const limited = () => createApp({ env: LEGACY, rateLimits: budgets(2) })
   const expectLimited = (response, limit = 2) => {
     expect(response.status).toBe(429)
     expect(json(response)).toEqual({ message: 'Too many requests, please try again later.' })
@@ -754,7 +769,7 @@ describe('rate limiting (CodeQL js/missing-rate-limiting)', () => {
   })
 
   it('keys budgets on the client address the trusted proxy reports', async () => {
-    await withServer(createApp({ rateLimits: budgets(1), trustProxy: 1 }), async (base) => {
+    await withServer(createApp({ env: LEGACY, rateLimits: budgets(1), trustProxy: 1 }), async (base) => {
       const from = forwardedFrom(base)
       expect((await from('203.0.113.1')).status).toBe(200)
       expect((await from('203.0.113.1')).status).toBe(429)
@@ -765,7 +780,7 @@ describe('rate limiting (CodeQL js/missing-rate-limiting)', () => {
   it('ignores X-Forwarded-For when no proxy is trusted, so a client cannot pick a fresh budget', async () => {
     // express-rate-limit reports the unexpected header once through console.error.
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    await withServer(createApp({ rateLimits: budgets(1), trustProxy: false }), async (base) => {
+    await withServer(createApp({ env: LEGACY, rateLimits: budgets(1), trustProxy: false }), async (base) => {
       const from = forwardedFrom(base)
       expect((await from('203.0.113.1')).status).toBe(200)
       expect((await from('203.0.113.2')).status).toBe(429)
@@ -773,7 +788,7 @@ describe('rate limiting (CodeQL js/missing-rate-limiting)', () => {
   })
 
   it('reads TRUST_PROXY from the environment it is given', async () => {
-    await withServer(createApp({ rateLimits: budgets(1), env: { TRUST_PROXY: '1' } }), async (base) => {
+    await withServer(createApp({ rateLimits: budgets(1), env: { ...LEGACY, TRUST_PROXY: '1' } }), async (base) => {
       const from = forwardedFrom(base)
       expect((await from('203.0.113.1')).status).toBe(200)
       expect((await from('203.0.113.2')).status).toBe(200)
@@ -781,7 +796,7 @@ describe('rate limiting (CodeQL js/missing-rate-limiting)', () => {
   })
 
   it('gives one budget to an IPv6 /56, so a client cannot rotate through its own addresses', async () => {
-    await withServer(createApp({ rateLimits: budgets(1), trustProxy: 1 }), async (base) => {
+    await withServer(createApp({ env: LEGACY, rateLimits: budgets(1), trustProxy: 1 }), async (base) => {
       const from = forwardedFrom(base)
       expect((await from('2001:db8:0:1::1')).status).toBe(200)
       expect((await from('2001:db8:0:1:ffff::2')).status).toBe(429)
@@ -791,7 +806,7 @@ describe('rate limiting (CodeQL js/missing-rate-limiting)', () => {
 
   it('refuses an over-budget catalog upload before reading its body', async () => {
     const seller = await Brand.create(brandInput())
-    await withServer(createApp({ rateLimits: budgets(1) }), async (base) => {
+    await withServer(createApp({ env: LEGACY, rateLimits: budgets(1) }), async (base) => {
       expect((await post('/api/upload/products', { sellerId: seller.id, products: [productInput()] }, { base })).status).toBe(200)
       // A parser running first would answer this malformed body with 400; the limiter answers first.
       const response = await request('/api/upload/products', { method: 'POST', raw: `{${'x'.repeat(1024 * 1024)}`, base })
@@ -814,6 +829,17 @@ describe('rate limiting (CodeQL js/missing-rate-limiting)', () => {
       for (let i = 0; i < 5; i += 1) expect((await request('/api/health', { base })).status).toBe(200)
     })
   })
+
+  it('gives the legacy admin and upload routes their default budgets when they are mounted', async () => {
+    await withServer(createApp({ env: LEGACY }), async (base) => {
+      const admin = await request('/api/admin/sellers', { base })
+      expect(admin.status).toBe(200)
+      expect(admin.headers.get('ratelimit-policy')).toMatch(/q=300;\s*w=900/)
+      const upload = await post('/api/upload/products', {}, { base })
+      expect(upload.status).toBe(400)
+      expect(upload.headers.get('ratelimit-policy')).toMatch(/q=30;\s*w=900/)
+    })
+  })
 })
 
 describe('responses do not leak internals', () => {
@@ -831,7 +857,7 @@ describe('responses do not leak internals', () => {
   ])('answers a failed %s %s with a fixed message', async (method, path, model, operation, message) => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(model, operation).mockImplementation(() => { throw new Error('private connection details') })
-    const response = await request(path, { method, body: method === 'PUT' ? {} : undefined })
+    const response = await legacyRequest(path, { method, body: method === 'PUT' ? {} : undefined })
     expect(response.status).toBe(500)
     expect(json(response)).toEqual({ message })
   })
@@ -839,7 +865,7 @@ describe('responses do not leak internals', () => {
   it('answers a failed catalog save without the validation details', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const seller = await Brand.create(brandInput())
-    const response = await post('/api/upload/products', { sellerId: seller.id, products: [productInput({ price: 'free' })] })
+    const response = await legacyPost('/api/upload/products', { sellerId: seller.id, products: [productInput({ price: 'free' })] })
     expect(response.status).toBe(500)
     expect(json(response)).toEqual({ message: 'Failed to save products' })
   })
@@ -847,7 +873,7 @@ describe('responses do not leak internals', () => {
   it('answers a provider failure without the provider message', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     cloudinaryAnswers({ error: new Error('api_secret mismatch for key 1234') })
-    const response = await fetch(`${baseUrl}/api/upload/images`, { method: 'POST', body: imageForm([['image', 'image.png']]) })
+    const response = await fetch(`${legacyUrl}/api/upload/images`, { method: 'POST', body: imageForm([['image', 'image.png']]) })
     expect(response.status).toBe(500)
     expect(await response.json()).toEqual({ message: 'Upload failed' })
   })
@@ -865,7 +891,7 @@ describe('attempts to get around the limits', () => {
   })
 
   it('does not give a fresh budget to a client that prepends addresses to X-Forwarded-For', async () => {
-    await withServer(createApp({ rateLimits: budgets(1), trustProxy: 1 }), async (base) => {
+    await withServer(createApp({ env: LEGACY, rateLimits: budgets(1), trustProxy: 1 }), async (base) => {
       const from = forwardedFrom(base)
       expect((await from('198.51.100.7')).status).toBe(200)
       expect((await from('203.0.113.9, 198.51.100.7')).status).toBe(429)
@@ -877,7 +903,7 @@ describe('attempts to get around the limits', () => {
     'parses a catalog larger than the form limit at %s, as Express routes it', async (path) => {
       const seller = await Brand.create(brandInput())
       const products = Array.from({ length: 200 }, (_, i) => productInput({ productId: `KS-${i}`, description: 'd'.repeat(1000) }))
-      const response = await post(path, { sellerId: seller.id, products })
+      const response = await legacyPost(path, { sellerId: seller.id, products })
       expect(response.status).toBe(200)
       expect(await Product.countDocuments()).toBe(200)
     })
@@ -885,8 +911,77 @@ describe('attempts to get around the limits', () => {
   it.each(['/api/waitlist/add', '/api/upload/products'])('cuts off a gzip bomb at %s once it inflates past the limit', async (path) => {
     const bomb = gzipSync(Buffer.from(JSON.stringify({ name: 'a'.repeat(20 * 1024 * 1024) })))
     expect(bomb.length).toBeLessThan(100 * 1024)
-    const response = await request(path, { method: 'POST', raw: bomb, headers: { 'Content-Encoding': 'gzip' } })
+    const response = await legacyRequest(path, { method: 'POST', raw: bomb, headers: { 'Content-Encoding': 'gzip' } })
     expect(response.status).toBe(413)
     expect(json(response)).toEqual({ message: 'request entity too large' })
+  })
+})
+
+describe('unauthenticated legacy routes are off by default (#264)', () => {
+  it.each([
+    ['GET', '/api/admin/sellers'],
+    ['GET', '/api/admin/products'],
+    ['GET', '/api/admin/products/507f1f77bcf86cd799439011'],
+    ['PUT', '/api/admin/products/507f1f77bcf86cd799439011/approve'],
+    ['PUT', '/api/admin/products/507f1f77bcf86cd799439011/reject'],
+    ['POST', '/api/upload/products'],
+    ['POST', '/api/upload/images'],
+  ])('%s %s answers 404 and never touches data or Cloudinary', async (method, path) => {
+    const seller = await Brand.create(brandInput())
+    await Product.create(productInput({ sellerId: seller.id }))
+    const upload = vi.spyOn(cloudinary.uploader, 'upload_stream')
+    const response = await request(path, { method, body: method === 'GET' ? undefined : {} })
+    expect(response.status).toBe(404)
+    expect(json(response)).toEqual({ message: 'Route not found' })
+    expect(response.text).not.toContain('kiran@example.test')
+    expect(upload).not.toHaveBeenCalled()
+    expect((await Product.findOne().lean()).status).not.toBe('approved')
+    expect(await Product.countDocuments()).toBe(1)
+  })
+
+  it.each([undefined, '', 'false', '1', 'yes'])('stays off when LEGACY_ADMIN_ENABLED is %j', (value) => {
+    expect(legacyAdminEnabled({ LEGACY_ADMIN_ENABLED: value })).toBe(false)
+  })
+
+  it.each(['true', ' TRUE '])('turns on only for an explicit true (%j)', (value) => {
+    expect(legacyAdminEnabled({ LEGACY_ADMIN_ENABLED: value })).toBe(true)
+  })
+
+  it('stays off in a .env copied from .env.example, as the README setup says to do', () => {
+    const example = dotenv.parse(readFileSync(fileURLToPath(new URL('../.env.example', import.meta.url))))
+    expect(Object.keys(example)).toContain('LEGACY_ADMIN_ENABLED')
+    expect(legacyAdminEnabled(example)).toBe(false)
+  })
+})
+
+describe('CORS allow-list (#264)', () => {
+  const origin = async (env, requestOrigin) => {
+    const instance = createApp({ env }).listen(0, '127.0.0.1')
+    await once(instance, 'listening')
+    try {
+      const response = await fetch(`http://127.0.0.1:${instance.address().port}/api/health`, { headers: { Origin: requestOrigin } })
+      return response.headers.get('access-control-allow-origin')
+    } finally {
+      await new Promise((resolve) => instance.close(resolve))
+    }
+  }
+
+  it('allows only the configured origins, ignoring spaces and trailing slashes', async () => {
+    const env = { CORS_ORIGIN: 'https://shazlo.store/, https://www.shazlo.store' }
+    expect(await origin(env, 'https://shazlo.store')).toBe('https://shazlo.store')
+    expect(await origin(env, 'https://www.shazlo.store')).toBe('https://www.shazlo.store')
+    expect(await origin(env, 'https://evil.example')).toBeNull()
+  })
+
+  it('parses the list and treats an empty value as unset', () => {
+    expect(corsOrigins({ CORS_ORIGIN: 'https://a.test, https://b.test/' })).toEqual(['https://a.test', 'https://b.test'])
+    // undefined, not null: CodeQL reads a null origin as permissive (js/cors-permissive-configuration).
+    expect(corsOrigins({ CORS_ORIGIN: ' ' })).toBeUndefined()
+    expect(corsOrigins({ CORS_ORIGIN: ',' })).toBeUndefined()
+    expect(corsOrigins({})).toBeUndefined()
+  })
+
+  it.each([{}, { CORS_ORIGIN: '' }, { CORS_ORIGIN: ' , ' }])('allows every origin while CORS_ORIGIN is unset (%j)', async (env) => {
+    expect(await origin(env, 'https://anything.example')).toBe('*')
   })
 })

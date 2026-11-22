@@ -1,7 +1,8 @@
-// Load .env before app.js is evaluated: it reads TRUST_PROXY when the module loads.
+// Load .env before app.js is evaluated: it builds the application when the module loads, reading
+// TRUST_PROXY, LEGACY_ADMIN_ENABLED and CORS_ORIGIN.
 import "dotenv/config";
 import mongoose from "mongoose";
-import app from "./app.js";
+import app, { legacyAdminEnabled, corsOrigins } from "./app.js";
 
 const PORT = process.env.PORT || 5000;
 
@@ -21,6 +22,8 @@ mongoose
   .connect(process.env.MONGODB_URI)
   .then(() => {
     console.log("Connected to MongoDB");
+    if (legacyAdminEnabled()) console.warn("LEGACY_ADMIN_ENABLED is on: unauthenticated /api/admin and /api/upload are mounted.");
+    if (!corsOrigins()) console.warn("CORS_ORIGIN is not set: every origin is allowed.");
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });
