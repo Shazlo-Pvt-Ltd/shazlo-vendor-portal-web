@@ -84,15 +84,16 @@ jobs:
           git rev-parse HEAD > reports/source-sha.txt
           python --version > reports/python-version.txt
       # Coverage of the project's own package, lines and branches together, with a floor that only a
-      # large drop breaks: a few points under what the tests reach without a database (see
-      # docs/testing.md), and CI runs the database tests too. The report goes in the artifact.
+      # large drop breaks: a few points under what this job measures, with its database (see
+      # docs/testing.md). The two services' floors sit above what they reach without one, so the job
+      # also fails if the database tests stop running. The report goes in the artifact.
       - name: Run pytest with a coverage floor
         env:
           SERVICE: ${{ matrix.service }}
         run: |
           case "$SERVICE" in
-            identity-api) package=identity_api floor=74 ;;
-            vendor-api) package=vendor_api floor=62 ;;
+            identity-api) package=identity_api floor=91 ;;
+            vendor-api) package=vendor_api floor=85 ;;
             central-stub) package=central_stub floor=97 ;;
             py-auth) package=shazlo_auth floor=97 ;;
             py-security) package=shazlo_security floor=95 ;;
