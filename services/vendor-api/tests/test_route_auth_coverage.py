@@ -35,6 +35,9 @@ PUBLIC = {
     # Authenticated by the refresh cookie (plus an Origin check), not a bearer token.
     ("POST", "/v1/auth/refresh"),
     ("POST", "/v1/auth/logout"),
+    # The bank behind an IFSC, from a bundled list (#265): sign-up asks before any account
+    # exists. Limited per IP; reveals nothing about any vendor.
+    ("GET", "/v1/public/ifsc/{code}"),
 }
 PARAM = re.compile(r"\{[^}]+\}")
 SOME_ID = "00000000-0000-4000-8000-000000000000"

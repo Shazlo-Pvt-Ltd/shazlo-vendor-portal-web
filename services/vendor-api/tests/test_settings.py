@@ -1,3 +1,5 @@
+import base64
+import json
 from collections.abc import Callable
 
 import pytest
@@ -6,10 +8,17 @@ from pydantic import ValidationError
 from vendor_api.core.settings import Settings
 
 # What prod needs besides email: where admin tokens come from (identity-api), over https.
+# Payout numbers are sealed with these in prod (#265). Every prod construction below spreads
+# PROD_IDENTITY, so they ride along with it.
+PROD_PAYOUT = {
+    "payout_encryption_keys": json.dumps({"2026-11": base64.b64encode(b"p" * 32).decode()}),
+    "payout_encryption_kid": "2026-11",
+}
 PROD_IDENTITY = {
     "identity_jwks_url": "https://identity.shazlo.store/.well-known/jwks.json",
     "identity_issuer": "https://identity.shazlo.store",
     "jwt_issuer": "https://vendor-api.shazlo.store",
+    **PROD_PAYOUT,
 }
 
 
@@ -57,6 +66,8 @@ def test_environment_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("IDENTITY_JWKS_URL", PROD_IDENTITY["identity_jwks_url"])
     monkeypatch.setenv("IDENTITY_ISSUER", PROD_IDENTITY["identity_issuer"])
     monkeypatch.setenv("JWT_ISSUER", PROD_IDENTITY["jwt_issuer"])
+    monkeypatch.setenv("PAYOUT_ENCRYPTION_KEYS", PROD_PAYOUT["payout_encryption_keys"])
+    monkeypatch.setenv("PAYOUT_ENCRYPTION_KID", PROD_PAYOUT["payout_encryption_kid"])
     s = make()
     assert s.cookie_samesite == "lax"
     assert s.env == "prod"
@@ -623,3 +634,53 @@ def test_a_refusal_across_several_settings_does_not_print_any_of_them() -> None:
     assert "CENTRAL_API_URL must not hold credentials" in text
     for private in ("UrlPassw0rd", "DbPassw0rd", secret, "db.internal"):
         assert private not in text
+
+
+# --- payout encryption keys (#265) -----------------------------------------------------------
+
+
+def test_payout_keys_are_required_in_prod() -> None:
+    prod = {**PROD_EMAIL, **PROD_IDENTITY}
+    del prod["payout_encryption_keys"], prod["payout_encryption_kid"]
+    with pytest.raises(ValidationError, match="PAYOUT_ENCRYPTION_KEYS is required in prod"):
+        make(env="prod", **prod)
+    assert make(env="prod", **PROD_EMAIL, **PROD_IDENTITY).payout_encryption_kid == "2026-11"
+
+
+def test_outside_prod_a_random_payout_key_is_made() -> None:
+    one, two = make(), make()
+    assert one.payout_encryption_kid == "ephemeral"
+    assert one.payout_encryption_keys is not None and two.payout_encryption_keys is not None
+    assert (
+        one.payout_encryption_keys.get_secret_value()
+        != two.payout_encryption_keys.get_secret_value()
+    )
+
+
+def test_an_empty_payout_key_setting_means_unset() -> None:
+    assert make(payout_encryption_keys="  ").payout_encryption_kid == "ephemeral"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"payout_encryption_kid": "k1"}, "PAYOUT_ENCRYPTION_KID is set but"),
+        ({"payout_encryption_keys": PROD_PAYOUT["payout_encryption_keys"]}, "KID is required"),
+        ({**PROD_PAYOUT, "payout_encryption_kid": "other"}, "must name a key"),
+        ({**PROD_PAYOUT, "payout_encryption_keys": "not json"}, "JSON object"),
+        (
+            {**PROD_PAYOUT, "payout_encryption_keys": json.dumps({"2026-11": "c2hvcnQ="})},
+            "32 bytes",
+        ),
+    ],
+)
+def test_bad_payout_key_settings_are_refused(overrides: dict[str, object], message: str) -> None:
+    with pytest.raises(ValidationError, match=message):
+        make(**overrides)
+
+
+def test_payout_keys_never_show_in_the_settings_repr() -> None:
+    settings = make(env="prod", **PROD_EMAIL, **PROD_IDENTITY)
+    key = json.loads(PROD_PAYOUT["payout_encryption_keys"])["2026-11"]
+    assert key not in repr(settings)
+    assert key not in str(settings.model_dump())
