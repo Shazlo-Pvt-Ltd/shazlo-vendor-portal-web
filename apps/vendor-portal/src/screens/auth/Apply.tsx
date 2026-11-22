@@ -35,8 +35,8 @@ import { ApplicationReceived, CheckAnswersPage, IntroPage, Restored, StepPage, t
 
 const copy = onboardingCopy.apply
 
-// Where focus goes on a new page: its heading, the error summary, or an answer picked on Check
-// your answers.
+// Where focus goes on a new page: its heading, its first problem (useFormErrors moves it), or an
+// answer picked on Check your answers.
 type Arrival = { round: number; target: 'heading' | 'summary' | { field: string } }
 
 // A Change link on Check your answers names a row; this is the input it opens on.
@@ -63,7 +63,8 @@ export default function Apply() {
   const signUp = useSignUp()
   const wait = useCountdown()
   const { page } = draft
-  const form = useFormErrors(isStep(page) ? orderOfStep(page) : [])
+  // Continue that finds problems takes the seller to the first one, which reads out its message.
+  const form = useFormErrors(isStep(page) ? orderOfStep(page) : [], { focus: 'first' })
   const ifsc = useIfsc(draft.payout.method === 'bank' ? draft.payout.ifsc : null)
 
   useEffect(() => writeDraft(draft), [draft])
@@ -101,7 +102,7 @@ export default function Apply() {
     }
     window.scrollTo(0, 0)
     if (isStep(next) && (hasErrors(client) || hasErrors(waiting))) {
-      form.show(client, waiting, valuesOfStep(next, nextDraft))
+      form.show(client, waiting, valuesOfStep(next, nextDraft), orderOfStep(next))
       setArrival((a) => ({ round: a.round + 1, target: 'summary' }))
     } else {
       form.clear()

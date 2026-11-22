@@ -27,6 +27,7 @@ export type Problems = Partial<Record<SubmitRequirement, string>>
 
 // Element ids a problem link moves focus to.
 export const fieldId = (prefix: string, key: SubmitRequirement | 'mrp') => `${prefix}-${key}`
+export const otherColourId = (prefix: string, index: number) => `${prefix}-other_colours-${index}`
 export const slotId = (prefix: string, angle: NamedPhotoAngle) => `${prefix}-photo-${angle}`
 export const firstEmptyTryonId = (prefix: string) => `${prefix}-tryon-empty`
 

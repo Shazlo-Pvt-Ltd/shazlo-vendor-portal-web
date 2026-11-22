@@ -167,7 +167,8 @@ paths:
         415 or 422), but one row is one product with exactly these columns, in this order:
         `product_name, gender, product_type, main_colour, other_colours, selling_price, sizes_stock,
         description, material, mrp`. `other_colours` (up to 2, comma separated) and `mrp` are
-        optional; `sizes_stock` reads like `S:4, M:6, L:3, XL:0`; prices are in rupees. Codes are
+        optional; colours are any name or hex code, as in `main_colour`; `sizes_stock` reads like
+        `S:4, M:6, L:3, XL:0`; prices are in rupees. Codes are
         made by the server (`products[].sku`). `RowErrorOut.column` names a column from that list,
         or is null for a problem with the whole row. Imported products are drafts without photos.
       parameters:
@@ -395,8 +396,8 @@ components:
         weight_grams: { type: [integer, 'null'], exclusiveMinimum: 0, maximum: 1000000 }
         returnable: { type: boolean, description: 'False when left out.' }
         return_window_days: { type: [integer, 'null'], minimum: 0, maximum: 30 }
-        main_colour: { x-proposal: true, type: [string, 'null'], maxLength: 32 }
-        other_colours: { x-proposal: true, type: array, maxItems: 2, items: { type: string, maxLength: 32 }, description: 'Up to 2, different from the main colour.' }
+        main_colour: { x-proposal: true, type: [string, 'null'], maxLength: 32, description: 'Any colour name (trimmed, the listed colours in their own spelling) or a hex code, kept as `#RRGGBB` in capitals; 422 for a hex code that is not one.' }
+        other_colours: { x-proposal: true, type: array, maxItems: 2, items: { type: string, maxLength: 32 }, description: 'Up to 2, each a name or hex code as `main_colour`, different from the main colour and from each other (case does not matter).' }
         variants: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/ProposedVariantBody' } }
         images: { type: array, maxItems: 13, items: { $ref: '#/components/schemas/ProposedImageBody' } }
         version: { x-proposal: true, type: integer, minimum: 1, description: "The product's `version` this edit is based on. Optional; when it is not the current one, 409 version_conflict and nothing is saved. Not used on create." }

@@ -142,7 +142,8 @@ export interface paths {
          *     415 or 422), but one row is one product with exactly these columns, in this order:
          *     `product_name, gender, product_type, main_colour, other_colours, selling_price, sizes_stock,
          *     description, material, mrp`. `other_colours` (up to 2, comma separated) and `mrp` are
-         *     optional; `sizes_stock` reads like `S:4, M:6, L:3, XL:0`; prices are in rupees. Codes are
+         *     optional; colours are any name or hex code, as in `main_colour`; `sizes_stock` reads like
+         *     `S:4, M:6, L:3, XL:0`; prices are in rupees. Codes are
          *     made by the server (`products[].sku`). `RowErrorOut.column` names a column from that list,
          *     or is null for a problem with the whole row. Imported products are drafts without photos.
          */
@@ -361,8 +362,9 @@ export interface components {
             /** @description False when left out. */
             returnable?: boolean;
             return_window_days?: number | null;
+            /** @description Any colour name (trimmed, the listed colours in their own spelling) or a hex code, kept as `#RRGGBB` in capitals; 422 for a hex code that is not one. */
             main_colour?: string | null;
-            /** @description Up to 2, different from the main colour. */
+            /** @description Up to 2, each a name or hex code as `main_colour`, different from the main colour and from each other (case does not matter). */
             other_colours?: string[];
             variants?: components["schemas"]["ProposedVariantBody"][];
             images?: components["schemas"]["ProposedImageBody"][];

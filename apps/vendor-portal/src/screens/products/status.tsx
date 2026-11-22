@@ -13,7 +13,7 @@ export function statusWords(p: HasStatus): string {
 
 export function ProductStatus({ product, variant = 'body2' }: { product: HasStatus; variant?: 'body1' | 'body2' }) {
   return (
-    <Typography component="span" variant={variant} color="text.secondary" data-status={product.status}>
+    <Typography component="span" variant={variant} color="textSecondary" data-status={product.status}>
       {statusWords(product)}
     </Typography>
   )

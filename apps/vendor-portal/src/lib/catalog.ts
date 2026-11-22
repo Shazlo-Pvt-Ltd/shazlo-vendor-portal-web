@@ -1,4 +1,4 @@
-import { garmentColour, multicolourSwatch, type GarmentColourName } from '@shazlo/ui'
+import { contrastRatio, garmentColour, multicolourSwatch, neutral, type GarmentColourName } from '@shazlo/ui'
 import type { Schemas } from '../api/model'
 import { catalogCopy } from '../copy/catalog'
 
@@ -189,13 +189,105 @@ export const COLOURS: readonly Colour[] = [
 
 export const COLOUR_NAMES: readonly string[] = COLOURS.map((c) => c.name)
 export const MAX_OTHER_COLOURS = 2
+// vendor-api keeps a colour as a string of up to 32 characters (proposed.yaml).
+export const COLOUR_MAX = 32
 
 export function colourByName(name: string | null | undefined): Colour | null {
   return COLOURS.find((c) => c.name === name) ?? null
 }
 
+// The named colours are suggestions, not a limit (owner's review, 22 Nov): a seller types any
+// colour name ("Kalamkari indigo"), a hex code, or picks a shade, which fills in the hex code.
+export type ColourProblem = 'hex' | 'long' | 'name'
+export type ParsedColour = { ok: true; value: string } | { ok: false; problem: ColourProblem }
+
+const HEX_DIGITS = /^[0-9a-f]+$/i
+
+/**
+ * A typed colour as it is kept: a hex code as #RRGGBB in capitals (a 3-digit code is doubled up), a listed
+ * colour in the list's spelling, any other name trimmed with single spaces. Null when nothing is
+ * typed. Text starting with # is a hex code; a name needs at least one letter.
+ */
+export function parseColour(text: string | null | undefined): ParsedColour | null {
+  const v = (text ?? '').trim().replace(/\s+/g, ' ')
+  if (!v) return null
+  if (v.startsWith('#')) {
+    const digits = v.slice(1)
+    if (!HEX_DIGITS.test(digits) || (digits.length !== 3 && digits.length !== 6)) return { ok: false, problem: 'hex' }
+    const six = digits.length === 3 ? [...digits].map((d) => d + d).join('') : digits
+    return { ok: true, value: `#${six.toUpperCase()}` }
+  }
+  if (v.length > COLOUR_MAX) return { ok: false, problem: 'long' }
+  if (!/\p{L}/u.test(v)) return { ok: false, problem: 'name' }
+  return { ok: true, value: COLOURS.find((c) => c.name.toLowerCase() === v.toLowerCase())?.name ?? v }
+}
+
+/** Whether a colour is fine to keep (a listed name, any other name or a hex code). */
 export function isColour(value: unknown): value is string {
-  return typeof value === 'string' && COLOUR_NAMES.includes(value)
+  return typeof value === 'string' && parseColour(value)?.ok === true
+}
+
+const colourKey = (text: string) => {
+  const parsed = parseColour(text)
+  return (parsed?.ok ? parsed.value : text.trim()).toLowerCase()
+}
+
+/** The same colour, whatever the case or spacing ("rust orange" and "Rust Orange"). */
+export function sameColour(a: string, b: string): boolean {
+  return colourKey(a) === colourKey(b)
+}
+
+export function colourProblemText(problem: ColourProblem): string {
+  const e = catalogCopy.errors.colour
+  // The example hex code is the Rust swatch's, so no colour is written into the copy.
+  return problem === 'hex' ? e.hex(garmentColour.Rust) : problem === 'long' ? e.long(COLOUR_MAX) : e.name
+}
+
+/**
+ * Problems with a product's colours, keyed like the API's fields. `at` is the first other colour
+ * with a problem. Blank colours are not checked here (sending for review asks for the main one).
+ */
+export function checkColours(main: string, others: readonly string[]): { main_colour?: string; other_colours?: string; at?: number } {
+  const out: { main_colour?: string; other_colours?: string; at?: number } = {}
+  const parsedMain = parseColour(main)
+  if (parsedMain && !parsedMain.ok) out.main_colour = colourProblemText(parsedMain.problem)
+  const seen: string[] = parsedMain?.ok ? [colourKey(parsedMain.value)] : []
+  let count = 0
+  for (const [i, text] of others.entries()) {
+    const parsed = parseColour(text)
+    if (!parsed) continue
+    count += 1
+    const problem = !parsed.ok
+      ? colourProblemText(parsed.problem)
+      : count > MAX_OTHER_COLOURS
+        ? catalogCopy.errors.product.otherColoursMax
+        : seen.includes(colourKey(parsed.value))
+          ? catalogCopy.errors.product.otherColoursRepeat
+          : null
+    if (parsed.ok) seen.push(colourKey(parsed.value))
+    if (problem) return { ...out, other_colours: problem, at: i }
+  }
+  return out
+}
+
+export type ColourSwatch = { kind: 'hex' | 'named' | 'unknown'; background: string | null; border: boolean }
+
+// A swatch needs a border when it is too light to show on a card (WCAG 1.4.11: 3:1).
+const needsBorder = (hex: string) => contrastRatio(hex, neutral.surface) < 3
+
+/**
+ * How a colour is drawn: a hex code as itself, a listed colour (or a common other name for one,
+ * like "Off white") with its swatch, and any other name as a plain swatch beside its name. Null for
+ * no colour. The hex values always come from data (the product, or the tokens), never the source.
+ */
+export function colourSwatch(value: string | null | undefined): ColourSwatch | null {
+  const v = (value ?? '').trim()
+  if (!v) return null
+  const parsed = parseColour(v)
+  if (parsed?.ok && parsed.value.startsWith('#')) return { kind: 'hex', background: parsed.value, border: needsBorder(parsed.value) }
+  const listed = colourByName(matchColour(v))
+  if (listed) return { kind: 'named', background: listed.swatch, border: listed.border }
+  return { kind: 'unknown', background: null, border: true }
 }
 
 // ---- photos -----------------------------------------------------------------------------------

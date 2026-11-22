@@ -13,7 +13,7 @@ export const onboardingCopy = {
     intro: {
       subtitle: 'Tell us about your brand in 7 short steps. It takes about 8 minutes.',
       needTitle: 'What you will need',
-      need: ['Your pickup address', 'Your bank account or UPI ID', 'Your GST number, if you have one'],
+      need: ['Your pickup address', 'Your bank account or UPI ID', 'Your legal business name, and your GST number if you have one'],
       saved: 'We keep your answers while this tab is open, so you can go back and change them. Closing or reloading the page clears them.',
       start: 'Start',
     },
@@ -26,8 +26,10 @@ export const onboardingCopy = {
       { title: 'Returns', intro: 'Shoppers see this on every product before they buy.' },
       { title: 'Payment on delivery', intro: 'Shoppers can always pay online. Choose what they can also do when the order arrives.' },
       { title: 'Payouts', intro: 'Where we send the money from your sales.' },
-      { title: 'Business details and commission', intro: 'The last step. Business details are optional.' },
+      { title: 'Business details and commission', intro: 'The last step. We print your business details on your invoices.' },
     ],
+    // Above every step's questions: only the exceptions say "(optional)".
+    requiredNote: 'Answer every question unless it says (optional).',
     // The Contact step's password (main's rules: src/lib/account.ts).
     password: 'Choose a password',
     passwordHint: (min: number) => `At least ${min} characters. You sign in with your email and this password.`,

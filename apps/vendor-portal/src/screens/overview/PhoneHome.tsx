@@ -49,13 +49,13 @@ export function NextStep() {
   const to = next ? next.to : paths.newProduct
   return (
     <Card component="section" aria-labelledby={id} sx={{ p: 2.5 }}>
-      <Typography id={id} variant="body2" component="h2" color="text.secondary">
+      <Typography id={id} variant="body2" component="h2" color="textSecondary">
         {copy.next.title}
       </Typography>
       <Typography variant="h1" component="p" sx={{ mt: 0.75 }}>
         {text.title}
       </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mt: 0.75 }}>
+      <Typography variant="body1" color="textSecondary" sx={{ mt: 0.75 }}>
         {text.body}
       </Typography>
       <Button variant="contained" fullWidth component={RouterLink} to={to} sx={{ mt: 2.5, minHeight: 48 }}>
@@ -86,7 +86,7 @@ export function SetupTasks() {
       title={copy.tasks.title}
       padded={false}
       action={
-        <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+        <Typography variant="body2" color="textSecondary" sx={{ whiteSpace: 'nowrap' }}>
           {copy.tasks.progress(done, steps.length)}
         </Typography>
       }
@@ -101,7 +101,7 @@ export function SetupTasks() {
               <Typography component="span" variant="body2" sx={{ color: step.done ? neutral.inkSecondary : neutral.ink, whiteSpace: 'nowrap' }}>
                 {step.done ? copy.tasks.done : copy.tasks.todo}
               </Typography>
-              <ChevronRight size={18} strokeWidth={1.5} color={neutral.inkSecondary} aria-hidden="true" />
+              <ChevronRight size={18} strokeWidth={1.75} color={neutral.inkSecondary} aria-hidden="true" />
             </Box>
           </li>
         ))}
@@ -140,7 +140,7 @@ export function NeedsChanges() {
                 {title}
               </Typography>
               {item.reason && (
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>
+                <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5, whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>
                   {item.reason}
                 </Typography>
               )}
@@ -182,7 +182,7 @@ export function ProductCounts() {
                   <Typography component="span" variant="body1" sx={{ fontVariantNumeric: 'lining-nums tabular-nums' }}>
                     {formatCount(summary.data.products[status])}
                   </Typography>
-                  <ChevronRight size={18} strokeWidth={1.5} color={neutral.inkSecondary} aria-hidden="true" />
+                  <ChevronRight size={18} strokeWidth={1.75} color={neutral.inkSecondary} aria-hidden="true" />
                 </Box>
               </li>
             ))}

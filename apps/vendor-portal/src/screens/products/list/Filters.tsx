@@ -50,7 +50,7 @@ export function SearchField({ value, onCommit }: { value: string; onCommit: (q: 
         input: {
           startAdornment: (
             <InputAdornment position="start">
-              <Search size={18} strokeWidth={1.5} aria-hidden="true" />
+              <Search size={18} strokeWidth={1.75} aria-hidden="true" />
             </InputAdornment>
           ),
           endAdornment: text ? (
@@ -64,7 +64,7 @@ export function SearchField({ value, onCommit }: { value: string; onCommit: (q: 
                   onCommit('')
                 }}
               >
-                <X size={16} strokeWidth={1.5} aria-hidden="true" />
+                <X size={16} strokeWidth={1.75} aria-hidden="true" />
               </IconButton>
             </InputAdornment>
           ) : undefined,
@@ -154,7 +154,7 @@ export function MobileFilters({ params, update, onSearch, onClear }: { params: L
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <SearchField value={params.q} onCommit={onSearch} />
       </Box>
-      <Button variant="outlined" onClick={() => setOpen(true)} startIcon={<SlidersHorizontal size={18} strokeWidth={1.5} aria-hidden="true" />} sx={{ minHeight: 44, flexShrink: 0 }}>
+      <Button variant="outlined" onClick={() => setOpen(true)} startIcon={<SlidersHorizontal size={18} strokeWidth={1.75} aria-hidden="true" />} sx={{ minHeight: 44, flexShrink: 0 }}>
         {copy.filters.button(active)}
       </Button>
       <Drawer

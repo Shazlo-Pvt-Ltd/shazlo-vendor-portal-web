@@ -153,17 +153,17 @@ export function BulkImportDialog({ onClose }: { onClose: () => void }) {
             <Typography id={titleId} variant="h1" component="h2">
               {copy.title}
             </Typography>
-            <Typography id={subtitleId} variant="body1" color="text.secondary" sx={{ mt: 0.5, maxWidth: '68ch' }}>
+            <Typography id={subtitleId} variant="body1" color="textSecondary" sx={{ mt: 0.5, maxWidth: '68ch' }}>
               {copy.subtitle}
             </Typography>
           </Box>
           <IconButton aria-label={copy.close} onClick={onClose} sx={{ mt: -0.5, mr: -1, width: 44, height: 44, color: neutral.inkSecondary }}>
-            <X size={20} strokeWidth={1.5} aria-hidden="true" />
+            <X size={20} strokeWidth={1.75} aria-hidden="true" />
           </IconButton>
         </Stack>
         {phone ? (
           <>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
               {copy.stepOf(active + 1, copy.steps.length, stepLabel)}
             </Typography>
             {stage !== 'photos' && (

@@ -1,7 +1,7 @@
 import type { FieldErrors, Resolver } from 'react-hook-form'
 import type { Schemas } from '../../../api/model'
 import { productEditorCopy } from '../../../copy/productEditor'
-import { sizeCode, sortSizes, type Gender, type ProductForSubmit, type ProductType } from '../../../lib/catalog'
+import { checkColours, MAX_OTHER_COLOURS, parseColour, sameColour, sizeCode, sortSizes, type Gender, type ProductForSubmit, type ProductType } from '../../../lib/catalog'
 
 type Product = Schemas['Product']
 type ProductInput = Schemas['ProductInput']
@@ -13,7 +13,8 @@ export const LIMITS = { title: 200, material: 80, description: 4000 } as const
 
 export type SizeRow = { size: string; stock: string }
 
-// What the seller edits. Money and stock stay as typed text ("2,499") until they are saved.
+// What the seller edits. Money and stock stay as typed text ("2,499") until they are saved, and so
+// do colours (any name or hex code): an added other colour starts as an empty row.
 export type EditorValues = {
   title: string
   gender: Gender | ''
@@ -28,10 +29,18 @@ export type EditorValues = {
 }
 
 // The last values the server holds, used where the form's own value is not safe to save.
-export type SavedBase = { sku: string | null; title: string; price: number | null; mrp: number | null; live: boolean }
+export type SavedBase = { sku: string | null; title: string; price: number | null; mrp: number | null; live: boolean; mainColour: string | null; otherColours: string[] }
 
 export function baseOf(product: Product | null): SavedBase {
-  return { sku: product?.sku ?? null, title: product?.title ?? '', price: product?.price_paise ?? null, mrp: product?.mrp_paise ?? null, live: product?.status === 'approved' }
+  return {
+    sku: product?.sku ?? null,
+    title: product?.title ?? '',
+    price: product?.price_paise ?? null,
+    mrp: product?.mrp_paise ?? null,
+    live: product?.status === 'approved',
+    mainColour: product?.main_colour ?? null,
+    otherColours: product?.other_colours ?? [],
+  }
 }
 
 const amount = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 })
@@ -82,21 +91,63 @@ export function priceIssues(values: Pick<EditorValues, 'mrp' | 'price'>, live: b
   return issues
 }
 
-// The form's own checks: only the two price formats. Everything a product needs before review is
-// checked when it is sent (productProblems), not while the seller types.
+// The form's own checks: the two price formats and the colours. Everything a product needs before
+// review is checked when it is sent (productProblems), not while the seller types.
 export function editorResolver(live: boolean): Resolver<EditorValues> {
   return (values) => {
     const issues = priceIssues(values, live)
     const errors: FieldErrors<EditorValues> = {}
     if (issues.mrp) errors.mrp = { type: 'custom', message: issues.mrp }
     if (issues.price) errors.price = { type: 'custom', message: issues.price }
+    // Colours are checked when the seller leaves a colour field, and on Next and Send.
+    const colours = colourIssues(values)
+    if (colours.main) errors.mainColour = { type: 'custom', message: colours.main }
+    if (colours.others.some(Boolean)) {
+      errors.otherColours = colours.others.map((message) => (message ? { type: 'custom', message } : undefined)) as FieldErrors<EditorValues>['otherColours']
+    }
     return Object.keys(errors).length ? { values: {}, errors } : { values, errors: {} }
   }
 }
 
-// Other colours never repeat the main colour (the API refuses that), so a new main colour drops
-// itself from the others.
-export const otherColoursFor = (values: Pick<EditorValues, 'mainColour' | 'otherColours'>) => values.otherColours.filter((c) => c !== values.mainColour)
+// What each colour field says is wrong: a hex code that is not one, a name too long, or an other
+// colour that repeats the main colour or another (case does not matter). Shown once the seller has
+// left the field, and checked on Next and Send.
+export type ColourIssues = { main?: string; others: (string | undefined)[] }
+
+export function colourIssues(values: Pick<EditorValues, 'mainColour' | 'otherColours'>): ColourIssues {
+  const others: (string | undefined)[] = values.otherColours.map(() => undefined)
+  const main = checkColours(values.mainColour, []).main_colour
+  // Each other colour against the main colour and the ones before it.
+  values.otherColours.forEach((_, i) => {
+    const found = checkColours(values.mainColour, values.otherColours.slice(0, i + 1))
+    if (found.at === i) others[i] = found.other_colours
+  })
+  return main ? { main, others } : { others }
+}
+
+// What a colour field shows once the seller leaves it: tidied when it is a colour, as typed otherwise.
+export function tidyColour(text: string): string {
+  const parsed = parseColour(text)
+  return parsed === null ? '' : parsed.ok ? parsed.value : text.trim()
+}
+
+export const hasColourIssues = (issues: ColourIssues) => Boolean(issues.main) || issues.others.some(Boolean)
+
+// The colours autosave sends: tidied (hex codes as #RRGGBB, listed names in the list's spelling).
+// A colour that is not one keeps the saved one; empty rows, repeats of the main colour or of each
+// other are left out (the API refuses repeats), so a new main colour drops itself from the others.
+export function coloursFor(values: Pick<EditorValues, 'mainColour' | 'otherColours'>, base: Pick<SavedBase, 'mainColour' | 'otherColours'>): { main: string | null; others: string[] } {
+  const parsedMain = parseColour(values.mainColour)
+  const main = parsedMain === null ? null : parsedMain.ok ? parsedMain.value : base.mainColour
+  const parsedOthers = values.otherColours.map(parseColour).filter((p) => p !== null)
+  if (parsedOthers.some((p) => !p.ok)) return { main, others: base.otherColours }
+  const others: string[] = []
+  for (const p of parsedOthers) {
+    if (!p.ok || (main !== null && sameColour(p.value, main)) || others.some((o) => sameColour(o, p.value))) continue
+    others.push(p.value)
+  }
+  return { main, others: others.slice(0, MAX_OTHER_COLOURS) }
+}
 
 // What autosave sends. A price that fails the checks keeps the saved one, so a half-typed or
 // wrong price never reaches the server. An emptied name keeps the saved one: vendor-api needs a
@@ -106,12 +157,13 @@ export function toInput(values: EditorValues, base: SavedBase): ProductInput {
   const ok = !issues.mrp && !issues.price
   const mrp = parseRupees(values.mrp)
   const price = parseRupees(values.price)
+  const colours = coloursFor(values, base)
   return {
     title: values.title.trim() || base.title,
     gender: values.gender || null,
     category: values.category || null,
-    main_colour: values.mainColour || null,
-    other_colours: otherColoursFor(values),
+    main_colour: colours.main,
+    other_colours: colours.others,
     material: values.material.trim(),
     description: values.description.trim(),
     mrp_paise: ok && mrp.ok ? mrp.paise : base.mrp,
@@ -154,7 +206,8 @@ export function forSubmit(values: EditorValues, images: Product['images']): Prod
     title: values.title,
     gender: values.gender || null,
     category: values.category || null,
-    main_colour: values.mainColour || null,
+    // Typed is given: whether it is a colour is checked on its own (colourIssues).
+    main_colour: values.mainColour.trim() || null,
     material: values.material,
     description: values.description,
     images,

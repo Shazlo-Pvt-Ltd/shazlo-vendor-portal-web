@@ -63,11 +63,15 @@ async function replace(user: Awaited<ReturnType<typeof renderApp>>['user'], fiel
 
 describe('V-05 Brand page: the editor', () => {
   it('shows skeletons shaped like the form and the phone while loading', async () => {
-    server.use(http.get('*/v1/vendor/brand-profile', () => delay(300)))
+    // The page stays loading until the test has seen the skeleton (a fixed delay races a busy machine).
+    let release = () => {}
+    const held = new Promise<void>((resolve) => (release = resolve))
+    server.use(http.get('*/v1/vendor/brand-profile', () => held))
     await renderApp({ route: '/brand' })
     const loading = await screen.findByRole('status', { name: 'Loading your brand page' }, { timeout: 8000 })
     expect(loading).toHaveAttribute('aria-busy', 'true')
     expect(screen.getByRole('heading', { level: 1, name: 'Brand page' })).toBeInTheDocument()
+    release()
     expect(await screen.findByRole('textbox', { name: /^Tagline/ })).toBeInTheDocument()
     expect(screen.queryByRole('status', { name: 'Loading your brand page' })).toBeNull()
   })
@@ -88,9 +92,9 @@ describe('V-05 Brand page: the editor', () => {
     expect(within(identity).getByRole('textbox', { name: 'Based in' })).toHaveValue('Ahmedabad, Gujarat')
     expect(within(identity).getByRole('textbox', { name: 'Tagline' })).toHaveValue(LIVE_TAGLINE)
     expect(within(identity).getByRole('textbox', { name: 'Story Changed' })).toHaveValue(DRAFT_STORY)
-    expect(within(identity).getByRole('group', { name: 'Logo' })).toHaveTextContent('Square PNG or JPG, at least 400 × 400 px.')
+    expect(within(identity).getByRole('group', { name: 'Logo' })).toHaveTextContent('Square PNG or JPG, at least 400 × 400 px. The app shows it in a circle, so keep it centred.')
     const cover = within(identity).getByRole('group', { name: 'Cover image Changed' })
-    expect(cover).toHaveTextContent('Shown at the top of your page in the app. 1600 × 600 px recommended. Avoid text on the image.')
+    expect(cover).toHaveTextContent('Shown full width at the top of your page in the app. 1600 × 600 px recommended. Your logo sits over its lower-left corner, so avoid text on the image.')
     expect(within(cover).getByRole('img', { name: 'Cover image preview' })).toHaveAttribute('src', assetUrl(draftOf().banner_asset_id))
     expect(within(cover).getByRole('button', { name: 'Replace cover image' })).toBeInTheDocument()
     expect(within(identity).getByRole('button', { name: 'Upload logo' })).toBeInTheDocument()
@@ -436,7 +440,7 @@ describe('V-05 Brand page: discard and submit', () => {
     decide(db(), { brandOf: kalki().id }, { approve: false, reason })
     await openBrandPage()
     const alert = screen.getByRole('alert')
-    expect(alert).toHaveTextContent('Our team sent your brand page back.')
+    expect(alert).toHaveTextContent('Our team sent your brand page back')
     expect(alert).toHaveTextContent(reason)
     expect(textbox('Tagline')).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Submit for review' })).toBeEnabled()
@@ -494,7 +498,7 @@ describe('V-05 Brand page: discard and submit', () => {
     db().faults.push({ path: '/v1/vendor/brand-profile', method: 'GET', status: 403, code: 'forbidden', message: 'Only the store owner can edit the brand page.' })
     const { user } = await renderApp({ route: '/brand' })
     const alert = await screen.findByRole('alert', {}, { timeout: 8000 })
-    expect(alert).toHaveTextContent('We could not load your brand page.')
+    expect(alert).toHaveTextContent('We could not load your brand page')
     expect(alert).toHaveTextContent('Only the store owner can edit the brand page.')
     await user.click(within(alert).getByRole('button', { name: 'Try again' }))
     expect(await screen.findByRole('textbox', { name: 'Tagline' })).toHaveValue(LIVE_TAGLINE)

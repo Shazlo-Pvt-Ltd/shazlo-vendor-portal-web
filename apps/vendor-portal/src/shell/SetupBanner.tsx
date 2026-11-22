@@ -45,7 +45,7 @@ export function SetupBanner() {
               aria-hidden="true"
               sx={{ flex: 1, maxWidth: 240, height: 6, borderRadius: 3, bgcolor: alpha(brand.navy, 0.12), '& .MuiLinearProgress-bar': { bgcolor: brand.navy, borderRadius: 3 } }}
             />
-            <Typography variant="body2" component="span" color="text.secondary">
+            <Typography variant="body2" component="span" color="textSecondary">
               {copy.setupNext}{' '}
               <Link component={RouterLink} to={next.to}>
                 {next.label}

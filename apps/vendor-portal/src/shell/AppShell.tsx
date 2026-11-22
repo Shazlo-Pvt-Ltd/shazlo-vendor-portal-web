@@ -91,7 +91,7 @@ function SideNavItem({ item, active }: { item: NavItem; active: boolean }) {
         }}
       >
         <ListItemIcon sx={{ minWidth: 32, color: active ? brand.navy : 'inherit' }}>
-          <Icon size={18} strokeWidth={1.5} aria-hidden="true" />
+          <Icon size={18} strokeWidth={1.75} aria-hidden="true" />
         </ListItemIcon>
         <ListItemText primary={item.label} slotProps={{ primary: active ? { variant: 'h3', sx: display('body1') } : { variant: 'body1' } }} />
         {item.count != null && (
@@ -100,7 +100,7 @@ function SideNavItem({ item, active }: { item: NavItem; active: boolean }) {
             <Box component="span" sx={srOnly}>
               {`, ${item.countLabel ? item.countLabel(item.count) : item.count}`}
             </Box>
-            <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }} aria-hidden="true">
+            <Typography variant="caption" color="textSecondary" sx={{ fontVariantNumeric: 'tabular-nums' }} aria-hidden="true">
               {item.count}
             </Typography>
           </>
@@ -131,7 +131,7 @@ function StoreCard() {
         <Typography variant="h3" component="p" noWrap sx={display('body1')} title={name}>
           {name}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" color="textSecondary">
           {sellerStatus(vendor?.status)}
         </Typography>
       </Box>
@@ -152,12 +152,12 @@ function UserFooter({ onSignOut }: { onSignOut: () => void }) {
         <Typography variant="body1" noWrap title={email}>
           {email}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" color="textSecondary">
           {role === 'owner' ? copy.owner : copy.staff}
         </Typography>
       </Box>
       <IconButton aria-label={copy.signOut} onClick={onSignOut} sx={{ color: neutral.inkSecondary }}>
-        <LogOut size={18} strokeWidth={1.5} aria-hidden="true" />
+        <LogOut size={18} strokeWidth={1.75} aria-hidden="true" />
       </IconButton>
     </Stack>
   )
@@ -205,7 +205,7 @@ const RAIL: NavItem[] = [
 function NavIcon({ icon: Icon, active, width }: { icon: LucideIcon; active: boolean; width: number }) {
   return (
     <Box component="span" sx={{ display: 'grid', placeItems: 'center', width, height: 30, borderRadius: 15, bgcolor: active ? brand.navy : 'transparent', color: active ? brand.offWhite : 'inherit' }}>
-      <Icon size={20} strokeWidth={1.5} aria-hidden="true" />
+      <Icon size={20} strokeWidth={1.75} aria-hidden="true" />
     </Box>
   )
 }

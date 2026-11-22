@@ -5,7 +5,7 @@ export const brandCopy = {
   subtitle: 'Changes are saved as a draft. Your live page stays the same until our team approves the draft.',
   subtitleFirst: 'Changes are saved as a draft. Your brand page appears in the Shazlo app once our team approves it.',
   loading: 'Loading your brand page',
-  loadError: 'We could not load your brand page.',
+  loadError: 'We could not load your brand page',
   retry: 'Try again',
   retrying: 'Trying again…',
   genericError: 'Something went wrong on our side. Try again in a moment.',
@@ -27,13 +27,13 @@ export const brandCopy = {
   },
   // Shown in the page, not as a toast (spec §8).
   discarded: 'Draft discarded. Your page matches the live version again.',
-  discardedFirst: 'Draft discarded.',
+  discardedFirst: 'Draft discarded',
   // While a version is in review it stays as sent; a new draft can be edited beside it (main's rule).
   editNewDraft: 'Edit a new draft',
   waitForDecision: 'You can send this draft once our team has decided on the version in review.',
   banners: {
     inReview: 'Your brand page is in review. You can keep editing a new draft; send it once our team has decided — usually within 24 hours.',
-    sentBack: 'Our team sent your brand page back.',
+    sentBack: 'Our team sent your brand page back',
     sentBackNext: 'Change the draft below and submit it again.',
     submitted: 'Sent for review. Your live page stays as it is until we approve the changes.',
     submittedFirst: 'Sent for review. Your brand page goes live once we approve it.',
@@ -41,11 +41,11 @@ export const brandCopy = {
   identity: {
     title: 'Identity',
     logo: 'Logo',
-    logoHint: 'Square PNG or JPG, at least 400 × 400 px.',
+    logoHint: 'Square PNG or JPG, at least 400 × 400 px. The app shows it in a circle, so keep it centred.',
     logoPreview: 'Logo preview',
     logoFile: 'Logo file',
     cover: 'Cover image',
-    coverHint: 'Shown at the top of your page in the app. 1600 × 600 px recommended. Avoid text on the image.',
+    coverHint: 'Shown full width at the top of your page in the app. 1600 × 600 px recommended. Your logo sits over its lower-left corner, so avoid text on the image.',
     coverPreview: 'Cover image preview',
     coverFile: 'Cover image file',
     noCover: 'No cover image yet',
@@ -93,6 +93,9 @@ export const brandCopy = {
     live: 'Live',
     screen: 'Phone screen',
     caption: 'Product tiles show only approved products.',
+    products: 'Products',
+    // The phone's clock in the preview's status bar.
+    time: '9:41',
     show: 'Show preview',
     hide: 'Hide preview',
     website: 'Website',

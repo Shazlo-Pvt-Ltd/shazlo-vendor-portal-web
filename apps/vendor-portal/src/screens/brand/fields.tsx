@@ -1,5 +1,5 @@
 import { Box, Button, FormHelperText, LinearProgress, Stack, TextField, Typography } from '@mui/material'
-import { brand, neutral, radius, StatusPill } from '@shazlo/ui'
+import { brand, emphasis, neutral, radius, StatusPill } from '@shazlo/ui'
 import { ImageIcon, Upload } from 'lucide-react'
 import { memo, useId, useRef, useState, type ChangeEvent, type InputHTMLAttributes, type ReactNode } from 'react'
 import { Controller, type Control } from 'react-hook-form'
@@ -8,7 +8,7 @@ import { useUploadImage } from '../../api/queries'
 import { UploadError } from '../../api/uploads/upload'
 import { brandCopy as copy } from '../../copy/brand'
 import { SafeImage } from '../../security/SafeImage'
-import { initials, type BrandValues } from './schema'
+import { COVER_RATIO, initials, type BrandValues } from './schema'
 
 // The form re-renders on every keystroke (the preview and Changed tags follow the values), so the
 // inputs below are memoised: each one redraws only when its own value, error or props change.
@@ -26,6 +26,7 @@ export function ChangedTag() {
 // A static label above the control, so the Changed tag can sit beside it. The tag is part of the
 // label text, so screen readers hear "Story Changed" on the field itself.
 export function FieldLabel({ id, htmlFor, label, changed = false }: { id?: string; htmlFor?: string; label: string; changed?: boolean }) {
+  // Labels in Bodoni Moda semibold (subtitle2), so the eye finds them before the hints.
   const sx = { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, minHeight: 22, mb: 0.75, color: neutral.ink } as const
   const content = (
     <>
@@ -39,11 +40,11 @@ export function FieldLabel({ id, htmlFor, label, changed = false }: { id?: strin
     </>
   )
   return htmlFor ? (
-    <Typography component="label" id={id} htmlFor={htmlFor} variant="body2" sx={sx}>
+    <Typography component="label" id={id} htmlFor={htmlFor} variant="subtitle2" sx={sx}>
       {content}
     </Typography>
   ) : (
-    <Typography component="div" id={id} variant="body2" sx={sx}>
+    <Typography component="div" id={id} variant="subtitle2" sx={sx}>
       {content}
     </Typography>
   )
@@ -122,17 +123,17 @@ export const TextInput = memo(function TextInput({
   )
 })
 
-// The brand's initials in the display face (the theme's h1 family at this size).
+// The brand's initials in Bodoni Moda semibold.
 function Initials({ name, size }: { name: string; size: number }) {
   return (
-    <Box component="span" aria-hidden="true" sx={{ typography: 'h1', fontWeight: 400, letterSpacing: 0, fontSize: Math.round(size * 0.32), lineHeight: 1 }}>
+    <Box component="span" aria-hidden="true" sx={{ ...emphasis.semibold, letterSpacing: 0, fontSize: Math.round(size * 0.32), lineHeight: 1 }}>
       {initials(name)}
     </Box>
   )
 }
 
-// A round logo, or the brand's initials until one is uploaded.
-export function LogoMark({ url, name, size, alt = '', ring = false }: { url: string | null; name: string; size: number; alt?: string; ring?: boolean }) {
+// A round logo, as the app shows it, or the brand's initials until one is uploaded.
+export function LogoMark({ url, name, size, alt = '' }: { url: string | null; name: string; size: number; alt?: string }) {
   return (
     <Box
       sx={{
@@ -145,7 +146,7 @@ export function LogoMark({ url, name, size, alt = '', ring = false }: { url: str
         placeItems: 'center',
         bgcolor: brand.cream,
         color: brand.brown,
-        border: ring ? `3px solid ${neutral.surface}` : `1px solid ${neutral.line}`,
+        border: `1px solid ${neutral.line}`,
         '& > img': { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
       }}
     >
@@ -160,7 +161,8 @@ function CoverFrame({ url, alt }: { url: string | null; alt: string }) {
     <Box
       sx={{
         position: 'relative',
-        aspectRatio: '8 / 3',
+        // The app's shape (see COVER_SIZE), so what is cut off here is cut off there.
+        aspectRatio: COVER_RATIO,
         width: '100%',
         borderRadius: `${radius.card}px`,
         overflow: 'hidden',
@@ -177,7 +179,7 @@ function CoverFrame({ url, alt }: { url: string | null; alt: string }) {
         alt={alt}
         fallback={
           <Stack spacing={1} sx={{ alignItems: 'center' }}>
-            <ImageIcon size={20} strokeWidth={1.5} aria-hidden="true" />
+            <ImageIcon size={20} strokeWidth={1.75} aria-hidden="true" />
             <Typography variant="body2">{copy.identity.noCover}</Typography>
           </Stack>
         }
@@ -257,7 +259,7 @@ export function ImageField({
   const button: ReactNode = (
     <Button
       variant="outlined"
-      startIcon={<Upload size={16} strokeWidth={1.5} aria-hidden="true" />}
+      startIcon={<Upload size={18} strokeWidth={1.75} aria-hidden="true" />}
       onClick={() => input.current?.click()}
       disabled={disabled || upload.isPending}
       aria-label={upload.isPending ? undefined : `${verb} ${text.label.toLowerCase()}`}
@@ -268,7 +270,7 @@ export function ImageField({
     </Button>
   )
   const hint = (
-    <Typography id={hintId} variant="body2" color="text.secondary" sx={{ flex: 1, minWidth: 0 }}>
+    <Typography id={hintId} variant="body2" color="textSecondary" sx={{ flex: 1, minWidth: 0 }}>
       {text.hint}
     </Typography>
   )

@@ -39,7 +39,7 @@ export function CommissionCard({ commission }: { commission: Schemas['Commission
     )
   } else {
     const { state, agreed_bps: agreed, proposed_bps: proposed, note } = commission
-    const holding = agreed !== null && state !== 'agreed' ? <Typography variant="body2" color="text.secondary">{copy.stillAgreed(agreed)}</Typography> : null
+    const holding = agreed !== null && state !== 'agreed' ? <Typography variant="body2" color="textSecondary">{copy.stillAgreed(agreed)}</Typography> : null
     if (state === 'agreed' && agreed !== null) {
       body = (
         <Stack spacing={2}>
@@ -71,7 +71,7 @@ export function CommissionCard({ commission }: { commission: Schemas['Commission
           <Typography variant="body1">{proposed !== null ? copy.sentBackWithRate(proposed) : copy.sentBack}</Typography>
           {note && (
             <Box component="figure" sx={{ m: 0, p: 2, borderRadius: `${radius.card}px`, bgcolor: neutral.placeholder }}>
-              <Typography component="figcaption" variant="body2" color="text.secondary">
+              <Typography component="figcaption" variant="body2" color="textSecondary">
                 {copy.note}
               </Typography>
               <Typography component="blockquote" variant="body1" sx={{ m: 0, mt: 0.5, overflowWrap: 'anywhere' }}>
@@ -80,7 +80,7 @@ export function CommissionCard({ commission }: { commission: Schemas['Commission
             </Box>
           )}
           {holding}
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             {copy.proposeAgain}
           </Typography>
           <ProposeForm agreed={agreed} onSent={onSent} />

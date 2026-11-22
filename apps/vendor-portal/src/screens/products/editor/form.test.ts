@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { baseOf, changedInput, LIMITS, parseRupees, priceIssues, priceWaitsForSize, toInput, type EditorValues } from './form'
+import { baseOf, changedInput, colourIssues, forSubmit, LIMITS, parseRupees, priceIssues, priceWaitsForSize, toInput, type EditorValues } from './form'
 
 const values: EditorValues = {
   title: 'Kala Cotton Overshirt',
@@ -13,7 +13,7 @@ const values: EditorValues = {
   price: '1,499',
   mrp: '',
 }
-const base = { sku: 'KS-KAL-011', title: 'Kala Cotton Overshirt', price: 149900, mrp: null, live: false }
+const base = { sku: 'KS-KAL-011', title: 'Kala Cotton Overshirt', price: 149900, mrp: null, live: false, mainColour: 'Indigo', otherColours: [] }
 
 describe('parseRupees', () => {
   it.each([
@@ -58,7 +58,37 @@ describe('toInput', () => {
   })
 
   it('reads the base from a product', () => {
-    expect(baseOf(null)).toEqual({ sku: null, title: '', price: null, mrp: null, live: false })
+    expect(baseOf(null)).toEqual({ sku: null, title: '', price: null, mrp: null, live: false, mainColour: null, otherColours: [] })
+  })
+})
+
+describe('colours', () => {
+  it('saves any colour name or hex code, tidied', () => {
+    expect(toInput({ ...values, mainColour: ' Rust  orange ', otherColours: ['#b7410e', 'ivory'] }, base)).toMatchObject({ main_colour: 'Rust orange', other_colours: ['#B7410E', 'Ivory'] })
+  })
+
+  it('leaves out empty rows of other colours, and any that repeat the main colour or each other', () => {
+    expect(toInput({ ...values, mainColour: 'Rust orange', otherColours: ['', 'rust ORANGE', 'Ivory', 'IVORY'] }, base)).toMatchObject({ main_colour: 'Rust orange', other_colours: ['Ivory'] })
+  })
+
+  it('keeps the saved colours while a typed hex code is wrong', () => {
+    const saved = { ...base, mainColour: 'Indigo', otherColours: ['Ivory'] }
+    expect(toInput({ ...values, mainColour: '#12' }, saved)).toMatchObject({ main_colour: 'Indigo' })
+    expect(toInput({ ...values, otherColours: ['#GGGGGG'] }, saved)).toMatchObject({ other_colours: ['Ivory'] })
+    expect(toInput({ ...values, mainColour: '' }, saved).main_colour).toBeNull()
+  })
+
+  it('names the problem with each colour for the fields', () => {
+    expect(colourIssues({ mainColour: '#12', otherColours: ['Ivory', 'ivory'] })).toEqual({
+      main: expect.stringMatching(/^Enter a hex code/),
+      others: [undefined, 'Other colours should be different from the main colour and from each other.'],
+    })
+    expect(colourIssues({ mainColour: 'Rust orange', otherColours: ['', '#B7410E'] })).toEqual({ others: [undefined, undefined] })
+  })
+
+  it('counts a typed main colour as given for review, even before it is tidied', () => {
+    expect(forSubmit({ ...values, mainColour: ' rust orange ' }, []).main_colour).toBe('rust orange')
+    expect(forSubmit({ ...values, mainColour: '  ' }, []).main_colour).toBeNull()
   })
 })
 

@@ -148,13 +148,13 @@ function SectionForm({ topic, details }: { topic: Topic; details: Schemas['Store
       <ErrorSummary errors={form.ordered} />
       {topic === 'payout' && details.payout && (
         <Box sx={{ mb: 3 }}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             {copy.payout.current}
           </Typography>
           <Typography variant="body1" sx={{ mt: 0.25 }}>
             {payoutLine(details.payout)}
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
             {copy.payout.changeNote}
           </Typography>
         </Box>

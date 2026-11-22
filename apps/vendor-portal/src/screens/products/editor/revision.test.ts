@@ -61,9 +61,20 @@ describe('revisionChanges', () => {
   it('says when something is not there at all', () => {
     const changes = revisionChanges(live, { ...same, mrp: '', otherColours: ['Black'] }, live.images)
     expect(changes).toEqual([
-      { field: 'colours', label: 'Other colours', live: 'None', yours: 'Black' },
+      { field: 'colours', label: 'Other colours', live: 'None', yours: 'Black', colours: { live: [], yours: ['Black'] } },
       { field: 'mrp', label: 'MRP', live: '₹1,499', yours: 'None' },
     ])
+  })
+
+  it('compares colours as they will be saved, and keeps them for their swatches', () => {
+    // The same colour typed another way is no change.
+    expect(revisionChanges(live, { ...same, mainColour: ' rust ' }, live.images)).toEqual([])
+    expect(revisionChanges(live, { ...same, mainColour: '#b7410e', otherColours: ['Kalamkari indigo', ''] }, live.images)).toEqual([
+      { field: 'colour', label: 'Main colour', live: 'Rust', yours: '#B7410E', colours: { live: ['Rust'], yours: ['#B7410E'] } },
+      { field: 'colours', label: 'Other colours', live: 'None', yours: 'Kalamkari indigo', colours: { live: [], yours: ['Kalamkari indigo'] } },
+    ])
+    // A hex code that is not one is not what will be saved: the live colour stays.
+    expect(revisionChanges(live, { ...same, mainColour: '#12' }, live.images)).toEqual([])
   })
 
   it('counts photos, and notices a photo swapped for another', () => {

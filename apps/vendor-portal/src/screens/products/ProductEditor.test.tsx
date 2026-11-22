@@ -1,4 +1,4 @@
-import { configure, screen, waitFor, within } from '@testing-library/react'
+import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { http } from 'msw'
 import { beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { addAsset, DEMO_STAFF, NOT_SET, type MockDb } from '../../mocks/db'
@@ -59,6 +59,8 @@ function part(name: string): HTMLElement {
 }
 const findPart = (name: string) => waitFor(() => part(name))
 const list = (name: string) => document.querySelector<HTMLElement>(`ul[aria-label="${name}"]`)!
+// The swatch drawn inside a colour field, beside what is typed.
+const swatchBeside = (input: HTMLElement) => input.closest('.MuiInputBase-root')!.querySelector('[data-swatch]')
 const fieldset = (legend: string, root: HTMLElement = document.body) => within(root).getByText(legend, { selector: 'legend' }).closest('fieldset')!
 const button = (name: string | RegExp, root: HTMLElement = document.body) => within(root).getByText(name, { selector: 'button' })
 const queryButton = (name: string | RegExp, root: HTMLElement = document.body) => within(root).queryByText(name, { selector: 'button' })
@@ -152,14 +154,17 @@ describe('V-07 Product editor', () => {
     const types = fieldset('Product type', about)
     expect(within(types).getAllByRole('radio')).toHaveLength(17)
     expect(within(types).getByLabelText('Kurtas')).toBeChecked()
-    const main = fieldset('Main colour', about)
-    expect(within(main).getByLabelText('Indigo')).toBeChecked()
-    expect(within(main).getByLabelText('Multicolour')).toBeInTheDocument()
+    // Colours: any name or hex code, typed or picked, each shown with its swatch.
+    const main = within(about).getByLabelText('Main colour')
+    expect(main).toHaveValue('Indigo')
+    expect(main).toHaveAccessibleDescription('Type a colour name or a hex code, choose one from the list, or pick a shade.')
+    expect(swatchBeside(main)).toHaveAttribute('data-swatch', 'named')
+    expect(within(about).getByLabelText('Pick a shade for main colour')).toHaveAttribute('type', 'color')
     const others = fieldset('Other colours (optional)', about)
-    expect(within(others).getByLabelText('Red')).toBeChecked()
-    expect(within(others).getByLabelText('Black')).toBeChecked()
-    expect(within(others).getByLabelText('White')).toBeDisabled()
-    expect(within(others).queryByLabelText('Indigo')).toBeNull()
+    expect(within(others).getByLabelText('Other colour 1')).toHaveValue('Red')
+    expect(within(others).getByLabelText('Other colour 2')).toHaveValue('Black')
+    // Two other colours is the most: no room for another.
+    expect(queryButton('Add another colour (up to 2)', about)).toBeNull()
     expect(within(about).getByLabelText('Material')).toHaveValue('Cotton mul')
     expect(within(about).getByLabelText('Material')).toHaveAccessibleDescription('For example: 100% linen')
 
@@ -228,26 +233,85 @@ describe('V-07 Product editor', () => {
     expect(h1()).toHaveTextContent('Ajrakh Kurta — Indigo')
   })
 
-  it('saves gender, colours and material from the chips and fields', { timeout: LONG }, async () => {
+  it('saves gender, material and any colour: a name, a hex code or a picked shade', { timeout: LONG }, async () => {
     const { user, db } = await renderApp({ route: route('KS-KAL-011') })
     const about = await findPart('About the product')
     expect(within(fieldset('Product type', about)).getByLabelText('Shirts')).toBeChecked()
     expect(within(about).queryByText('Other colours (optional)')).toBeNull()
 
     await user.click(within(fieldset('Gender', about)).getByLabelText('Men'))
-    await user.click(within(fieldset('Main colour', about)).getByLabelText('Indigo'))
-    await user.click(button('Add another colour (up to 2)', about))
-    const others = fieldset('Other colours (optional)', about)
-    expect(within(others).queryByLabelText('Indigo')).toBeNull()
-    await user.click(within(others).getByLabelText('White'))
-    await user.click(within(others).getByLabelText('Black'))
-    expect(within(others).getByLabelText('Red')).toBeDisabled()
-    await user.type(within(about).getByLabelText('Material'), '100% kala cotton')
-    await waitFor(() => expect(content(db, 'KS-KAL-011')).toMatchObject({ gender: 'men', main_colour: 'Indigo', other_colours: ['White', 'Black'], fabric: '100% kala cotton' }), SAVED)
+    // The listed colours are suggestions, each with its swatch; any other name is fine too.
+    const main = within(about).getByLabelText('Main colour')
+    await user.type(main, 'indi')
+    const suggestions = await screen.findByRole('listbox')
+    expect(within(suggestions).getAllByRole('option').map((o) => o.textContent)).toEqual(['Indigo'])
+    expect(within(suggestions).getByRole('option').querySelector('[data-swatch="named"]')).not.toBeNull()
+    await user.clear(main)
+    await user.type(main, '  Kalamkari   indigo ')
+    await user.tab()
+    expect(main).toHaveValue('Kalamkari indigo')
+    expect(swatchBeside(main)).toHaveAttribute('data-swatch', 'unknown')
 
-    // A new main colour leaves the other colours.
-    await user.click(within(fieldset('Main colour', about)).getByLabelText('White'))
-    await waitFor(() => expect(content(db, 'KS-KAL-011')).toMatchObject({ main_colour: 'White', other_colours: ['Black'] }), SAVED)
+    // A hex code, tidied when the seller leaves the field.
+    await user.click(button('Add another colour (up to 2)', about))
+    const first = within(about).getByLabelText('Other colour 1')
+    expect(first).toHaveFocus()
+    await user.type(first, '#b7410e')
+    await user.tab()
+    expect(first).toHaveValue('#B7410E')
+    expect(swatchBeside(first)).toHaveStyle({ background: 'rgb(183, 65, 14)' })
+
+    // A shade from the colour picker fills in its hex code.
+    await user.click(button('Add another colour (up to 2)', about))
+    fireEvent.change(within(about).getByLabelText('Pick a shade for other colour 2'), { target: { value: '#2e3f6e' } })
+    expect(within(about).getByLabelText('Other colour 2')).toHaveValue('#2E3F6E')
+    expect(queryButton('Add another colour (up to 2)', about)).toBeNull()
+
+    await user.type(within(about).getByLabelText('Material'), '100% kala cotton')
+    await waitFor(() => expect(content(db, 'KS-KAL-011')).toMatchObject({ gender: 'men', main_colour: 'Kalamkari indigo', other_colours: ['#B7410E', '#2E3F6E'], fabric: '100% kala cotton' }), SAVED)
+
+    await user.click(within(about).getByLabelText('Remove other colour 1'))
+    expect(within(about).getByLabelText('Other colour 1')).toHaveValue('#2E3F6E')
+    await waitFor(() => expect(content(db, 'KS-KAL-011')).toMatchObject({ other_colours: ['#2E3F6E'] }), SAVED)
+  })
+
+  it('refuses a hex code that is not one, and a colour given twice, with a clear message', { timeout: LONG }, async () => {
+    const { user, db } = await renderApp({ route: route('KS-AJR-014') })
+    const about = await findPart('About the product')
+    const main = within(about).getByLabelText('Main colour')
+    await user.clear(main)
+    await user.type(main, '#12')
+    // Not while typing: once the seller leaves the field.
+    expect(main).not.toHaveAttribute('aria-invalid', 'true')
+    await user.tab()
+    expect(main).toHaveAttribute('aria-invalid', 'true')
+    expect(main).toHaveAccessibleDescription(/^Enter a hex code as # and 6 digits or letters A to F, like #[0-9A-F]{6}\.$/)
+    await user.clear(main)
+    await user.type(main, '#GGGGGG')
+    await user.tab()
+    expect(main).toHaveAccessibleDescription(/^Enter a hex code/)
+    // A wrong code is never saved: the saved colour stays.
+    await user.type(within(about).getByLabelText('Material'), '.')
+    await waitFor(() => expect(content(db, 'KS-AJR-014').fabric).toBe('Cotton mul.'), SAVED)
+    expect(content(db, 'KS-AJR-014').main_colour).toBe('Indigo')
+
+    // Fixing it clears the message straight away.
+    await user.clear(main)
+    await user.type(main, 'Rust orange')
+    expect(main).not.toHaveAttribute('aria-invalid', 'true')
+
+    // The same colour twice, whatever the case.
+    const first = within(about).getByLabelText('Other colour 1')
+    await user.clear(first)
+    await user.type(first, 'rust ORANGE')
+    await user.tab()
+    expect(first).toHaveAccessibleDescription('Other colours should be different from the main colour and from each other.')
+
+    // Sending waits until the colours are right, and takes the seller to the one to fix.
+    main.focus()
+    await user.click(button('Send for review again'))
+    await waitFor(() => expect(first).toHaveFocus())
+    expect(record(db, 'KS-AJR-014').status).not.toBe('pending_review')
   })
 
   it('checks the price against the MRP when sending, not while typing, and only saves a valid price', { timeout: LONG }, async () => {
@@ -575,8 +639,8 @@ describe('V-07 Product editor', () => {
     expect(within(list('Product photos')).getByLabelText('Add front photo')).not.toHaveAccessibleDescription()
     await user.click(button('Send for review'))
 
-    await screen.findByText('Fix these before sending for review.')
-    const problems = bannerWith('Fix these before sending for review.')
+    await screen.findByText('Fix these before sending for review')
+    const problems = bannerWith('Fix these before sending for review')
     expect(problems).toHaveAttribute('role', 'alert')
     await waitFor(() => expect(problems.parentElement).toHaveFocus())
     expect(within(problems).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
@@ -853,7 +917,7 @@ describe('V-07 Product editor', () => {
     db.faults.push({ ...conflict }, { ...conflict })
     content(db, 'KS-KAL-011').title = 'Renamed elsewhere'
     await user.type(material, 'Kala cotton')
-    const banner = await screen.findByText('This product was changed somewhere else (another tab or someone on your team), so your last change was not saved.', {}, SAVED)
+    const banner = await screen.findByText('This product was changed somewhere else (another tab or someone on your team), so your last change was not saved', {}, SAVED)
     await user.click(within(banner.closest('[role="alert"]')!).getByRole('button', { name: 'Load the latest' }))
     await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue('Renamed elsewhere'))
     expect(screen.getByLabelText('Material')).toHaveValue('')
@@ -880,7 +944,7 @@ describe('V-07 Product editor', () => {
     const material = await screen.findByLabelText('Material')
     db.products = db.products.filter((p) => p.sku !== 'KS-DAB-042')
     await user.type(material, ' blend')
-    expect(await screen.findByText('This product is no longer in your products (deleted somewhere else), so your last change was not saved.', {}, SAVED)).toBeInTheDocument()
+    expect(await screen.findByText('This product is no longer in your products (deleted somewhere else), so your last change was not saved', {}, SAVED)).toBeInTheDocument()
     expect(material).toHaveAttribute('readonly')
     expect(screen.queryByLabelText('More actions')).toBeNull()
   })

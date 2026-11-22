@@ -49,7 +49,7 @@ describe('Store details: changing one topic', () => {
     await save(user)
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/store/details'))
-    const saved = await screen.findByText('Returns saved.', {}, SLOW)
+    const saved = await screen.findByText('Returns saved', {}, SLOW)
     expect(saved.closest('[tabindex="-1"]')).toHaveFocus()
     expect(store().returns).toEqual({ window_days: 0, condition: null, refund_days: null })
     expect(value(screen.getByRole('region', { name: 'Returns' }), 'Returns')).toHaveTextContent('No returns')
@@ -74,7 +74,7 @@ describe('Store details: changing one topic', () => {
     expect(await screen.findByText('HDFC Bank')).toBeInTheDocument()
     await save(user)
 
-    expect(await screen.findByText('Payouts saved.', {}, SLOW)).toBeInTheDocument()
+    expect(await screen.findByText('Payouts saved', {}, SLOW)).toBeInTheDocument()
     expect(screen.getByText('Your store details are complete. You can send products for review.')).toBeInTheDocument()
     expect(store().payout).toEqual({ method: 'bank', holder_name: 'Kalki Studio LLP', account_number: '50100123454821', ifsc: 'HDFC0001234' })
     const payouts = screen.getByRole('region', { name: 'Payouts' })
@@ -150,7 +150,7 @@ describe('Store details: changing one topic', () => {
 
   it('says so when the address names no topic', async () => {
     await renderApp({ route: '/store/details/bank' })
-    expect(await screen.findByRole('heading', { level: 1, name: 'We could not find that part of your store details.' }, SLOW)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'We could not find that part of your store details' }, SLOW)).toBeInTheDocument()
   })
 })
 
@@ -164,7 +164,7 @@ describe('Store details: one topic, when things go wrong', () => {
     await user.click(screen.getByRole('radio', { name: 'No returns' }))
     await user.dblClick(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/store/details'))
-    expect(await screen.findByText('Returns saved.', {}, SLOW)).toBeInTheDocument()
+    expect(await screen.findByText('Returns saved', {}, SLOW)).toBeInTheDocument()
     expect(puts).toHaveLength(1)
     // One step back from the summary returns to the topic, not to a second copy of the summary.
     expect(router.state.historyAction).toBe('PUSH')
@@ -193,7 +193,7 @@ describe('Store details: one topic, when things go wrong', () => {
     await typeIn(user, 'Account number again', '123456789042')
     await typeIn(user, 'IFSC code', 'abcd0001234')
     await save(user)
-    expect(await screen.findByText('Payouts saved.', {}, SLOW)).toBeInTheDocument()
+    expect(await screen.findByText('Payouts saved', {}, SLOW)).toBeInTheDocument()
     expect(store().payout).toEqual({ method: 'bank', holder_name: 'Kalki Studio LLP', account_number: '123456789042', ifsc: 'ABCD0001234' })
     expect(value(screen.getByRole('region', { name: 'Payouts' }), 'Paid to')).toHaveTextContent('Bank account •••• 9042')
   })

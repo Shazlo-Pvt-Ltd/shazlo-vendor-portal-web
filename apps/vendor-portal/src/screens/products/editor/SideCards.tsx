@@ -4,6 +4,7 @@ import { memo } from 'react'
 import { Link as RouterLink } from 'react-router'
 import type { Schemas } from '../../../api/model'
 import { useStoreDetails } from '../../../api/queries'
+import { ColourList } from '../../../components/ColourSwatch'
 import { paths } from '../../../app/paths'
 import { productEditorCopy } from '../../../copy/productEditor'
 import { formatStamp } from '../../../lib/format'
@@ -18,7 +19,7 @@ export const RevisionCard = memo(function RevisionCard({ live, working, changes,
   const state = working?.state ?? 'editing'
   const body = (
     <>
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="textSecondary">
         {r.version(live.version)}
       </Typography>
       {changes.length === 0 ? (
@@ -33,23 +34,23 @@ export const RevisionCard = memo(function RevisionCard({ live, working, changes,
           <Box component="ul" sx={{ listStyle: 'none', p: 0, m: 0, borderTop: `1px solid ${neutral.line}` }}>
             {changes.map((change) => (
               <Box component="li" key={change.field} sx={{ py: 1.25, borderBottom: `1px solid ${neutral.line}` }}>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" color="textSecondary">
                   {change.label}
                 </Typography>
                 {(['live', 'yours'] as const).map((side) => (
                   <Stack key={side} direction="row" spacing={1} sx={{ alignItems: 'baseline', mt: 0.25 }}>
-                    <Typography component="span" variant="caption" color="text.secondary" sx={{ width: 40, flexShrink: 0 }}>
+                    <Typography component="span" variant="caption" color="textSecondary" sx={{ width: 40, flexShrink: 0 }}>
                       {r.columns[side]}
                     </Typography>
-                    <Typography component="span" variant="body2" sx={{ overflowWrap: 'anywhere', fontVariantNumeric: 'tabular-nums' }}>
-                      {change[side]}
+                    <Typography component="span" variant="body2" sx={{ overflowWrap: 'anywhere', fontVariantNumeric: 'tabular-nums', minWidth: 0 }}>
+                      {change.colours && change.colours[side].length > 0 ? <ColourList values={change.colours[side]} size={12} /> : change[side]}
                     </Typography>
                   </Stack>
                 ))}
               </Box>
             ))}
           </Box>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+          <Typography variant="body2" color="textSecondary" sx={{ mt: 1.5 }}>
             {r.statesNote[state]}
           </Typography>
         </>
@@ -85,11 +86,11 @@ export const HistoryCard = memo(function HistoryCard({ history }: { history: Sch
               />
               {!last && <Box aria-hidden="true" sx={{ position: 'absolute', left: 5, top: 20, bottom: 0, width: '1px', bgcolor: neutral.line }} />}
               <Typography variant="body1">{copy.history.events[entry.event] ?? entry.event}</Typography>
-              <Typography variant="caption" component="time" dateTime={entry.at} color="text.secondary" sx={{ display: 'block', fontVariantNumeric: 'tabular-nums' }}>
+              <Typography variant="caption" component="time" dateTime={entry.at} color="textSecondary" sx={{ display: 'block', fontVariantNumeric: 'tabular-nums' }}>
                 {formatStamp(entry.at)}
               </Typography>
               {entry.note && (
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+                <Typography variant="body2" color="textSecondary" sx={{ mt: 0.75 }}>
                   {entry.note}
                 </Typography>
               )}
@@ -106,7 +107,7 @@ export const HistoryCard = memo(function HistoryCard({ history }: { history: Sch
 export function ReturnsNote({ plain = false }: { plain?: boolean }) {
   const returns = useStoreDetails().data?.returns
   const text = (
-    <Typography variant="body2" color="text.secondary">
+    <Typography variant="body2" color="textSecondary">
       {copy.returnsNote.body}
       {returns && ` ${copy.returnsNote.policy(returns.window_days)}`}{' '}
       <Link component={RouterLink} to={returns ? paths.storeSection('returns') : paths.storeDetails}>

@@ -158,10 +158,15 @@ export const catalogCopy = {
       upiFormat: 'Enter a UPI ID like name@okhdfcbank.',
     },
     business: {
+      legalNameRequired: 'Add your legal business name.',
       legalNameLong: 'Keep the legal name under 120 characters.',
+      gstChoice: 'Say whether your business is registered for GST.',
+      gstinRequired: 'Enter your GST number.',
       gstinFormat: 'Check your GST number. It has 15 characters, like 24ABCDE1234F1Z6.',
     },
     commission: {
+      choice: 'Choose how we set your commission.',
+      required: 'Enter the rate you propose, like 12 or 12.5.',
       range: 'Enter a rate from 0% to 40%.',
       format: 'Enter a percentage, like 12 or 12.5.',
       sameAsAgreed: 'That is already your agreed rate.',
@@ -191,9 +196,16 @@ export const catalogCopy = {
       priceZero: 'Enter a price above ₹0.',
       priceAboveMrp: 'Selling price cannot be above the MRP.',
       storeDetailsIncomplete: 'Finish your store details first.',
-      submitProblems: 'Fix these before sending for review.',
+      submitProblems: 'Fix these before sending for review',
       extraFull: 'You can add up to 4 extra photos.',
       tryonFull: 'You can add up to 5 try-on photos.',
+    },
+    // Any colour name or hex code (src/lib/catalog.ts parseColour). The example is passed in, so no
+    // colour is written here.
+    colour: {
+      hex: (example: string) => `Enter a hex code as # and 6 digits or letters A to F, like ${example}.`,
+      long: (max: number) => `Keep the colour name to ${max} characters.`,
+      name: 'Enter a colour name, like Rust orange, or a hex code.',
     },
     sizeChart: {
       sizeUnknown: (size: string) => `"${size}" is not a size we list.`,
@@ -207,7 +219,7 @@ export const catalogCopy = {
       nameRepeated: (row: number) => `This product name is also on row ${row}. Use one row per product, with all its sizes in Sizes and stock.`,
       gender: (value: string) => `"${value}" is not a gender we list. Use Women, Men or Unisex.`,
       productType: (value: string, closest: string | null) => `"${value}" is not a product type we list.${closest ? ` Closest match: ${closest}.` : ''}`,
-      colour: (value: string, closest: string | null) => `"${value}" is not one of our colours.${closest ? ` Closest match: ${closest}.` : ''}`,
+      colour: (value: string, fix: string) => `Could not read "${value}" as a colour. ${fix}`,
       otherColoursMax: 'Add up to 2 other colours, separated by commas.',
       otherColoursRepeat: 'Other colours should be different from the main colour and from each other.',
       price: (value: string) => `Must be a number above 0, like 1299. Found "${value}".`,

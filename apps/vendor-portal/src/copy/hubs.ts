@@ -101,7 +101,7 @@ export const hubsCopy = {
     turnedOff: (email: string) => `${email} is turned off.`,
     turnedOn: (email: string) => `${email} is turned on.`,
     turnedOnInvite: (email: string) => `${email} is turned on. Send the invite again so they can choose a password.`,
-    loadFailed: 'Your team did not load.',
+    loadFailed: 'Your team did not load',
     retry: 'Try again',
     tooManyInvites: (minutes: number) => `You have sent many invites in the last hour. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`,
     refusals: {

@@ -48,7 +48,7 @@ function EmptyTile({ id, name, required, flagged, disabled, readOnly, onPick }: 
     return (
       <Box sx={{ ...tile, display: 'grid', placeItems: 'center', bgcolor: neutral.canvas, border: `1.5px dashed ${neutral.line}`, color: neutral.inkSecondary }}>
         <Stack spacing={0.5} sx={{ alignItems: 'center' }}>
-          <ImageOff size={18} strokeWidth={1.5} aria-hidden="true" />
+          <ImageOff size={18} strokeWidth={1.75} aria-hidden="true" />
           <Typography variant="caption">{copy.empty}</Typography>
         </Stack>
       </Box>
@@ -74,7 +74,7 @@ function EmptyTile({ id, name, required, flagged, disabled, readOnly, onPick }: 
           '&.Mui-disabled': { opacity: 0.55 },
         }}
       >
-        <Plus size={18} strokeWidth={1.5} aria-hidden="true" />
+        <Plus size={18} strokeWidth={1.75} aria-hidden="true" />
         <Typography variant="caption" component="span" color="inherit">
           {copy.addShort}
         </Typography>
@@ -99,7 +99,7 @@ function ImageTile({ image, name, readOnly, onOptions }: { image: Image; name: s
           onClick={(event) => onOptions(event.currentTarget)}
           sx={{ position: 'absolute', top: 2, right: 2, width: 44, height: 44, bgcolor: neutral.surface, border: `1px solid ${neutral.line}`, color: neutral.ink, '@media (hover: hover)': { '&:hover': { bgcolor: neutral.surface } } }}
         >
-          <MoreHorizontal size={18} strokeWidth={1.5} aria-hidden="true" />
+          <MoreHorizontal size={18} strokeWidth={1.75} aria-hidden="true" />
         </IconButton>
       )}
     </Box>
@@ -158,11 +158,11 @@ function GroupHeader({ title, count, hint, children }: { title: string; count: s
         <Typography variant="h3" component="h3">
           {title}
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+        <Typography variant="body2" color="textSecondary" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
           {count}
         </Typography>
       </Stack>
-      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+      <Typography variant="body2" color="textSecondary" sx={{ mt: 0.25 }}>
         {hint}
       </Typography>
       {children && (
@@ -269,7 +269,7 @@ export const PhotosSection = memo(function PhotosSection({ productId, images, up
   const groupButtons = (group: PhotoGroup) =>
     readOnly ? null : (
       <>
-        <Button variant="outlined" disabled={disabled} onClick={() => open(group === 'product' ? productInput.current : tryonInput.current, null)} startIcon={<ImagePlus size={18} strokeWidth={1.5} aria-hidden="true" />} sx={{ minHeight: 44 }}>
+        <Button variant="outlined" disabled={disabled} onClick={() => open(group === 'product' ? productInput.current : tryonInput.current, null)} startIcon={<ImagePlus size={18} strokeWidth={1.75} aria-hidden="true" />} sx={{ minHeight: 44 }}>
           {group === 'product' ? copy.choose : copy.chooseTryon}
         </Button>
         {showCamera && (
@@ -278,7 +278,7 @@ export const PhotosSection = memo(function PhotosSection({ productId, images, up
             disabled={disabled}
             aria-label={group === 'product' ? copy.takeProduct : copy.takeTryon}
             onClick={() => (group === 'product' ? productCamera : tryonCamera).current?.click()}
-            startIcon={<Camera size={18} strokeWidth={1.5} aria-hidden="true" />}
+            startIcon={<Camera size={18} strokeWidth={1.75} aria-hidden="true" />}
             sx={{ minHeight: 44 }}
           >
             {copy.take}
@@ -323,7 +323,7 @@ export const PhotosSection = memo(function PhotosSection({ productId, images, up
           aria-label={copy.addExtra}
           sx={{ ...tile, display: 'flex', flexDirection: 'column', gap: 0.5, color: neutral.inkSecondary, border: `1.5px dashed ${neutral.line}`, '@media (hover: hover)': { '&:hover': { bgcolor: neutral.placeholder } }, '&.Mui-disabled': { opacity: 0.55 } }}
         >
-          <Plus size={18} strokeWidth={1.5} aria-hidden="true" />
+          <Plus size={18} strokeWidth={1.75} aria-hidden="true" />
           <Typography variant="caption" component="span" color="inherit">
             {copy.addShort}
           </Typography>
@@ -356,7 +356,7 @@ export const PhotosSection = memo(function PhotosSection({ productId, images, up
   }
 
   const action = (
-    <Typography variant="body2" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+    <Typography variant="body2" color="textSecondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>
       {copy.added(namedAdded + tryonAdded, REQUIRED_TOTAL)}
     </Typography>
   )
@@ -365,7 +365,7 @@ export const PhotosSection = memo(function PhotosSection({ productId, images, up
     <EditorSection title={copy.title} action={action} plain={plain}>
       {lead}
       {disabled && !readOnly && (
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
           {copy.needsName}{' '}
           <Link component="button" type="button" variant="body2" onClick={onAddName} sx={{ verticalAlign: 'baseline' }}>
             {copy.needsNameLink}
@@ -401,7 +401,7 @@ export const PhotosSection = memo(function PhotosSection({ productId, images, up
       <Box role="status" sx={srOnly}>
         {notice?.tone === 'status' ? notice.text : ''}
       </Box>
-      <Typography variant="caption" component="p" color="text.secondary" sx={{ mt: 2.5, maxWidth: '68ch' }}>
+      <Typography variant="caption" component="p" color="textSecondary" sx={{ mt: 2.5, maxWidth: '68ch' }}>
         {copy.helper}
       </Typography>
 
@@ -435,7 +435,7 @@ export const PhotosSection = memo(function PhotosSection({ productId, images, up
           menuTarget.kind !== 'tryon' && menuTarget.image.angle !== 'front' && (
             <MenuItem key="main" onClick={() => void act(() => move.mutateAsync({ imageId: menuTarget.image.id, angle: 'front' }), copy.moved)}>
               <ListItemIcon>
-                <Star size={16} strokeWidth={1.5} aria-hidden="true" />
+                <Star size={16} strokeWidth={1.75} aria-hidden="true" />
               </ListItemIcon>
               {copy.makeMain}
             </MenuItem>
@@ -443,7 +443,7 @@ export const PhotosSection = memo(function PhotosSection({ productId, images, up
           menuMoves.left && (
             <MenuItem key="left" onClick={() => void act(menuMoves.left!, copy.moved)}>
               <ListItemIcon>
-                <ArrowLeft size={16} strokeWidth={1.5} aria-hidden="true" />
+                <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" />
               </ListItemIcon>
               {copy.moveLeft}
             </MenuItem>
@@ -451,7 +451,7 @@ export const PhotosSection = memo(function PhotosSection({ productId, images, up
           menuMoves.right && (
             <MenuItem key="right" onClick={() => void act(menuMoves.right!, copy.moved)}>
               <ListItemIcon>
-                <ArrowRight size={16} strokeWidth={1.5} aria-hidden="true" />
+                <ArrowRight size={16} strokeWidth={1.75} aria-hidden="true" />
               </ListItemIcon>
               {copy.moveRight}
             </MenuItem>
@@ -466,14 +466,14 @@ export const PhotosSection = memo(function PhotosSection({ productId, images, up
               }}
             >
               <ListItemIcon>
-                <Replace size={16} strokeWidth={1.5} aria-hidden="true" />
+                <Replace size={16} strokeWidth={1.75} aria-hidden="true" />
               </ListItemIcon>
               {copy.replace}
             </MenuItem>
           ),
           <MenuItem key="remove" onClick={() => void act(() => remove.mutateAsync(menuTarget.image.id), copy.removed(menuTarget.name))}>
             <ListItemIcon>
-              <Trash2 size={16} strokeWidth={1.5} aria-hidden="true" />
+              <Trash2 size={16} strokeWidth={1.75} aria-hidden="true" />
             </ListItemIcon>
             {copy.remove}
           </MenuItem>,

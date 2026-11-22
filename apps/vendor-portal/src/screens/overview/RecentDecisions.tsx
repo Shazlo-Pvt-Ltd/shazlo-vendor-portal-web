@@ -22,7 +22,7 @@ function DecisionRow({ item, compact }: { item: Schemas['ReviewItem']; compact: 
     <Stack direction={compact ? 'row' : 'column'} spacing={compact ? 1 : 0.75} sx={{ alignItems: compact ? 'center' : 'flex-end', flexShrink: 0 }}>
       <StatusPill status={reviewPill(item)} />
       {item.decided_at && (
-        <Typography variant="caption" color="text.secondary" component="time" dateTime={item.decided_at} sx={{ whiteSpace: 'nowrap' }}>
+        <Typography variant="caption" color="textSecondary" component="time" dateTime={item.decided_at} sx={{ whiteSpace: 'nowrap' }}>
           {formatRelative(item.decided_at)}
         </Typography>
       )}
@@ -68,7 +68,7 @@ function DecisionRow({ item, compact }: { item: Schemas['ReviewItem']; compact: 
         )}
         {compact && <Box sx={{ mt: 0.75 }}>{status}</Box>}
         {item.state === 'rejected' && item.reason && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, maxWidth: '65ch', whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>
+          <Typography variant="body2" color="textSecondary" sx={{ mt: 0.75, maxWidth: '65ch', whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>
             {copy.reason(item.reason)}
           </Typography>
         )}

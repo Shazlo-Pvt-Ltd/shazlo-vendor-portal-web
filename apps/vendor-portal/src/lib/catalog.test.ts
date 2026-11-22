@@ -3,7 +3,10 @@ import type { Schemas } from '../api/model'
 import { catalogCopy } from '../copy/catalog'
 import {
   ALL_SIZES,
+  checkColours,
   closestColour,
+  COLOUR_MAX,
+  colourSwatch,
   closestProductType,
   COLOURS,
   isValidMeasurement,
@@ -15,7 +18,9 @@ import {
   PRODUCT_TYPES,
   productProblems,
   productTypesInGroup,
+  parseColour,
   parseSizesStock,
+  sameColour,
   SIZE_CHART_GROUP,
   sizeChartGroupFor,
   sizesForType,
@@ -97,6 +102,71 @@ describe('colours', () => {
     expect(matchColour('multicolor')).toBe('Multicolour')
     expect(matchColour('Navy blue shade')).toBeNull()
     expect(closestColour('Navy blue shade')).toBe('Navy')
+  })
+})
+
+describe('any colour a seller names or picks', () => {
+  it('takes any colour name, trimmed, with the list spelling for a listed colour', () => {
+    expect(parseColour('  Rust   orange ')).toEqual({ ok: true, value: 'Rust orange' })
+    expect(parseColour('Kalamkari indigo')).toEqual({ ok: true, value: 'Kalamkari indigo' })
+    expect(parseColour('indigo')).toEqual({ ok: true, value: 'Indigo' })
+    expect(parseColour('मैजेंटा')).toEqual({ ok: true, value: 'मैजेंटा' })
+    expect(parseColour('   ')).toBeNull()
+  })
+
+  it('takes a hex code as #RRGGBB in capitals', () => {
+    expect(parseColour('#b7410e')).toEqual({ ok: true, value: '#B7410E' })
+    expect(parseColour(' #B7410E ')).toEqual({ ok: true, value: '#B7410E' })
+    expect(parseColour('#fa0')).toEqual({ ok: true, value: '#FFAA00' })
+  })
+
+  it.each(['#12', '#GGGGGG', '#B7410E0', '#', '# B7410E'])('refuses %s as a hex code', (text) => {
+    expect(parseColour(text)).toEqual({ ok: false, problem: 'hex' })
+  })
+
+  it('refuses a name longer than 32 characters, or one with no letters', () => {
+    expect(COLOUR_MAX).toBe(32)
+    expect(parseColour('A'.repeat(32))).toEqual({ ok: true, value: 'A'.repeat(32) })
+    expect(parseColour('A'.repeat(33))).toEqual({ ok: false, problem: 'long' })
+    expect(parseColour('1234')).toEqual({ ok: false, problem: 'name' })
+    expect(parseColour('--')).toEqual({ ok: false, problem: 'name' })
+  })
+
+  it('compares colours without minding case', () => {
+    expect(sameColour('rust orange', 'Rust Orange')).toBe(true)
+    expect(sameColour('#b7410e', '#B7410E')).toBe(true)
+    expect(sameColour('Rust', 'Rust orange')).toBe(false)
+  })
+
+  it('wants other colours different from the main colour and each other, at most 2', () => {
+    const message = 'Other colours should be different from the main colour and from each other.'
+    expect(checkColours('Rust orange', ['#B7410E', 'Ivory'])).toEqual({})
+    expect(checkColours('Rust orange', ['rust ORANGE'])).toEqual({ other_colours: message, at: 0 })
+    expect(checkColours('Indigo', ['Ivory', 'ivory'])).toEqual({ other_colours: message, at: 1 })
+    expect(checkColours('#b7410e', ['#B7410E'])).toEqual({ other_colours: message, at: 0 })
+    expect(checkColours('Indigo', ['Ivory', 'Red', 'Black'])).toEqual({ other_colours: 'Choose up to 2 other colours.', at: 2 })
+  })
+
+  it('names a bad hex code or name, main colour first', () => {
+    const problems = checkColours('#12', ['#GGGGGG'])
+    expect(problems.main_colour).toMatch(/^Enter a hex code as # and 6 digits or letters A to F, like #[0-9A-F]{6}\.$/)
+    expect(problems.other_colours).toBe(problems.main_colour)
+    expect(problems.at).toBe(0)
+    expect(checkColours('A'.repeat(33), [])).toEqual({ main_colour: 'Keep the colour name to 32 characters.' })
+    expect(checkColours('', [' ', 'Ivory'])).toEqual({})
+  })
+
+  it('draws a hex code as itself, a listed name with its swatch, and anything else as a plain swatch', () => {
+    expect(colourSwatch('#B7410E')).toEqual({ kind: 'hex', background: '#B7410E', border: false })
+    // A light colour gets a border so it shows on a white card.
+    expect(colourSwatch('#FFFFFF')).toMatchObject({ kind: 'hex', border: true })
+    expect(colourSwatch('Indigo')).toEqual({ kind: 'named', background: COLOURS.find((c) => c.name === 'Indigo')!.swatch, border: false })
+    expect(colourSwatch('ivory')).toMatchObject({ kind: 'named', border: true })
+    // A common other name for a listed colour.
+    expect(colourSwatch('Off white')).toMatchObject({ kind: 'named', background: COLOURS.find((c) => c.name === 'Ivory')!.swatch })
+    expect(colourSwatch('Kalamkari indigo')).toEqual({ kind: 'unknown', background: null, border: true })
+    expect(colourSwatch('#12')).toEqual({ kind: 'unknown', background: null, border: true })
+    expect(colourSwatch('')).toBeNull()
   })
 })
 

@@ -145,7 +145,7 @@ export function PhotosStep({ products, onViewDrafts }: { products: Draft[]; onVi
           <Banner tone="success" title={copy.title(products.length)} />
           <Box>
             <Typography variant="body1">{copy.intro}</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5 }}>
               {copy.exampleName}
             </Typography>
           </Box>
@@ -225,7 +225,7 @@ export function PhotosStep({ products, onViewDrafts }: { products: Draft[]; onVi
                   {copy.matchedTitle(entries.length)}
                 </Typography>
                 {started && (
-                  <Typography role="status" variant="body2" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                  <Typography role="status" variant="body2" color="textSecondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>
                     {copy.progress(done, entries.length)}
                   </Typography>
                 )}
@@ -266,7 +266,7 @@ export function PhotosStep({ products, onViewDrafts }: { products: Draft[]; onVi
               <Typography variant="h3" component="h3">
                 {copy.unmatchedTitle(unmatched.length)}
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25, mb: 1 }}>
+              <Typography variant="body2" color="textSecondary" sx={{ mt: 0.25, mb: 1 }}>
                 {copy.unmatchedHint}
               </Typography>
               <FileList label={copy.unmatchedLabel}>
@@ -286,7 +286,7 @@ export function PhotosStep({ products, onViewDrafts }: { products: Draft[]; onVi
               <Typography variant="h3" component="h3">
                 {copy.noRoomTitle(noRoom.length)}
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+              <Typography variant="body2" color="textSecondary" sx={{ mt: 0.25 }}>
                 {copy.noRoomHint} {noRoom.map((n) => n.file.name).join(', ')}
               </Typography>
             </Box>

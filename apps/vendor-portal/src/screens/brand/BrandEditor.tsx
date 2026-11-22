@@ -13,7 +13,7 @@ import { useCrumb } from '../../app/crumbs'
 import { paths } from '../../app/paths'
 import { brandCopy as copy } from '../../copy/brand'
 import { SaveStatus, useAutosave } from '../../lib/autosave'
-import { BrandPreview } from './BrandPreview'
+import { BrandPreview, PHONE_OUTLINE } from './BrandPreview'
 import { BrandNameField, ImageInput, TextInput, touchTarget } from './fields'
 import { brandSchema, changedFields, emptyProfile, forSaving, isEditableField, LIMITS, normaliseInstagram, toValues, type BrandValues, type Profile } from './schema'
 
@@ -124,7 +124,7 @@ function BrandSkeleton() {
         {sideBySide ? (
           <Box>
             <Skeleton variant="text" width={200} />
-            <Skeleton variant="rounded" width={300} height={560} sx={{ mx: 'auto', mt: 2, borderRadius: '28px' }} />
+            <Skeleton variant="rounded" sx={{ ...PHONE_OUTLINE, height: 'auto', mx: 'auto', mt: 2 }} />
           </Box>
         ) : (
           <Skeleton variant="rounded" height={44} />
@@ -143,7 +143,7 @@ function CollapsiblePreview({ draft, live }: { draft: Profile; live: Profile | n
       <Button
         variant="outlined"
         fullWidth
-        startIcon={<Icon size={18} strokeWidth={1.5} aria-hidden="true" />}
+        startIcon={<Icon size={18} strokeWidth={1.75} aria-hidden="true" />}
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={() => setOpen((o) => !o)}
@@ -332,7 +332,7 @@ function BrandForm({
   ) : waiting ? (
     <Box sx={row}>
       <SaveStatus state={autosave.state} savedAt={autosave.savedAt} />
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="textSecondary">
         {copy.waitForDecision}
       </Typography>
     </Box>
@@ -350,7 +350,7 @@ function BrandForm({
           {copy.discard}
         </Button>
       )}
-      <Button variant="contained" startIcon={<Send size={16} strokeWidth={1.5} aria-hidden="true" />} onClick={() => void onSubmit()} disabled={formState.isSubmitting} sx={touchTarget}>
+      <Button variant="contained" startIcon={<Send size={18} strokeWidth={1.75} aria-hidden="true" />} onClick={() => void onSubmit()} disabled={formState.isSubmitting} sx={touchTarget}>
         {formState.isSubmitting ? copy.submitting : copy.submit}
       </Button>
     </Box>
@@ -422,7 +422,7 @@ function BrandForm({
                 <TextInput control={control} name="website" label={copy.shopping.website} changed={changed.has('website')} disabled={locked} htmlInput={URL_INPUT} />
               </Box>
               {/* Returns and delivery are store details now (spec §5); the preview reads them from there. */}
-              <Typography variant="body1" color="text.secondary">
+              <Typography variant="body1" color="textSecondary">
                 {copy.shopping.fromStore}{' '}
                 <Link component={RouterLink} to={paths.storeDetails}>
                   {copy.shopping.fromStoreLink}
@@ -433,7 +433,7 @@ function BrandForm({
         </Stack>
         {sideBySide ? (
           <Box sx={{ position: 'sticky', top: 80 }}>
-            <BrandPreview draft={values} live={live} contained />
+            <BrandPreview draft={values} live={live} />
           </Box>
         ) : (
           <CollapsiblePreview draft={values} live={live} />

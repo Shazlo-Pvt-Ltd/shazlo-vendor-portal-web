@@ -9,7 +9,21 @@ import { catalogCopy } from '../../../copy/catalog'
 import { storeCopy as copy } from '../../../copy/store'
 import { DELIVERY_DAYS, DELIVERY_MODES, PAYOUT_METHODS, REFUND_DAYS, RETURN_CONDITIONS, RETURN_WINDOWS, type FieldErrors } from '../../../lib/storeDetails'
 import { CheckGroup, CheckOption, ChoiceGroup, FieldGroup, keyboards, PlacesField, TextInput, type Option } from './controls'
-import { fieldId, type BrandAnswers, type BusinessAnswers, type ContactAnswers, type DeliveryAnswers, type PaymentAnswers, type PayoutAnswers, type ReturnsAnswers, type TermsAnswers, type Topic, type TopicAnswers } from './model'
+import {
+  fieldId,
+  type BrandAnswers,
+  type BusinessAnswers,
+  type CommissionChoice,
+  type ContactAnswers,
+  type DeliveryAnswers,
+  type PaymentAnswers,
+  type PayoutAnswers,
+  type ReturnsAnswers,
+  type SignupBusinessAnswers,
+  type TermsAnswers,
+  type Topic,
+  type TopicAnswers,
+} from './model'
 
 // The fields of each store-details topic (spec §5). Sign-up (V-02) shows them one topic per page
 // with Continue; Store details (/store/details/:section) shows one with Save. The page owns the
@@ -33,7 +47,7 @@ export function BrandFields({ values, onChange, errors, storeName }: FieldsProps
         <TextInput path="brand_name" label={b.storeName} value={values.brand_name} onChange={(brand_name) => set({ brand_name })} error={errors.brand_name} hint={b.storeNameHint} autoComplete="organization" />
       ) : (
         <Box>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             {b.storeName}
           </Typography>
           <Typography variant="body1" sx={{ mt: 0.25, overflowWrap: 'anywhere' }}>
@@ -246,26 +260,64 @@ export function BusinessFields({ values, onChange, errors }: FieldsProps<Busines
   )
 }
 
+// Sign-up asks every business answer: the legal name, whether the business is registered for GST
+// (a seller below the threshold says so), and the number when it is.
+type Registered = 'yes' | 'no'
+
+export function SignupBusinessFields({ values, onChange, errors }: FieldsProps<SignupBusinessAnswers>) {
+  const set = (patch: Partial<SignupBusinessAnswers>) => onChange({ ...values, ...patch })
+  const b = copy.signupBusiness
+  const registered: Option<Registered>[] = [
+    { value: 'yes', label: b.gstYes },
+    { value: 'no', label: b.gstNo, hint: b.gstNoHint },
+  ]
+  return (
+    <Stack {...stack}>
+      <TextInput path="legal_name" label={b.legalName} value={values.legal_name} onChange={(legal_name) => set({ legal_name })} error={errors.legal_name} hint={b.legalNameHint} autoComplete="organization" />
+      <ChoiceGroup
+        path="gst_registered"
+        legend={b.gst}
+        value={values.gst_registered === null ? '' : values.gst_registered ? 'yes' : 'no'}
+        options={registered}
+        onChange={(v) => set({ gst_registered: v === 'yes' })}
+        error={errors.gst_registered}
+      />
+      {values.gst_registered === true && (
+        <Box sx={{ maxWidth: { sm: 360 } }}>
+          <TextInput path="gstin" label={b.gstin} value={values.gstin} onChange={(gstin) => set({ gstin })} error={errors.gstin} hint={b.gstinHint} autoComplete="off" attrs={keyboards.code} />
+        </Box>
+      )}
+    </Stack>
+  )
+}
+
 // ---- Commission and agreements (sign-up only) ----------------------------------------------------
 
 export function TermsFields({ values, onChange, errors }: FieldsProps<TermsAnswers>) {
   const set = (patch: Partial<TermsAnswers>) => onChange({ ...values, ...patch })
   const t = copy.terms
+  const choices: Option<CommissionChoice>[] = [
+    { value: 'propose', label: t.propose },
+    { value: 'team', label: t.team, hint: t.teamHint },
+  ]
   return (
     <Stack {...stack}>
-      <Box sx={{ maxWidth: { sm: 360 } }}>
-        <TextInput
-          path="commission"
-          label={t.commission}
-          value={values.commission}
-          onChange={(commission) => set({ commission })}
-          error={errors.commission}
-          hint={t.commissionHint}
-          autoComplete="off"
-          attrs={keyboards.decimal}
-          end={<InputAdornment position="end">%</InputAdornment>}
-        />
-      </Box>
+      <ChoiceGroup path="commission_choice" legend={t.commission} value={values.commission_choice} options={choices} onChange={(commission_choice) => set({ commission_choice })} error={errors.commission_choice} />
+      {values.commission_choice === 'propose' && (
+        <Box sx={{ maxWidth: { sm: 360 } }}>
+          <TextInput
+            path="commission"
+            label={t.rate}
+            value={values.commission}
+            onChange={(commission) => set({ commission })}
+            error={errors.commission}
+            hint={t.rateHint}
+            autoComplete="off"
+            attrs={keyboards.decimal}
+            end={<InputAdornment position="end">%</InputAdornment>}
+          />
+        </Box>
+      )}
       <CheckGroup legend={t.agreements}>
         <CheckOption
           id={fieldId('agreed_terms')}

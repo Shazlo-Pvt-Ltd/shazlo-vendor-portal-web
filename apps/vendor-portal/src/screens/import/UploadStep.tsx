@@ -57,7 +57,7 @@ export function UploadStep({ busy, error, notice, onFile, onBack }: { busy: stri
             <Box role="status" sx={{ width: '100%', maxWidth: 360 }}>
               <Typography variant="body1">{busy}</Typography>
               <LinearProgress aria-label={busy} sx={{ my: 1.5, height: 3 }} />
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" color="textSecondary">
                 {copy.checkingHint}
               </Typography>
             </Box>
@@ -73,7 +73,7 @@ export function UploadStep({ busy, error, notice, onFile, onBack }: { busy: stri
                   {copy.choose}
                 </Button>
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" color="textSecondary">
                 {copy.hint(formatBytes(IMPORT_MAX_BYTES), formatCount(IMPORT_MAX_ROWS))}
               </Typography>
             </>

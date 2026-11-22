@@ -55,7 +55,7 @@ export function NotificationsMenu() {
         sx={{ color: neutral.ink }}
       >
         <Badge variant="dot" color="error" invisible={!fresh} overlap="circular">
-          <Bell size={20} strokeWidth={1.5} aria-hidden="true" />
+          <Bell size={20} strokeWidth={1.75} aria-hidden="true" />
         </Badge>
       </IconButton>
       <Menu
@@ -68,7 +68,7 @@ export function NotificationsMenu() {
       >
         {decided.length === 0 && (
           <Box sx={{ px: 2, py: 1.5 }}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" color="textSecondary">
               {copy.noNotifications}
             </Typography>
           </Box>
@@ -77,7 +77,7 @@ export function NotificationsMenu() {
           <MenuItem key={item.id} onClick={() => go(hrefFor(item))} sx={{ alignItems: 'flex-start', gap: 1.5, py: 1.25, whiteSpace: 'normal' }}>
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography variant="body2">{item.state === 'rejected' ? copy.sentBack(item.subject.title) : copy.approved(item.subject.title)}</Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" color="textSecondary">
                 {formatRelative(item.decided_at!)}
               </Typography>
             </Box>

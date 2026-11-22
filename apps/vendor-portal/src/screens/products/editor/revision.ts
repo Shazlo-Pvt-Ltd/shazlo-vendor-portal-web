@@ -1,7 +1,7 @@
 import type { Schemas } from '../../../api/model'
 import { productEditorCopy } from '../../../copy/productEditor'
 import { formatINR } from '../../../lib/format'
-import { parseRupees, sortRows, stockOf, type EditorValues } from './form'
+import { coloursFor, parseRupees, sortRows, stockOf, type EditorValues } from './form'
 
 const copy = productEditorCopy.revision
 const SHORT = 60
@@ -12,6 +12,8 @@ export interface RevisionChange {
   label: string
   live: string
   yours: string
+  // Colour changes, for their swatches.
+  colours?: { live: string[]; yours: string[] }
 }
 
 const orNone = (text: string) => text.trim() || copy.none
@@ -34,12 +36,14 @@ export function revisionChanges(live: Schemas['ProductVersion'], values: EditorV
   }
   const sizes = sortRows(values.sizes).map((r) => ({ size: r.size, stock: stockOf(r.stock) }))
   const sameImages = images.length === live.images.length && images.every((i) => live.images.some((l) => l.id === i.id && l.angle === i.angle))
+  // As they will be saved: tidied, and a colour that is not one stays as it is live.
+  const colours = coloursFor(values, { mainColour: live.main_colour, otherColours: live.other_colours })
   const pairs: [RevisionField, string, string][] = [
     ['title', orNone(live.title), orNone(values.title)],
     ['category', live.category ?? copy.none, values.category || copy.none],
     ['gender', live.gender ?? copy.none, values.gender || copy.none],
-    ['colour', live.main_colour ?? copy.none, values.mainColour || copy.none],
-    ['colours', orNone(live.other_colours.join(', ')), orNone(values.otherColours.filter((c) => c !== values.mainColour).join(', '))],
+    ['colour', live.main_colour ?? copy.none, colours.main ?? copy.none],
+    ['colours', orNone(live.other_colours.join(', ')), orNone(colours.others.join(', '))],
     ['material', orNone(live.material), orNone(values.material)],
     ['description', short(live.description), short(values.description)],
     ['sizes', sizesText(live.variants), sizesText(sizes)],
@@ -47,5 +51,11 @@ export function revisionChanges(live: Schemas['ProductVersion'], values: EditorV
     ['mrp', money(live.mrp_paise), price(values.mrp, values.mrp)],
     ['photos', copy.photos(live.images.length), sameImages ? copy.photos(live.images.length) : images.length === live.images.length ? copy.photosChanged(images.length) : copy.photos(images.length)],
   ]
-  return pairs.filter(([, a, b]) => a !== b).map(([field, a, b]) => ({ field, label: copy.labels[field], live: a, yours: b }))
+  const swatches: Partial<Record<RevisionField, { live: string[]; yours: string[] }>> = {
+    colour: { live: live.main_colour ? [live.main_colour] : [], yours: colours.main ? [colours.main] : [] },
+    colours: { live: live.other_colours, yours: colours.others },
+  }
+  return pairs
+    .filter(([, a, b]) => a !== b)
+    .map(([field, a, b]) => ({ field, label: copy.labels[field], live: a, yours: b, ...(swatches[field] ? { colours: swatches[field] } : {}) }))
 }

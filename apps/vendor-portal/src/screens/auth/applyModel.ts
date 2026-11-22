@@ -12,7 +12,7 @@ import {
 } from '../../lib/storeDetails'
 import { saveDraft, takeDraft } from '../../session/drafts'
 import {
-  businessBody,
+  checkSignupBusiness,
   checkTerms,
   checkTopic,
   contactBody,
@@ -23,15 +23,17 @@ import {
   paymentBody,
   payoutBody,
   placesOf,
-  proposedBps,
+  proposalOf,
   returnsBody,
+  SIGNUP_BUSINESS_ORDER,
+  signupBusinessBody,
   type BrandAnswers,
-  type BusinessAnswers,
   type ContactAnswers,
   type DeliveryAnswers,
   type PaymentAnswers,
   type PayoutAnswers,
   type ReturnsAnswers,
+  type SignupBusinessAnswers,
   type TermsAnswers,
   type Topic,
 } from '../store/topics/model'
@@ -39,6 +41,10 @@ import {
 // Sign-up (V-02, spec §5): an intro, seven topic pages, Check your answers, then Send. The topic
 // forms and their checks are the ones Store details uses (src/screens/store/topics); this module
 // adds the page order, the password, the draft kept in memory and the application the API takes.
+// Every answer is needed (stricter than the API, which leaves the business details, the store
+// details and the commission optional). The one exception is the Instagram or website: a boutique
+// or a new label may have neither. A business without GST and a commission agreed with the team
+// are answers the seller chooses, never a blank.
 
 // Pages: 0 is the intro, 1–7 the topics, 8 Check your answers.
 export const INTRO = 0
@@ -59,7 +65,7 @@ export interface ApplyDraft {
   returns: ReturnsAnswers
   payment: PaymentAnswers
   payout: PayoutAnswers
-  business: BusinessAnswers
+  business: SignupBusinessAnswers
   terms: TermsAnswers
 }
 
@@ -74,7 +80,7 @@ export function emptyDraft(): ApplyDraft {
     returns: empty.returns(),
     payment: empty.payment(),
     payout: empty.payout(),
-    business: empty.business(),
+    business: empty.signupBusiness(),
     terms: empty.terms(),
   }
 }
@@ -90,7 +96,7 @@ export function valuesOfStep(step: number, d: ApplyDraft): unknown {
 // Fields of a step in page order, for the error summary.
 export function orderOfStep(step: number): readonly string[] {
   if (step === 2) return [...FIELD_ORDER.contact, 'password']
-  if (step === 7) return [...FIELD_ORDER.business, ...FIELD_ORDER.terms]
+  if (step === 7) return [...SIGNUP_BUSINESS_ORDER, ...FIELD_ORDER.terms]
   const topic = STEP_TOPICS[step - 1]
   return topic ? FIELD_ORDER[topic] : []
 }
@@ -104,7 +110,7 @@ export function checkStep(step: number, d: ApplyDraft): FieldErrors {
     case 4: return checkTopic('returns', d.returns)
     case 5: return checkTopic('payment', d.payment)
     case 6: return checkTopic('payout', d.payout)
-    case 7: return { ...checkTopic('business', d.business), ...checkTerms(d.terms) }
+    case 7: return { ...checkSignupBusiness(d.business), ...checkTerms(d.terms) }
   }
   return {}
 }
@@ -134,8 +140,8 @@ export function settleDelivery(a: DeliveryAnswers): DeliveryAnswers {
 // Only for a draft that passed every step.
 export function toApplication(d: ApplyDraft): Schemas['VendorApplication'] {
   const contact = normaliseContact(contactBody(d.contact))
-  const business = normaliseBusiness(businessBody(d.business))
-  const bps = proposedBps(d.terms.commission)
+  const business = normaliseBusiness(signupBusinessBody(d.business))
+  const bps = proposalOf(d.terms)
   const link = d.brand.instagram_or_website.trim()
   return {
     brand_name: d.brand.brand_name.trim(),

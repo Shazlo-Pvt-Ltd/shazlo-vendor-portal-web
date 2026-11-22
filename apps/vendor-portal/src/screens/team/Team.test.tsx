@@ -219,7 +219,7 @@ describe('Team (owners)', () => {
   it('says when the list does not load, and tries again', async () => {
     db().faults.push({ method: 'GET', path: '/v1/vendor/users', network: true })
     const { user } = await renderApp({ route: '/team' })
-    expect(await screen.findByText('Your team did not load.', undefined, SLOW)).toBeInTheDocument()
+    expect(await screen.findByText('Your team did not load', undefined, SLOW)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Try again' }))
     expect(await screen.findByText(DEMO_STAFF.email)).toBeInTheDocument()
   })

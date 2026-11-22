@@ -98,22 +98,22 @@ function ChartForm({ group, chart, sizes, readOnly }: { group: SizeChartGroup; c
     <Stack spacing={2.5} sx={{ mt: 1.5 }}>
       <Box>
         <Typography variant="body1">{labels.usedFor(productTypesInGroup(group).map((t) => catalogCopy.productTypes[t]))}</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+        <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5 }}>
           {copy.intro}
         </Typography>
       </Box>
 
       {rows.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {copy.noSizes}
         </Typography>
       ) : (
         <Box sx={{ display: 'grid', gridTemplateColumns: `44px repeat(${measurements.length}, minmax(0, 1fr))`, gap: 0.75, alignItems: 'center' }}>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" color="textSecondary">
             {copy.size}
           </Typography>
           {measurements.map((m) => (
-            <Typography key={m} variant="caption" color="text.secondary" noWrap>
+            <Typography key={m} variant="caption" color="textSecondary" noWrap>
               {`${labels.measurements[m]} (${labels.unit})`}
             </Typography>
           ))}
@@ -168,7 +168,7 @@ function ChartForm({ group, chart, sizes, readOnly }: { group: SizeChartGroup; c
         )}
         {!readOnly && (
           <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
-            <Button variant="outlined" disabled={photo.busy} onClick={() => photoInput.current?.click()} startIcon={<ImagePlus size={18} strokeWidth={1.5} aria-hidden="true" />} sx={{ minHeight: 44 }}>
+            <Button variant="outlined" disabled={photo.busy} onClick={() => photoInput.current?.click()} startIcon={<ImagePlus size={18} strokeWidth={1.75} aria-hidden="true" />} sx={{ minHeight: 44 }}>
               {photoUrl ? copy.replacePhoto : copy.addPhoto}
             </Button>
             {photoUrl && (
@@ -179,7 +179,7 @@ function ChartForm({ group, chart, sizes, readOnly }: { group: SizeChartGroup; c
                   setResult(null)
                   setPhotoUrl(null)
                 }}
-                startIcon={<Trash2 size={16} strokeWidth={1.5} aria-hidden="true" />}
+                startIcon={<Trash2 size={16} strokeWidth={1.75} aria-hidden="true" />}
                 sx={{ minHeight: 44 }}
               >
                 {copy.removePhoto}
@@ -252,7 +252,7 @@ export function SizeChart({ category, sizes, readOnly }: { category: ProductType
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((o) => !o)}
-        endIcon={<ChevronDown size={18} strokeWidth={1.5} aria-hidden="true" style={{ transform: open ? 'rotate(180deg)' : 'none' }} />}
+        endIcon={<ChevronDown size={18} strokeWidth={1.75} aria-hidden="true" style={{ transform: open ? 'rotate(180deg)' : 'none' }} />}
         sx={{ minHeight: 44, ml: -1, typography: 'body1' }}
       >
         {copy.toggle}

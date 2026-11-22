@@ -131,6 +131,10 @@ describe('V-08 Bulk import', { timeout: 60_000 }, () => {
       'Materialmaterial100% linenRequired',
       'MRPmrp2499Optional',
     ])
+    // Colours in the example come with their swatches, and any name or hex code is fine.
+    const colourRows = within(guide).getAllByRole('listitem').slice(3, 5)
+    for (const li of colourRows) expect(li.querySelector('[data-swatch="named"]')).not.toBeNull()
+    expect(dialog).toHaveTextContent(/Colours: Any colour name, like Rust orange, or a hex code, like #[0-9A-F]{6}\. Separate other colours with commas\./)
     // The column keys are set in the theme's monospace face (no font named in the app).
     expect(within(guide).getByText('product_name').tagName).toBe('SPAN')
     expect(dialog).toHaveTextContent('Sizes and stock: Write each size and how many you have, like S:4, M:6, L:3, XL:0. Use 0 for a sold-out size.')

@@ -31,10 +31,65 @@ function complete(): ApplyDraft {
     returns: { window_days: 0, condition: null, refund_days: null },
     payment: { cash: true, upi: false },
     payout: { method: 'bank', holder_name: 'Neel Threads', account_number: '5010 0123 4567 4821', account_number_again: '5010 0123 4567 4821', ifsc: 'hdfc0001234', upi_id: '' },
-    business: { legal_name: '', gstin: '' },
-    terms: { commission: '', agreed_terms: true, agreed_price_rule: true },
+    business: { legal_name: 'Neel Threads', gstin: '', gst_registered: false },
+    terms: { commission_choice: 'team', commission: '', agreed_terms: true, agreed_price_rule: true },
   }
 }
+
+describe('every answer is needed, with real exceptions only', () => {
+  it('names every missing answer of every step, in page order', () => {
+    const blank = emptyDraft()
+    const keys = (step: number) => Object.keys(checkStep(step, blank)).sort((a, b) => orderOfStep(step).indexOf(a) - orderOfStep(step).indexOf(b))
+    expect(keys(1)).toEqual(['brand_name', 'sells', 'city'])
+    expect(keys(2)).toEqual(['name', 'phone', 'email', 'password'])
+    expect(keys(3)).toEqual(['mode'])
+    expect(keys(4)).toEqual(['window_days'])
+    expect(keys(5)).toEqual(['pay_on_delivery'])
+    expect(keys(6)).toEqual(['method'])
+    expect(keys(7)).toEqual(['legal_name', 'gst_registered', 'commission_choice', 'agreed_terms', 'agreed_price_rule'])
+  })
+
+  it('leaves the Instagram or website as the one optional answer', () => {
+    expect(checkStep(1, { ...complete(), brand: { ...complete().brand, instagram_or_website: '' } })).toEqual({})
+    expect(firstProblem(complete())).toBeNull()
+  })
+
+  it('asks for the legal business name, within its length', () => {
+    const draft = complete()
+    expect(checkStep(7, { ...draft, business: { ...draft.business, legal_name: '   ' } })).toEqual({ legal_name: 'Add your legal business name.' })
+    expect(checkStep(7, { ...draft, business: { ...draft.business, legal_name: 'N'.repeat(121) } })).toEqual({ legal_name: 'Keep the legal name under 120 characters.' })
+  })
+
+  it('asks whether the business is registered for GST, and for the number only when it is', () => {
+    const draft = complete()
+    const business = (b: Partial<ApplyDraft['business']>) => ({ ...draft, business: { ...draft.business, ...b } })
+    expect(checkStep(7, business({ gst_registered: null }))).toEqual({ gst_registered: 'Say whether your business is registered for GST.' })
+    expect(checkStep(7, business({ gst_registered: true, gstin: ' ' }))).toEqual({ gstin: 'Enter your GST number.' })
+    expect(checkStep(7, business({ gst_registered: true, gstin: '24ABCDE1234F1Z0' }))).toEqual({ gstin: 'Check your GST number. It has 15 characters, like 24ABCDE1234F1Z6.' })
+    expect(checkStep(7, business({ gst_registered: true, gstin: '24aakfk1234l1zd' }))).toEqual({})
+    // Not registered: a number typed before the seller changed their answer is neither checked nor sent.
+    expect(checkStep(7, business({ gst_registered: false, gstin: 'not a number' }))).toEqual({})
+    expect(toApplication(business({ gst_registered: false, gstin: '24aakfk1234l1zd' }))).not.toHaveProperty('gstin')
+    expect(toApplication(business({ gst_registered: true, gstin: '24aakfk1234l1zd' }))).toMatchObject({ legal_name: 'Neel Threads', gstin: '24AAKFK1234L1ZD' })
+  })
+
+  it('asks how to set the commission, and for the rate only when the seller proposes one', () => {
+    const draft = complete()
+    const terms = (t: Partial<ApplyDraft['terms']>) => ({ ...draft, terms: { ...draft.terms, ...t } })
+    expect(checkStep(7, terms({ commission_choice: '' }))).toEqual({ commission_choice: 'Choose how we set your commission.' })
+    expect(checkStep(7, terms({ commission_choice: 'propose', commission: '' }))).toEqual({ commission: 'Enter the rate you propose, like 12 or 12.5.' })
+    expect(checkStep(7, terms({ commission_choice: 'propose', commission: '45' }))).toEqual({ commission: 'Enter a rate from 0% to 40%.' })
+    expect(checkStep(7, terms({ commission_choice: 'propose', commission: '12.5' }))).toEqual({})
+    expect(toApplication(terms({ commission_choice: 'propose', commission: '12.5' })).proposed_commission_bps).toBe(1250)
+    // Agreeing it with the team: a rate typed before is neither checked nor sent.
+    expect(checkStep(7, terms({ commission_choice: 'team', commission: '99' }))).toEqual({})
+    expect(toApplication(terms({ commission_choice: 'team', commission: '12.5' }))).not.toHaveProperty('proposed_commission_bps')
+  })
+
+  it('lists the business and commission answers in page order', () => {
+    expect(orderOfStep(7)).toEqual(['legal_name', 'gst_registered', 'gstin', 'commission_choice', 'commission', 'agreed_terms', 'agreed_price_rule'])
+  })
+})
 
 describe('the Contact step asks for a password', () => {
   it('checks it with the contact details, after the email', () => {
@@ -124,6 +179,11 @@ describe('the draft kept in memory', () => {
     writeDraft(draft)
     draft.delivery.areas.places.push('Ahmedabad')
     expect(readDraft()?.delivery.areas.places).toEqual(['Surat'])
+  })
+
+  it('keeps the GST and commission answers, so a seller who comes back sees them', () => {
+    writeDraft(complete())
+    expect(readDraft()).toMatchObject({ business: { gst_registered: false }, terms: { commission_choice: 'team' } })
   })
 
   it('touches no web storage', () => {

@@ -77,7 +77,7 @@ export const PriceSection = memo(function PriceSection({ form, readOnly, live, c
           </Typography>
         )}
         <YouReceive pricePaise={pricePaise} invalid={invalid} commission={commission} />
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {copy.rule}
         </Typography>
       </Stack>

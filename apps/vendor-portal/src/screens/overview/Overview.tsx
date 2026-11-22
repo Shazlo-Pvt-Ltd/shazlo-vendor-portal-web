@@ -87,10 +87,10 @@ function WideOverview() {
         subtitle={<Subtitle />}
         actions={
           <>
-            <Button variant="outlined" component={RouterLink} to={paths.bulkImport} startIcon={<Upload size={18} strokeWidth={1.5} aria-hidden="true" />} sx={touch}>
+            <Button variant="outlined" component={RouterLink} to={paths.bulkImport} startIcon={<Upload size={18} strokeWidth={1.75} aria-hidden="true" />} sx={touch}>
               {copy.bulkImport}
             </Button>
-            <Button variant="contained" component={RouterLink} to={paths.newProduct} startIcon={<Plus size={18} strokeWidth={1.5} aria-hidden="true" />} sx={touch}>
+            <Button variant="contained" component={RouterLink} to={paths.newProduct} startIcon={<Plus size={18} strokeWidth={1.75} aria-hidden="true" />} sx={touch}>
               {copy.addProduct}
             </Button>
           </>

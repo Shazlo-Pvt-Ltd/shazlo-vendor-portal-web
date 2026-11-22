@@ -5,6 +5,7 @@ import { Fragment, useCallback, useEffect, useEffectEvent, useId, useMemo, useRe
 import { useForm, useWatch } from 'react-hook-form'
 import { Link as RouterLink, useNavigate } from 'react-router'
 import { ApiError } from '../../../api/errors'
+import { ColourName } from '../../../components/ColourSwatch'
 import type { Schemas } from '../../../api/model'
 import { useArchiveProduct, useCreateProduct, useMe, useSubmitProduct, useUpdateProduct } from '../../../api/queries'
 import { paths } from '../../../app/paths'
@@ -22,8 +23,8 @@ import { ProductStatus, statusWords } from '../status'
 import { AboutSection, NameField } from './AboutSection'
 import { columnsSx } from './EditorSkeleton'
 import { DeleteDialog, LeaveDialog } from './Dialogs'
-import { baseOf, changedInput, editorResolver, forSubmit, parseRupees, priceWaitsForSize, stockOf, toInput, toValues, type EditorValues } from './form'
-import { fieldId, firstEmptyTryonId, slotId, STEP_OF, STEPS, type Problems } from './layout'
+import { baseOf, changedInput, colourIssues, editorResolver, forSubmit, parseRupees, priceWaitsForSize, stockOf, toInput, toValues, type EditorValues } from './form'
+import { fieldId, firstEmptyTryonId, otherColourId, slotId, STEP_OF, STEPS, type Problems } from './layout'
 import { PhotosSection } from './PhotosSection'
 import { PriceSection } from './PriceSection'
 import { CheckPage, ProblemSummary, type SummaryRow } from './Problems'
@@ -34,6 +35,13 @@ import { SizesSection } from './SizesSection'
 import { usePhotoUploads } from './usePhotoUploads'
 
 type Product = Schemas['Product']
+
+// Focus a field and bring it to the middle of the screen, clear of the sticky footer on phones.
+function focusField(id: string) {
+  const el = document.getElementById(id)
+  el?.focus()
+  el?.scrollIntoView?.({ block: 'center' })
+}
 
 const copy = productEditorCopy
 const NO_IMAGES: Product['images'] = []
@@ -196,7 +204,7 @@ export function Editor({ product, onCreated, onStale, onReload }: { product: Pro
   }
   useEffect(() => {
     if (!pendingFocus.current) return
-    document.getElementById(pendingFocus.current)?.focus()
+    focusField(pendingFocus.current)
     pendingFocus.current = null
   }, [step])
   // The top bar's Back goes one step back; from the first step it leaves for Products.
@@ -213,7 +221,21 @@ export function Editor({ product, onCreated, onStale, onReload }: { product: Pro
     return false
   }
 
+  // Colours are checked on Next and Send too: a hex code that is not one, or a colour given twice,
+  // takes the seller to that field (on its step, on a phone).
+  async function coloursOk(): Promise<boolean> {
+    if (readOnly || (await trigger(['mainColour', 'otherColours']))) return true
+    const issues = colourIssues(getValues())
+    const target = issues.main ? fieldId(idPrefix, 'main_colour') : otherColourId(idPrefix, Math.max(0, issues.others.findIndex(Boolean)))
+    if (phone && STEPS[step] !== 'about') {
+      pendingFocus.current = target
+      setStep(STEPS.indexOf('about'))
+    } else focusField(target)
+    return false
+  }
+
   async function onNext() {
+    if (STEPS[step] === 'about' && !(await coloursOk())) return
     if (STEPS[step] === 'price' && !(await pricesOk())) return
     toStep(step + 1)
   }
@@ -244,7 +266,7 @@ export function Editor({ product, onCreated, onStale, onReload }: { product: Pro
     let delivered = false
     try {
       setActionError(null)
-      if (!(await pricesOk())) return
+      if (!(await coloursOk()) || !(await pricesOk())) return
       lastSaveError.current = null
       await flush()
       const saveError = lastSaveError.current
@@ -348,7 +370,7 @@ export function Editor({ product, onCreated, onStale, onReload }: { product: Pro
       onClick={(event) => setMenuAnchor(event.currentTarget)}
       sx={{ width: 44, height: 44, border: `1px solid ${neutral.lineStrong}`, borderRadius: `${radius.control}px`, color: neutral.ink }}
     >
-      <MoreHorizontal size={18} strokeWidth={1.5} aria-hidden="true" />
+      <MoreHorizontal size={18} strokeWidth={1.75} aria-hidden="true" />
     </IconButton>
   ) : null
 
@@ -422,7 +444,7 @@ export function Editor({ product, onCreated, onStale, onReload }: { product: Pro
             setConfirmOpen(true)
           }}
         >
-          <ListItemIcon>{outcomeNow === 'removed' ? <Trash2 size={16} strokeWidth={1.5} aria-hidden="true" /> : <Archive size={16} strokeWidth={1.5} aria-hidden="true" />}</ListItemIcon>
+          <ListItemIcon>{outcomeNow === 'removed' ? <Trash2 size={16} strokeWidth={1.75} aria-hidden="true" /> : <Archive size={16} strokeWidth={1.75} aria-hidden="true" />}</ListItemIcon>
           {outcomeNow === 'removed' ? copy.archive.menu.removed : copy.archive.menu.archived}
         </MenuItem>
       </Menu>
@@ -461,12 +483,22 @@ export function Editor({ product, onCreated, onStale, onReload }: { product: Pro
     )
 
     const rows: SummaryRow[] = STEPS.map((key, i) => {
-      let value: string
+      let value: ReactNode
       if (key === 'photos') {
         const added = NAMED_PHOTO_ANGLES.filter((a) => images.some((img) => img.angle === a)).length + Math.min(tryonCount(images), TRYON_REQUIRED)
         value = copy.check.photos(added, NAMED_PHOTO_ANGLES.length + TRYON_REQUIRED)
       } else if (key === 'about') {
-        value = [values.title.trim(), values.gender, values.category, values.mainColour].filter(Boolean).join(' · ') || copy.check.notAdded
+        const colour = values.mainColour.trim()
+        const words = [values.title.trim(), values.gender, values.category].filter(Boolean).join(' · ')
+        value = words || colour ? (
+          <>
+            {words}
+            {words && colour && ' · '}
+            {colour && <ColourName value={colour} />}
+          </>
+        ) : (
+          copy.check.notAdded
+        )
       } else if (key === 'sizes') {
         const total = values.sizes.reduce((n, r) => n + stockOf(r.stock), 0)
         value = values.sizes.length ? copy.check.sizes(values.sizes.length, formatCount(total)) : copy.check.notAdded
@@ -482,7 +514,7 @@ export function Editor({ product, onCreated, onStale, onReload }: { product: Pro
         <PageHeader
           eyebrow={
             <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', minHeight: 44, mb: 0.5 }}>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" color="textSecondary">
                 {onCheck ? '' : copy.steps.of(step + 1, STEPS.length)}
               </Typography>
               {moreButton}

@@ -53,7 +53,7 @@ function InviteCard({ team }: { team: readonly TeamUser[] }) {
   return (
     <Box sx={{ mb: 3 }}>
       <SectionCard title={copy.invite.title}>
-        <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography variant="body1" color="textSecondary" sx={{ mb: 2 }}>
           {copy.invite.body}
         </Typography>
         <Box component="form" noValidate onSubmit={(event) => void submit(event)} aria-label={copy.invite.title}>
@@ -185,10 +185,10 @@ function TeamCards({ members, myId, busyId, onAction }: ListProps) {
       {members.map((member) => (
         <Card component="li" key={member.id} sx={{ px: 2, py: 1.75, minWidth: 0 }}>
           <Email member={member} me={member.id === myId} />
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5 }}>
             {copy.roles[member.role]} · {copy.statuses[member.status]}
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             <LastSignIn at={member.lastLoginAt} long />
           </Typography>
           {canActOn(member, myId) && (
@@ -306,7 +306,7 @@ export default function Team() {
       <>
         {mode === 'desktop' ? <TeamTable {...props} /> : <TeamCards {...props} />}
         {members.every((m) => m.role === 'owner' || m.id === user?.id) && (
-          <Typography variant="body1" color="text.secondary" sx={{ mt: 2 }}>
+          <Typography variant="body1" color="textSecondary" sx={{ mt: 2 }}>
             {copy.onlyYou}
           </Typography>
         )}

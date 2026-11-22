@@ -45,11 +45,11 @@ function WaitingRow({ item, compact }: RowProps) {
       <ProductThumb src={item.subject.thumbnail_url} />
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <TitleLink item={item} />
-        <Typography variant="caption" component="p" color="text.secondary" sx={{ mt: 0.25 }}>
+        <Typography variant="caption" component="p" color="textSecondary" sx={{ mt: 0.25 }}>
           {kindLabel(item)}
         </Typography>
         {compact && <Box sx={{ mt: 0.75 }}>{pill}</Box>}
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+        <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5 }}>
           {line}
         </Typography>
       </Box>
@@ -85,7 +85,7 @@ function DecidedRow({ item, compact, fresh, superseded }: DecidedRowProps) {
           <Box sx={{ minWidth: 0 }}>
             <TitleLink item={item} />
             {compact && <Box sx={{ mt: 0.75 }}>{pill}</Box>}
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5 }}>
               {decidedLine(item)}
             </Typography>
             {fresh && <NewSince />}
@@ -95,7 +95,7 @@ function DecidedRow({ item, compact, fresh, superseded }: DecidedRowProps) {
         {sentBack && (
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', mt: 1.5, px: 1.5, py: 1.25, bgcolor: brand.cream, borderRadius: `${radius.card}px`, maxWidth: '65ch' }}>
             <Box component="span" sx={{ color: brand.brown, display: 'flex', pt: '2px', flexShrink: 0 }}>
-              <Info size={16} strokeWidth={1.5} aria-hidden="true" />
+              <Info size={16} strokeWidth={1.75} aria-hidden="true" />
             </Box>
             {item.reason ? (
               <Typography component="blockquote" variant="body2" sx={reasonSx}>
@@ -109,12 +109,12 @@ function DecidedRow({ item, compact, fresh, superseded }: DecidedRowProps) {
           </Box>
         )}
         {sentBack && item.kind === 'edit' && item.subject.type === 'product' && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
             {copy.decided.liveUnchanged}
           </Typography>
         )}
         {sentBack && superseded && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
             {copy.decided.superseded}
           </Typography>
         )}
@@ -144,7 +144,7 @@ export function WaitingCard({ items, total, compact }: { items: Item[]; total: n
       padded={false}
       action={
         total > 0 ? (
-          <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+          <Typography variant="body2" color="textSecondary" sx={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
             {copy.waiting.count(total)}
           </Typography>
         ) : undefined

@@ -39,7 +39,7 @@ function BulkImportButton({ importTo, phone }: { importTo: ImportTo; phone: bool
   return (
     <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
       {button}
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="textSecondary">
         {copy.laptopNote}
       </Typography>
     </Stack>
@@ -111,7 +111,7 @@ function Pagination({ page, shown, total, onPage }: { page: number; shown: numbe
       spacing={1.5}
       sx={{ alignItems: 'center', justifyContent: 'space-between', px: { xs: 0, md: 2 }, py: 1.5, borderTop: { md: `1px solid ${neutral.line}` } }}
     >
-      <Typography variant="body2" color="text.secondary" role="status" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+      <Typography variant="body2" color="textSecondary" role="status" sx={{ fontVariantNumeric: 'tabular-nums' }}>
         {copy.pagination.showing(from, to, total)}
       </Typography>
       <Stack direction="row" spacing={1}>

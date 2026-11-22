@@ -214,7 +214,7 @@ describe('Store details: when things go wrong', () => {
     // FastAPI's answer for a route it does not have.
     server.use(http.get('*/v1/vendor/store-details', () => HttpResponse.json({ detail: 'Not Found' }, { status: 404 })))
     await renderApp({ route: '/store/details' })
-    expect(await screen.findByText('Store details are not available yet.', {}, SLOW)).toBeInTheDocument()
+    expect(await screen.findByText('Store details are not available yet', {}, SLOW)).toBeInTheDocument()
     expect(screen.getByText(/write to partners@shazlo\.store/)).toBeInTheDocument()
     expect(screen.queryByText('The request failed (404).')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
@@ -226,7 +226,7 @@ describe('Store details: when things go wrong', () => {
     db().faults.push({ path: '/v1/vendor/store-details', method: 'GET', network: true })
     const { user } = await renderApp({ route: '/store/details' })
     const retry = await screen.findByRole('button', { name: 'Try again' }, SLOW)
-    expect(screen.getByText('We could not load your store details.')).toBeInTheDocument()
+    expect(screen.getByText('We could not load your store details')).toBeInTheDocument()
     await user.click(retry)
     expect(await screen.findByRole('region', { name: 'Your brand' }, SLOW)).toBeInTheDocument()
   })

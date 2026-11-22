@@ -33,7 +33,7 @@ function CheckYourEmail({ email }: { email: string }) {
   return (
     <Box ref={ref} tabIndex={-1} sx={{ outline: 'none' }}>
       <AuthTitle title={copy.sentTitle} subtitle={<Box component="span" sx={{ overflowWrap: 'anywhere' }}>{copy.sentBody(email)}</Box>} />
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="textSecondary">
         {copy.sentHelp} <Link href={`mailto:${onboardingCopy.partnersEmail}`}>{onboardingCopy.partnersEmail}</Link>.
       </Typography>
       <Divider sx={{ my: 3 }} />

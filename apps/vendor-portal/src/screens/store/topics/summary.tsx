@@ -93,9 +93,26 @@ export function businessRows(b: Schemas['BusinessDetails']): Row[] {
   ]
 }
 
-export function termsRows(t: { proposedBps: number | null; agreedTerms: boolean; agreedPriceRule: boolean }): Row[] {
+// Sign-up's business answers. The GST row's Change link opens the question when the seller is not
+// registered (or has not said), and the number when they are.
+export function signupBusinessRows(b: { legal_name: string; gstin: string; gst_registered: boolean | null }): Row[] {
+  const gst = b.gst_registered === null ? r.notAnswered : b.gst_registered ? b.gstin.trim() || r.notAnswered : r.notRegistered
   return [
-    { key: 'commission', label: r.commission, value: t.proposedBps === null || Number.isNaN(t.proposedBps) ? r.noProposal : formatBps(t.proposedBps) },
+    { key: 'legal_name', label: r.legalName, value: b.legal_name.trim() || r.notAnswered },
+    { key: b.gst_registered ? 'gstin' : 'gst_registered', label: r.gstin, value: gst },
+  ]
+}
+
+// Sign-up's commission and agreements. The commission row opens the rate when one is proposed, the
+// choice otherwise.
+export function termsRows(t: { choice: 'propose' | 'team' | ''; proposedBps: number | null; agreedTerms: boolean; agreedPriceRule: boolean }): Row[] {
+  const proposed = t.choice === 'propose' && t.proposedBps !== null && !Number.isNaN(t.proposedBps)
+  return [
+    {
+      key: t.choice === 'propose' ? 'commission' : 'commission_choice',
+      label: r.commission,
+      value: proposed ? formatBps(t.proposedBps!) : t.choice === 'team' ? r.noProposal : r.notAnswered,
+    },
     { key: 'agreed_terms', label: r.sellerTerms, value: t.agreedTerms ? r.agreed : r.notAnswered },
     { key: 'agreed_price_rule', label: r.priceRule, value: t.agreedPriceRule ? r.agreed : r.notAnswered },
   ]
@@ -124,7 +141,7 @@ export function SummaryList({ rows, change }: { rows: readonly Row[]; change?: (
               borderTop: i === 0 ? 0 : `1px solid ${neutral.line}`,
             }}
           >
-            <Typography component="dt" variant="body2" color="text.secondary" sx={{ gridColumn: 1 }}>
+            <Typography component="dt" variant="body2" color="textSecondary" sx={{ gridColumn: 1 }}>
               {row.label}
             </Typography>
             <Typography component="dd" variant="body1" sx={{ m: 0, gridColumn: { xs: '1 / -1', sm: 2 }, gridRow: { xs: 2, sm: 1 }, overflowWrap: 'anywhere' }}>

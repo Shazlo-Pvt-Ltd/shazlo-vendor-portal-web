@@ -12,7 +12,7 @@ function Header() {
   return (
     <Stack component="header" direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 2, px: { xs: 2, sm: 5 }, pt: { xs: 2.5, sm: 4 } }}>
       <Logo product="Seller" />
-      <Typography variant="body2" color="text.secondary" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+      <Typography variant="body2" color="textSecondary" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
         <HelpCircle size={16} aria-hidden="true" />
         <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>{copy.help}</Box>
         {/* The narrowest phones (320–399 px) have no room for the address beside the logo: a mail link instead. */}
@@ -162,7 +162,7 @@ export function AuthTitle({ title, subtitle, headingRef }: { title: string; subt
         {title}
       </Typography>
       {subtitle && (
-        <Typography variant="body1" color="text.secondary" sx={{ mt: 1.5 }}>
+        <Typography variant="body1" color="textSecondary" sx={{ mt: 1.5 }}>
           {subtitle}
         </Typography>
       )}

@@ -59,14 +59,14 @@ function TopicCard({ topic, details }: { topic: Topic; details: Schemas['StoreDe
         <>
           <SummaryList rows={rows} />
           {topic === 'brand' && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5 }}>
               {copy.brand.storeNameFixed}:{' '}
               <Link href={`mailto:${copy.partnersEmail}`}>{copy.partnersEmail}</Link>
             </Typography>
           )}
         </>
       ) : (
-        <Typography variant="body1" color="text.secondary">
+        <Typography variant="body1" color="textSecondary">
           {copy.page.notAddedYet}
         </Typography>
       )}

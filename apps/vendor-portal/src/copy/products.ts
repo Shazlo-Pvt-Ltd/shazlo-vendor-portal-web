@@ -118,7 +118,7 @@ export const productsCopy = {
     failedBody: 'Open each one, fix what is listed, then send it again.',
     archiveFailedBody: 'Nothing else changed.',
     failedLabel: 'Products that need changes',
-    failed: 'That did not go through.',
+    failed: 'That did not go through',
     dismiss: 'Dismiss',
   },
   // Main's delete rules: a product never sent for review is deleted for good; one sent before is
@@ -188,7 +188,7 @@ export const productsCopy = {
     showAll: 'Show all products',
   },
   error: {
-    title: 'We could not load your products.',
+    title: 'We could not load your products',
     retry: 'Try again',
   },
   loading: 'Loading products',

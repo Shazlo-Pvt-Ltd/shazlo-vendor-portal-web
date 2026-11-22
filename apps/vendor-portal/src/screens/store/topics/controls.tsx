@@ -13,7 +13,8 @@ import { fieldId } from './model'
 export const touch = { minHeight: 44 } as const
 const inputText = { '& .MuiInputBase-input': { fontSize: '1rem' } } as const
 const fieldset = { border: 0, p: 0, m: 0, minWidth: 0 } as const
-const legend = { typography: 'body1', color: 'text.primary', mb: 0.75, '&.Mui-focused': { color: 'text.primary' }, '&.Mui-error': { color: 'text.primary' } } as const
+// The question a group answers is a label: Bodoni Moda semibold (subtitle1), so it stands above its Ovo options.
+const legend = { typography: 'subtitle1', color: 'text.primary', mb: 0.75, '&.Mui-focused': { color: 'text.primary' }, '&.Mui-error': { color: 'text.primary' } } as const
 // Radios and checkboxes in brown: yellow is only ever a button fill.
 const control = { color: brand.brown, '&.Mui-checked': { color: brand.brown }, '&.Mui-focusVisible': { outline: `2px solid ${brand.navy}`, outlineOffset: -4 } } as const
 
@@ -128,7 +129,7 @@ export function ChoiceGroup<V extends string | number>({
                   <Typography component="span" variant="body1" sx={{ display: 'block' }}>
                     {o.label}
                   </Typography>
-                  <Typography component="span" variant="body2" color="text.secondary" sx={{ display: 'block' }}>
+                  <Typography component="span" variant="body2" color="textSecondary" sx={{ display: 'block' }}>
                     {o.hint}
                   </Typography>
                 </Box>
@@ -206,7 +207,7 @@ export function FieldGroup({ legend: title, hint, children }: { legend: string; 
         {title}
       </FormLabel>
       {hint && (
-        <Typography id={hintId} variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography id={hintId} variant="body2" color="textSecondary" sx={{ mb: 2 }}>
           {hint}
         </Typography>
       )}

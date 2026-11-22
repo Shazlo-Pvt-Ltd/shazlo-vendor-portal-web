@@ -1,3 +1,4 @@
+import { garmentColour } from '@shazlo/ui'
 import type { BusinessDetails, Contact, Delivery, PayOnDelivery, PayoutInput, ProductType, Returns } from '../api/model'
 import type { ApiPhotoAngle, ApiSizeChartGroup } from '../api/wire'
 import { sizeCode } from '../lib/catalog'
@@ -315,8 +316,9 @@ const LOOKS: Record<string, [main: string | null, others: string[], material: st
   'KS-CHN-010': ['Sage', [], 'Chanderi silk-cotton'],
   'KS-DAB-016': ['Indigo', ['Ivory'], 'Cotton'],
   'KS-BDJ-024': ['Green', ['Red'], 'Modal silk'],
-  'KS-BTK-037': ['Rust', ['Black'], 'Cotton'],
-  'KS-MHS-038': ['Purple', [], 'Maheshwari silk-cotton'],
+  // Colours in the seller's own words, and a shade picked with the colour picker (its hex code).
+  'KS-BTK-037': ['Madder red', ['Black'], 'Cotton'],
+  'KS-MHS-038': [garmentColour.Purple, [], 'Maheshwari silk-cotton'],
   'KS-DAB-042': ['Indigo', [], 'Cotton'],
 }
 

@@ -134,6 +134,9 @@ describe('V-06 Products', SLOW, () => {
 
     const ajrakh = row(table, 'Ajrakh Block-Print Kurta')
     expect(within(ajrakh).getByText('KS-AJR-014')).toBeInTheDocument()
+    // The main colour, with its swatch.
+    expect(within(ajrakh).getByText('Indigo')).toBeInTheDocument()
+    expect(ajrakh.querySelector('[data-swatch="named"]')).not.toBeNull()
     expect(within(ajrakh).getByText('Kurtas')).toBeInTheDocument()
     expect(within(ajrakh).getByText('₹2,499')).toBeInTheDocument()
     expect(within(ajrakh).getByText('MRP ₹2,999')).toBeInTheDocument()
@@ -161,6 +164,12 @@ describe('V-06 Products', SLOW, () => {
     const table = await waitForRows(3)
     const stole = row(table, 'Maheshwari Silk Stole')
     expect(within(stole).getAllByText('—')).toHaveLength(2)
+    // A shade picked in the editor: its hex code, drawn as itself.
+    expect(within(stole).getByText('#6A4C93')).toBeInTheDocument()
+    expect(stole.querySelector('[data-swatch="hex"]')).toHaveStyle({ background: 'rgb(106, 76, 147)' })
+    // No colour yet: no swatch.
+    const overshirt = row(table, 'Kala Cotton Overshirt')
+    expect(overshirt.querySelector('[data-swatch]')).toBeNull()
     expect(within(stole).getByText('Draft')).toBeInTheDocument()
     await user.click(screen.getByRole('tab', { name: 'Needs changes 2' }))
     const sentBack = await waitForRows(2)
@@ -511,7 +520,7 @@ describe('V-06 Products', SLOW, () => {
     mockDb().faults.push({ path: '/v1/vendor/products', method: 'GET', status: 429, code: 'rate_limited', message: 'Too many attempts. Wait a minute and try again.' })
     const { user } = await renderApp({ route: '/products' })
     const banner = await screen.findByRole('alert')
-    expect(banner).toHaveTextContent('We could not load your products.')
+    expect(banner).toHaveTextContent('We could not load your products')
     expect(banner).toHaveTextContent('Too many attempts. Wait a minute and try again.')
     await user.click(within(banner).getByRole('button', { name: 'Try again' }))
     await waitForRows(10)
@@ -522,7 +531,7 @@ describe('V-06 Products', SLOW, () => {
     mockDb().faults.push({ path: '/v1/vendor/products', method: 'GET', network: true })
     await renderApp({ route: '/products' })
     const banner = await screen.findByRole('alert')
-    expect(banner).toHaveTextContent('We could not load your products.')
+    expect(banner).toHaveTextContent('We could not load your products')
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
   })
 
@@ -576,6 +585,8 @@ describe('V-06 Products on phones', SLOW, () => {
     const card = within(list).getAllByRole('listitem')[0]!
     expect(card).toHaveTextContent('Ajrakh Block-Print Kurta')
     expect(card).toHaveTextContent('KS-AJR-014')
+    expect(card).toHaveTextContent('Indigo')
+    expect(card.querySelector('[data-swatch="named"]')).not.toBeNull()
     expect(card).toHaveTextContent('₹2,499')
     expect(card).toHaveTextContent('Stock 28')
     expect(card).toHaveTextContent('Needs changes')

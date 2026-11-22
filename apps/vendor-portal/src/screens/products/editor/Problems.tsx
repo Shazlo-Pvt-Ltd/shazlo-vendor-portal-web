@@ -49,7 +49,7 @@ export const ProblemSummary = forwardRef<HTMLDivElement, { problems: Problems; o
   )
 })
 
-export type SummaryRow = { step: string; value: string; onChange: () => void }
+export type SummaryRow = { step: string; value: ReactNode; onChange: () => void }
 
 // Phones: the page after the four steps. What is still missing, with links back to the step, then
 // the answers so far with Change, then Send for review in the sticky footer.
@@ -64,7 +64,7 @@ export function CheckPage({ problems, onGo, rows, readOnly, banners }: { problem
             <Typography variant="h2" component="h2">
               {copy.check.missingTitle}
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5 }}>
               {copy.check.missingBody}
             </Typography>
             <ProblemLinks problems={problems} onGo={onGo} />
@@ -74,7 +74,7 @@ export function CheckPage({ problems, onGo, rows, readOnly, banners }: { problem
             <Typography variant="h2" component="h2">
               {copy.check.ready}
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5 }}>
               {copy.check.readyBody}
             </Typography>
           </Box>
@@ -83,7 +83,7 @@ export function CheckPage({ problems, onGo, rows, readOnly, banners }: { problem
         {rows.map((row) => (
           <Stack component="li" key={row.step} direction="row" spacing={2} sx={{ alignItems: 'center', py: 1.5, borderBottom: `1px solid ${neutral.line}` }}>
             <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" color="textSecondary">
                 {row.step}
               </Typography>
               <Typography variant="body1" sx={{ overflowWrap: 'anywhere' }}>

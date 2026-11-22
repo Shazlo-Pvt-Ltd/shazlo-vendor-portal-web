@@ -12,6 +12,16 @@ const DISPATCH_TIMES = ['1_2_days', '2_3_days', '3_5_days', '5_7_days'] as const
 /** Build 2's limits for what shoppers read, and vendor-api's for the rest (PUT /brand-profile). */
 export const LIMITS = { tagline: 60, story: 600, basedIn: 120, website: 500 } as const
 
+/**
+ * The cover's shape in the app (8:3, full width at the top of the brand page) and the size the
+ * editor asks for. The preview and the editor's cover frame draw it from here, and the hint in
+ * copy/brand.ts names the same numbers (BrandPreview.test.tsx checks they agree).
+ */
+export const COVER_SIZE = { width: 1600, height: 600 } as const
+export const COVER_RATIO = `${COVER_SIZE.width} / ${COVER_SIZE.height}`
+/** The smallest logo the editor asks for; the app shows it in a circle. */
+export const LOGO_MIN_PX = 400
+
 // Drafts may be incomplete (the server checks completeness on submit), but what is there must be well formed.
 const WEBSITE = /^(?:(?:https?:\/\/)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?:\/\S*)?)?$/i
 const HANDLE = /^[A-Za-z0-9._]{1,30}$/

@@ -50,8 +50,13 @@ export type PayoutAnswers = {
   upi_id: string
 }
 export type BusinessAnswers = { legal_name: string; gstin: string }
-// Sign-up only: the proposed commission and the two agreements.
-export type TermsAnswers = { commission: string; agreed_terms: boolean; agreed_price_rule: boolean }
+// Sign-up only: every answer is needed, so whether the business is registered for GST is asked
+// (null until answered) and the number only when it is.
+export type SignupBusinessAnswers = BusinessAnswers & { gst_registered: boolean | null }
+// Sign-up only: how the commission is set (a proposed rate, or agreed with the team), the rate
+// when proposed, and the two agreements.
+export type CommissionChoice = 'propose' | 'team'
+export type TermsAnswers = { commission_choice: CommissionChoice | ''; commission: string; agreed_terms: boolean; agreed_price_rule: boolean }
 
 export type TopicAnswers = {
   brand: BrandAnswers
@@ -78,7 +83,8 @@ export const empty = {
   payment: (): PaymentAnswers => ({ cash: false, upi: false }),
   payout: (): PayoutAnswers => ({ method: '', holder_name: '', account_number: '', account_number_again: '', ifsc: '', upi_id: '' }),
   business: (): BusinessAnswers => ({ legal_name: '', gstin: '' }),
-  terms: (): TermsAnswers => ({ commission: '', agreed_terms: false, agreed_price_rule: false }),
+  signupBusiness: (): SignupBusinessAnswers => ({ legal_name: '', gstin: '', gst_registered: null }),
+  terms: (): TermsAnswers => ({ commission_choice: '', commission: '', agreed_terms: false, agreed_price_rule: false }),
 }
 
 // Fields in page order: the error summary lists problems in this order, and focus goes to the first.
@@ -90,8 +96,10 @@ export const FIELD_ORDER: Record<Topic | 'terms', readonly string[]> = {
   payment: ['pay_on_delivery'],
   payout: ['method', 'holder_name', 'account_number', 'account_number_again', 'ifsc', 'upi_id'],
   business: ['legal_name', 'gstin'],
-  terms: ['commission', 'agreed_terms', 'agreed_price_rule'],
+  terms: ['commission_choice', 'commission', 'agreed_terms', 'agreed_price_rule'],
 }
+// Sign-up's business step asks about GST before the number.
+export const SIGNUP_BUSINESS_ORDER: readonly string[] = ['legal_name', 'gst_registered', 'gstin']
 
 // The id of the input a message belongs to (for a group, its first option), so the error summary
 // can link to it. One form is on screen at a time, so the path alone is unique.
@@ -149,6 +157,11 @@ export function businessBody(a: BusinessAnswers): Schemas['BusinessDetails'] {
   return { legal_name: a.legal_name.trim() || null, gstin: a.gstin.trim() || null }
 }
 
+// A number typed before the seller said "not registered" is not sent.
+export function signupBusinessBody(a: SignupBusinessAnswers): Schemas['BusinessDetails'] {
+  return businessBody({ legal_name: a.legal_name, gstin: a.gst_registered === true ? a.gstin : '' })
+}
+
 // ---- checks ---------------------------------------------------------------------------------
 
 export type CheckContext = {
@@ -197,9 +210,32 @@ export function checkPercent(text: string, key: string): FieldErrors {
   return problem ? { [key]: problem } : {}
 }
 
+// The rate the seller proposes, in basis points: null when they agree it with the team (a rate typed
+// before they changed their answer is not sent), NaN when it does not read as a percentage.
+export function proposalOf(a: TermsAnswers): number | null {
+  return a.commission_choice === 'propose' ? proposedBps(a.commission) : null
+}
+
 export function checkTerms(a: TermsAnswers): FieldErrors {
   const agreements = pick(checkApplication({ agreed_terms: a.agreed_terms, agreed_price_rule: a.agreed_price_rule }), ['agreed_terms', 'agreed_price_rule'])
-  return { ...checkPercent(a.commission, 'commission'), ...agreements }
+  const e = catalogCopy.errors.commission
+  const commission: FieldErrors =
+    a.commission_choice === '' ? { commission_choice: e.choice }
+      : a.commission_choice === 'team' ? {}
+        : a.commission.trim() ? checkPercent(a.commission, 'commission') : { commission: e.required }
+  return { ...commission, ...agreements }
+}
+
+// Sign-up's business step: the legal name, whether the business is registered for GST, and the
+// number when it is.
+export function checkSignupBusiness(a: SignupBusinessAnswers): FieldErrors {
+  const e = catalogCopy.errors.business
+  const out: FieldErrors = {}
+  if (!a.legal_name.trim()) out.legal_name = e.legalNameRequired
+  if (a.gst_registered === null) out.gst_registered = e.gstChoice
+  else if (a.gst_registered && !a.gstin.trim()) out.gstin = e.gstinRequired
+  // Length and format, as Store details checks them.
+  return { ...out, ...pick(checkBusiness(signupBusinessBody(a)), ['legal_name', 'gstin']) }
 }
 
 export function checkTopic<T extends Topic>(topic: T, answers: TopicAnswers[T], ctx: CheckContext = {}): FieldErrors {

@@ -34,8 +34,8 @@ function answers(page: number, change: (a: ApplyDraft) => void = () => {}): Appl
     returns: { window_days: 0, condition: null, refund_days: null },
     payment: { cash: true, upi: true },
     payout: { method: 'bank', holder_name: 'Neel Threads', account_number: '', account_number_again: '', ifsc: 'hdfc0001234', upi_id: '' },
-    business: { legal_name: '', gstin: '' },
-    terms: { commission: '', agreed_terms: true, agreed_price_rule: true },
+    business: { legal_name: 'Neel Threads', gstin: '', gst_registered: false },
+    terms: { commission_choice: 'team', commission: '', agreed_terms: true, agreed_price_rule: true },
   }
   change(a)
   return a
@@ -59,6 +59,7 @@ async function openAt(page: number, options: { change?: (a: ApplyDraft) => void;
 
 const next = (user: User) => user.click(screen.getByRole('button', { name: 'Continue' }))
 const summary = () => screen.getByRole('group', { name: 'Some answers need fixing' })
+const REQUIRED_NOTE = 'Answer every question unless it says (optional).'
 const stepText = () => screen.getByText(/^Step \d of 7$/).textContent
 const group = (name: string) => screen.getByRole('group', { name })
 // The answer beside a label on Check your answers.
@@ -107,7 +108,7 @@ describe('V-02 Apply to sell: the pages', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Apply to sell' }, SLOW)).toBeInTheDocument()
     expect(screen.getByText('Tell us about your brand in 7 short steps. It takes about 8 minutes.')).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 2, name: 'What you will need' })).toBeInTheDocument()
-    expect(within(screen.getByRole('main')).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Your pickup address', 'Your bank account or UPI ID', 'Your GST number, if you have one'])
+    expect(within(screen.getByRole('main')).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Your pickup address', 'Your bank account or UPI ID', 'Your legal business name, and your GST number if you have one'])
     expect(screen.getByText(/We keep your answers while this tab is open/)).toHaveTextContent('Closing or reloading the page clears them.')
     expect(screen.queryByText(/on this device/)).toBeNull()
     expect(within(screen.getByRole('main')).getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
@@ -119,8 +120,11 @@ describe('V-02 Apply to sell: the pages', () => {
     expect(heading).toHaveFocus()
     expect(stepText()).toBe('Step 1 of 7')
     expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
-    // Labels say "(optional)"; nothing is marked with an asterisk.
+    // Every answer is needed: one line says so, and only the exception says "(optional)". No asterisks.
+    expect(screen.getByText(REQUIRED_NOTE)).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Instagram or website (optional)' })).toBeInTheDocument()
+    expect(screen.getAllByRole('textbox', { name: /\(optional\)/ })).toHaveLength(1)
+    expect(screen.queryAllByRole('group', { name: /\(optional\)/ })).toHaveLength(0)
     expect(document.body.textContent).not.toContain('*')
     expect(document.querySelectorAll('[required]')).toHaveLength(0)
 
@@ -151,7 +155,9 @@ describe('V-02 Apply to sell: the pages', () => {
     await user.clear(name)
     await typeIn(user, 'Instagram or website (optional)', 'my shop!')
     await next(user)
-    expect(summary()).toHaveFocus()
+    // Continue stays on the page and takes you to the first answer it needs.
+    expect(screen.getByRole('heading', { level: 1, name: 'Your brand' })).toBeInTheDocument()
+    expect(name).toHaveFocus()
     expect(within(summary()).getAllByRole('link').map((l) => l.textContent)).toEqual([
       'Add your store name.',
       'Choose who you sell for: women, men or both.',
@@ -345,28 +351,71 @@ describe('V-02 Apply to sell: payouts and business details', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Business details and commission' })).toBeInTheDocument()
   })
 
-  it('needs both agreements, and checks the optional GST number and commission when given', async () => {
-    const { user } = await openAt(7, { change: (a) => (a.terms = { commission: '', agreed_terms: false, agreed_price_rule: false }) })
-    const rate = () => screen.getByRole('textbox', { name: 'Commission you propose, in % (optional)' })
-    expect(rate()).toHaveAccessibleDescription('Leave empty if you have agreed a rate with our team.')
-    expect(rate()).toHaveAttribute('inputmode', 'decimal')
+  it('needs the legal name, a GST answer, a commission answer and both agreements', async () => {
+    const { user } = await openAt(7, {
+      change: (a) => {
+        a.business = { legal_name: '', gstin: '', gst_registered: null }
+        a.terms = { commission_choice: '', commission: '', agreed_terms: false, agreed_price_rule: false }
+      },
+    })
+    // Nothing on this page is optional, so nothing says so.
+    expect(screen.getByText(REQUIRED_NOTE)).toBeInTheDocument()
+    expect(screen.queryAllByRole('textbox', { name: /optional/ })).toHaveLength(0)
+    expect(screen.queryAllByRole('group', { name: /optional/ })).toHaveLength(0)
+    const legal = screen.getByRole('textbox', { name: 'Legal business name' })
+    expect(legal).toHaveAccessibleDescription('As on your PAN, GST or bank papers. If you trade under your own name, write that.')
+    // The number and the rate appear only once the seller says they have one.
+    expect(screen.queryByRole('textbox', { name: 'GST number' })).toBeNull()
+    expect(screen.queryByRole('textbox', { name: 'Rate you propose, in %' })).toBeNull()
     const terms = screen.getByRole('link', { name: 'seller terms' })
     expect(terms).toHaveAttribute('href', 'https://shazlo.store/seller-terms')
     expect(terms).toHaveAttribute('target', '_blank')
     expect(terms.getAttribute('rel')).toMatch(/noopener|noreferrer/)
     const priceRule = screen.getByRole('checkbox', { name: 'My price on Shazlo will never be higher than my price anywhere else — my website, shop or other apps.' })
 
-    await typeIn(user, 'GST number (optional)', '24ABCDE1234F1Z0')
-    await typeIn(user, 'Commission you propose, in % (optional)', '45')
     await next(user)
     expect(within(summary()).getAllByRole('link').map((l) => l.textContent)).toEqual([
-      'Check your GST number. It has 15 characters, like 24ABCDE1234F1Z6.',
-      'Enter a rate from 0% to 40%.',
+      'Add your legal business name.',
+      'Say whether your business is registered for GST.',
+      'Choose how we set your commission.',
       'Agree to the seller terms to send your application.',
       'Agree to the price rule to send your application.',
     ])
-    await typeIn(user, 'Commission you propose, in % (optional)', '12.5')
-    await user.clear(screen.getByRole('textbox', { name: 'GST number (optional)' }))
+    expect(legal).toHaveFocus()
+    expect(group('Is your business registered for GST?')).toHaveAccessibleDescription('Say whether your business is registered for GST.')
+
+    await typeIn(user, 'Legal business name', 'Neel Threads LLP')
+    await user.click(within(group('Is your business registered for GST?')).getByRole('radio', { name: 'Yes' }))
+    const gstin = screen.getByRole('textbox', { name: 'GST number' })
+    expect(gstin).toHaveAccessibleDescription('15 characters, like 24ABCDE1234F1Z6.')
+    await user.click(within(group('How should we set your commission?')).getByRole('radio', { name: 'Propose a rate' }))
+    const rate = screen.getByRole('textbox', { name: 'Rate you propose, in %' })
+    expect(rate).toHaveAttribute('inputmode', 'decimal')
+    expect(rate).toHaveAccessibleDescription('From 0% to 40%, like 12 or 12.5.')
+    await next(user)
+    expect(within(summary()).getAllByRole('link').map((l) => l.textContent)).toEqual([
+      'Enter your GST number.',
+      'Enter the rate you propose, like 12 or 12.5.',
+      'Agree to the seller terms to send your application.',
+      'Agree to the price rule to send your application.',
+    ])
+    expect(gstin).toHaveFocus()
+
+    await typeIn(user, 'GST number', '24ABCDE1234F1Z0')
+    await typeIn(user, 'Rate you propose, in %', '45')
+    await next(user)
+    expect(within(summary()).getAllByRole('link').map((l) => l.textContent).slice(0, 2)).toEqual([
+      'Check your GST number. It has 15 characters, like 24ABCDE1234F1Z6.',
+      'Enter a rate from 0% to 40%.',
+    ])
+
+    // Below the GST threshold: say so, and the number goes. Agreeing the rate with the team: the rate goes.
+    const notRegistered = within(group('Is your business registered for GST?')).getByRole('radio', { name: /^No, not registered/ })
+    expect(notRegistered).toHaveAccessibleName(/below the GST threshold/)
+    await user.click(notRegistered)
+    expect(screen.queryByRole('textbox', { name: 'GST number' })).toBeNull()
+    await user.click(within(group('How should we set your commission?')).getByRole('radio', { name: /^Agree it with the Shazlo team/ }))
+    expect(screen.queryByRole('textbox', { name: 'Rate you propose, in %' })).toBeNull()
     await user.click(screen.getByRole('checkbox', { name: /I agree to the/ }))
     await user.click(priceRule)
     expect(screen.queryByRole('group', { name: 'Some answers need fixing' })).toBeNull()
@@ -377,7 +426,7 @@ describe('V-02 Apply to sell: payouts and business details', () => {
 
 describe('V-02 Apply to sell: check answers', () => {
   it('reads every answer back, the password only as "Chosen", with Change links that return here', async () => {
-    const { user } = await openAt(2, { change: (a) => ((a.terms.commission = '12.5'), (a.checking = true)) })
+    const { user } = await openAt(2, { change: (a) => ((a.terms = { ...a.terms, commission_choice: 'propose', commission: '12.5' }), (a.checking = true)) })
     await typePassword(user)
     await next(user)
     await screen.findByRole('heading', { level: 1, name: 'Check your answers' })
@@ -391,7 +440,30 @@ describe('V-02 Apply to sell: check answers', () => {
     const terms = screen.getByRole('region', { name: 'Business details and commission' })
     expect(answer(terms, 'Commission you propose')).toHaveTextContent('12.5%')
 
-    await user.click(within(delivery).getByRole('button', { name: 'Change Delivery time' }))
+    // Every answer of every page is read back, each with its own Change link.
+    const rows = (title: string) => within(screen.getByRole('region', { name: title })).getAllByRole('term').map((dt) => dt.textContent)
+    expect(rows('Your brand')).toEqual(['Store name', 'Sells', 'Ships from', 'Instagram or website'])
+    expect(rows('Contact')).toEqual(['Name', 'Mobile number', 'Email', 'Password'])
+    expect(rows('Delivery')).toEqual(['Who delivers', 'Delivers to', 'Delivery time'])
+    expect(rows('Returns')).toEqual(['Returns'])
+    expect(rows('Payment on delivery')).toEqual(['Pay on delivery'])
+    expect(rows('Payouts')).toEqual(['Paid to', 'Account holder', 'IFSC code'])
+    expect(rows('Business details and commission')).toEqual(['Legal business name', 'GST number', 'Commission you propose', 'Seller terms', 'Price rule'])
+    for (const region of screen.getAllByRole('region')) {
+      expect(within(region).getAllByRole('button', { name: /^Change / })).toHaveLength(within(region).getAllByRole('term').length)
+    }
+    expect(answer(terms, 'Legal business name')).toHaveTextContent('Neel Threads')
+    expect(answer(terms, 'GST number')).toHaveTextContent('Not registered for GST')
+    expect(answer(screen.getByRole('region', { name: 'Your brand' }), 'Instagram or website')).toHaveTextContent('Not added')
+
+    // Change on the GST answer opens the question it answers.
+    await user.click(within(terms).getByRole('button', { name: 'Change GST number' }))
+    await screen.findByRole('heading', { level: 1, name: 'Business details and commission' })
+    expect(within(group('Is your business registered for GST?')).getByRole('radio', { name: 'Yes' })).toHaveFocus()
+    await next(user)
+    await screen.findByRole('heading', { level: 1, name: 'Check your answers' })
+
+    await user.click(within(screen.getByRole('region', { name: 'Delivery' })).getByRole('button', { name: 'Change Delivery time' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Delivery' })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: '1–2 days' })).toHaveFocus()
     await user.click(screen.getByRole('radio', { name: '3–5 days' }))
@@ -434,8 +506,12 @@ describe('V-02 Apply to sell: sending', () => {
       store_details: {
         delivery: { mode: 'own', areas: { all_india: false, places: ['Surat', '395007'] }, delivery_days: '2_3' },
         payout: { method: 'bank', holder_name: 'Neel Threads', account_number: '5010012345674821', ifsc: 'HDFC0001234' },
+        // Not registered for GST: the legal name goes, the number does not.
+        business: { legal_name: 'Neel Threads', gstin: null },
       },
     })
+    // The commission is agreed with the team: no proposal is sent.
+    expect(body).not.toHaveProperty('proposed_commission_bps')
     // The account exists, waits for its email to be confirmed, and the store waits for review.
     const owner = db().users.find((u) => u.email === EMAIL)!
     expect(owner).toMatchObject({ role: 'owner', verified: false, password: PASSWORD })
@@ -511,8 +587,8 @@ describe('V-02 Apply to sell: sending', () => {
     const { user } = await openAt(8, {
       change: (a) => {
         a.payout = { method: 'upi', holder_name: '', account_number: '', account_number_again: '', ifsc: '', upi_id: 'Neel.Threads@okhdfcbank' }
-        a.business = { legal_name: 'Neel Threads LLP', gstin: '24aakfk1234l1zd' }
-        a.terms.commission = '12.5'
+        a.business = { legal_name: 'Neel Threads LLP', gstin: '24aakfk1234l1zd', gst_registered: true }
+        a.terms = { ...a.terms, commission_choice: 'propose', commission: '12.5' }
         a.delivery = { ...a.delivery, mode: 'shazlo', pickup_address: { line1: '4 Ring Road', area: 'Athwa', city: 'Surat', pin: '395 007' } }
         a.returns = { window_days: 7, condition: 'unworn_with_tags', refund_days: 5 }
       },
@@ -545,7 +621,8 @@ describe('V-02 Apply to sell: sending', () => {
     await sendWithSecrets(user)
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Contact' })).toBeInTheDocument()
-    expect(summary()).toHaveFocus()
+    // Focus goes to the first answer the server questioned, which says what is wrong.
+    expect(screen.getByRole('textbox', { name: 'Your name' })).toHaveFocus()
     expect(screen.getByRole('textbox', { name: 'Your name' })).toHaveAccessibleDescription('Use letters for your name.')
     await typeIn(user, 'Your name', 'Asha P.')
     expect(screen.queryByRole('group', { name: 'Some answers need fixing' })).toBeNull()

@@ -25,7 +25,7 @@ function Person() {
 function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
     <Box sx={{ minWidth: 0 }}>
-      <Typography component="dt" variant="body2" color="text.secondary">
+      <Typography component="dt" variant="body2" color="textSecondary">
         {label}
       </Typography>
       <Typography component="dd" variant="body1" sx={{ m: 0, mt: 0.25, overflowWrap: 'anywhere' }}>

@@ -62,7 +62,7 @@ describe('focus after navigation', () => {
     const { user } = await renderApp({ route: '/store/details/returns' })
     await user.click(await screen.findByRole('radio', { name: 'No returns' }, SLOW))
     await user.click(screen.getByRole('button', { name: 'Save' }))
-    const saved = await screen.findByText('Returns saved.', {}, SLOW)
+    const saved = await screen.findByText('Returns saved', {}, SLOW)
     await waitFor(() => expect(saved.closest('[tabindex="-1"]')).toHaveFocus())
   })
 

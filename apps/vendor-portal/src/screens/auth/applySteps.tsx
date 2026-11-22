@@ -11,9 +11,9 @@ import { PASSWORD_MAX, PASSWORD_MIN } from '../../lib/account'
 import { maskPayout } from '../../lib/storeDetails'
 import { PasswordField } from '../../security/PasswordField'
 import { ErrorSummary } from '../store/topics/controls'
-import { BusinessFields, TermsFields, TopicFields } from '../store/topics/forms'
-import { businessBody, contactBody, deliveryBody, fieldId, paymentBody, payoutBody, proposedBps, returnsBody, type Topic } from '../store/topics/model'
-import { brandRows, businessRows, contactRows, deliveryRows, paymentRows, payoutRows, returnsRows, SummaryList, termsRows, type Row } from '../store/topics/summary'
+import { SignupBusinessFields, TermsFields, TopicFields } from '../store/topics/forms'
+import { contactBody, deliveryBody, fieldId, paymentBody, payoutBody, proposalOf, returnsBody, type Topic } from '../store/topics/model'
+import { brandRows, contactRows, deliveryRows, paymentRows, payoutRows, returnsRows, signupBusinessRows, SummaryList, termsRows, type Row } from '../store/topics/summary'
 import { BackButton, TaskFooter } from './AuthLayout'
 import { STEP_COUNT, STEP_TOPICS, type ApplyDraft } from './applyModel'
 import { ResendEmail } from './ResendEmail'
@@ -58,7 +58,7 @@ export function Restored({ onStartOver }: { onStartOver: () => void }) {
 
 function SignInLine() {
   return (
-    <Typography variant="body1" color="text.secondary">
+    <Typography variant="body1" color="textSecondary">
       {copy.signInPrompt}{' '}
       <Link component={RouterLink} to={paths.signIn} sx={{ display: 'inline-flex', alignItems: 'center', minHeight: 44 }}>
         {copy.signIn}
@@ -74,7 +74,7 @@ export function IntroPage({ headingRef, notice, onStart }: { headingRef: Ref<HTM
   return (
     <>
       <PageTitle ref={headingRef}>{copy.title}</PageTitle>
-      <Typography variant="body1" color="text.secondary" sx={{ mt: 1.5, mb: 3 }}>
+      <Typography variant="body1" color="textSecondary" sx={{ mt: 1.5, mb: 3 }}>
         {i.subtitle}
       </Typography>
       {notice}
@@ -88,7 +88,7 @@ export function IntroPage({ headingRef, notice, onStart }: { headingRef: Ref<HTM
           </Typography>
         ))}
       </Box>
-      <Typography variant="body1" color="text.secondary" sx={{ mt: 2.5 }}>
+      <Typography variant="body1" color="textSecondary" sx={{ mt: 2.5 }}>
         {i.saved}
       </Typography>
       <Divider sx={{ my: 3 }} />
@@ -126,19 +126,22 @@ export function StepPage({ step, draft, headingRef, errors, ordered, notice, onC
   return (
     <>
       <BackButton onClick={onBack} label={copy.back} />
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+      <Typography variant="body2" color="textSecondary" sx={{ mb: 0.5 }}>
         {copy.stepOf(step, STEP_COUNT)}
       </Typography>
       <PageTitle ref={headingRef}>{meta.title}</PageTitle>
-      <Typography variant="body1" color="text.secondary" sx={{ mt: 1, mb: 3 }}>
+      <Typography variant="body1" color="textSecondary" sx={{ mt: 1 }}>
         {meta.intro}
+      </Typography>
+      <Typography variant="body2" color="textSecondary" sx={{ mt: 1, mb: 3 }}>
+        {copy.requiredNote}
       </Typography>
       {notice}
       <ErrorSummary errors={ordered} />
       <Box component="form" noValidate onSubmit={submit} aria-label={meta.title}>
         {step === 7 ? (
           <Stack spacing={3}>
-            <BusinessFields values={draft.business} onChange={(v) => onChange('business', v)} errors={errors} />
+            <SignupBusinessFields values={draft.business} onChange={(v) => onChange('business', v)} errors={errors} />
             <TermsFields values={draft.terms} onChange={(v) => onChange('terms', v)} errors={errors} />
           </Stack>
         ) : (
@@ -199,10 +202,20 @@ function topicRows(topic: Topic, a: ApplyDraft, bankName: string | undefined): R
     case 'payment': return paymentRows(paymentBody(a.payment))
     case 'payout': {
       const p = a.payout
-      if (!p.method || (p.method === 'bank' && !p.account_number.trim()) || (p.method === 'upi' && !p.upi_id.trim())) return payoutRows(null)
+      const missing = storeCopy.rows.notAnswered
+      // The account number is never kept: after coming back it is missing, but the rest still shows.
+      if (p.method === 'bank' && !p.account_number.trim()) {
+        return [
+          { key: 'account_number', label: storeCopy.rows.paidTo, value: missing },
+          { key: 'holder_name', label: storeCopy.rows.holder, value: p.holder_name.trim() || missing },
+          { key: 'ifsc', label: storeCopy.rows.ifsc, value: p.ifsc.trim().toUpperCase() || missing },
+        ]
+      }
+      if (p.method === 'upi' && !p.upi_id.trim()) return [{ key: 'upi_id', label: storeCopy.rows.upi, value: missing }]
+      if (!p.method) return payoutRows(null)
       return payoutRows(maskPayout(payoutBody(p), bankName ?? catalogCopy.payoutMethods.bank))
     }
-    case 'business': return businessRows(businessBody(a.business))
+    case 'business': return signupBusinessRows(a.business)
   }
 }
 
@@ -233,7 +246,7 @@ export function CheckAnswersPage({
     <>
       <BackButton onClick={onBack} label={copy.back} />
       <PageTitle ref={headingRef}>{copy.check.title}</PageTitle>
-      <Typography variant="body1" color="text.secondary" sx={{ mt: 1, mb: 3 }}>
+      <Typography variant="body1" color="textSecondary" sx={{ mt: 1, mb: 3 }}>
         {copy.check.subtitle}
       </Typography>
       {notice}
@@ -250,7 +263,7 @@ export function CheckAnswersPage({
             step === 7
               ? [
                   ...topicRows('business', draft, bankName),
-                  ...termsRows({ proposedBps: proposedBps(draft.terms.commission), agreedTerms: draft.terms.agreed_terms, agreedPriceRule: draft.terms.agreed_price_rule }),
+                  ...termsRows({ choice: draft.terms.commission_choice, proposedBps: proposalOf(draft.terms), agreedTerms: draft.terms.agreed_terms, agreedPriceRule: draft.terms.agreed_price_rule }),
                 ]
               : topicRows(topic, draft, bankName)
           return (
@@ -280,7 +293,7 @@ function NextItem({ icon: Icon, children }: { icon: LucideIcon; children: ReactN
   return (
     <Stack component="li" direction="row" spacing={1.5}>
       <Box sx={{ color: brand.brown, pt: '2px', flexShrink: 0, display: 'flex' }}>
-        <Icon size={18} strokeWidth={1.5} aria-hidden="true" />
+        <Icon size={18} strokeWidth={1.75} aria-hidden="true" />
       </Box>
       <Typography variant="body1" sx={{ overflowWrap: 'anywhere' }}>
         {children}
@@ -299,7 +312,7 @@ export function ApplicationReceived({ name, email, brand: brandName }: Received)
   return (
     <Box>
       <PageTitle ref={ref}>{r.title}</PageTitle>
-      <Typography variant="body1" color="text.secondary" sx={{ mt: 1.5, mb: 4, overflowWrap: 'anywhere' }}>
+      <Typography variant="body1" color="textSecondary" sx={{ mt: 1.5, mb: 4, overflowWrap: 'anywhere' }}>
         {r.subtitle(name, brandName)}
       </Typography>
       <Box component="section" aria-labelledby="received-verify" sx={{ mb: 4 }}>
@@ -309,7 +322,7 @@ export function ApplicationReceived({ name, email, brand: brandName }: Received)
         <Typography variant="body1" sx={{ overflowWrap: 'anywhere' }}>
           {r.verify(email)}
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2.5 }}>
+        <Typography variant="body2" color="textSecondary" sx={{ mt: 1, mb: 2.5 }}>
           {r.verifyHelp}
         </Typography>
         <ResendEmail email={email} />

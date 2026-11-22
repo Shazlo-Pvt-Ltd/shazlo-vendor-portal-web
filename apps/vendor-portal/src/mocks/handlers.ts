@@ -21,12 +21,13 @@ import type {
 } from '../api/wire'
 import { catalogCopy } from '../copy/catalog'
 import {
-  isColour,
+  checkColours,
+  colourProblemText,
   isSize,
   MAX_EXTRA_PHOTOS,
-  MAX_OTHER_COLOURS,
   MAX_TRYON_PHOTOS,
   NAMED_PHOTO_ANGLES,
+  parseColour,
   productProblems,
   sizeCode,
   type SubmitRequirement,
@@ -367,20 +368,26 @@ function readContent(db: MockDb, vendor: VendorRecord, body: Record<string, unkn
     if (body.gender === 'women' || body.gender === 'men' || body.gender === 'unisex') gender = body.gender
     else fields.gender = "Input should be 'women', 'men' or 'unisex'"
   }
+  // Any colour name (up to 32 characters) or hex code, kept tidied (proposed.yaml): the listed
+  // colours are suggestions, not a limit.
   let main: string | null = null
   if (body.main_colour !== undefined && body.main_colour !== null) {
-    if (isColour(body.main_colour)) main = body.main_colour
-    else fields.main_colour = pe.colourUnknown(String(body.main_colour))
+    const parsed = typeof body.main_colour === 'string' ? parseColour(body.main_colour) : { ok: false as const, problem: 'name' as const }
+    if (parsed?.ok) main = parsed.value
+    else if (parsed) fields.main_colour = colourProblemText(parsed.problem)
   }
   let others: string[] = []
   if (body.other_colours !== undefined) {
     const list = Array.isArray(body.other_colours) ? body.other_colours : []
-    const unknown = list.find((c) => !isColour(c))
+    const parsed = list.map((c) => (typeof c === 'string' ? parseColour(c) : null))
+    const bad = parsed.find((p) => !p?.ok)
     if (!Array.isArray(body.other_colours)) fields.other_colours = 'Input should be a valid list'
-    else if (unknown !== undefined) fields.other_colours = pe.colourUnknown(String(unknown))
-    else if (list.length > MAX_OTHER_COLOURS) fields.other_colours = pe.otherColoursMax
-    else if (new Set(list).size < list.length || (main !== null && list.includes(main))) fields.other_colours = pe.otherColoursRepeat
-    else others = list as string[]
+    else if (bad !== undefined) fields.other_colours = bad && !bad.ok ? colourProblemText(bad.problem) : 'Input should be a valid string'
+    else {
+      const problems = checkColours(main ?? '', list as string[])
+      if (problems.other_colours) fields.other_colours = problems.other_colours
+      else others = parsed.map((p) => (p?.ok ? p.value : ''))
+    }
   }
   const weight = body.weight_grams
   if (weight !== undefined && weight !== null && !isIntIn(weight, 1, 1_000_000)) fields.weight_grams = 'Input should be greater than 0'

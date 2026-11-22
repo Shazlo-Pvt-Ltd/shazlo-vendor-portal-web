@@ -21,13 +21,13 @@ function FileCard({ name, rows, onReplace }: { name: string; rows: number; onRep
   return (
     <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', p: 1.5, border: `1px solid ${neutral.line}`, borderRadius: `${radius.card}px`, bgcolor: neutral.canvas }}>
       <Box sx={{ color: brand.brown, display: 'flex', flexShrink: 0 }}>
-        <FileSpreadsheet size={20} strokeWidth={1.5} aria-hidden="true" />
+        <FileSpreadsheet size={20} strokeWidth={1.75} aria-hidden="true" />
       </Box>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography variant="body1" noWrap title={name}>
           {name}
         </Typography>
-        <Typography variant="caption" color="text.secondary" sx={tabular}>
+        <Typography variant="caption" color="textSecondary" sx={tabular}>
           {copy.rows(rows)}
         </Typography>
       </Box>
@@ -42,7 +42,7 @@ function Fix({ message }: { message: string }) {
   return (
     <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
       <Box component="span" sx={{ color: status.warning, display: 'flex', pt: '2px', flexShrink: 0 }}>
-        <AlertTriangle size={16} strokeWidth={1.5} aria-hidden="true" />
+        <AlertTriangle size={16} strokeWidth={1.75} aria-hidden="true" />
       </Box>
       <span>{message}</span>
     </Stack>
@@ -72,7 +72,7 @@ function ErrorRows({ errors, title, wide, fileName, truncated }: { errors: RowEr
         <Typography id={titleId} variant="h3" component="h3">
           {title}
         </Typography>
-        <Button variant="text" size="small" onClick={() => saveFile(errorReportCsv(errors), errorReportName(fileName))} startIcon={<Download size={16} strokeWidth={1.5} aria-hidden="true" />}>
+        <Button variant="text" size="small" onClick={() => saveFile(errorReportCsv(errors), errorReportName(fileName))} startIcon={<Download size={16} strokeWidth={1.75} aria-hidden="true" />}>
           {copy.downloadReport}
         </Button>
       </Stack>
@@ -102,7 +102,7 @@ function ErrorRows({ errors, title, wide, fileName, truncated }: { errors: RowEr
           />
         </Stack>
       )}
-      <Typography variant="body2" color="text.secondary" role="status" sx={{ mb: 1, ...tabular }}>
+      <Typography variant="body2" color="textSecondary" role="status" sx={{ mb: 1, ...tabular }}>
         {copy.shown(shown.length, errors.length)}
       </Typography>
       {shown.length === 0 ? (
@@ -113,7 +113,7 @@ function ErrorRows({ errors, title, wide, fileName, truncated }: { errors: RowEr
             <TableHead>
               <TableRow>
                 {(['row', 'product', 'column', 'fix'] as const).map((key) => (
-                  <TableCell key={key} align={key === 'row' ? 'right' : 'left'} sx={{ typography: 'body2', color: 'text.secondary', bgcolor: neutral.surface, width: key === 'row' ? 64 : key === 'fix' ? undefined : 180 }}>
+                  <TableCell key={key} align={key === 'row' ? 'right' : 'left'} sx={{ typography: 'subtitle2', color: 'text.secondary', bgcolor: neutral.surface, width: key === 'row' ? 64 : key === 'fix' ? undefined : 180 }}>
                     {copy.columns[key]}
                   </TableCell>
                 ))}
@@ -139,7 +139,7 @@ function ErrorRows({ errors, title, wide, fileName, truncated }: { errors: RowEr
         <Box component="ul" role="list" aria-labelledby={titleId} sx={{ listStyle: 'none', p: 0, m: 0, borderTop: `1px solid ${neutral.line}` }}>
           {visible.map((e, i) => (
             <Box component="li" key={`${e.row}-${e.column}-${i}`} sx={{ py: 1.5, borderBottom: `1px solid ${neutral.line}` }}>
-              <Typography variant="caption" color="text.secondary" component="div" sx={tabular}>
+              <Typography variant="caption" color="textSecondary" component="div" sx={tabular}>
                 {copy.rowLabel(e.row)} · {e.column}
               </Typography>
               <Typography variant="body1" sx={{ overflowWrap: 'anywhere' }}>
@@ -154,7 +154,7 @@ function ErrorRows({ errors, title, wide, fileName, truncated }: { errors: RowEr
       )}
       {shown.length > ERRORS_PAGE && (
         <Stack component="nav" aria-label={copy.pages} direction="row" spacing={1.5} sx={{ alignItems: 'center', justifyContent: 'space-between', pt: 1.5 }}>
-          <Typography variant="body2" color="text.secondary" sx={tabular}>
+          <Typography variant="body2" color="textSecondary" sx={tabular}>
             {copy.page(current * ERRORS_PAGE + 1, current * ERRORS_PAGE + visible.length, shown.length)}
           </Typography>
           <Stack direction="row" spacing={1}>
@@ -196,7 +196,7 @@ export function ReviewStep({ job, wide, creating, createError, onReplace, onCrea
             </>
           )}
           {job.unchanged > 0 && (
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" color="textSecondary">
               {copy.unchanged(job.unchanged)}
             </Typography>
           )}
@@ -209,7 +209,7 @@ export function ReviewStep({ job, wide, creating, createError, onReplace, onCrea
         </Stack>
       </DialogContent>
       <DialogActions sx={{ ...actionsSx, flexDirection: { xs: 'column', md: 'row' }, alignItems: { xs: 'stretch', md: 'center' } }}>
-        <Typography variant="body2" color="text.secondary" sx={{ flex: 1, minWidth: 0, mr: { md: 2 } }}>
+        <Typography variant="body2" color="textSecondary" sx={{ flex: 1, minWidth: 0, mr: { md: 2 } }}>
           {ready > 0 ? copy.footer(ready) : allClear && job.unchanged > 0 ? copy.alreadyThere : copy.nothingReady}
         </Typography>
         {!allClear && (

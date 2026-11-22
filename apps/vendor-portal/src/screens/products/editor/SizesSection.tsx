@@ -71,7 +71,7 @@ function SizesCard({ rows, onChange, sku, readOnly, problem, idPrefix, category 
 
   return (
     <>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+      <Typography variant="body2" color="textSecondary" sx={{ mb: 1.5 }}>
         {category ? copy.chipsHint : `${copy.chipsHint} ${copy.noType}`}
       </Typography>
       <Stack spacing={2}>
@@ -95,13 +95,13 @@ function SizesCard({ rows, onChange, sku, readOnly, problem, idPrefix, category 
               <Box component="li" key={row.size} sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1.25, borderBottom: `1px solid ${neutral.line}` }}>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Typography variant="body1">{row.size}</Typography>
-                  <Typography variant="caption" component="p" color="text.secondary" noWrap>
+                  <Typography variant="caption" component="p" color="textSecondary" noWrap>
                     {[sku ? productEditorCopy.code(sizeCode(sku, row.size)) : '', row.stock !== '' && n === 0 ? copy.soldOut : ''].filter(Boolean).join(' · ')}
                   </Typography>
                 </Box>
                 <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexShrink: 0 }}>
                   <IconButton aria-label={copy.decrease(row.size)} disabled={readOnly || n === 0} onClick={() => setStock(row.size, String(n - 1))} sx={stepper}>
-                    <Minus size={16} strokeWidth={1.5} aria-hidden="true" />
+                    <Minus size={16} strokeWidth={1.75} aria-hidden="true" />
                   </IconButton>
                   <TextField
                     value={row.stock}
@@ -112,7 +112,7 @@ function SizesCard({ rows, onChange, sku, readOnly, problem, idPrefix, category 
                     slotProps={{ input: { readOnly }, htmlInput: { 'aria-label': copy.stock(row.size), inputMode: 'numeric', pattern: '[0-9]*', autoComplete: 'off' } }}
                   />
                   <IconButton aria-label={copy.increase(row.size)} disabled={readOnly || n >= MAX_STOCK} onClick={() => setStock(row.size, String(n + 1))} sx={stepper}>
-                    <Plus size={16} strokeWidth={1.5} aria-hidden="true" />
+                    <Plus size={16} strokeWidth={1.75} aria-hidden="true" />
                   </IconButton>
                 </Stack>
               </Box>
@@ -120,7 +120,7 @@ function SizesCard({ rows, onChange, sku, readOnly, problem, idPrefix, category 
           })}
         </Box>
       )}
-      <Typography variant="body2" color="text.secondary" sx={{ mt: 2, fontVariantNumeric: 'tabular-nums' }}>
+      <Typography variant="body2" color="textSecondary" sx={{ mt: 2, fontVariantNumeric: 'tabular-nums' }}>
         {rows.length ? copy.total(formatCount(total), rows.length) : copy.none}
       </Typography>
     </>

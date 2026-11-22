@@ -189,7 +189,7 @@ export default function SignIn() {
         </Stack>
       </Box>
       <Divider sx={{ my: 3 }} />
-      <Typography variant="body1" color="text.secondary">
+      <Typography variant="body1" color="textSecondary">
         {copy.newHere}{' '}
         <Link component={RouterLink} to={paths.apply}>
           {copy.apply}

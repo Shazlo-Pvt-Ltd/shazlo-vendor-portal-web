@@ -6,7 +6,7 @@ import { srOnly } from '../../../lib/a11y'
 
 export type Choice = { value: string; label: string; swatch?: { background: string; border: boolean } }
 
-// One chip: a real radio or checkbox (keyboard and screen readers get native behaviour) inside a
+// One chip: a real radio (keyboard and screen readers get native behaviour) inside a
 // label drawn as a chip. Chosen chips get a darker border, a tint and a tick, never colour alone.
 function Chip({ type, name, choice, checked, disabled, inputId, describedBy, onToggle }: { type: 'radio' | 'checkbox'; name: string; choice: Choice; checked: boolean; disabled: boolean; inputId?: string; describedBy?: string; onToggle: () => void }) {
   return (
@@ -61,11 +61,11 @@ function Group({ legend, hint, error, children }: { legend: string; hint?: React
   const describedBy = [hint ? hintId : '', error ? errorId : ''].filter(Boolean).join(' ') || undefined
   return (
     <Box component="fieldset" sx={{ border: 0, p: 0, m: 0, minWidth: 0 }}>
-      <Typography component="legend" variant="body1" sx={{ p: 0, mb: 0.5 }}>
+      <Typography component="legend" variant="subtitle1" sx={{ p: 0, mb: 0.5 }}>
         {legend}
       </Typography>
       {hint && (
-        <Typography id={hintId} variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+        <Typography id={hintId} variant="body2" color="textSecondary" sx={{ mb: 1 }}>
           {hint}
         </Typography>
       )}
@@ -79,7 +79,7 @@ function Group({ legend, hint, error, children }: { legend: string; hint?: React
   )
 }
 
-// Choose one (gender, product type, main colour).
+// Choose one (gender, product type).
 export function RadioChips({ legend, hint, error, choices, disabled = false, firstId, value, onChange }: GroupProps & { value: string; onChange: (value: string) => void }) {
   const name = useId()
   return (
@@ -88,34 +88,6 @@ export function RadioChips({ legend, hint, error, choices, disabled = false, fir
         choices.map((choice, i) => (
           <Chip key={choice.value} type="radio" name={name} choice={choice} checked={value === choice.value} disabled={disabled} inputId={i === 0 ? firstId : undefined} describedBy={describedBy} onToggle={() => onChange(choice.value)} />
         ))
-      }
-    </Group>
-  )
-}
-
-// Choose up to `max` (other colours). Once full, the unchosen chips are off until one is removed.
-export function CheckboxChips({ legend, hint, error, choices, disabled = false, firstId, value, max, onChange }: GroupProps & { value: readonly string[]; max: number; onChange: (value: string[]) => void }) {
-  const name = useId()
-  const full = value.length >= max
-  return (
-    <Group legend={legend} hint={hint} error={error}>
-      {(describedBy) =>
-        choices.map((choice, i) => {
-          const checked = value.includes(choice.value)
-          return (
-            <Chip
-              key={choice.value}
-              type="checkbox"
-              name={name}
-              choice={choice}
-              checked={checked}
-              disabled={disabled || (full && !checked)}
-              inputId={i === 0 ? firstId : undefined}
-              describedBy={describedBy}
-              onToggle={() => onChange(checked ? value.filter((v) => v !== choice.value) : [...value, choice.value])}
-            />
-          )
-        })
       }
     </Group>
   )

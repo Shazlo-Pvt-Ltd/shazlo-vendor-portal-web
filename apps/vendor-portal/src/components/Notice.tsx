@@ -28,7 +28,7 @@ export function Notice({ title, children, actions, illustration, focus = false }
         {title}
       </Typography>
       {children && (
-        <Typography variant="body1" component="div" color="text.secondary" sx={{ maxWidth: '50ch', '& p': { m: 0 }, '& p + p': { mt: 1 } }}>
+        <Typography variant="body1" component="div" color="textSecondary" sx={{ maxWidth: '50ch', '& p': { m: 0 }, '& p + p': { mt: 1 } }}>
           {children}
         </Typography>
       )}

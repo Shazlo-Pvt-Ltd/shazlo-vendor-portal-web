@@ -221,7 +221,9 @@ describe('the mock API against the contract', () => {
       },
     })
     ok(put.status)
-    expect((await send('put', `/v1/vendor/products/${id}`, { body: { title: 'x', main_colour: 'Plaid' } })).status).toBe(422)
+    // Any colour name or hex code is a colour; a hex code that is not one, or a name over 32 characters, is not.
+    expect((await send('put', `/v1/vendor/products/${id}`, { body: { title: 'x', main_colour: '#12' } })).status).toBe(422)
+    expect((await send('put', `/v1/vendor/products/${id}`, { body: { title: 'x', main_colour: 'A'.repeat(33) } })).status).toBe(422)
     const current = (put.body as unknown as { version: number }).version
     expect((await send('put', `/v1/vendor/products/${id}`, { body: { title: 'Contract Kurta', version: current - 1 } })).status).toBe(409)
     ok((await send('put', `/v1/vendor/products/${id}`, { body: { title: 'Contract Kurta', version: current } })).status)

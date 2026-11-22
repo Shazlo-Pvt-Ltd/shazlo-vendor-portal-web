@@ -1,11 +1,12 @@
 import { Box, Card, Checkbox, IconButton, LinearProgress, Link, Skeleton, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material'
-import { neutral } from '@shazlo/ui'
+import { emphasis, neutral } from '@shazlo/ui'
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef, type RowSelectionState, type Updater } from '@tanstack/react-table'
 import { MoreHorizontal } from 'lucide-react'
 import { useMemo, type MouseEvent, type ReactNode } from 'react'
 import { Link as RouterLink } from 'react-router'
 import type { Schemas } from '../../../api/model'
 import { paths } from '../../../app/paths'
+import { ColourName } from '../../../components/ColourSwatch'
 import { ProductThumb } from '../../../components/ProductThumb'
 import { productsCopy } from '../../../copy/products'
 import { formatCount, formatINR, formatRelative } from '../../../lib/format'
@@ -39,7 +40,7 @@ export function Price({ product, align = 'right' }: { product: Product; align?: 
         {formatINR(price)}
       </Typography>
       {price != null && mrp != null && mrp > price && (
-        <Typography variant="caption" component="div" color="text.secondary" sx={tabular}>
+        <Typography variant="caption" component="div" color="textSecondary" sx={tabular}>
           {copy.mrp(formatINR(mrp))}
         </Typography>
       )}
@@ -58,12 +59,18 @@ function ProductCell({ product }: { product: Product }) {
           onClick={stop}
           underline="hover"
           title={product.title}
-          sx={{ display: 'block', color: neutral.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 340 }}
+          sx={{ ...emphasis.semibold, display: 'block', color: neutral.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 340 }}
         >
           {product.title}
         </Link>
-        <Typography variant="caption" component="div" color="text.secondary" noWrap>
-          {product.sku}
+        <Typography variant="caption" component="div" color="textSecondary" noWrap>
+          <span>{product.sku}</span>
+          {product.main_colour && (
+            <>
+              {' · '}
+              <ColourName value={product.main_colour} size={10} />
+            </>
+          )}
         </Typography>
       </Box>
     </Stack>
@@ -136,7 +143,7 @@ export function ProductTable({ items, fetching, selection, onSelectionChange, on
         accessorKey: 'updated_at',
         header: copy.updated,
         cell: ({ row }) => (
-          <Typography variant="body2" color="text.secondary" component="span" sx={{ whiteSpace: 'nowrap' }}>
+          <Typography variant="body2" color="textSecondary" component="span" sx={{ whiteSpace: 'nowrap' }}>
             {formatRelative(row.original.updated_at)}
           </Typography>
         ),
@@ -154,7 +161,7 @@ export function ProductTable({ items, fetching, selection, onSelectionChange, on
             }}
             sx={{ color: neutral.inkSecondary }}
           >
-            <MoreHorizontal size={18} strokeWidth={1.5} aria-hidden="true" />
+            <MoreHorizontal size={18} strokeWidth={1.75} aria-hidden="true" />
           </IconButton>
         ),
       },
@@ -198,7 +205,7 @@ export function ProductTable({ items, fetching, selection, onSelectionChange, on
                       key={header.id}
                       align={align}
                       padding={header.column.id === 'select' ? 'checkbox' : 'normal'}
-                      sx={{ width, typography: 'body2', color: 'text.secondary', py: 1, borderColor: neutral.line }}
+                      sx={{ width, typography: 'subtitle2', color: 'text.secondary', py: 1, borderColor: neutral.line }}
                     >
                       {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                     </TableCell>

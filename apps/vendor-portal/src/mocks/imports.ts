@@ -1,13 +1,14 @@
 import { catalogCopy } from '../copy/catalog'
 import {
-  closestColour,
+  checkColours,
   closestProductType,
+  colourProblemText,
   IMPORT_COLUMNS,
-  matchColour,
   matchGender,
   matchProductType,
   MAX_OTHER_COLOURS,
   OPTIONAL_IMPORT_COLUMNS,
+  parseColour,
   parseSizesStock,
   type ImportColumn,
 } from '../lib/catalog'
@@ -130,24 +131,26 @@ export function checkCsv(text: string): CheckedSheet {
     if (!typeText) problem('product_type', 'required', e.required(labels.product_type))
     else if (!category) problem('product_type', 'invalid_value', e.productType(typeText, closestProductType(typeText)))
 
+    // Any colour name or hex code, as in the editor (the listed colours are suggestions).
     const mainText = cell('main_colour')
-    const main = matchColour(mainText)
-    if (!mainText) problem('main_colour', 'required', e.required(labels.main_colour))
-    else if (!main) problem('main_colour', 'invalid_value', e.colour(mainText, closestColour(mainText)))
+    const parsedMain = parseColour(mainText)
+    const main = parsedMain?.ok ? parsedMain.value : null
+    if (!parsedMain) problem('main_colour', 'required', e.required(labels.main_colour))
+    else if (!parsedMain.ok) problem('main_colour', 'invalid_value', e.colour(mainText, colourProblemText(parsedMain.problem)))
 
     const otherParts = cell('other_colours').split(/[,/;|]/).map((c) => c.trim()).filter(Boolean)
     const others: string[] = []
     for (const part of otherParts) {
-      const colour = matchColour(part)
-      if (!colour) {
-        problem('other_colours', 'invalid_value', e.colour(part, closestColour(part)))
+      const parsed = parseColour(part)
+      if (!parsed?.ok) {
+        problem('other_colours', 'invalid_value', e.colour(part, colourProblemText(parsed?.problem ?? 'name')))
         break
       }
-      others.push(colour)
+      others.push(parsed.value)
     }
     if (others.length === otherParts.length) {
       if (others.length > MAX_OTHER_COLOURS) problem('other_colours', 'too_many', e.otherColoursMax)
-      else if (new Set(others).size < others.length || (main && others.includes(main))) problem('other_colours', 'invalid_value', e.otherColoursRepeat)
+      else if (checkColours(main ?? '', others).other_colours) problem('other_colours', 'invalid_value', e.otherColoursRepeat)
     }
 
     const priceText = cell('selling_price')

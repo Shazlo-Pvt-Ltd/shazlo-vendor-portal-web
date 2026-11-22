@@ -48,7 +48,10 @@ test('a new brand applies to sell in seven short steps', async ({ page }) => {
   await next()
 
   await step('Business details and commission')
-  await page.getByRole('textbox', { name: 'Commission you propose, in % (optional)' }).fill('12')
+  await page.getByRole('textbox', { name: 'Legal business name' }).fill('Meera Joshi')
+  await page.getByRole('group', { name: 'Is your business registered for GST?' }).getByRole('radio', { name: /^No, not registered/ }).check()
+  await page.getByRole('radio', { name: 'Propose a rate' }).check()
+  await page.getByRole('textbox', { name: 'Rate you propose, in %' }).fill('12')
   await page.getByRole('checkbox', { name: /I agree to the/ }).check()
   await page.getByRole('checkbox', { name: /never be higher than my price anywhere else/ }).check()
   await next()

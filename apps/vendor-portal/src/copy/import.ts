@@ -39,6 +39,9 @@ export const importCopy = {
       material: '100% linen',
       mrp: '2499',
     } satisfies Record<Schemas['ImportColumn'], string>,
+    coloursLabel: 'Colours:',
+    // The example hex code is passed in (a swatch token), so no colour is written here.
+    coloursNote: (hex: string) => `Any colour name, like Rust orange, or a hex code, like ${hex}. Separate other colours with commas.`,
     sizesLabel: 'Sizes and stock:',
     sizesNote: 'Write each size and how many you have, like S:4, M:6, L:3, XL:0. Use 0 for a sold-out size.',
     photosNote: 'Photos are not in the sheet. Once the drafts are made, add photos named after each product, like “Relaxed Linen Shirt - front.jpg”.',
@@ -119,7 +122,7 @@ export const importCopy = {
     uploadFixed: 'Upload fixed file',
     create: (n: number) => `Save ${drafts(n)}`,
     creating: 'Saving drafts…',
-    createFailed: 'The drafts were not saved.',
+    createFailed: 'The drafts were not saved',
   },
 
   photos: {

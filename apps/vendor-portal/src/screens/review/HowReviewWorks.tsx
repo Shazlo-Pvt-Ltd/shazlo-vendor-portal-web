@@ -19,7 +19,7 @@ export function HowReviewWorks() {
               <Typography variant="h3" component="h3">
                 {step.title}
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+              <Typography variant="body2" color="textSecondary" sx={{ mt: 0.25 }}>
                 {step.body}
               </Typography>
             </Box>
@@ -34,7 +34,7 @@ export function HowReviewWorks() {
           {copy.checks.map((check) => (
             <Box component="li" key={check} sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', py: 0.5 }}>
               <Box component="span" sx={{ color: brand.brown, display: 'flex', pt: '2px', flexShrink: 0 }}>
-                <Check size={16} strokeWidth={1.5} aria-hidden="true" />
+                <Check size={16} strokeWidth={1.75} aria-hidden="true" />
               </Box>
               <Typography variant="body2">{check}</Typography>
             </Box>

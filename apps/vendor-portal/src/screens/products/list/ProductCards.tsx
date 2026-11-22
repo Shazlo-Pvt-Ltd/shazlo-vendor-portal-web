@@ -1,8 +1,9 @@
 import { Box, Card, CardActionArea, LinearProgress, Skeleton, Stack, Typography } from '@mui/material'
-import { neutral } from '@shazlo/ui'
+import { emphasis, neutral } from '@shazlo/ui'
 import { Link as RouterLink } from 'react-router'
 import type { Schemas } from '../../../api/model'
 import { paths } from '../../../app/paths'
+import { ColourName } from '../../../components/ColourSwatch'
 import { ProductThumb } from '../../../components/ProductThumb'
 import { productsCopy } from '../../../copy/products'
 import { formatCount } from '../../../lib/format'
@@ -40,15 +41,21 @@ export function ProductCards({ items, fetching }: { items: Product[] | undefined
               <CardActionArea component={RouterLink} to={paths.product(product.id)} sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-start', gap: 1.5, p: 1.5, minHeight: 44 }}>
                 <ProductThumb src={product.thumbnail_url} size={56} />
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography variant="body1" sx={{ color: neutral.ink, overflowWrap: 'anywhere' }}>
+                  <Typography variant="body1" sx={{ ...emphasis.semibold, color: neutral.ink, overflowWrap: 'anywhere' }}>
                     {product.title}
                   </Typography>
-                  <Typography variant="caption" component="div" color="text.secondary">
-                    {product.sku}
+                  <Typography variant="caption" component="div" color="textSecondary" sx={{ overflowWrap: 'anywhere' }}>
+                    <span>{product.sku}</span>
+                    {product.main_colour && (
+                      <>
+                        {' · '}
+                        <ColourName value={product.main_colour} size={10} />
+                      </>
+                    )}
                   </Typography>
                   <Stack direction="row" spacing={2} sx={{ alignItems: 'baseline', justifyContent: 'space-between', mt: 1 }}>
                     <Price product={product} align="left" />
-                    <Typography variant="body2" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                    <Typography variant="body2" color="textSecondary" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                       {productsCopy.card.stock(formatCount(product.stock))}
                     </Typography>
                   </Stack>

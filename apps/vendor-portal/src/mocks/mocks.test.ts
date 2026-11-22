@@ -217,6 +217,28 @@ describe('checkCsv', () => {
     expect(sheet.rows).toEqual([])
   })
 
+  it('takes any colour name or hex code, tidied, as the editor does', () => {
+    const header = 'product_name,gender,product_type,main_colour,other_colours,selling_price,sizes_stock,description,material'
+    const sheet = checkCsv(
+      [
+        header,
+        'Rust Kurta,Women,Kurtas,#b7410e,"Kalamkari  indigo, ivory",1499,S:2,Block-printed.,Cotton',
+        'Bad Hex Kurta,Women,Kurtas,#12,,1499,S:2,x,Cotton',
+        'Odd Other Kurta,Women,Kurtas,Indigo,#GGGGGG,1499,S:2,x,Cotton',
+        'Twice Kurta,Women,Kurtas,Rust orange,rust ORANGE,1499,S:2,x,Cotton',
+        `Long Kurta,Women,Kurtas,${'A'.repeat(33)},,1499,S:2,x,Cotton`,
+      ].join('\n'),
+    )
+    expect(sheet.rows).toHaveLength(1)
+    expect(sheet.rows[0]).toMatchObject({ main_colour: '#B7410E', other_colours: ['Kalamkari indigo', 'Ivory'] })
+    expect(sheet.problems.map((p) => [p.row, p.column, p.message])).toEqual([
+      [3, 'main_colour', expect.stringMatching(/^Could not read "#12" as a colour\. Enter a hex code as # and 6 digits or letters A to F, like #[0-9A-F]{6}\.$/)],
+      [4, 'other_colours', expect.stringMatching(/^Could not read "#GGGGGG" as a colour\. Enter a hex code/)],
+      [5, 'other_colours', 'Other colours should be different from the main colour and from each other.'],
+      [6, 'main_colour', `Could not read "${'A'.repeat(33)}" as a colour. Keep the colour name to 32 characters.`],
+    ])
+  })
+
   it('reports missing columns on the header row and reads nothing', () => {
     const sheet = checkCsv('name,price\nShirt,1')
     expect(sheet.rowsRead).toBe(0)

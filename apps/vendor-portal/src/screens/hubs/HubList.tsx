@@ -39,14 +39,14 @@ function RowBody({ row }: { row: HubRow }) {
   return (
     <>
       <Box component="span" sx={{ display: 'flex', color: neutral.inkSecondary, flexShrink: 0 }}>
-        <Icon size={20} strokeWidth={1.5} aria-hidden="true" />
+        <Icon size={20} strokeWidth={1.75} aria-hidden="true" />
       </Box>
       <Box component="span" sx={{ flex: 1, minWidth: 0 }}>
         <Typography component="span" variant="body1" sx={{ display: 'block' }}>
           {row.title}
         </Typography>
         {row.body && (
-          <Typography component="span" variant="body2" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+          <Typography component="span" variant="body2" color="textSecondary" sx={{ display: 'block', mt: 0.25 }}>
             {row.body}
           </Typography>
         )}
@@ -58,7 +58,7 @@ function RowBody({ row }: { row: HubRow }) {
       )}
       {'to' in row && (
         <Box component="span" sx={{ display: 'flex', color: neutral.inkSecondary, flexShrink: 0 }}>
-          <ChevronRight size={18} strokeWidth={1.5} aria-hidden="true" />
+          <ChevronRight size={18} strokeWidth={1.75} aria-hidden="true" />
         </Box>
       )}
     </>
