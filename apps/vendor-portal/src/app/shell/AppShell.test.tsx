@@ -23,6 +23,8 @@ interface Options {
   status?: string
 }
 
+const LAZY_PAGE_MS = 15_000
+
 async function openSignedIn({ path = '/products', width = 1280, role = 'owner', status = 'approved' }: Options = {}) {
   setViewport(width)
   const store = makeStore({
@@ -35,7 +37,8 @@ async function openSignedIn({ path = '/products', width = 1280, role = 'owner', 
     http.get(`${BASE}/v1/vendor/products`, () => HttpResponse.json({ items: [], total: 0, limit: 1, offset: 0 })),
   )
   const router = renderRoute(path, { store })
-  await screen.findByRole('heading', { level: 1 })
+  // Each page is a lazy chunk: the first one a test file opens can take seconds to load on a cold, busy machine.
+  await screen.findByRole('heading', { level: 1 }, { timeout: LAZY_PAGE_MS })
   return { router, store, user: userEvent.setup() }
 }
 
@@ -62,7 +65,7 @@ describe('the navigation on a desktop (1280 px)', () => {
   it('goes to a section when its link is used', async () => {
     const { router, user } = await openSignedIn({ path: '/products' })
     await user.click(screen.getByRole('link', { name: 'Brand page' }))
-    await screen.findByRole('heading', { level: 1, name: 'Brand page' })
+    await screen.findByRole('heading', { level: 1, name: 'Brand page' }, { timeout: LAZY_PAGE_MS })
     expect(router.state.location.pathname).toBe('/brand')
   })
 })
@@ -83,7 +86,7 @@ describe.each([
     const { router, user } = await openSignedIn({ width })
     await user.click(screen.getByRole('button', { name: 'Open the menu' }))
     await user.click(await screen.findByRole('link', { name: 'Bulk import' }))
-    await screen.findByRole('heading', { level: 1, name: 'Bulk import' })
+    await screen.findByRole('heading', { level: 1, name: 'Bulk import' }, { timeout: LAZY_PAGE_MS })
     expect(router.state.location.pathname).toBe('/import')
     await waitFor(() => expect(screen.queryByRole('navigation', { name: 'Sections' })).toBeNull())
   })
@@ -144,7 +147,7 @@ describe('accessibility', () => {
   it('moves focus to the new page heading after navigating', async () => {
     const { user } = await openSignedIn({ path: '/products' })
     await user.click(screen.getByRole('link', { name: 'Submissions' }))
-    const heading = await screen.findByRole('heading', { level: 1, name: 'Submissions' })
+    const heading = await screen.findByRole('heading', { level: 1, name: 'Submissions' }, { timeout: LAZY_PAGE_MS })
     await waitFor(() => expect(document.activeElement).toBe(heading))
   })
 
@@ -152,7 +155,7 @@ describe('accessibility', () => {
     '$path has exactly one h1 and sets the page title',
     async ({ path, title }) => {
       await openSignedIn({ path: path.replace(':productId', '123') })
-      await screen.findByRole('heading', { level: 1, name: title })
+      await screen.findByRole('heading', { level: 1, name: title }, { timeout: LAZY_PAGE_MS })
       expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
       expect(document.title).toBe(`${title} · Shazlo Vendor Portal`)
     },

@@ -12,9 +12,11 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
+import jwt
 import pytest
 from fakeredis import FakeAsyncRedis
 from fastapi import FastAPI
+from shazlo_security.keys import ALGORITHM, generate_private_key
 from support import IDENTITY_ISSUER, JWKS_URL, Identity
 
 from vendor_api.app import create_app
@@ -111,6 +113,48 @@ async def test_an_admin_token_opens_no_vendor_or_auth_route(
     vendor_ops = [op for op in protected(app) if not op[1].startswith("/v1/admin")]
     answers = {op: (await call(app, *op, admin)).status_code for op in vendor_ops}
     assert {op: status for op, status in answers.items() if status != 401} == {}
+
+
+@pytest.mark.parametrize(
+    ("roles", "pending_password"),
+    [(["support"], False), ([], False), (["super_admin"], True)],
+    ids=["another-role", "no-role", "password-change-pending"],
+)
+async def test_an_admin_token_without_a_reviewer_role_opens_no_admin_route(
+    app: FastAPI, identity: Identity, roles: list[str], pending_password: bool
+) -> None:
+    """A valid identity-api token is not enough: every admin route needs a role that allows it,
+    and a token that only allows a password change opens none. A route mounted under /v1/admin
+    without the group's role check fails here."""
+    token = identity.token(roles, must_change_password=pending_password)
+    admin_ops = [op for op in protected(app) if op[1].startswith("/v1/admin")]
+    assert admin_ops
+    answers = {op: (await call(app, *op, token)).status_code for op in admin_ops}
+    assert {op: status for op, status in answers.items() if status != 403} == {}
+
+
+async def test_a_tampered_or_foreign_token_opens_nothing(app: FastAPI, identity: Identity) -> None:
+    """A vendor token with a garbled signature, the same token re-signed by a key vendor-api does
+    not hold, and an admin token for another audience are all refused everywhere, as if there
+    were no token."""
+    vendor = app.state.vendor_tokens.issue(
+        user_id=uuid.uuid4(), vendor_id=uuid.uuid4(), role=VendorUserRole.OWNER
+    ).token
+    header, payload, signature = vendor.split(".")
+    # Not valid base64 for a signature: refused before the signature is even checked.
+    garbled = f"{header}.{payload}.{signature[::-1]}"
+    # The same header (kid included) and claims, correctly signed, but by another key: only the
+    # signature check can refuse this one.
+    resigned = jwt.encode(
+        jwt.decode(vendor, options={"verify_signature": False}),
+        generate_private_key(),
+        algorithm=ALGORITHM,
+        headers={"kid": jwt.get_unverified_header(vendor)["kid"]},
+    )
+    foreign = identity.token(["super_admin"], audience="identity-api")
+    for token in (garbled, resigned, foreign):
+        answers = {op: (await call(app, *op, token)).status_code for op in protected(app)}
+        assert {op: status for op, status in answers.items() if status != 401} == {}
 
 
 async def test_the_probe_catches_a_nested_router_without_auth(app: FastAPI) -> None:

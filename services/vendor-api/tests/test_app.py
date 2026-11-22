@@ -1,6 +1,7 @@
 import asyncio
 import json
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
@@ -56,6 +57,29 @@ def test_incoming_request_id_is_echoed(settings: Settings) -> None:
 def test_unsafe_request_id_is_replaced(settings: Settings) -> None:
     response = make_client(settings).get("/health", headers={"X-Request-ID": "bad id!"})
     assert response.headers["X-Request-ID"] != "bad id!"
+
+
+@pytest.mark.parametrize(
+    "value",
+    [b"\xff\xfe", b"caf\xe9", b"a" * 65, b"", b"id with space", b"trace-123\n"],
+    ids=["not-utf8", "latin-1", "too-long", "empty", "space", "trailing-newline"],
+)
+async def test_a_request_id_that_is_not_safe_ascii_is_replaced_not_a_500(
+    settings: Settings, value: bytes
+) -> None:
+    """HTTP allows any byte from 0x80 up in a header value, and the server hands the bytes over
+    as they came. Such an ID is replaced like any other unusable one; it never fails the request.
+
+    httpx's ASGI transport passes the raw bytes on, as uvicorn does (the TestClient re-encodes
+    them as UTF-8, which hides the problem).
+    """
+    app = create_app(settings, readiness_checks={"x": _ok})
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://vendor-api.test") as client:
+        response = await client.get("/health", headers=[(b"X-Request-ID", value)])
+    assert response.status_code == 200
+    assert len(response.headers["X-Request-ID"]) == 32
+    assert response.headers["X-Request-ID"].encode() != value
 
 
 def test_ready_ok_when_all_checks_pass(settings: Settings) -> None:

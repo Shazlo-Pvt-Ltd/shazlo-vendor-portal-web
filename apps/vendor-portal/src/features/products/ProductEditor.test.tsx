@@ -262,6 +262,16 @@ describe('editing a product', () => {
     expect(input(/^Product SKU/).readOnly).toBe(true)
   })
 
+  it('shows the SKU and the status chip under the title, in markup React accepts', async () => {
+    const error = vi.spyOn(console, 'error')
+    await open('/products/p1', product())
+    const header = screen.getByRole('heading', { level: 1 }).parentElement!
+    expect(within(header).getByText('SKU KURTA-001')).toBeTruthy()
+    expect(header.querySelector('.MuiChip-root')).not.toBeNull()
+    expect(header.querySelector('p div, p p')).toBeNull()
+    expect(error.mock.calls.flat().join('\n')).not.toMatch(/cannot be a descendant of|cannot contain a nested/)
+  })
+
   it('clears the return window when the product is not returnable', async () => {
     const { user, puts } = await open('/products/p1', product({ working: fullRevision({ images: [image(1)], returnable: true, return_window_days: 7 }) }))
     expect(input(/^Return window/).value).toBe('7')
