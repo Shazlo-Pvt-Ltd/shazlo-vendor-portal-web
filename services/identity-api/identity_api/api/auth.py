@@ -19,7 +19,7 @@ from identity_api.api.deps import (
     get_rate_limit_ip,
     get_rate_limits,
 )
-from identity_api.core.errors import ApiError, error_response
+from identity_api.core.errors import ApiError, error_response, error_responses
 from identity_api.core.settings import Settings
 from identity_api.db.models import Admin
 from identity_api.db.session import get_session
@@ -175,7 +175,15 @@ def _session_response(
     )
 
 
-@router.post("/login")
+@router.post(
+    "/login",
+    responses=error_responses(
+        (401, ("invalid_credentials",)),
+        (422, ("validation_error",)),
+        (429, ("rate_limited",)),
+        (503, ("rate_limiter_unavailable",)),
+    ),
+)
 async def login(
     body: LoginRequest,
     request: Request,
@@ -210,7 +218,23 @@ async def login(
     return _session_response(response, settings, session)
 
 
-@router.post("/refresh", response_model=None, dependencies=CookieOrigin)
+@router.post(
+    "/refresh",
+    response_model=None,
+    dependencies=CookieOrigin,
+    responses={
+        # `response_model=None` (the endpoint can also answer with an error Response), so the
+        # success body is named here for the generated client.
+        200: {"model": SessionResponse, "description": "A new session; the cookie is rotated."},
+        **error_responses(
+            (401, ("invalid_refresh_token",)),
+            (403, ("origin_not_allowed",)),
+            (409, ("refresh_conflict",)),
+            (422, ("validation_error",)),
+            (429, ("rate_limited",)),
+        ),
+    },
+)
 async def refresh(
     request: Request,
     response: Response,
@@ -247,7 +271,12 @@ async def refresh(
     return _session_response(response, settings, session)
 
 
-@router.post("/logout", status_code=204, dependencies=CookieOrigin)
+@router.post(
+    "/logout",
+    status_code=204,
+    dependencies=CookieOrigin,
+    responses=error_responses((403, ("origin_not_allowed",)), (422, ("validation_error",))),
+)
 async def logout(request: Request, auth: Auth, token: RefreshCookie = None) -> Response:
     if token:
         await auth.logout(token)
@@ -257,7 +286,16 @@ async def logout(request: Request, auth: Auth, token: RefreshCookie = None) -> R
     return response
 
 
-@router.post("/change-password")
+@router.post(
+    "/change-password",
+    responses=error_responses(
+        (400, ("invalid_current_password",)),
+        (401, ("unauthorized", "invalid_credentials")),
+        (422, ("weak_password", "validation_error")),
+        (429, ("rate_limited",)),
+        (503, ("rate_limiter_unavailable",)),
+    ),
+)
 async def change_password(
     body: ChangePasswordRequest,
     request: Request,
@@ -285,7 +323,16 @@ async def change_password(
     return _session_response(response, _settings(request), session)
 
 
-@router.post("/token")
+@router.post(
+    "/token",
+    responses=error_responses(
+        (400, ("unknown_audience", "audience_not_exchangeable")),
+        (401, ("unauthorized",)),
+        (403, ("password_change_required", "audience_not_allowed")),
+        (422, ("validation_error",)),
+        (429, ("rate_limited",)),
+    ),
+)
 async def exchange_token(
     body: TokenRequest,
     request: Request,
