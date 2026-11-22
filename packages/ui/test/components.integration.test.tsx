@@ -4,6 +4,8 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Banner, EmptyState, Logo, Monogram, PageHeader, SectionCard, SnackbarProvider, StatFigure, StatusPill, statusPillLabel, theme, useSnackbar, type PillStatus } from '../src'
+import { Store } from 'lucide-react'
+import { forwardRef, type AnchorHTMLAttributes } from 'react'
 
 const wrap = (ui: ReactNode) => render(<ThemeProvider theme={theme}>{ui}</ThemeProvider>)
 afterEach(cleanup)
@@ -146,5 +148,76 @@ describe('SnackbarProvider', () => {
     act(() => vi.advanceTimersByTime(6000))
     expect(screen.queryByText('Draft saved')).toBeNull()
     vi.useRealTimers()
+  })
+})
+
+describe('layout: figures that open a page, and card titles with an icon', () => {
+  // Stands in for react-router's Link: it takes `to` and renders the anchor itself.
+  const RouterLink = forwardRef<HTMLAnchorElement, AnchorHTMLAttributes<HTMLAnchorElement> & { to: string }>(function RouterLink({ to, ...rest }, ref) {
+    return <a ref={ref} {...rest} href={to} data-router-link="" />
+  })
+
+  it('opens its page through the router link it is given, as one link with a chevron', () => {
+    wrap(<StatFigure label="Failed" value={1} baseline="Needs a look" href="/vendors/publishing?status=failed" linkComponent={RouterLink} />)
+    const figure = screen.getByRole('group', { name: 'Failed' })
+    const links = within(figure).getAllByRole('link')
+    expect(links).toHaveLength(1)
+    const link = links[0]!
+    expect(link).toHaveAttribute('href', '/vendors/publishing?status=failed')
+    expect(link).toHaveAttribute('data-router-link')
+    // The whole tile is the link: label, figure and baseline all sit inside it.
+    expect(within(link).getByText('Failed')).toBeInTheDocument()
+    expect(within(link).getByText('1')).toBeInTheDocument()
+    expect(within(link).getByText('Needs a look')).toBeInTheDocument()
+    expect(link.querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(1)
+    // Named by what it shows, label first.
+    expect(screen.getByRole('link', { name: /^Failed\s*1\s*Needs a look$/ })).toBe(link)
+  })
+
+  it('works as a plain anchor without a router', () => {
+    wrap(<StatFigure label="Sent back" value={2} href="/products?status=rejected" />)
+    const link = screen.getByRole('link', { name: /^Sent back/ })
+    expect(link.tagName).toBe('A')
+    expect(link).toHaveAttribute('href', '/products?status=rejected')
+    expect(link.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
+  })
+
+  it('stays a plain figure, with no link or chevron, when it leads nowhere', () => {
+    wrap(<StatFigure label="Decided today" value={1} baseline="Approved or sent back since midnight" />)
+    const figure = screen.getByRole('group', { name: 'Decided today' })
+    expect(within(figure).queryByRole('link')).toBeNull()
+    expect(figure.querySelector('svg')).toBeNull()
+  })
+
+  it('sets the label and the figure in Bodoni Moda semibold, the baseline in regular Ovo', () => {
+    wrap(<StatFigure label="Waiting" value={14} baseline="Oldest first" href="/queue" linkComponent={RouterLink} />)
+    for (const text of ['Waiting', '14']) {
+      const style = getComputedStyle(screen.getByText(text))
+      expect(style.fontFamily).toContain('Bodoni Moda')
+      expect(style.fontWeight).toBe('600')
+    }
+    const baseline = getComputedStyle(screen.getByText('Oldest first'))
+    expect(baseline.fontFamily).toContain('Ovo')
+    expect(baseline.fontWeight).toBe('400')
+  })
+
+  it('puts an icon beside a card title, hidden from screen readers, and keeps the region name', () => {
+    wrap(
+      <SectionCard title="Vendors" icon={Store}>
+        rows
+      </SectionCard>,
+    )
+    const region = screen.getByRole('region', { name: 'Vendors' })
+    const heading = within(region).getByRole('heading', { level: 2, name: 'Vendors' })
+    const icon = region.querySelector('svg')
+    expect(icon).toHaveAttribute('aria-hidden', 'true')
+    expect(icon).toHaveAttribute('stroke-width', '1.75')
+    expect(heading.contains(icon)).toBe(false)
+    expect(heading.parentElement!.contains(icon)).toBe(true)
+  })
+
+  it('leaves a card title without an icon as it was', () => {
+    wrap(<SectionCard title="Recent review decisions">rows</SectionCard>)
+    expect(screen.getByRole('region', { name: 'Recent review decisions' }).querySelector('svg')).toBeNull()
   })
 })

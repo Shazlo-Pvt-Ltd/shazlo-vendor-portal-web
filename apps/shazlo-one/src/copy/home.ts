@@ -45,14 +45,6 @@ export const homeCopy = {
     emptyTitle: 'No decisions yet',
     emptyBody: 'Approvals and send-backs show here as reviewers make them.',
   },
-  admins: {
-    title: 'Admins',
-    active: 'Active admins',
-    invited: (n: number) => (n === 0 ? 'Everyone has set their own password' : `${n} invited ${plural(n, 'admin has', 'admins have')} not set a password yet`),
-    manage: 'Manage admins',
-    loading: 'Loading admins',
-    error: 'Admins did not load',
-  },
   noModules: {
     title: 'No modules for your role yet',
     body: 'Your account has no module roles, so there is nothing to review here. Ask a super admin to add the role you need in Admins & roles.',

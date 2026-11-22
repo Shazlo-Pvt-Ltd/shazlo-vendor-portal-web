@@ -43,7 +43,22 @@ describe('phone shell: top bar and menu drawer', () => {
     expect(button).toHaveAttribute('aria-expanded', 'false')
     expect(button).toHaveAttribute('aria-controls')
     expect(sections()).toBeNull()
-    expect(screen.getByRole('banner')).toContainElement(screen.getByRole('img', { name: 'Shazlo' }))
+    const logo = screen.getByRole('img', { name: 'Shazlo' })
+    expect(screen.getByRole('banner')).toContainElement(logo)
+    expect(logo).toHaveAttribute('data-tone', 'amber')
+  })
+
+  it('gives the drawer the same icons, nesting and amber logo as the sidebar', async () => {
+    const { user } = await renderShell({ route: '/vendors/queue' })
+    await screen.findByTitle('Vendors')
+    await user.click(menuButton())
+    const nav = await screen.findByRole('navigation', { name: 'Shazlo One sections' })
+    for (const name of ['Home', /^Vendors/, 'Review queue', 'All vendors', 'Publishing', 'Admins & roles']) expect(within(nav).getByRole('link', { name }).querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+    const pages = within(nav).getByRole('link', { name: 'Review queue' }).closest('ul')!
+    expect(pages.closest('li')).toContainElement(within(nav).getByRole('link', { name: /^Vendors/ }))
+    expect(within(nav).getByRole('link', { name: 'Review queue' })).toHaveAttribute('aria-current', 'page')
+    const drawer = screen.getByRole('dialog', { name: 'Menu' })
+    expect(within(drawer).getByRole('img', { name: 'Shazlo' })).toHaveAttribute('data-tone', 'amber')
   })
 
   it('opens the same navigation in a drawer, and a link navigates and closes it', async () => {
@@ -107,6 +122,8 @@ describe('phone Admins & roles', () => {
     const naman = within(list).getAllByRole('listitem').find((li) => li.textContent?.includes('Naman Sinha'))!
     expect(naman).toHaveTextContent('naman@shazlo.store')
     expect(naman).toHaveTextContent('Super admin')
+    const name = getComputedStyle(within(naman).getByText('Naman Sinha'))
+    expect([name.fontFamily.includes('Bodoni Moda'), name.fontWeight]).toEqual([true, '600'])
     expect(naman.querySelector('[data-status]')).toHaveAttribute('data-status', 'live')
     await user.click(within(naman).getByRole('button', { name: 'Actions for Naman Sinha' }))
     await user.click(await screen.findByRole('menuitem', { name: /^Edit roles/ }))

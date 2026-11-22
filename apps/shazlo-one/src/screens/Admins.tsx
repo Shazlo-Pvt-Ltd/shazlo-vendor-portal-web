@@ -87,7 +87,7 @@ export default function Admins() {
         title={copy.title}
         subtitle={copy.subtitle}
         actions={
-          <Button variant="contained" onClick={() => setInviting(true)} startIcon={<UserPlus size={18} strokeWidth={1.5} aria-hidden="true" />} sx={touch}>
+          <Button variant="contained" onClick={() => setInviting(true)} startIcon={<UserPlus size={18} strokeWidth={1.75} aria-hidden="true" />} sx={touch}>
             {copy.invite}
           </Button>
         }
@@ -97,7 +97,7 @@ export default function Admins() {
         <Stack direction="row" useFlexGap sx={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', columnGap: 2, rowGap: 1.5 }}>
           <AdminFilters filters={filters} roles={roles.data} onChange={update} />
           {items && (
-            <Typography variant="body2" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+            <Typography variant="body2" color="textSecondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>
               {copy.table.count(items.length)}
             </Typography>
           )}

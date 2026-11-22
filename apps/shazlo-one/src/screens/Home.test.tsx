@@ -1,5 +1,5 @@
 import type { MockVendorApi } from '@shazlo/mock-vendor-api'
-import { act, screen, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import { delay, http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderShell } from '../test/render'
@@ -31,6 +31,14 @@ const region = (name: string) => screen.findByRole('region', { name })
 
 const figure = (card: HTMLElement, label: string) => within(card).findByRole('group', { name: label })
 
+// The icon beside a card's title (decoration, so it is hidden from screen readers).
+const headerIcon = (card: HTMLElement) => card.querySelector('h2')!.parentElement!.querySelector('svg')
+
+const semibold = (el: HTMLElement) => {
+  const style = getComputedStyle(el)
+  return style.fontFamily.includes('Bodoni Moda') && style.fontWeight === '600'
+}
+
 describe('A-02 Home: greeting', () => {
   it.each([
     ['2026-11-09T08:15:00+05:30', 'Good morning, Naman'],
@@ -60,6 +68,38 @@ describe('A-02 Home: Vendors', () => {
       expect(within(group).getByText(baseline)).toBeInTheDocument()
     }
     expect(within(card).getByRole('link', { name: 'Open review queue' })).toHaveAttribute('href', '/vendors/queue')
+  })
+
+  it('opens the queue from the waiting figures; the other two figures are not links', async () => {
+    await renderShell()
+    const card = await region('Vendors')
+    const linked = [
+      ['Waiting', '/vendors/queue'],
+      // The queue has no "over 24 hours" filter (only 24–48 h and older), so this opens it oldest first.
+      ['Waiting over 24 hours', '/vendors/queue?sort=oldest'],
+    ] as const
+    for (const [label, href] of linked) {
+      const link = within(await figure(card, label)).getByRole('link')
+      expect(link).toHaveAttribute('href', href)
+      expect(link).toHaveAccessibleName(new RegExp(`^${label}`))
+      expect(link.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
+    }
+    for (const label of ['Decided today', 'Median time to decision']) {
+      const group = await figure(card, label)
+      expect(within(group).queryByRole('link')).toBeNull()
+      expect(group.querySelector('svg')).toBeNull()
+    }
+  })
+
+  it('sets the card title, figure labels and values in semibold, with an icon by the title', async () => {
+    await renderShell()
+    const card = await region('Vendors')
+    expect(semibold(within(card).getByRole('heading', { level: 2, name: 'Vendors' }))).toBe(true)
+    expect(headerIcon(card)).toHaveAttribute('aria-hidden', 'true')
+    const waiting = await figure(card, 'Waiting')
+    expect(semibold(within(waiting).getByText('Waiting'))).toBe(true)
+    expect(semibold(within(waiting).getByText('14'))).toBe(true)
+    expect(semibold(within(waiting).getByText('Products 9 · Brand pages 2 · Applications 3'))).toBe(false)
   })
 
   it('shows skeletons while the figures load', async () => {
@@ -104,6 +144,43 @@ describe('A-02 Home: publishing', () => {
     const alert = within(card).getByRole('alert')
     expect(alert).toHaveTextContent('1 event did not reach the app. It retries automatically, or you can retry it now.')
     expect(within(alert).getByRole('link', { name: 'Open publishing' })).toHaveAttribute('href', '/vendors/publishing')
+    expect(headerIcon(card)).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('links each figure to the publishing page filtered to its status', async () => {
+    await renderShell()
+    const card = await region('Publishing to the app')
+    const expected = [
+      ['Delivered in the last 24 h', 'delivered'],
+      ['Waiting', 'waiting'],
+      ['Retrying', 'retrying'],
+      ['Failed', 'failed'],
+    ] as const
+    for (const [label, status] of expected) {
+      const links = within(await figure(card, label)).getAllByRole('link')
+      expect(links).toHaveLength(1)
+      expect(links[0]).toHaveAttribute('href', `/vendors/publishing?status=${status}`)
+      expect(links[0]!.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
+    }
+  })
+
+  it('opens the filtered publishing page in the module when a figure is clicked', async () => {
+    const { user, router } = await renderShell()
+    const card = await region('Publishing to the app')
+    await user.click(within(await figure(card, 'Failed')).getByRole('link'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/vendors/publishing'))
+    expect(router.state.location.search).toBe('?status=failed')
+    expect((await screen.findByTitle('Vendors')).getAttribute('src')).toBe('http://localhost:5193/publishing?status=failed')
+  })
+
+  it('opens a figure from the keyboard', async () => {
+    const { user, router } = await renderShell()
+    const card = await region('Publishing to the app')
+    const retrying = within(await figure(card, 'Retrying')).getByRole('link')
+    retrying.focus()
+    expect(retrying).toHaveFocus()
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(router.state.location.search).toBe('?status=retrying'))
   })
 
   it('leaves out the warning when nothing failed', async () => {
@@ -134,24 +211,75 @@ describe('A-02 Home: recent decisions', () => {
     expect(rows).toHaveLength(expected.length)
     expected.forEach(([title, vendor, pill, by, when, href], i) => {
       const row = rows[i]!
-      expect(within(row).getByRole('link', { name: title })).toHaveAttribute('href', href)
-      expect(row).toHaveTextContent(vendor)
-      expect(row.querySelector('[data-status]')).toHaveTextContent(pill)
-      expect(row).toHaveTextContent(by)
-      expect(row).toHaveTextContent(when)
+      // The whole row is one link: title, vendor and type, the decision, and who and when.
+      const links = within(row).getAllByRole('link')
+      expect(links).toHaveLength(1)
+      const link = links[0]!
+      expect(link).toHaveAttribute('href', href)
+      expect(link).toHaveAccessibleName(new RegExp(`^${title}`))
+      expect(link).toHaveTextContent(vendor)
+      expect(link.querySelector('[data-status]')).toHaveTextContent(pill)
+      expect(link).toHaveTextContent(by)
+      expect(link).toHaveTextContent(when)
+      expect(semibold(within(link).getByText(title))).toBe(true)
+      // A chevron closes the row.
+      const chevron = link.lastElementChild!
+      expect(chevron.closest('[data-status]')).toBeNull()
+      expect(chevron.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
     })
     expect(rows[1]!.querySelector('[data-status]')).toHaveAttribute('data-status', 'sentBack')
+    expect(headerIcon(card)).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('says so when nobody has decided anything yet, with no empty rows or chevrons', async () => {
+    seed((db) => {
+      db.decisions.length = 0
+    })
+    await renderShell()
+    const card = await region('Recent decisions')
+    expect(await within(card).findByRole('heading', { name: 'No decisions yet' })).toBeInTheDocument()
+    expect(within(card).queryAllByRole('link')).toHaveLength(0)
+    expect(within(card).queryAllByRole('listitem')).toHaveLength(0)
+  })
+
+  it('keeps a long title and vendor name inside one link', async () => {
+    const long = 'Hand-block-printed Ajrakh kurta with natural indigo and madder dyes, mirror work and a contrast placket'
+    seed((db) => {
+      db.decisions[0]!.title = long
+    })
+    await renderShell()
+    const card = await region('Recent decisions')
+    const [first] = await within(card).findAllByRole('listitem')
+    const link = within(first!).getByRole('link')
+    expect(link).toHaveAccessibleName(new RegExp(`^${long}`))
+    expect(getComputedStyle(within(link).getByText(long)).overflowWrap).toBe('anywhere')
+  })
+
+  it('opens a decision from anywhere on its row', async () => {
+    const { user, router } = await renderShell()
+    const card = await region('Recent decisions')
+    const [, , brandPage] = await within(card).findAllByRole('listitem')
+    await user.click(within(brandPage!).getByText('by Naman Sinha', { exact: false }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/vendors/review/brand/v_kalki'))
   })
 })
 
-describe('A-02 Home: admins', () => {
-  it('shows super admins how many admins are active and who has not set a password', async () => {
+describe('A-02 Home: roles', () => {
+  it('has no Admins card, and does not ask for the admin list', async () => {
+    let asked = false
+    server.use(
+      http.get('*/v1/admins', () => {
+        asked = true
+      }),
+    )
     await renderShell()
-    const card = await region('Admins')
-    const active = await figure(card, 'Active admins')
-    expect(await within(active).findByText('4')).toBeInTheDocument()
-    expect(within(active).getByText('1 invited admin has not set a password yet')).toBeInTheDocument()
-    expect(within(card).getByRole('link', { name: 'Manage admins' })).toHaveAttribute('href', '/admins')
+    const card = await region('Vendors')
+    expect(within(await figure(card, 'Waiting')).getByText('14')).toBeInTheDocument()
+    await region('Recent decisions')
+    expect(screen.queryByRole('region', { name: 'Admins' })).toBeNull()
+    expect(screen.queryByText('Active admins')).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Manage admins' })).toBeNull()
+    expect(asked).toBe(false)
   })
 
   it('shows a reviewer the Vendors figures without the Admins card', async () => {

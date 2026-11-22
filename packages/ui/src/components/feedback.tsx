@@ -30,7 +30,7 @@ export function Banner({ tone, title, children, action, onClose, label }: { tone
           {title}
         </Typography>
         {children && (
-          <Typography variant="body2" component="div" color="text.secondary" sx={{ mt: 0.25 }}>
+          <Typography variant="body2" component="div" color="textSecondary" sx={{ mt: 0.25 }}>
             {children}
           </Typography>
         )}
@@ -59,7 +59,7 @@ export function EmptyState({ illustration, title, body, tip, action }: { illustr
         {title}
       </Typography>
       {body && (
-        <Typography variant="body1" color="text.secondary" sx={{ maxWidth: '46ch' }}>
+        <Typography variant="body1" color="textSecondary" sx={{ maxWidth: '46ch' }}>
           {body}
         </Typography>
       )}

@@ -1,5 +1,5 @@
 import { Avatar, Box, Card, IconButton, LinearProgress, ListItemText, Menu, MenuItem, Skeleton, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, useMediaQuery, useTheme } from '@mui/material'
-import { brand, neutral } from '@shazlo/ui'
+import { brand, emphasis, neutral } from '@shazlo/ui'
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
 import { MoreHorizontal } from 'lucide-react'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
@@ -28,16 +28,16 @@ function Person({ admin, self }: { admin: Admin; self: boolean }) {
       </Avatar>
       <Box sx={{ minWidth: 0 }}>
         <Stack direction="row" spacing={1} sx={{ alignItems: 'baseline' }}>
-          <Typography variant="body1" noWrap title={admin.display_name}>
+          <Typography variant="body1" noWrap title={admin.display_name} sx={emphasis.semibold}>
             {admin.display_name}
           </Typography>
           {self && (
-            <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
+            <Typography variant="caption" color="textSecondary" sx={{ flexShrink: 0 }}>
               {copy.you}
             </Typography>
           )}
         </Stack>
-        <Typography variant="body2" color="text.secondary" noWrap title={admin.email}>
+        <Typography variant="body2" color="textSecondary" noWrap title={admin.email}>
           {admin.email}
         </Typography>
       </Box>
@@ -80,7 +80,7 @@ function LastSignIn({ at }: { at: string | null | undefined }) {
 function ActionsButton({ admin, onOpen, size }: { admin: Admin; onOpen: (anchor: HTMLElement, admin: Admin) => void; size?: number }) {
   return (
     <IconButton aria-label={copy.actions(admin.display_name)} aria-haspopup="menu" onClick={(event) => onOpen(event.currentTarget, admin)} sx={{ color: neutral.inkSecondary, flexShrink: 0, ...(size ? { width: size, height: size } : {}) }}>
-      <MoreHorizontal size={18} strokeWidth={1.5} aria-hidden="true" />
+      <MoreHorizontal size={18} strokeWidth={1.75} aria-hidden="true" />
     </IconButton>
   )
 }
@@ -120,7 +120,7 @@ function PersonCards({ items, selfId, onOpen }: { items: Admin[] | undefined; se
             ))}
             <AdminStatus admin={admin} />
           </Stack>
-          <Typography variant="caption" color="text.secondary" component="p" sx={{ pl: AVATAR_GUTTER, mt: 0.75, fontVariantNumeric: 'tabular-nums' }}>
+          <Typography variant="caption" color="textSecondary" component="p" sx={{ pl: AVATAR_GUTTER, mt: 0.75, fontVariantNumeric: 'tabular-nums' }}>
             {copy.lastSignIn}
             <Box component="span" aria-hidden="true" sx={{ mx: 0.5 }}>
               ·
@@ -187,7 +187,7 @@ export function AdminTable({ items, fetching, selfId, onAction, empty }: Props) 
         cell: ({ row }) => {
           const at = row.original.last_login_at
           return (
-            <Typography variant="body2" color="text.secondary" component="span" sx={{ whiteSpace: 'nowrap' }}>
+            <Typography variant="body2" color="textSecondary" component="span" sx={{ whiteSpace: 'nowrap' }}>
               <LastSignIn at={at} />
             </Typography>
           )
@@ -220,7 +220,8 @@ export function AdminTable({ items, fetching, selfId, onAction, empty }: Props) 
               {table.getHeaderGroups().map((group) => (
                 <TableRow key={group.id}>
                   {group.headers.map((header) => (
-                    <TableCell key={header.id} sx={{ width: widths[header.column.id]?.width, typography: 'body2', color: 'text.secondary', py: 1, borderColor: neutral.line }}>
+                    // Head cells take the theme's semibold Bodoni Moda in ink.
+                    <TableCell key={header.id} sx={{ width: widths[header.column.id]?.width, py: 1, borderColor: neutral.line }}>
                       {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                     </TableCell>
                   ))}

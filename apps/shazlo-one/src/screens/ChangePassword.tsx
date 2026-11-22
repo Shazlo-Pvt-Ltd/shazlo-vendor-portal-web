@@ -42,7 +42,7 @@ function RuleList({ id, rules }: { id: string; rules: boolean[] }) {
           return (
             <Box component="li" key={text} id={`${id}-${i}`} sx={{ display: 'flex', alignItems: 'center', gap: 1, typography: 'body2', color: ok ? 'text.primary' : 'text.secondary' }}>
               <Box component="span" sx={{ display: 'flex', flexShrink: 0, color: ok ? status.success : neutral.inkTertiary }}>
-                <Icon size={16} strokeWidth={1.5} aria-hidden="true" />
+                <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
               </Box>
               <span>{text}</span>
               <Box component="span" sx={srOnly}>
@@ -91,7 +91,7 @@ export default function ChangePassword() {
   const toggle = (
     <InputAdornment position="end">
       <IconButton aria-label={show ? copy.hide : copy.show} onClick={() => setShow((s) => !s)} edge="end" sx={{ width: 44, height: 44 }}>
-        {show ? <EyeOff size={18} strokeWidth={1.5} aria-hidden="true" /> : <Eye size={18} strokeWidth={1.5} aria-hidden="true" />}
+        {show ? <EyeOff size={18} strokeWidth={1.75} aria-hidden="true" /> : <Eye size={18} strokeWidth={1.75} aria-hidden="true" />}
       </IconButton>
     </InputAdornment>
   )
@@ -99,13 +99,13 @@ export default function ChangePassword() {
   return (
     <Box sx={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: 'background.default', px: 2, py: { xs: 4, sm: 6 } }}>
       <Box sx={{ mb: 4 }}>
-        <Logo product="One" />
+        <Logo product="One" tone="navy" />
       </Box>
       <Card component="main" sx={{ width: '100%', maxWidth: 440, p: { xs: 3, sm: 5 }, borderRadius: '12px' }}>
         <Typography variant="h1" component="h1" sx={{ fontFamily: fontFamily.display, fontSize: { xs: '1.75rem', sm: '2.25rem' }, fontWeight: 400, lineHeight: 1.15, textWrap: 'balance' }}>
           {copy.title}
         </Typography>
-        <Typography variant="body1" color="text.secondary" sx={{ mt: 1.5, mb: 4 }}>
+        <Typography variant="body1" color="textSecondary" sx={{ mt: 1.5, mb: 4 }}>
           {copy.subtitle(firstName)}
         </Typography>
         <Box component="form" noValidate onSubmit={onSubmit}>
@@ -132,7 +132,7 @@ export default function ChangePassword() {
             </Button>
           </Stack>
         </Box>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 3 }}>
+        <Typography variant="body2" color="textSecondary" sx={{ mt: 3 }}>
           {copy.notYou}{' '}
           <Link component="button" type="button" variant="body2" onClick={() => void signOut().then(() => navigate(paths.signIn, { replace: true }))} sx={{ verticalAlign: 'baseline' }}>
             {copy.signOut}

@@ -28,7 +28,7 @@ describe('A-01 sign in', () => {
   it('signs in and opens Home', async () => {
     const { user, router } = await renderShell({ route: '/sign-in', as: null })
     expect(await screen.findByRole('heading', { level: 1, name: 'Sign in to Shazlo One' })).toBeInTheDocument()
-    expect(screen.getByRole('complementary', { name: 'One place to run Shazlo.' })).toBeInTheDocument()
+    expect(screen.getByRole('complementary', { name: 'One place to run Shazlo' })).toBeInTheDocument()
     await user.type(screen.getByLabelText('Work email'), 'naman@shazlo.store')
     await user.type(screen.getByLabelText('Password'), 'shazlo-one-2026')
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
@@ -68,6 +68,46 @@ describe('navy sidebar', () => {
     expect(within(nav).getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page')
     await waitFor(() => expect(within(nav).getByRole('link', { name: /^Vendors\s*, 14 waiting$/ })).toBeInTheDocument())
     for (const name of ['Review queue', 'All vendors', 'Publishing', 'Admins & roles']) expect(within(nav).getByRole('link', { name })).toBeInTheDocument()
+  })
+
+  it('gives every link an icon and nests the Vendors pages under Vendors, on a guide line', async () => {
+    await renderShell({ route: '/vendors/publishing' })
+    const nav = await screen.findByRole('navigation', { name: 'Shazlo One sections' })
+    for (const name of ['Home', /^Vendors/, 'Review queue', 'All vendors', 'Publishing', 'Admins & roles']) {
+      const icon = within(nav).getByRole('link', { name }).querySelector('svg')
+      expect(icon, String(name)).toHaveAttribute('aria-hidden', 'true')
+      expect(icon).toHaveAttribute('stroke-width', '1.75')
+    }
+    const vendors = within(nav).getByRole('link', { name: /^Vendors/ })
+    const pages = within(nav).getByRole('link', { name: 'Review queue' }).closest('ul')!
+    expect(pages).not.toContainElement(vendors)
+    expect(pages.closest('li')).toContainElement(vendors)
+    expect(within(pages).getAllByRole('link').map((a) => a.textContent)).toEqual(['Review queue', 'All vendors', 'Publishing'])
+    expect(getComputedStyle(pages).borderLeftWidth).toBe('1px')
+    // The page you are on is the one marked current; Vendors itself is the parent, not the page.
+    expect(within(nav).getByRole('link', { name: 'Publishing' })).toHaveAttribute('aria-current', 'page')
+    for (const name of ['Home', /^Vendors/, 'Review queue', 'All vendors', 'Admins & roles']) expect(within(nav).getByRole('link', { name })).not.toHaveAttribute('aria-current')
+  })
+
+  it('draws the logo in amber on the navy sidebar, with no colour filter', async () => {
+    await renderShell({ route: '/' })
+    await screen.findByRole('navigation', { name: 'Shazlo One sections' })
+    const logo = within(screen.getByRole('complementary')).getByRole('img', { name: 'Shazlo' })
+    expect(logo).toHaveAttribute('data-tone', 'amber')
+    expect(getComputedStyle(logo).filter).toMatch(/^(none)?$/)
+  })
+
+  it('reaches every sidebar link from the keyboard, in order', async () => {
+    const { user } = await renderShell({ route: '/' })
+    const nav = await screen.findByRole('navigation', { name: 'Shazlo One sections' })
+    await waitFor(() => expect(within(nav).getByRole('link', { name: /^Vendors\s*, 14 waiting$/ })).toBeInTheDocument())
+    const order = within(nav).getAllByRole('link')
+    order[0]!.focus()
+    for (const link of order.slice(1)) {
+      await user.tab()
+      expect(link).toHaveFocus()
+    }
+    expect(order.map((a) => a.textContent?.replace(/\d+$/, '').replace(/, \d+ waiting/, ''))).toEqual(['Home', 'Vendors', 'Review queue', 'All vendors', 'Publishing', 'Admins & roles'])
   })
 
   it('hides administration from reviewers and blocks the page', async () => {

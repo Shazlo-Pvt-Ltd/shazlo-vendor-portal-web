@@ -84,6 +84,62 @@ describe('A-11 Admins: page and table', () => {
   })
 })
 
+describe('A-11 Admins: hierarchy and icons', () => {
+  const font = (el: HTMLElement) => {
+    const style = getComputedStyle(el)
+    return { family: style.fontFamily.includes('Bodoni Moda') ? 'Bodoni Moda' : style.fontFamily.includes('Ovo') ? 'Ovo' : style.fontFamily, weight: style.fontWeight }
+  }
+  const semibold = { family: 'Bodoni Moda', weight: '600' }
+  const regular = { family: 'Ovo', weight: '400' }
+  // MUI 9 may set colours through CSS variables, which jsdom leaves unresolved.
+  const colour = (el: HTMLElement) => {
+    const value = getComputedStyle(el).color
+    const v = /^var\((--[\w-]+)\)$/.exec(value)
+    return v?.[1] ? getComputedStyle(el).getPropertyValue(v[1]).trim() : value
+  }
+  const SECONDARY = ['rgb(122, 69, 30)', '#7A451E', '#7a451e']
+
+  it('sets column headings, names and role names in semibold, and emails and dates in regular secondary text', async () => {
+    await openAdmins()
+    for (const name of ['Person', 'Roles', 'Status', 'Last sign-in']) expect(font(within(table()).getByRole('columnheader', { name })), name).toEqual(semibold)
+    const row = rowOf('Naman Sinha')
+    expect(font(within(row).getByText('Naman Sinha'))).toEqual(semibold)
+    expect(font(within(row).getByText('Super admin'))).toEqual(semibold)
+    for (const text of ['naman@shazlo.store', 'Just now']) {
+      const el = within(row).getByText(text)
+      const styled = el.tagName === 'TIME' ? el.parentElement! : el
+      expect(font(styled), text).toEqual(regular)
+      expect(SECONDARY, text).toContain(colour(styled))
+    }
+  })
+
+  it('gives each role card its own icon beside a semibold role name', async () => {
+    await openAdmins()
+    const roles = screen.getByRole('region', { name: 'Roles' })
+    expect(font(within(roles).getByRole('heading', { level: 2, name: 'Roles' }))).toEqual(semibold)
+    const items = await within(roles).findAllByRole('listitem')
+    const icons = ['Super admin', 'Vendor reviewer'].map((name, i) => {
+      expect(font(within(items[i]!).getByRole('heading', { level: 3, name }))).toEqual(semibold)
+      const icon = items[i]!.querySelector('svg')!
+      expect(icon).toHaveAttribute('aria-hidden', 'true')
+      expect(icon).toHaveAttribute('stroke-width', '1.75')
+      return icon.getAttribute('class')
+    })
+    expect(icons[0]).not.toBe(icons[1])
+  })
+
+  it('marks search, the invite button and each status with an icon', async () => {
+    await openAdmins()
+    const invite = screen.getByRole('button', { name: 'Invite admin' }).querySelector('svg')
+    expect(invite).toHaveAttribute('aria-hidden', 'true')
+    expect(invite).toHaveAttribute('stroke-width', '1.75')
+    const search = screen.getByRole('textbox', { name: 'Search name or email' }).closest('.MuiInputBase-root')!.querySelector('svg')
+    expect(search).toHaveAttribute('aria-hidden', 'true')
+    expect(search).toHaveAttribute('stroke-width', '1.75')
+    for (const row of bodyRows()) expect(row.querySelector('[data-status] svg')).toHaveAttribute('aria-hidden', 'true')
+  })
+})
+
 describe('A-11 Admins: filters', () => {
   it('searches by name or email after typing stops', async () => {
     const { user } = await openAdmins()

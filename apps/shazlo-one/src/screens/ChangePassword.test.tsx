@@ -31,7 +31,10 @@ describe('Change password', () => {
     expect(router.state.location.pathname).toBe('/change-password')
     expect(screen.getByText(/Welcome, Sneha\. You signed in with a temporary password/)).toBeInTheDocument()
     expect(screen.queryByRole('navigation', { name: 'Shazlo One sections' })).toBeNull()
-    expect(screen.getByRole('img', { name: /Shazlo/ })).toBeInTheDocument()
+    // The new wordmark in navy on the light page, with no colour filter on it.
+    const logo = screen.getByRole('img', { name: /Shazlo/ })
+    expect(logo).toHaveAttribute('data-tone', 'navy')
+    expect(getComputedStyle(logo.parentElement!).filter).toMatch(/^(none)?$/)
   })
 
   it('ticks the rules off as the new password is typed', async () => {

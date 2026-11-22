@@ -42,7 +42,7 @@ function SearchField({ value, onCommit }: { value: string; onCommit: (q: string)
         input: {
           startAdornment: (
             <InputAdornment position="start">
-              <Search size={18} strokeWidth={1.5} aria-hidden="true" />
+              <Search size={18} strokeWidth={1.75} aria-hidden="true" />
             </InputAdornment>
           ),
           endAdornment: text ? (
@@ -56,7 +56,7 @@ function SearchField({ value, onCommit }: { value: string; onCommit: (q: string)
                   onCommit('')
                 }}
               >
-                <X size={16} strokeWidth={1.5} aria-hidden="true" />
+                <X size={16} strokeWidth={1.75} aria-hidden="true" />
               </IconButton>
             </InputAdornment>
           ) : undefined,

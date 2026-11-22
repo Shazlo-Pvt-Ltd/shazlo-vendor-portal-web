@@ -1,6 +1,6 @@
 import { Avatar, Box, Breadcrumbs, Divider, Drawer, IconButton, Link, List, ListItemButton, ListItemIcon, ListItemText, Stack, Typography, useMediaQuery, useTheme } from '@mui/material'
-import { brand, fontFamily, Logo, radius } from '@shazlo/ui'
-import { Home, LogOut, Menu, Users, X } from 'lucide-react'
+import { brand, emphasis, fontFamily, Logo, radius } from '@shazlo/ui'
+import { House, LogOut, Menu, Users, X, type LucideIcon } from 'lucide-react'
 import { Suspense, useId, useState, type ReactNode } from 'react'
 import { Link as RouterLink, Outlet, useLocation, useMatches, useNavigate } from 'react-router'
 import { useVendorSummary } from '../api/queries'
@@ -19,19 +19,42 @@ const PHONE_CRUMBS = 44
 // Shazlo One's chrome is navy (design language: "Navy: Shazlo-One shell, sign-in and bulk actions").
 const NAVY_TEXT = 'rgba(255, 252, 227, 0.78)'
 const NAVY_LINE = 'rgba(255, 252, 227, 0.14)'
-const NAVY_HOVER = 'rgba(255, 252, 227, 0.08)'
+const NAVY_HOVER = 'rgba(255, 252, 227, 0.12)'
+// The guide line that ties a module's pages to it.
+const NAVY_GUIDE = 'rgba(255, 252, 227, 0.24)'
+const amberRing = { outline: `2px solid ${brand.amber}`, outlineOffset: 2 } as const
 const onNavy = {
   color: NAVY_TEXT,
-  '&:focus-visible': { outline: `2px solid ${brand.amber}`, outlineOffset: 2 },
+  '&:focus-visible': amberRing,
   '@media (hover: hover)': { '&:hover': { bgcolor: NAVY_HOVER } },
 } as const
-const navyLogo = { '& img': { filter: 'brightness(0) invert(0.97) sepia(0.15)' }, '& span': { color: brand.amber, borderColor: 'rgba(250, 182, 42, 0.6)' } } as const
 
-type NavLinkProps = { to: string; label: string; icon?: ReactNode; active: boolean; count?: number; countLabel?: string; inset?: boolean; touch: boolean; onNavigate?: () => void }
+// Rows: a 12 px gutter, then an 18 px icon in a 32 px column, then the label. A module's pages sit on
+// a guide line through the centre of the module's icon, with their icons in line with its label.
+const ROW_PL = 12
+const ICON = 18
+const ICON_COLUMN = 32
+const GUIDE_X = ROW_PL + ICON / 2 - 1
+const NESTED_PL = ICON_COLUMN - (GUIDE_X + 1)
 
-function NavLink({ to, label, icon, active, count, countLabel, inset = false, touch, onNavigate }: NavLinkProps) {
+type NavLinkProps = {
+  to: string
+  label: string
+  icon: LucideIcon
+  active: boolean
+  // In this module, on one of its pages: the label is set in semibold, but the page itself is current.
+  parent?: boolean
+  count?: number
+  countLabel?: string
+  nested?: boolean
+  touch: boolean
+  onNavigate?: () => void
+  children?: ReactNode
+}
+
+function NavLink({ to, label, icon: Icon, active, parent = false, count, countLabel, nested = false, touch, onNavigate, children }: NavLinkProps) {
   return (
-    <li>
+    <Box component="li" sx={{ listStyle: 'none' }}>
       <ListItemButton
         component={RouterLink}
         to={to}
@@ -40,17 +63,21 @@ function NavLink({ to, label, icon, active, count, countLabel, inset = false, to
         sx={{
           borderRadius: `${radius.control}px`,
           // Touch screens get 44 px rows; the desktop sidebar keeps its tighter rhythm.
-          minHeight: touch ? (inset ? 44 : 48) : inset ? 34 : 40,
-          pl: inset ? 6 : 1.5,
+          minHeight: touch ? (nested ? 44 : 48) : nested ? 36 : 40,
+          pl: `${ROW_PL}px`,
           pr: 1.5,
           mb: 0.25,
-          color: active ? brand.navy : NAVY_TEXT,
+          color: active ? brand.navy : parent ? brand.offWhite : NAVY_TEXT,
           bgcolor: active ? brand.amber : 'transparent',
-          '@media (hover: hover)': { '&:hover': { bgcolor: active ? brand.amber : NAVY_HOVER } },
+          '&.Mui-focusVisible': { bgcolor: active ? brand.amber : NAVY_HOVER },
+          '&:focus-visible': amberRing,
+          '@media (hover: hover)': { '&:hover': { bgcolor: active ? brand.amber : NAVY_HOVER, color: active ? brand.navy : brand.offWhite } },
         }}
       >
-        {icon && <ListItemIcon sx={{ minWidth: 32, color: 'inherit' }}>{icon}</ListItemIcon>}
-        <ListItemText primary={label} slotProps={{ primary: { variant: inset ? 'body2' : 'body1', sx: { fontFamily: active && !inset ? fontFamily.display : undefined } } }} />
+        <ListItemIcon sx={{ minWidth: nested ? ICON_COLUMN - 4 : ICON_COLUMN, color: 'inherit' }}>
+          <Icon size={ICON} strokeWidth={1.75} aria-hidden="true" />
+        </ListItemIcon>
+        <ListItemText primary={label} slotProps={{ primary: { variant: nested ? 'body2' : 'body1', sx: active || parent ? emphasis.semibold : undefined } }} />
         {count != null && count > 0 && (
           <>
             <Box component="span" sx={srOnly}>{`, ${countLabel ?? count}`}</Box>
@@ -60,7 +87,8 @@ function NavLink({ to, label, icon, active, count, countLabel, inset = false, to
           </>
         )}
       </ListItemButton>
-    </li>
+      {children}
+    </Box>
   )
 }
 
@@ -86,22 +114,20 @@ function Navigation({ touch, onNavigate }: { touch: boolean; onNavigate?: () => 
     <>
       <Box component="nav" aria-label={copy.navLabel} sx={{ flex: 1, overflowY: 'auto', px: 1.5 }}>
         <List disablePadding sx={{ pt: 1.5 }}>
-          <NavLink {...link} to={paths.home} label={copy.home} icon={<Home size={18} strokeWidth={1.5} aria-hidden="true" />} active={pathname === paths.home} />
+          <NavLink {...link} to={paths.home} label={copy.home} icon={House} active={pathname === paths.home} />
         </List>
         {allowed.length > 0 && <SectionLabel>{copy.modules}</SectionLabel>}
         <List disablePadding>
           {allowed.map((m) => {
-            const Icon = m.icon
             const inModule = pathname.startsWith(m.basePath)
             return (
-              <Box component="li" key={m.id} sx={{ listStyle: 'none' }}>
-                <List disablePadding>
-                  <NavLink {...link} to={m.basePath + m.links[0]!.path} label={m.title} icon={<Icon size={18} strokeWidth={1.5} aria-hidden="true" />} active={false} count={summary?.queue.all} countLabel={copy.waiting(summary?.queue.all ?? 0)} />
+              <NavLink key={m.id} {...link} to={m.basePath + m.links[0]!.path} label={m.title} icon={m.icon} active={false} parent={inModule} count={summary?.queue.all} countLabel={copy.waiting(summary?.queue.all ?? 0)}>
+                <Box component="ul" sx={{ listStyle: 'none', m: 0, mb: 0.5, p: 0, ml: `${GUIDE_X}px`, pl: `${NESTED_PL}px`, borderLeft: `1px solid ${NAVY_GUIDE}` }}>
                   {m.links.map((l) => (
-                    <NavLink {...link} key={l.path} inset to={m.basePath + l.path} label={l.label} active={inModule && pathname.startsWith(m.basePath + l.path)} />
+                    <NavLink {...link} key={l.path} nested to={m.basePath + l.path} label={l.label} icon={l.icon} active={inModule && pathname.startsWith(m.basePath + l.path)} />
                   ))}
-                </List>
-              </Box>
+                </Box>
+              </NavLink>
             )
           })}
         </List>
@@ -109,7 +135,7 @@ function Navigation({ touch, onNavigate }: { touch: boolean; onNavigate?: () => 
           <>
             <SectionLabel>{copy.administration}</SectionLabel>
             <List disablePadding>
-              <NavLink {...link} to={paths.admins} label={copy.admins} icon={<Users size={18} strokeWidth={1.5} aria-hidden="true" />} active={pathname.startsWith(paths.admins)} />
+              <NavLink {...link} to={paths.admins} label={copy.admins} icon={Users} active={pathname.startsWith(paths.admins)} />
             </List>
           </>
         )}
@@ -131,7 +157,7 @@ function Navigation({ touch, onNavigate }: { touch: boolean; onNavigate?: () => 
           }}
           sx={{ all: 'unset', cursor: 'pointer', display: 'grid', placeItems: 'center', flexShrink: 0, width: touch ? 44 : 36, height: touch ? 44 : 36, borderRadius: '50%', ...onNavy }}
         >
-          <LogOut size={18} strokeWidth={1.5} aria-hidden="true" />
+          <LogOut size={18} strokeWidth={1.75} aria-hidden="true" />
         </Box>
       </Stack>
     </>
@@ -141,8 +167,8 @@ function Navigation({ touch, onNavigate }: { touch: boolean; onNavigate?: () => 
 function Sidebar() {
   return (
     <Box component="aside" sx={{ width: SIDEBAR, flexShrink: 0, position: 'sticky', top: 0, height: '100dvh', bgcolor: brand.navy, color: brand.offWhite, display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ px: 2.5, pt: 2.5, pb: 1, ...navyLogo }}>
-        <Logo product={copy.product} />
+      <Box sx={{ px: 2.5, pt: 2.5, pb: 1 }}>
+        <Logo product={copy.product} tone="amber" />
       </Box>
       <Navigation touch={false} />
     </Box>
@@ -200,10 +226,10 @@ function PhoneBar() {
       <Box component="header" sx={{ position: 'sticky', top: 0, zIndex: 5 }}>
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center', height: TOP, px: 1, bgcolor: brand.navy, color: brand.offWhite }}>
           <IconButton aria-label={copy.menu} aria-expanded={open} aria-controls={drawerId} onClick={() => setOpenAt(location.key)} sx={{ width: 44, height: 44, ...onNavy, color: brand.offWhite }}>
-            <Menu size={22} strokeWidth={1.5} aria-hidden="true" />
+            <Menu size={22} strokeWidth={1.75} aria-hidden="true" />
           </IconButton>
-          <Link component={RouterLink} to={paths.home} aria-label={copy.homeLink} sx={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, px: 0.5, borderRadius: `${radius.control}px`, ...navyLogo, '&:focus-visible': { outline: `2px solid ${brand.amber}` } }}>
-            <Logo product={copy.product} height={26} />
+          <Link component={RouterLink} to={paths.home} aria-label={copy.homeLink} sx={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, px: 0.5, borderRadius: `${radius.control}px`, '&:focus-visible': { outline: `2px solid ${brand.amber}` } }}>
+            <Logo product={copy.product} height={26} tone="amber" />
           </Link>
         </Stack>
         <Stack direction="row" sx={{ alignItems: 'center', height: PHONE_CRUMBS, px: { xs: 2, sm: 3 }, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
@@ -222,10 +248,10 @@ function PhoneBar() {
           },
         }}
       >
-        <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', pl: 2.5, pr: 1, height: TOP, flexShrink: 0, ...navyLogo }}>
-          <Logo product={copy.product} height={26} />
+        <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', pl: 2.5, pr: 1, height: TOP, flexShrink: 0 }}>
+          <Logo product={copy.product} height={26} tone="amber" />
           <IconButton aria-label={copy.closeMenu} onClick={close} sx={{ width: 44, height: 44, ...onNavy }}>
-            <X size={20} strokeWidth={1.5} aria-hidden="true" />
+            <X size={20} strokeWidth={1.75} aria-hidden="true" />
           </IconButton>
         </Stack>
         <Navigation touch onNavigate={close} />

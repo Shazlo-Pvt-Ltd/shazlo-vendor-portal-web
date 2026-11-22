@@ -132,8 +132,8 @@ export function ModuleHost({ module }: { module: ShellModule }) {
     <Stack spacing={1.5} role="alert" sx={{ alignItems: 'center', textAlign: 'center', py: 10, px: 3, maxWidth: 560, mx: 'auto' }}>
       <EmptyIllustration name={illustration} />
       <Typography variant="h1" component="h1">{heading}</Typography>
-      <Typography variant="body1" color="text.secondary">{body}</Typography>
-      {note && <Typography variant="caption" color="text.secondary">{note}</Typography>}
+      <Typography variant="body1" color="textSecondary">{body}</Typography>
+      {note && <Typography variant="caption" color="textSecondary">{note}</Typography>}
       <Box sx={{ pt: 1 }}>{action}</Box>
     </Stack>
   )

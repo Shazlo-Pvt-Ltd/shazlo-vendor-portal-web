@@ -1,6 +1,6 @@
 import { Box, Button, Checkbox, FormControlLabel, FormHelperText, Skeleton, Stack, Typography } from '@mui/material'
-import { brand, neutral, radius, StatusPill, useSnackbar } from '@shazlo/ui'
-import { Copy } from 'lucide-react'
+import { brand, emphasis, neutral, radius, StatusPill, useSnackbar } from '@shazlo/ui'
+import { Copy, ShieldCheck, Store, UserRound, type LucideIcon } from 'lucide-react'
 import { useCallback, useId, type Ref } from 'react'
 import type { components } from '../../api/identity'
 import { adminsCopy as copy } from '../../copy/admins'
@@ -10,12 +10,16 @@ export type Role = components['schemas']['Role']
 
 export const roleName = (role: string) => copy.roleNames[role] ?? role
 
+// Super admins hold the keys; vendor reviewers work in the Vendors module, so they share its icon.
+const roleIcons: Record<string, LucideIcon> = { super_admin: ShieldCheck, vendor_reviewer: Store }
+export const roleIcon = (role: string): LucideIcon => roleIcons[role] ?? UserRound
+
 // Roles are not statuses, so they get a quiet outlined tag rather than a StatusPill.
 export function RolePill({ role }: { role: string }) {
   return (
     <Box
       component="span"
-      sx={{ display: 'inline-flex', alignItems: 'center', height: 22, px: 1, borderRadius: `${radius.pill}px`, border: `1px solid ${neutral.line}`, bgcolor: neutral.surface, color: neutral.ink, typography: 'caption', lineHeight: 1, whiteSpace: 'nowrap' }}
+      sx={{ display: 'inline-flex', alignItems: 'center', height: 22, px: 1, borderRadius: `${radius.pill}px`, border: `1px solid ${neutral.line}`, bgcolor: neutral.surface, color: neutral.ink, typography: 'caption', ...emphasis.semibold, lineHeight: 1, whiteSpace: 'nowrap' }}
     >
       {roleName(role)}
     </Box>
@@ -55,7 +59,7 @@ export function useCopyText() {
 export function CopyButton({ text, label }: { text: string; label: string }) {
   const copyText = useCopyText()
   return (
-    <Button variant="outlined" size="small" aria-label={label} onClick={() => void copyText(text)} startIcon={<Copy size={16} strokeWidth={1.5} aria-hidden="true" />} sx={{ minHeight: { xs: 44, md: 32 }, flexShrink: 0, bgcolor: 'background.paper' }}>
+    <Button variant="outlined" size="small" aria-label={label} onClick={() => void copyText(text)} startIcon={<Copy size={16} strokeWidth={1.75} aria-hidden="true" />} sx={{ minHeight: { xs: 44, md: 32 }, flexShrink: 0, bgcolor: 'background.paper' }}>
       {copy.copy}
     </Button>
   )
@@ -66,7 +70,7 @@ export function CopyRow({ label, value, copyLabel }: { label: string; value: str
   return (
     <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'space-between', py: 1.5, borderTop: `1px solid ${neutral.line}` }}>
       <Box sx={{ minWidth: 0 }}>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {label}
         </Typography>
         <Typography variant="mono" component="p" sx={{ fontSize: '1rem', color: neutral.ink, overflowWrap: 'anywhere', userSelect: 'all' }}>
@@ -101,7 +105,7 @@ export function RoleChecklist({
   const base = useId()
   return (
     <Box component="fieldset" aria-describedby={error ? errorId : undefined} sx={{ border: 0, p: 0, m: 0, minWidth: 0 }}>
-      <Typography component="legend" id={legendId} variant="body2" color="text.secondary" sx={{ mb: 0.5, p: 0 }}>
+      <Typography component="legend" id={legendId} variant="body2" color="textSecondary" sx={{ mb: 0.5, p: 0 }}>
         {copy.inviteDialog.roles}
       </Typography>
       {!roles ? (
@@ -131,7 +135,7 @@ export function RoleChecklist({
                     />
                   }
                 />
-                <Typography id={descId} variant="body2" color="text.secondary" sx={{ pl: 4, mt: -0.5, maxWidth: '60ch' }}>
+                <Typography id={descId} variant="body2" color="textSecondary" sx={{ pl: 4, mt: -0.5, maxWidth: '60ch' }}>
                   {role.description}
                   {isLocked && lockedNote && (
                     <Box component="span" sx={{ display: 'block', color: brand.brown, mt: 0.25 }}>

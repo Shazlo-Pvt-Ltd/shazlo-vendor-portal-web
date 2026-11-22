@@ -53,7 +53,7 @@ function InviteForm({ onCreated, onClose }: { onCreated: (admin: Admin, password
     <Box component="form" noValidate onSubmit={onSubmit} sx={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 }}>
       <DialogTitle>{copy.title}</DialogTitle>
       <DialogContent>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
+        <Typography variant="body2" color="textSecondary" sx={{ mb: 2.5 }}>
           {copy.intro}
         </Typography>
         <Stack spacing={2.5}>
@@ -75,7 +75,7 @@ function InviteForm({ onCreated, onClose }: { onCreated: (admin: Admin, password
             />
             <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
               <CopyButton text={password} label={copy.copyPassword} />
-              <Button variant="text" size="small" onClick={() => setValue('password', temporaryPassword())} startIcon={<RefreshCw size={16} strokeWidth={1.5} aria-hidden="true" />} sx={{ minHeight: { xs: 44, md: 32 } }}>
+              <Button variant="text" size="small" onClick={() => setValue('password', temporaryPassword())} startIcon={<RefreshCw size={16} strokeWidth={1.75} aria-hidden="true" />} sx={{ minHeight: { xs: 44, md: 32 } }}>
                 {copy.generate}
               </Button>
             </Stack>
@@ -99,7 +99,7 @@ function Sent({ admin, password, onClose }: { admin: Admin; password: string; on
     <>
       <DialogTitle>{copy.sentTitle(admin.display_name)}</DialogTitle>
       <DialogContent>
-        <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography variant="body1" color="textSecondary" sx={{ mb: 2 }}>
           {copy.sentBody}
         </Typography>
         <CopyRow label={copy.email} value={admin.email} copyLabel={copy.copyEmail} />

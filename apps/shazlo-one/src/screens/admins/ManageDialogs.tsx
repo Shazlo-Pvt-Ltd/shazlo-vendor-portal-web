@@ -43,7 +43,7 @@ function EditRoles({ admin, self, onClose }: { admin: Admin; self: boolean; onCl
       <DialogTitle>{copy.title(admin.display_name)}</DialogTitle>
       <DialogContent>
         <Stack spacing={2.5}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             {copy.intro}
           </Typography>
           {failure && <Banner tone="error" title={failure} />}
@@ -95,7 +95,7 @@ function ResetPassword({ admin, onClose }: { admin: Admin; onClose: () => void }
       <>
         <DialogTitle>{copy.doneTitle(admin.display_name)}</DialogTitle>
         <DialogContent>
-          <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography variant="body1" color="textSecondary" sx={{ mb: 2 }}>
             {copy.doneBody}
           </Typography>
           <CopyRow label={adminsCopy.inviteDialog.email} value={admin.email} copyLabel={adminsCopy.inviteDialog.copyEmail} />
@@ -114,7 +114,7 @@ function ResetPassword({ admin, onClose }: { admin: Admin; onClose: () => void }
       <DialogTitle>{copy.title(admin.display_name)}</DialogTitle>
       <DialogContent>
         <Stack spacing={2}>
-          <Typography variant="body1" color="text.secondary">
+          <Typography variant="body1" color="textSecondary">
             {copy.body}
           </Typography>
           {failure && <Banner tone="error" title={failure} />}
@@ -154,7 +154,7 @@ function Deactivate({ admin, onClose }: { admin: Admin; onClose: () => void }) {
       <DialogTitle>{copy.title(admin.display_name)}</DialogTitle>
       <DialogContent>
         <Stack spacing={2}>
-          <Typography variant="body1" color="text.secondary">
+          <Typography variant="body1" color="textSecondary">
             {copy.body}
           </Typography>
           {failure && <Banner tone="error" title={failure} />}
