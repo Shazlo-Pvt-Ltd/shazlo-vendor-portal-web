@@ -68,10 +68,13 @@ check allow .github/workflows/services-ci.yml "      DATABASE_URL: ${pg}://shazl
 check allow services/identity-api/.env.example "DATABASE_URL=${pg}+asyncpg://shazlo:change-me@localhost:5432/identity"
 check allow services/vendor-api/.env.example "DATABASE_URL=${pg}+asyncpg://shazlo:change-me@localhost:5432/vendor"
 check allow services/vendor-api/tests/test_settings.py "            database_url=\"${pg}://shazlo:DbPassw0rd@db.internal/vendor\","
+check allow backend/README.md "MONGODB_URI=${mg}+srv://admin:YOUR_PASSWORD@cluster0.example.mongodb.net/shazlo"
 
 # The same values in any other file: reported.
 check report $uri app/src/config.js "const url = \"${pg}://shazlo:shazlo@localhost:5432/test\""
 check report $uri services/vendor-api/vendor_api/settings.py "DEFAULT = \"${pg}+asyncpg://shazlo:change-me@localhost:5432/vendor\""
+check report $uri services/vendor-api/vendor_api/settings.py "DEFAULT = \"${pg}://shazlo:DbPassw0rd@db.internal/vendor\""
+check report $uri docs/setup.md "MONGODB_URI=${mg}+srv://admin:YOUR_PASSWORD@cluster0.example.mongodb.net/shazlo"
 
 # Another password in those files, even for the same host: reported.
 check report $uri .github/workflows/services-ci.yml "      DATABASE_URL: ${pg}://shazlo:Real-Value-7731@localhost:5432/test"
@@ -102,7 +105,13 @@ check allow apps/vendor-portal/src/screens/auth/SignIn.test.tsx "const password 
 
 # The same values in another file: reported.
 check report $generic apps/vendor-portal/src/features/uploads/upload.ts "export const API_KEY = '$(j key-1234567 89012345)'"
+check report $generic services/vendor-api/vendor_api/publisher.py "SECRET = \"$(j e2e-publishing-secret- 0123456789-abcdef)\""
 check report $generic services/vendor-api/vendor_api/settings.py "    password = \"$(j Sup3rSecret Passw0rd)\""
+check report $generic services/vendor-api/vendor_api/settings.py "    secret = \"$(j Hunter2-central- secret-0123456789abcdef)\""
+check report $generic services/vendor-api/vendor_api/email.py "TOKEN = \"$(j tok_Secret -9f8e7d)\""
+check report $generic services/vendor-api/vendor_api/email.py "TOKEN = \"$(j tok_AbC -123_xyz)\""
+check report $generic docs/adr/0004-example/README.md "Idempotency-Key: $(j d2c8a7b1-3e5f- 4092-8b4c-6f9e1d8b2c35)"
+check report $generic apps/shazlo-one/src/api/client.ts "const password = '$(j shazlo-one- 2026)'"
 check report $generic apps/vendor-portal/src/api/client.ts "const password = '$(j ajrakh- indigo-26)'"
 
 # Another value in those files: reported.
