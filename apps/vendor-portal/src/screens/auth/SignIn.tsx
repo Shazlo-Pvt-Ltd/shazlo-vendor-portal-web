@@ -1,12 +1,19 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Box, Button, Divider, Link, Stack, TextField, Typography } from '@mui/material'
-import { Banner, brand } from '@shazlo/ui'
+import { alpha } from '@mui/material/styles'
+import { Banner, brand, emphasis } from '@shazlo/ui'
 import { Layers, ShieldCheck, Wallet } from 'lucide-react'
 import { useEffect, useId, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router'
 import { z } from 'zod'
 import { paths } from '../../app/paths'
+import denimJacket from '../../assets/signin/denim-jacket.jpg'
+import denimSet from '../../assets/signin/denim-set.jpg'
+import greenCoord from '../../assets/signin/green-coord.jpg'
+import indigoTunic from '../../assets/signin/indigo-tunic.jpg'
+import offshoulderTop from '../../assets/signin/offshoulder-top.jpg'
+import yellowShirt from '../../assets/signin/yellow-shirt.jpg'
 import { authCopy } from '../../copy/auth'
 import { frameCopy } from '../../copy/frame'
 import { srOnly } from '../../lib/a11y'
@@ -29,36 +36,86 @@ type Values = z.infer<typeof schema>
 
 const ICONS = [Layers, ShieldCheck, Wallet]
 
+// Placeholder photos for the collage (see src/assets/signin/README.md): three staggered columns,
+// tilted like the app's welcome screen.
+const COLUMNS = [
+  [denimSet, indigoTunic, greenCoord],
+  [yellowShirt, offshoulderTop, denimJacket],
+  [greenCoord, denimSet, indigoTunic],
+]
+
+function Collage() {
+  return (
+    <Box
+      data-collage=""
+      aria-hidden="true"
+      sx={{ position: 'absolute', top: '-18%', bottom: '-18%', left: '-22%', right: '-22%', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, transform: 'rotate(-9deg)', pointerEvents: 'none' }}
+    >
+      {COLUMNS.map((photos, column) => (
+        <Stack key={column} spacing={2} sx={{ mt: column === 1 ? '-14%' : column === 2 ? '9%' : 0 }}>
+          {photos.map((src, i) => (
+            <Box
+              key={i}
+              component="img"
+              src={src}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              draggable={false}
+              sx={{ display: 'block', width: '100%', aspectRatio: '3 / 4', objectFit: 'cover', borderRadius: '16px', border: `1px solid ${alpha(brand.offWhite, 0.18)}` }}
+            />
+          ))}
+        </Stack>
+      ))}
+    </Box>
+  )
+}
+
+// The panel beside the form: the collage, a navy scrim that deepens towards the words, and the
+// reasons in light type on top of it.
 function WhySell() {
   const id = useId()
+  const soft = alpha(brand.offWhite, 0.86)
   return (
-    <Box component="aside" aria-labelledby={id} sx={{ maxWidth: 420 }}>
-      <Typography variant="informal" sx={{ color: brand.brown, mb: 1 }}>
-        {authCopy.why.tagline}
-      </Typography>
-      <Typography id={id} variant="display2" component="h2" sx={{ fontSize: '2.25rem', lineHeight: 1.15, mb: 4 }}>
-        {authCopy.why.title}
-      </Typography>
-      <Stack component="ul" spacing={3} sx={{ listStyle: 'none', p: 0, m: 0 }}>
-        {authCopy.why.points.map((point, i) => {
-          const Icon = ICONS[i]!
-          return (
-            <Stack component="li" key={point.title} direction="row" spacing={2}>
-              <Box sx={{ color: brand.brown, pt: '3px', flexShrink: 0 }}>
-                <Icon size={20} strokeWidth={1.5} aria-hidden="true" />
-              </Box>
-              <Box>
-                <Typography variant="h3" component="h3">
-                  {point.title}
-                </Typography>
-                <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5 }}>
-                  {point.body}
-                </Typography>
-              </Box>
-            </Stack>
-          )
-        })}
-      </Stack>
+    <Box data-panel="why-sell" sx={{ position: 'absolute', inset: 0, overflow: 'hidden', bgcolor: brand.navy }}>
+      <Collage />
+      <Box
+        data-scrim=""
+        aria-hidden="true"
+        sx={{ position: 'absolute', inset: 0, background: `linear-gradient(180deg, ${alpha(brand.navy, 0.15)} 0%, ${alpha(brand.navy, 0.45)} 45%, ${alpha(brand.navy, 0.75)} 100%)` }}
+      />
+      <Box
+        component="aside"
+        aria-labelledby={id}
+        sx={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 1, maxHeight: '100%', overflowY: 'auto', boxSizing: 'border-box', px: 7, pt: 14, pb: 8, color: brand.offWhite, textShadow: `0 1px 2px ${alpha(brand.ink, 0.35)}`, background: `linear-gradient(0deg, ${brand.navy} 0%, ${alpha(brand.navy, 0.94)} 62%, ${alpha(brand.navy, 0)} 100%)`, '& > *': { maxWidth: 460 }, '@media (max-height: 760px)': { pt: 6, pb: 5, '& h2': { fontSize: '2rem', mb: 2.5 }, '& ul > li + li': { mt: 2 } } }}
+      >
+        <Typography variant="informal" sx={{ color: brand.amber, mb: 1, fontSize: '1.25rem' }}>
+          {authCopy.why.tagline}
+        </Typography>
+        <Typography id={id} variant="display2" component="h2" sx={{ fontSize: '2.5rem', lineHeight: 1.1, mb: 4, color: brand.offWhite }}>
+          {authCopy.why.title}
+        </Typography>
+        <Stack component="ul" spacing={3} sx={{ listStyle: 'none', p: 0, m: 0 }}>
+          {authCopy.why.points.map((point, i) => {
+            const Icon = ICONS[i]!
+            return (
+              <Stack component="li" key={point.title} direction="row" spacing={2}>
+                <Box sx={{ color: brand.amber, bgcolor: alpha(brand.amber, 0.16), border: `1px solid ${alpha(brand.amber, 0.4)}`, borderRadius: '50%', width: 40, height: 40, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                  <Icon size={20} strokeWidth={1.75} aria-hidden="true" />
+                </Box>
+                <Box>
+                  <Typography variant="h3" component="h3" sx={{ ...emphasis.semibold, fontSize: '1.0625rem', color: brand.offWhite }}>
+                    {point.title}
+                  </Typography>
+                  <Typography variant="body1" sx={{ mt: 0.5, color: soft }}>
+                    {point.body}
+                  </Typography>
+                </Box>
+              </Stack>
+            )
+          })}
+        </Stack>
+      </Box>
     </Box>
   )
 }

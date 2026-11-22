@@ -41,7 +41,7 @@ const PHONE = '(max-width:599.95px)'
 const SAFE_BOTTOM = 'env(safe-area-inset-bottom, 0px)'
 
 // Signed-out pages: logo and help line on top, legal links at the bottom.
-// With `aside`, desktop splits into the form and a cream panel (V-01, pick C); phones drop the panel.
+// With `aside`, desktop splits into the form and a full-bleed panel (V-01: the photo collage); phones drop the panel.
 // With `task` (sign-up), phones get the page edge to edge with no card, so the sticky footer can span
 // the screen; wider screens a centred card at most 680 px wide (spec §3).
 // A page that sent the seller here with a notice (see ./notice.ts: "Your password is set") shows
@@ -79,7 +79,9 @@ export function AuthLayout({ children, aside, width = 440, task = false }: { chi
         <Footer />
       </Box>
       {aside && wide && (
-        <Box sx={{ width: '42%', maxWidth: 620, flexShrink: 0, bgcolor: brand.cream, display: 'flex', alignItems: 'center', px: 7, py: 8 }}>
+        // The aside fills its panel edge to edge (the sign-in photo collage) and pads its own words.
+        // It stays the height of the screen while a taller form scrolls, so its words stay in view.
+        <Box sx={{ width: '42%', maxWidth: 620, flexShrink: 0, position: 'sticky', top: 0, alignSelf: 'flex-start', height: '100dvh', overflow: 'hidden', bgcolor: brand.navy }}>
           {aside}
         </Box>
       )}

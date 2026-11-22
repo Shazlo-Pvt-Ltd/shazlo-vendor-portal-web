@@ -35,6 +35,27 @@ describe('V-01 Sign in', () => {
     expect(screen.queryByRole('checkbox')).toBeNull()
   })
 
+  it('sets the reasons on a photo collage from the app, with a scrim so the words stay readable', async () => {
+    await open()
+    const why = screen.getByRole('complementary', { name: 'Why sell on Shazlo' })
+    const panel = why.closest('[data-panel="why-sell"]') as HTMLElement
+    expect(panel).not.toBeNull()
+    // The photos are decoration: hidden from screen readers, served from the app itself (img-src 'self').
+    const collage = panel.querySelector('[data-collage]') as HTMLElement
+    expect(collage).toHaveAttribute('aria-hidden', 'true')
+    const photos = [...collage.querySelectorAll('img')]
+    expect(photos.length).toBeGreaterThanOrEqual(6)
+    for (const photo of photos) {
+      expect(photo).toHaveAttribute('alt', '')
+      expect(photo.getAttribute('src')).not.toMatch(/^https?:/)
+      expect(photo).toHaveAttribute('loading', 'lazy')
+    }
+    // The text sits on a dark scrim above the photos, in light type.
+    expect(panel.querySelector('[data-scrim]')).not.toBeNull()
+    expect(within(why).getByRole('heading', { level: 2, name: 'Why sell on Shazlo' })).toBeInTheDocument()
+    expect(within(why).getAllByRole('heading', { level: 3 })).toHaveLength(3)
+  })
+
   it('drops the reasons panel on phones', async () => {
     await open('/login', undefined, WIDTHS.phone)
     expect(screen.queryByRole('complementary', { name: 'Why sell on Shazlo' })).toBeNull()
