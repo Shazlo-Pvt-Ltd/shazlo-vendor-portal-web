@@ -3,8 +3,8 @@
 What scans this repository in GitHub Actions, when, where the results appear, and what to do with a
 finding. Every action is pinned to the full commit SHA of a released tag, and every downloaded
 binary is checked against the SHA-256 published with its release. Every job declares its own
-`permissions`, and none needs a secret or depends on Dependabot alerts or GitHub secret scanning
-being enabled. `dependency-review` does need the repository's **Dependency graph** (Settings > Code
+`permissions` (except apps-ci's `audit`, which keeps that workflow's read-only default), and none
+needs a secret or depends on Dependabot alerts or GitHub secret scanning being enabled. `dependency-review` does need the repository's **Dependency graph** (Settings > Code
 security): without it, that job fails on every pull request with "Dependency review is not
 supported on this repository".
 
