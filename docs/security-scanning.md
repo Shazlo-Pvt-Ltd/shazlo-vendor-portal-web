@@ -4,15 +4,16 @@ What scans this repository in GitHub Actions, when, where the results appear, an
 finding. Every action is pinned to the full commit SHA of a released tag, and every downloaded
 binary is checked against the SHA-256 published with its release. Every job declares its own
 `permissions` (except apps-ci's `audit`, which keeps that workflow's read-only default), and none
-needs a secret or depends on Dependabot alerts or GitHub secret scanning being enabled. `dependency-review` does need the repository's **Dependency graph** (Settings > Code
-security): without it, that job fails on every pull request with "Dependency review is not
-supported on this repository".
+needs a secret or depends on Dependabot alerts or GitHub secret scanning being enabled.
+`dependency-review` does need the repository's **Dependency graph** (Settings > Code security):
+without it, that job fails on every pull request with "Dependency review is not supported on this
+repository".
 
-**Pull requests from forks** run these workflows too, but GitHub gives them a read-only token, so
-nothing can be uploaded to code scanning from them. `osv-scanner` and `zizmor` notice this and put
-their findings in the run (summary and log) instead. CodeQL's required `Analyze` checks also need
-`security-events: write` to upload, and GitHub's documentation does not say how that behaves for a
-fork. If they fail on an outside contributor's pull request, a maintainer can push the branch to this
+**Pull requests from forks** run these workflows too, but GitHub gives them a read-only token, and
+an upload to code scanning needs `security-events: write`. So on a fork's pull request `osv-scanner`
+and `zizmor` skip the upload and put their findings in the run (summary and log) instead. CodeQL's
+required `Analyze` checks upload too, and GitHub's documentation does not say how that behaves for
+a fork. If they fail on an outside contributor's pull request, a maintainer can push the branch to this
 repository and open the pull request from there.
 
 ## What runs
