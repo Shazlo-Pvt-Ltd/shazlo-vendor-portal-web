@@ -35,6 +35,10 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+# pytest-cov (`pytest --cov`) data and HTML report
+.coverage
+.coverage.*
+htmlcov/
 
 # Logs
 *.log

@@ -162,9 +162,13 @@ describe('filters in the address', () => {
   it('searches after a pause, not on every key, and does not fill the history with keystrokes', async () => {
     const seen: URLSearchParams[] = []
     server.use(listHandler([product(1, { title: 'Silk kurta' }), product(2, { title: 'Cotton saree' })], seen))
-    const { router, user } = await open('/products')
+    const { router } = await open('/products')
     await screen.findByRole('table')
     const before = seen.length
+    // No pause between the keys (`delay: null`): they all land before any timer can run, so the
+    // 300 ms debounce cannot fire mid-word however slow the runner is. With the default delay a
+    // slow keystroke would let it fire and search for "s".
+    const user = userEvent.setup({ delay: null })
     await user.click(screen.getByLabelText('Search by title or SKU'))
     await user.keyboard('silk')
     expect(search(router).get('q')).toBeNull() // still waiting for the pause
