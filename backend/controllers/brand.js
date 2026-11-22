@@ -10,7 +10,8 @@ export const registerBrand = async (req, res) => {
       phone,
       email,
       price_range,
-    } = req.body;
+      // Express 5 leaves req.body undefined when the request has no body.
+    } = req.body ?? {};
 
     if (
       !brand_name ||

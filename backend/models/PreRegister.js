@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { isValidEmail } from "../lib/validation.js";
 
 const preRegisterSchema = new mongoose.Schema(
   {
@@ -9,9 +10,8 @@ const preRegisterSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
       validate: {
-        validator: function (email) {
-          return /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(email);
-        },
+        // Linear-time check with a length cap (see lib/validation.js).
+        validator: isValidEmail,
         message: "Please enter a valid email address",
       },
     },

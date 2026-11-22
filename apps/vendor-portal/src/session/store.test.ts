@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NetworkError } from '../api/errors'
 import { registerSensitiveReset } from '../security/sensitiveState'
 import { clearDrafts, saveDraft, takeDraft } from './drafts'
+import { isSessionResponse } from './store'
 import { apiError, fakeChannels, makeStore, sessionBody } from './testing'
 
 afterEach(() => {
@@ -161,6 +162,180 @@ describe('renewal', () => {
     expect(store.getSnapshot().status).toBe('signedIn')
     store.close()
   })
+})
+
+describe('renewal edge cases', () => {
+  it('retries 15 seconds after a renewal the network failed, and recovers without signing out', async () => {
+    vi.useFakeTimers()
+    let down = false
+    let calls = 0
+    const { store } = makeStore({
+      refresh: async () => {
+        calls += 1
+        if (down) throw new NetworkError('network')
+        return sessionBody({ token: `t${calls}` })
+      },
+    })
+    await store.start()
+    down = true
+    expect(await store.renew()).toBe(false)
+    expect(calls).toBe(2)
+    down = false
+    await vi.advanceTimersByTimeAsync(14_000)
+    expect(calls).toBe(2)
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(calls).toBe(3)
+    expect(store.getSnapshot().status).toBe('signedIn')
+    expect(store.getAccessToken()).toBe('t3')
+    store.close()
+  })
+
+  it('a server error (5xx) while signed in is treated like the network: the session stays', async () => {
+    let failing = false
+    const onCleared = vi.fn()
+    const { store } = makeStore({
+      refresh: async () => {
+        if (failing) throw apiError(503, 'unavailable')
+        return sessionBody({ token: 'kept' })
+      },
+      onCleared,
+    })
+    await store.start()
+    failing = true
+    expect(await store.renew()).toBe(false)
+    expect(store.getSnapshot().status).toBe('signedIn')
+    expect(store.getAccessToken()).toBe('kept')
+    expect(onCleared).not.toHaveBeenCalled()
+    store.close()
+  })
+
+  it('blocks a vendor suspended mid-session: token, drafts and sensitive forms are gone', async () => {
+    let suspended = false
+    const reset = vi.fn()
+    const undo = registerSensitiveReset(reset)
+    const onCleared = vi.fn()
+    const { store } = makeStore({
+      refresh: async () => {
+        if (suspended) throw apiError(403, 'vendor_not_allowed')
+        return sessionBody()
+      },
+      onCleared,
+    })
+    await store.start()
+    saveDraft('product:new', { name: 'Kurta' })
+    suspended = true
+    expect(await store.renew()).toBe(false)
+    expect(store.getSnapshot()).toMatchObject({ status: 'blocked', user: null, vendor: null, role: null })
+    expect(store.getAccessToken()).toBeNull()
+    expect(takeDraft('product:new')).toBeUndefined()
+    expect(reset).toHaveBeenCalledOnce()
+    expect(onCleared).toHaveBeenCalledOnce()
+    undo()
+    store.close()
+  })
+
+  it('ends the session on an answer it does not understand, rather than keeping a half session', async () => {
+    let broken = false
+    const { store } = makeStore({
+      refresh: async () => {
+        if (broken) throw new TypeError('not a session')
+        return sessionBody()
+      },
+    })
+    await store.start()
+    broken = true
+    expect(await store.renew()).toBe(false)
+    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', expired: true })
+    expect(store.getAccessToken()).toBeNull()
+    store.close()
+  })
+
+  it('ignores a refresh that answers after the store was closed', async () => {
+    let answer: (value: ReturnType<typeof sessionBody>) => void = () => {}
+    const { store } = makeStore({ refresh: () => new Promise((resolve) => { answer = resolve }) })
+    const started = store.start()
+    store.close()
+    answer(sessionBody({ token: 'too-late' }))
+    await started
+    expect(store.getAccessToken()).toBeNull()
+    expect(store.getSnapshot().status).toBe('loading')
+  })
+
+  it('stops renewing after logout: no refresh fires once the session is over', async () => {
+    vi.useFakeTimers()
+    const refresh = vi.fn(async () => sessionBody({ expires_in: 60 }))
+    const { store } = makeStore({ refresh })
+    await store.start()
+    await store.logout()
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    expect(refresh).toHaveBeenCalledOnce()
+    store.close()
+  })
+
+  it('never schedules a renewal sooner than a second, whatever expires_in says', async () => {
+    vi.useFakeTimers()
+    const refresh = vi.fn(async () => sessionBody({ expires_in: 0 }))
+    const { store } = makeStore({ refresh })
+    await store.start()
+    await vi.advanceTimersByTimeAsync(999)
+    expect(refresh).toHaveBeenCalledOnce()
+    await vi.advanceTimersByTimeAsync(2)
+    expect(refresh).toHaveBeenCalledTimes(2)
+    store.close()
+  })
+})
+
+describe('messages from other tabs', () => {
+  it('ignores anything but the two words, and a login while already signed in', async () => {
+    const channel = { onmessage: null as ((event: MessageEvent) => void) | null, postMessage: () => {}, close: () => {} }
+    const refresh = vi.fn(async () => sessionBody())
+    const onCleared = vi.fn()
+    const { store } = makeStore({ channel, refresh, onCleared })
+    await store.start()
+    for (const data of [null, 'logout', { type: 'LOGOUT' }, { kind: 'logout' }, 42, { type: 'login', token: 'x' }]) {
+      channel.onmessage?.({ data } as MessageEvent)
+    }
+    await Promise.resolve()
+    expect(store.getSnapshot().status).toBe('signedIn')
+    expect(refresh).toHaveBeenCalledOnce()
+    expect(onCleared).not.toHaveBeenCalled()
+    store.close()
+  })
+
+  it('a logout from another tab while already signed out changes nothing', async () => {
+    const channel = { onmessage: null as ((event: MessageEvent) => void) | null, postMessage: () => {}, close: () => {} }
+    const onCleared = vi.fn()
+    const { store } = makeStore({ channel, refresh: async () => { throw apiError(401, 'unauthorized') }, onCleared })
+    await store.start()
+    expect(onCleared).toHaveBeenCalledOnce()
+    channel.onmessage?.({ data: { type: 'logout' } } as MessageEvent)
+    expect(onCleared).toHaveBeenCalledOnce()
+    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', signedOutByUser: false })
+    store.close()
+  })
+
+  it('stops listening once closed', async () => {
+    const channel = { onmessage: null as ((event: MessageEvent) => void) | null, postMessage: () => {}, close: vi.fn() }
+    const { store } = makeStore({ channel })
+    await store.start()
+    store.close()
+    expect(channel.onmessage).toBeNull()
+    expect(channel.close).toHaveBeenCalledOnce()
+  })
+})
+
+describe('isSessionResponse', () => {
+  it.each([
+    ['null', null],
+    ['a string', 'token'],
+    ['no token', { ...sessionBody(), access_token: undefined }],
+    ['a numeric token', { ...sessionBody(), access_token: 5 }],
+    ['expires_in as text', { ...sessionBody(), expires_in: '900' }],
+    ['no user', { ...sessionBody(), user: null }],
+    ['no vendor', { ...sessionBody(), vendor: undefined }],
+  ])('refuses %s', (_name, value) => expect(isSessionResponse(value)).toBe(false))
+
+  it('accepts a session', () => expect(isSessionResponse(sessionBody())).toBe(true))
 })
 
 describe('sensitive form state', () => {

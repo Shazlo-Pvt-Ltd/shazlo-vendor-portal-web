@@ -116,6 +116,24 @@ async def test_a_token_that_lists_several_audiences_is_rejected(
         await verifier.verify(sign(aud=[AUDIENCE, "billing-api"]))
 
 
+async def test_a_list_holding_only_this_audience_is_still_rejected(
+    verifier: TokenVerifier, sign: Sign
+) -> None:
+    """PyJWT accepts `["vendor-api"]`; the verifier wants the plain string a single-service
+    token carries, so a token minted for a list of services never passes."""
+    with pytest.raises(InvalidTokenError, match="single"):
+        await verifier.verify(sign(aud=[AUDIENCE]))
+
+
+@pytest.mark.parametrize("value", ["true", 1, "yes", [True]])
+async def test_only_a_real_true_sets_the_pending_password_flag(
+    verifier: TokenVerifier, sign: Sign, value: Any
+) -> None:
+    """A truthy value of another type is not `true`. Reading it loosely would not grant anything
+    (the flag only restricts), but the claim must mean exactly one thing."""
+    assert (await verifier.verify(sign(must_change_password=value))).must_change_password is False
+
+
 async def test_a_token_without_audience_is_rejected(verifier: TokenVerifier, sign: Sign) -> None:
     with pytest.raises(InvalidTokenError):
         await verifier.verify(sign(aud=None))
@@ -174,6 +192,14 @@ async def test_a_tampered_payload_is_rejected(verifier: TokenVerifier, sign: Sig
 
 
 # --- Required claims ---------------------------------------------------------------------
+
+
+async def test_a_token_whose_kid_is_not_text_is_rejected(verifier: TokenVerifier) -> None:
+    kids: list[Any] = [1, "", ["key-1"]]
+    for kid in kids:
+        token = raw_token({"alg": "RS256", "typ": "JWT", "kid": kid}, make_claims(), b"x")
+        with pytest.raises(InvalidTokenError, match="(?i)kid|key id"):
+            await verifier.verify(token)
 
 
 @pytest.mark.parametrize("claim", ["sub", "roles", "exp", "iat", "iss", "jti"])

@@ -65,8 +65,9 @@ class VariantBody(BaseModel):
     sku: str = Field(min_length=1, max_length=64)
     size: DatabaseText = Field(default="", max_length=32)
     color: DatabaseText = Field(default="", max_length=32)
-    price_paise: int = Field(gt=0, le=MAX_PAISE)
-    mrp_paise: int = Field(gt=0, le=MAX_PAISE)
+    # Strict: a JSON integer only. Lax parsing would take `true` as 1 paise and "1499" as 1499.
+    price_paise: int = Field(gt=0, le=MAX_PAISE, strict=True)
+    mrp_paise: int = Field(gt=0, le=MAX_PAISE, strict=True)
     is_active: bool = True
 
     @field_validator("sku", mode="before")

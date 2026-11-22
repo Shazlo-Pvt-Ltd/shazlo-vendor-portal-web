@@ -16,7 +16,9 @@ export function PageHeader({ title, subtitle, status, actions, eyebrow }: { titl
           {status}
         </Stack>
         {subtitle && (
-          <Typography variant="body1" color="textSecondary" sx={{ mt: 1, maxWidth: '68ch' }}>
+          // Text is a paragraph. Anything else (a chip, a skeleton, a row of them) may hold a `<div>`, which a
+          // `<p>` cannot contain, so it gets a `<div>` instead.
+          <Typography variant="body1" component={typeof subtitle === 'string' ? 'p' : 'div'} color="textSecondary" sx={{ mt: 1, maxWidth: '68ch' }}>
             {subtitle}
           </Typography>
         )}

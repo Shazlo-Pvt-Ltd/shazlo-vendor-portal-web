@@ -373,3 +373,33 @@ def test_the_page_escapes_what_it_shows(sender: Sender, example: Example) -> Non
 
 def test_health(client: TestClient) -> None:
     assert client.get("/health").json() == {"status": "ok"}
+
+
+# --- settings -------------------------------------------------------------------------------
+
+
+def test_an_unknown_starting_mode_is_refused() -> None:
+    with pytest.raises(ValueError, match="STUB_MODE"):
+        Settings(stub_mode="explode")
+
+
+@pytest.mark.parametrize(
+    ("keys", "message"),
+    [
+        ("k1-without-a-secret", "key-id:secret"),
+        ("k1:too-short", "at least 32 bytes"),
+        (f"bad id:{'s' * 40}", "key id"),
+        (f"k1:{'a' * 40},k1:{'b' * 40}", "configured twice"),
+    ],
+    ids=["no-separator", "weak-secret", "bad-key-id", "same-id-twice"],
+)
+def test_bad_signing_keys_stop_the_stub_from_starting(keys: str, message: str) -> None:
+    """A stub that accepted a weak or ambiguous key would let tests pass that the real receiver
+    refuses."""
+    with pytest.raises(ValueError, match=message):
+        create_app(Settings(stub_signing_keys=keys), lambda: NOW)
+
+
+def test_two_comma_separated_keys_are_both_active(settings: Settings) -> None:
+    active = settings.keys()
+    assert [key.key_id for key in active] == ["k1", "k2"]

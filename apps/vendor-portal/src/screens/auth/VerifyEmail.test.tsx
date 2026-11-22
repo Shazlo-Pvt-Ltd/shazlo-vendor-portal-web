@@ -7,6 +7,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { App } from '../../App'
 import { routes } from '../../app/routes'
 import { DEMO_STAFF } from '../../mocks/db'
+import { countdownClock } from '../../test/countdown'
 import { renderApp } from '../../test/render'
 import { setupMockApi } from '../../test/server'
 import { typeFast } from '../../test/typeFast'
@@ -116,8 +117,9 @@ describe('Verify your email', () => {
   it('counts down after too many attempts', async () => {
     unconfirmed()
     server.use(http.post('*/v1/auth/verify-email', () => HttpResponse.json({ error: { code: 'rate_limited', message: 'x' } }, { status: 429, headers: { 'Retry-After': '30' } }), { once: true }))
+    const countdown = countdownClock(30)
     await open('/verify-email#token=verify-meera', 'We could not check your link')
-    expect(await screen.findByText(/Too many attempts. Try again in (30|29) s\./)).toBeInTheDocument()
+    countdown((await screen.findByText(/Too many attempts. Try again in \d+ s\./)).textContent, /Try again in (\d+) s\./)
     expect(screen.getByRole('button', { name: 'Try again' })).toBeDisabled()
   })
 
@@ -162,8 +164,11 @@ describe('asking for a new link', () => {
     server.use(http.post('*/v1/auth/resend-verification', () => HttpResponse.json({ error: { code: 'rate_limited', message: 'x' } }, { status: 429, headers: { 'Retry-After': '90' } }), { once: true }))
     const { user, form } = await openExpired()
     await typeFast(user, within(form).getByRole('textbox', { name: 'Your email' }), 'meera@kalkistudio.in')
+    const countdown = countdownClock(90)
     await user.click(within(form).getByRole('button', { name: 'Send the email again' }))
     expect(await screen.findByText('Too many attempts.')).toBeInTheDocument()
-    await waitFor(() => expect(within(form).getByRole('button', { name: /^Send again in (90|89) s$/ })).toBeDisabled())
+    const again = await within(form).findByRole('button', { name: /^Send again in \d+ s$/ })
+    expect(again).toBeDisabled()
+    countdown(again.textContent, /Send again in (\d+) s/)
   })
 })

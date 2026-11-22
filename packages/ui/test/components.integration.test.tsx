@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { ThemeProvider } from '@mui/material'
+import { Chip, ThemeProvider } from '@mui/material'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -219,5 +219,29 @@ describe('layout: figures that open a page, and card titles with an icon', () =>
   it('leaves a card title without an icon as it was', () => {
     wrap(<SectionCard title="Recent review decisions">rows</SectionCard>)
     expect(screen.getByRole('region', { name: 'Recent review decisions' }).querySelector('svg')).toBeNull()
+  })
+})
+
+describe('PageHeader subtitle markup', () => {
+  it('keeps a text subtitle a paragraph, and puts anything else where a chip may go', () => {
+    const error = vi.spyOn(console, 'error')
+    wrap(<PageHeader title="Products" subtitle="Everything you sell." />)
+    expect(screen.getByText('Everything you sell.').tagName).toBe('P')
+    cleanup()
+    // A Chip's root is a <div>, which a <p> cannot hold: React warns, and the HTML is invalid.
+    const { container } = wrap(
+      <PageHeader
+        title="Kurta"
+        subtitle={
+          <span>
+            SKU K-1 <Chip size="small" label="Draft" />
+          </span>
+        }
+      />,
+    )
+    expect(screen.getByText('Draft')).toBeTruthy()
+    expect(container.querySelector('p div, p p')).toBeNull()
+    expect(error).not.toHaveBeenCalled()
+    error.mockRestore()
   })
 })

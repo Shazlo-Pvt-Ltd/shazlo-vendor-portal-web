@@ -1,4 +1,5 @@
 import { configure, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { http } from 'msw'
 import { beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { DEMO_STAFF, type MockDb } from '../../mocks/db'
@@ -223,7 +224,11 @@ describe('V-06 Products', SLOW, () => {
 
   it('searches name or code once typing pauses', async () => {
     const seen = trackRequests()
-    const { user, router } = await renderApp({ route: '/products' })
+    const { router } = await renderApp({ route: '/products' })
+    // No pause between the keys (`delay: null`): they all land before any timer can run, so the
+    // 300 ms debounce cannot fire mid-word however slow the runner is. With the default delay a
+    // slow keystroke would let it fire and search for "a".
+    const user = userEvent.setup({ delay: null })
     await waitForRows(10)
     const search = screen.getByRole('textbox', { name: 'Search name or code' })
     await user.type(search, 'ajrakh')

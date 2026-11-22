@@ -269,3 +269,34 @@ def test_an_extra_claim_cannot_replace_a_claim_the_issuer_sets(
     issuer = make_issuer(setup, load_keyring(setup.keys))
     with pytest.raises(ValueError, match=name):
         issuer.issue(subject=ADMIN_ID, roles=[], audience="a", extra_claims={name: "x"})
+
+
+def test_a_pending_password_token_carries_the_flag_and_no_roles(
+    configured: Configure, key_pems: dict[str, str]
+) -> None:
+    """An admin who must change their password gets a token no service grants anything to: the
+    roles asked for are dropped, and the flag identity-api checks is set."""
+    setup = configured(key_pems, "test-key-1")
+    ring = load_keyring(setup.keys)
+    issued = make_issuer(setup, ring).issue(
+        subject=ADMIN_ID,
+        roles=["super_admin", "vendor_reviewer"],
+        audience="identity-api",
+        must_change_password=True,
+    )
+    claims = verify(issued.token, ring.jwks(), audience="identity-api")
+    assert claims["roles"] == []
+    assert claims["must_change_password"] is True
+
+
+def test_an_ordinary_token_has_no_pending_password_claim(
+    configured: Configure, key_pems: dict[str, str]
+) -> None:
+    setup = configured(key_pems, "test-key-1")
+    ring = load_keyring(setup.keys)
+    issued = make_issuer(setup, ring).issue(
+        subject=ADMIN_ID, roles=["super_admin"], audience="identity-api"
+    )
+    claims = verify(issued.token, ring.jwks(), audience="identity-api")
+    assert "must_change_password" not in claims
+    assert claims["roles"] == ["super_admin"]
