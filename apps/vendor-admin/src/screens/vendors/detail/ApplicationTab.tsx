@@ -1,9 +1,10 @@
 import { Box, Checkbox, Chip, Divider, FormControl, FormControlLabel, FormHelperText, Grid, InputAdornment, Link, Stack, TextField, Typography } from '@mui/material'
-import { radius, SectionCard, status, statusBackground } from '@shazlo/ui'
-import { AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { emphasis, radius, SectionCard, status, statusBackground } from '@shazlo/ui'
+import { AlertTriangle, BadgeCheck, Briefcase, CheckCircle2, FileText, Landmark, RotateCcw, ShieldCheck, Store, Truck, UserRound, Wallet, type LucideIcon } from 'lucide-react'
 import { useId, type FormEventHandler, type ReactNode } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
 import type { components } from '../../../api/schema'
+import { CardTitle } from '../../../components/CardTitle'
 import { sellsLabel, vendorDetailCopy } from '../../../copy/vendors'
 import { srOnly } from '../../../lib/a11y'
 import { formatRate, waitingProposal } from '../../../lib/commission'
@@ -33,10 +34,11 @@ export function ExternalLink({ href, children }: { href: string; children: React
   )
 }
 
+// An answer: its label in semibold, the answer in regular ink.
 function Row({ term, children }: { term: string; children: ReactNode }) {
   return (
     <>
-      <Typography component="dt" variant="body2" color="text.secondary" sx={{ pt: '1px' }}>
+      <Typography component="dt" variant="subtitle2" color="textSecondary" sx={{ pt: '1px' }}>
         {term}
       </Typography>
       <Typography component="dd" variant="body1" sx={{ m: 0, minWidth: 0, maxWidth: '68ch', overflowWrap: 'anywhere' }}>
@@ -52,13 +54,13 @@ const NotGiven = () => (
   </Box>
 )
 
-// One topic of the sign-up (spec §5): a small heading over its answers.
-function Topic({ title, children }: { title: string; children: ReactNode }) {
+// One topic of the sign-up (spec §5): a small heading, with its icon, over its answers.
+function Topic({ title, icon, children }: { title: string; icon: LucideIcon; children: ReactNode }) {
   const id = useId()
   return (
     <Box component="section" aria-labelledby={id}>
       <Typography id={id} variant="h3" component="h3" sx={{ mb: 1.25 }}>
-        {title}
+        <CardTitle icon={icon}>{title}</CardTitle>
       </Typography>
       <Box component="dl" sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '180px 1fr' }, columnGap: 3, rowGap: { xs: 0.5, sm: 1.25 }, m: 0, '& dd': { mb: { xs: 1.25, sm: 0 } } }}>
         {children}
@@ -155,14 +157,14 @@ function takes({ cash, upi }: S['Application']['pay_on_delivery']) {
 function ApplicationCard({ vendor }: { vendor: Vendor }) {
   const app = vendor.application
   return (
-    <SectionCard title={a.title}>
+    <SectionCard title={<CardTitle icon={FileText}>{a.title}</CardTitle>}>
       <Stack spacing={2.5} divider={<Divider flexItem />}>
-        <Topic title={a.sections.brand}>
+        <Topic title={a.sections.brand} icon={Store}>
           <Row term={a.sells}>{sellsLabel[vendor.sells]}</Row>
           <Row term={a.shipsFrom}>{vendor.city}</Row>
           <Row term={a.link}>{app.instagram_or_website ? <ExternalLink href={app.instagram_or_website}>{app.instagram_or_website}</ExternalLink> : <NotGiven />}</Row>
         </Topic>
-        <Topic title={a.sections.contact}>
+        <Topic title={a.sections.contact} icon={UserRound}>
           <Row term={a.name}>{vendor.owner_name}</Row>
           <Row term={a.mobile}>
             <Typography variant="mono" component="span" sx={{ fontSize: 14 }}>
@@ -171,19 +173,19 @@ function ApplicationCard({ vendor }: { vendor: Vendor }) {
           </Row>
           <Row term={a.email}>{vendor.email}</Row>
         </Topic>
-        <Topic title={a.sections.delivery}>
+        <Topic title={a.sections.delivery} icon={Truck}>
           <DeliveryRows delivery={app.delivery} />
         </Topic>
-        <Topic title={a.sections.returns}>
+        <Topic title={a.sections.returns} icon={RotateCcw}>
           <ReturnRows returns={app.returns} />
         </Topic>
-        <Topic title={a.sections.payment}>
+        <Topic title={a.sections.payment} icon={Wallet}>
           <Row term={a.takes}>{takes(app.pay_on_delivery)}</Row>
         </Topic>
-        <Topic title={a.sections.payouts}>
+        <Topic title={a.sections.payouts} icon={Landmark}>
           <PayoutRows payout={app.payout} />
         </Topic>
-        <Topic title={a.sections.business}>
+        <Topic title={a.sections.business} icon={Briefcase}>
           <Row term={a.legalName}>{app.legal_name ?? <NotGiven />}</Row>
           <Row term={a.gst}>
             {app.gst_number ? (
@@ -212,7 +214,7 @@ function ChecksCard({ checks }: { checks: Vendor['checks'] }) {
   const failing = checks.filter((check) => !check.ok).length
   return (
     <SectionCard
-      title={copy.checks.title}
+      title={<CardTitle icon={ShieldCheck}>{copy.checks.title}</CardTitle>}
       action={
         <Typography variant="body2" sx={{ color: failing ? status.error : 'text.secondary' }}>
           {failing ? copy.checks.needLook(failing) : copy.checks.allPassed}
@@ -238,8 +240,10 @@ function ChecksCard({ checks }: { checks: Vendor['checks'] }) {
                 <Box component="span" sx={srOnly}>
                   {check.ok ? copy.checks.passed : copy.checks.failed}
                 </Box>
-                <Typography variant="body1">{check.label}</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+                <Typography variant="body1" sx={emphasis.semibold}>
+                  {check.label}
+                </Typography>
+                <Typography variant="body2" color="textSecondary" sx={{ overflowWrap: 'anywhere' }}>
                   {check.note}
                 </Typography>
               </Box>
@@ -262,7 +266,7 @@ function ApprovalCard({ vendor, form, onSubmit, disabled }: { vendor: Vendor; fo
   const proposal = waitingProposal(vendor.commission)
   const rateHint = proposal == null ? c.noProposalHint : c.proposedHint(formatRate(proposal))
   return (
-    <SectionCard title={c.title}>
+    <SectionCard title={<CardTitle icon={BadgeCheck}>{c.title}</CardTitle>}>
       <Box component="form" noValidate onSubmit={onSubmit} aria-describedby={hintId}>
         <Stack spacing={2.5}>
           <TextField
@@ -292,7 +296,7 @@ function ApprovalCard({ vendor, form, onSubmit, disabled }: { vendor: Vendor; fo
             />
             {errors.agreement && <FormHelperText id={agreementError}>{errors.agreement.message}</FormHelperText>}
           </FormControl>
-          <Typography id={hintId} variant="body2" color="text.secondary">
+          <Typography id={hintId} variant="body2" color="textSecondary">
             {c.hint}
           </Typography>
         </Stack>

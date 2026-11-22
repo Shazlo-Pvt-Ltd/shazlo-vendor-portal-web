@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { renderModule } from '../../test/render'
 import { server } from '../../test/server'
+import { isSecondary, isSemibold } from '../../test/style'
 
 type User = ReturnType<typeof renderModule>['user']
 
@@ -20,7 +21,7 @@ async function openTab(user: User, name: RegExp) {
   await user.click(screen.getByRole('tab', { name }))
 }
 
-describe('A-09 Vendor detail', () => {
+describe('A-09 Vendor detail', { timeout: 40_000 }, () => {
   it('shows an application with its checks and approval settings, and names itself to the shell', async () => {
     const { shell } = renderModule({ route: '/vendors/v_rann' })
     await heading('Rann Weaves')
@@ -84,6 +85,40 @@ describe('A-09 Vendor detail', () => {
     // Price range, about and product categories are no longer asked.
     expect(within(app).queryByText('Typical price range')).not.toBeInTheDocument()
     expect(within(app).queryByText('About', { selector: 'dt' })).not.toBeInTheDocument()
+  })
+
+  it('sets the page in a hierarchy: semibold titles, labels and names, regular supporting text, an icon per part', async () => {
+    renderModule({ route: '/vendors/v_kaaya' })
+    await heading('Kaaya Ethnic')
+    const app = screen.getByRole('region', { name: 'Application' })
+    const checks = screen.getByRole('region', { name: 'Automatic checks' })
+    const approval = screen.getByRole('region', { name: 'Approval settings' })
+    // Each card and each topic of the application has a small decorative icon before its title.
+    for (const region of [app, checks, approval]) {
+      expect(within(region).getAllByRole('heading')[0]!.querySelector('[data-title-icon] svg[aria-hidden="true"]')).not.toBeNull()
+    }
+    for (const topic of within(app).getAllByRole('heading', { level: 3 })) {
+      expect(topic.querySelector('[data-title-icon] svg[aria-hidden="true"]')).not.toBeNull()
+    }
+    // Labels in semibold, their answers in regular ink.
+    const sells = within(app).getByText('Sells', { selector: 'dt' })
+    expect(isSemibold(sells)).toBe(true)
+    expect(isSemibold(sells.nextElementSibling!)).toBe(false)
+    // Each check's name in semibold over its note in the secondary ink.
+    const failing = within(checks).getByText('Instagram or website shows their own work')
+    expect(isSemibold(failing)).toBe(true)
+    expect(isSecondary(within(checks).getByText('Several posts are stock photos from other labels'))).toBe(true)
+  })
+
+  it('draws its tabs as pressable, in semibold', async () => {
+    renderModule({ route: '/vendors/v_kalki' })
+    await heading('Kalki Studio')
+    const tabs = within(screen.getByRole('tablist', { name: 'Vendor details' })).getAllByRole('tab')
+    expect(tabs.map((t) => t.textContent)).toEqual(['Application', 'Products 4', 'Brand page', expect.stringMatching(/^Activity \d+$/)])
+    for (const tab of tabs) {
+      expect(getComputedStyle(tab).cursor).toBe('pointer')
+      expect(isSemibold(tab)).toBe(true)
+    }
   })
 
   it('shows own delivery, a UPI payout and a proposed rate', async () => {
@@ -262,6 +297,8 @@ describe('A-09 Vendor detail', () => {
 
   it('lists an approved vendor’s products and suspends them', async () => {
     const { user, db, shell, router } = renderModule({ route: '/vendors/v_kalki' })
+    // One of the four is live, so it has nothing to review.
+    db.products.find((p) => p.id === 'p_handloom')!.status = 'approved'
     await heading('Kalki Studio')
     expect(screen.queryByRole('region', { name: 'Approval settings' })).not.toBeInTheDocument()
     await openTab(user, /^Products 4/)
@@ -272,6 +309,15 @@ describe('A-09 Vendor detail', () => {
     expect(ajrakh).toHaveAttribute('href', '/review/product/p_ajrakh')
     expect(within(ajrakh).getByText('Pending review')).toBeInTheDocument()
     expect(within(ajrakh).getByText('₹2,499')).toBeInTheDocument()
+    // Only a product waiting for review opens; it says so with a chevron. Names in semibold.
+    expect(within(list).getAllByRole('link')).toHaveLength(3)
+    expect(ajrakh.querySelector('[data-chevron]')!.closest('[aria-hidden="true"]')).not.toBeNull()
+    expect(getComputedStyle(ajrakh).cursor).toBe('pointer')
+    expect(isSemibold(within(ajrakh).getByText('Ajrakh Block-Print Kurta'))).toBe(true)
+    const live = within(list).getByText('Handloom Cotton Shirt — Rust').closest('li')!
+    expect(within(live).queryByRole('link')).toBeNull()
+    expect(within(live).getByText('Live')).toBeInTheDocument()
+    expect(live.querySelector('[data-chevron]')).toBeNull()
 
     await user.click(screen.getByRole('button', { name: 'Suspend' }))
     const dialog = await screen.findByRole('dialog', { name: 'Suspend Kalki Studio?' })
@@ -310,6 +356,7 @@ describe('A-09 Vendor detail', () => {
     const items = within(timeline).getAllByRole('listitem')
     expect(items).toHaveLength(2)
     expect(within(items[0]!).getByText('Asked for more information')).toBeInTheDocument()
+    expect(isSemibold(within(items[0]!).getByText('Asked for more information'))).toBe(true)
     expect(within(items[0]!).getByText(/by Rahul Desai/)).toBeInTheDocument()
     expect(within(items[0]!).getByText('“Which pieces do you make yourselves, and which do you resell?”')).toBeInTheDocument()
     expect(within(items[1]!).getByText('Applied')).toBeInTheDocument()

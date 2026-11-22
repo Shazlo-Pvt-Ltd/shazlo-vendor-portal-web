@@ -1,8 +1,8 @@
 import { Box, ButtonBase, Stack, Typography } from '@mui/material'
-import { neutral, StatusPill } from '@shazlo/ui'
-import { ChevronRight } from 'lucide-react'
+import { emphasis, neutral, StatusPill } from '@shazlo/ui'
 import type { components } from '../../../api/schema'
 import { CardList, ListCard, stretchSx } from '../../../components/CardList'
+import { RowChevron } from '../../../components/rows'
 import { publishingCopy } from '../../../copy/publishing'
 import { formatCount, formatRelative } from '../../../lib/format'
 import { outboxPill } from '../../../lib/status'
@@ -17,7 +17,7 @@ const DASH = '—'
 function Fact({ term, value, numeric = false }: { term: string; value: string; numeric?: boolean }) {
   return (
     <Box sx={{ minWidth: 0 }}>
-      <Typography component="dt" variant="caption" color="text.secondary">
+      <Typography component="dt" variant="caption" color="textSecondary">
         {term}
       </Typography>
       <Typography component="dd" variant="body2" sx={{ m: 0, ...(numeric ? { fontVariantNumeric: 'tabular-nums' } : null) }}>
@@ -38,21 +38,21 @@ function EventCard({ event, selected, onSelect }: { event: OutboxEvent; selected
             onClick={() => onSelect(event)}
             aria-haspopup="dialog"
             aria-current={selected || undefined}
-            sx={{ ...stretchSx, display: 'block', textAlign: 'left', typography: 'body1', color: neutral.ink, overflowWrap: 'break-word', maxWidth: '100%' }}
+            sx={{ ...stretchSx, typography: 'body1', ...emphasis.semibold, display: 'block', textAlign: 'left', color: neutral.ink, overflowWrap: 'break-word', maxWidth: '100%' }}
           >
             {event.subject}
           </ButtonBase>
-          <Typography variant="mono" component="div" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+          <Typography variant="mono" component="div" color="textSecondary" sx={{ overflowWrap: 'anywhere' }}>
             {event.event}
           </Typography>
         </Box>
-        <Box component="span" aria-hidden="true" sx={{ color: neutral.inkTertiary, display: 'flex', pt: 0.25 }}>
-          <ChevronRight size={18} strokeWidth={1.5} />
+        <Box sx={{ display: 'flex', flexShrink: 0 }}>
+          <RowChevron />
         </Box>
       </Stack>
       <Stack direction="row" useFlexGap sx={{ mt: 1.25, gap: 1, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
         <StatusPill status={pill.status} label={pill.label} />
-        <Typography variant="body2" color="text.secondary" component="span" sx={{ overflowWrap: 'break-word', minWidth: 0 }}>
+        <Typography variant="body2" color="textSecondary" component="span" sx={{ overflowWrap: 'break-word', minWidth: 0 }}>
           {event.vendor.name}
         </Typography>
       </Stack>

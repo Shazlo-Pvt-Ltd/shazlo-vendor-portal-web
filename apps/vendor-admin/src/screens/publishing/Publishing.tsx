@@ -1,26 +1,25 @@
 import { Box, Button, Dialog, Skeleton, Stack, Tab, Tabs, Typography } from '@mui/material'
-import { Banner, brand, EmptyState, neutral, PageHeader, StatFigure } from '@shazlo/ui'
+import { Banner, EmptyState, PageHeader, StatFigure } from '@shazlo/ui'
 import { RefreshCw } from 'lucide-react'
 import { useId, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router'
 import { useOutbox, useRetryEvent, useRetryFailed, useSummary } from '../../api/queries'
 import type { components } from '../../api/schema'
+import { TabLabel, tabSx, tabsSx } from '../../components/tabs'
 import { publishingCopy as copy } from '../../copy/publishing'
 import { formatCount } from '../../lib/format'
 import { phoneFullWidth, scrollingTabs, statGrid, useCompact, usePhone } from '../../lib/responsive'
+import { isOutboxStatus } from '../../lib/status'
 import { useModuleTitle, useRuntime } from '../../runtime/runtime'
 import { EventCards } from './parts/EventCards'
 import { EventDetails } from './parts/EventDetails'
 import { EventsTable } from './parts/EventsTable'
 
 type OutboxEvent = components['schemas']['OutboxEvent']
-type OutboxStatus = components['schemas']['OutboxStatus']
 type Counts = components['schemas']['OutboxPage']['counts']
 type TabKey = (typeof copy.tabs)[number]['key']
 
-const STATUSES: OutboxStatus[] = ['waiting', 'retrying', 'failed', 'delivered']
-const isStatus = (value: string | null): value is OutboxStatus => STATUSES.includes(value as OutboxStatus)
-const icon = { size: 18, strokeWidth: 1.5, 'aria-hidden': true } as const
+const icon = { size: 18, strokeWidth: 1.75, 'aria-hidden': true } as const
 const message = (error: unknown) => (error instanceof Error ? error.message : '')
 
 function StatusTabs({ value, counts, onChange }: { value: TabKey; counts: Counts | undefined; onChange: (key: TabKey) => void }) {
@@ -31,27 +30,10 @@ function StatusTabs({ value, counts, onChange }: { value: TabKey; counts: Counts
       {...scrollingTabs}
       aria-label={copy.tabsLabel}
       textColor="inherit"
-      sx={{ borderBottom: `1px solid ${neutral.line}`, minHeight: 44, '& .MuiTabs-indicator': { bgcolor: brand.brown } }}
+      sx={tabsSx}
     >
       {copy.tabs.map((tab) => (
-        <Tab
-          key={tab.key}
-          value={tab.key}
-          sx={{ minHeight: 44, px: 2, color: 'text.secondary', '&.Mui-selected': { color: neutral.ink } }}
-          label={
-            <span>
-              {tab.label}
-              {counts && (
-                <>
-                  {' '}
-                  <Box component="span" sx={{ color: 'text.secondary', fontVariantNumeric: 'tabular-nums', ml: 0.25 }}>
-                    {formatCount(counts[tab.key])}
-                  </Box>
-                </>
-              )}
-            </span>
-          }
-        />
+        <Tab key={tab.key} value={tab.key} sx={tabSx} label={<TabLabel text={tab.label} count={counts?.[tab.key]} />} />
       ))}
     </Tabs>
   )
@@ -81,7 +63,7 @@ function RetryAll({ failed, pending, onRetry }: { failed: number | undefined; pe
         {pending ? copy.retryAllRunning : copy.retryAll(failed ?? 0)}
       </Button>
       {none && (
-        <Typography id={reasonId} variant="caption" color="text.secondary">
+        <Typography id={reasonId} variant="caption" color="textSecondary">
           {copy.nothingFailed}
         </Typography>
       )}
@@ -95,8 +77,9 @@ export default function Publishing() {
   const compact = useCompact()
   const phone = usePhone()
   const [search, setSearch] = useSearchParams()
+  // The filter comes from the link (Shazlo One's home deep-links each status) or a tab.
   const statusParam = search.get('status')
-  const status = isStatus(statusParam) ? statusParam : undefined
+  const status = isOutboxStatus(statusParam) ? statusParam : undefined
   const selectedId = search.get('event')
 
   const query = useOutbox(status)

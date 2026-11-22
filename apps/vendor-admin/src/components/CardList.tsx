@@ -1,7 +1,8 @@
 import { Box, Card, LinearProgress, Skeleton, Stack } from '@mui/material'
 import { alpha } from '@mui/material/styles'
-import { brand, neutral } from '@shazlo/ui'
+import { brand } from '@shazlo/ui'
 import type { ReactNode } from 'react'
+import { focusRing } from './rows'
 
 const SKELETON_CARDS = 4
 
@@ -36,7 +37,8 @@ export function CardList({ label, loading, fetching, updatingLabel, children }: 
   )
 }
 
-// One card. Hover tints it; a keyboard focus on its main link rings the whole card.
+// One card, pressable as a whole: a pointer and a tint on hover (the chevron darkens), and a
+// keyboard focus on its main link rings the whole card.
 export function ListCard({ selected = false, item, children }: { selected?: boolean; item?: string; children: ReactNode }) {
   return (
     <Card
@@ -46,9 +48,13 @@ export function ListCard({ selected = false, item, children }: { selected?: bool
         position: 'relative',
         p: 2,
         minWidth: 0,
+        cursor: 'pointer',
         bgcolor: selected ? alpha(brand.cream, 0.55) : undefined,
-        '@media (hover: hover)': { '&:hover': { bgcolor: selected ? alpha(brand.cream, 0.55) : alpha(brand.cream, 0.25) } },
-        '&:has([data-stretch]:focus-visible)': { outline: `2px solid ${neutral.inkSecondary}`, outlineOffset: 2 },
+        '@media (hover: hover)': {
+          '&:hover': { bgcolor: selected ? alpha(brand.cream, 0.55) : 'action.hover' },
+          '&:hover [data-chevron]': { color: 'text.primary' },
+        },
+        '&:has([data-stretch]:focus-visible)': { ...focusRing, outlineOffset: 2 },
       }}
     >
       {children}

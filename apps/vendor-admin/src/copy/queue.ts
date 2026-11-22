@@ -67,9 +67,6 @@ export const queueCopy = {
     submitted: 'Submitted',
     waiting: 'Waiting',
     type: 'Type',
-    actions: 'Actions',
-    review: 'Review',
-    reviewLabel: (title: string) => `Review ${title}`,
     overADay: 'Waiting over a day',
   },
 

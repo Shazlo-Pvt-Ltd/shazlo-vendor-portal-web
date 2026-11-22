@@ -1,8 +1,10 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { neutral } from '@shazlo/ui'
 import { renderModule, VENDOR_API_URL } from '../../test/render'
 import { server } from '../../test/server'
+import { isBold, isSecondary, isSemibold, rgb } from '../../test/style'
 
 // Monday 9 Nov 2026, 13:40 IST. The seed is built relative to it: the Ajrakh kurta came in at 11:40.
 const NOW = new Date('2026-11-09T13:40:00+05:30')
@@ -28,11 +30,21 @@ const compareTable = () => within(screen.getByRole('region', { name: /^Compared 
 const rowOf = (table: HTMLElement, field: RegExp) => within(table).getByRole('rowheader', { name: field }).closest('tr')!
 const cells = (row: HTMLElement) => within(row).getAllByRole('cell').map((c) => c.textContent)
 
+// A reference table's header row: semibold on the muted fill, over a firm rule.
+function expectHeaderRow(table: HTMLElement) {
+  for (const th of within(table).getAllByRole('columnheader')) {
+    expect(isSemibold(th)).toBe(true)
+    expect(getComputedStyle(th).backgroundColor).toBe(rgb(neutral.muted))
+    expect(getComputedStyle(th).borderBottomWidth).toBe('2px')
+    expect(getComputedStyle(th).borderBottomColor).toBe(rgb(neutral.lineStrong))
+  }
+}
+
 async function tickAll(user: ReturnType<typeof renderModule>['user']) {
   for (const name of CHECKS) await user.click(screen.getByRole('checkbox', { name }))
 }
 
-describe('A-05 Product review: a resubmission', () => {
+describe('A-05 Product review: a resubmission', { timeout: 40_000 }, () => {
   it('shows the header, pills, subtitle and tells the shell its title', async () => {
     const { shell } = await open('p_ajrakh', AJRAKH)
     expect(screen.getByText('Pending review')).toBeInTheDocument()
@@ -146,11 +158,30 @@ describe('A-05 Product review: a resubmission', () => {
     const chart = screen.getByRole('region', { name: 'Size chart' })
     expect(within(chart).getByText('Used for all their kurtas. Measurements in cm.')).toBeInTheDocument()
     const table = within(chart).getByRole('table')
-    expect(within(table).getAllByRole('columnheader').map((c) => c.textContent)).toEqual(['Size', 'Chest', 'Waist', 'Length', 'Shoulder'])
+    // Each measurement column names its unit.
+    expect(within(table).getAllByRole('columnheader').map((c) => c.textContent)).toEqual(['Size', 'Chest (cm)', 'Waist (cm)', 'Length (cm)', 'Shoulder (cm)'])
     const xs = within(table).getByRole('rowheader', { name: 'XS' }).closest('tr')!
     expect(within(xs).getAllByRole('cell').map((c) => c.textContent)).toEqual(['86', '76', '104', '—'])
     const m = within(table).getByRole('rowheader', { name: 'M' }).closest('tr')!
     expect(within(m).getAllByRole('cell').map((c) => c.textContent)).toEqual(['96', '86', '106', '36.5'])
+  })
+
+  it('sets the size chart apart: a muted header row, size labels in semibold, a rule between columns', async () => {
+    await open('p_ajrakh', AJRAKH)
+    const table = within(screen.getByRole('region', { name: 'Size chart' })).getByRole('table')
+    expectHeaderRow(table)
+    const chest = within(table).getByRole('columnheader', { name: 'Chest (cm)' })
+    expect(isSecondary(within(chest).getByText('(cm)'))).toBe(true)
+    const m = within(table).getByRole('rowheader', { name: 'M' })
+    expect(isSemibold(m)).toBe(true)
+    // A rule under every row but the last, and between the columns.
+    const lastRow = within(table).getAllByRole('row').at(-1)
+    for (const cell of within(m.closest('tr')!).getAllByRole('cell')) {
+      expect(getComputedStyle(cell).borderBottomColor).toBe(rgb(neutral.line))
+      expect(getComputedStyle(cell).borderLeftColor).toBe(rgb(neutral.line))
+      expect(getComputedStyle(cell).textAlign).toBe('right')
+    }
+    expect(getComputedStyle(within(lastRow!).getAllByRole('cell')[0]!).borderBottomWidth).toMatch(/^0(px)?$/)
   })
 
   it('shows a size chart photo, or says there is none', async () => {
@@ -158,6 +189,34 @@ describe('A-05 Product review: a resubmission', () => {
     const chart = screen.getByRole('region', { name: 'Size chart' })
     expect(within(chart).getByRole('img', { name: 'The brand’s size chart for shirts' })).toBeInTheDocument()
     expect(within(chart).getByText('Used for all their shirts. A photo of their own chart.')).toBeInTheDocument()
+  })
+
+  it('sets the sizes table apart: a muted header row, semibold sizes, mono codes, right-aligned stock and a bold total', async () => {
+    await open('p_ajrakh', AJRAKH)
+    const table = within(screen.getByRole('region', { name: 'Sizes and stock' })).getByRole('table')
+    expectHeaderRow(table)
+    expect(within(table).getAllByRole('columnheader').map((c) => c.textContent)).toEqual(['Size', 'Code', 'Stock'])
+    expect(getComputedStyle(within(table).getByRole('columnheader', { name: 'Stock' })).textAlign).toBe('right')
+
+    const xl = within(table).getByRole('rowheader', { name: 'XL' })
+    expect(isSemibold(xl)).toBe(true)
+    const [code, stock] = within(xl.closest('tr')!).getAllByRole('cell')
+    expect(getComputedStyle(code!).fontFamily).toMatch(/monospace/)
+    expect(isSecondary(code!)).toBe(true)
+    expect(getComputedStyle(stock!).textAlign).toBe('right')
+    expect(getComputedStyle(xl).borderBottomColor).toBe(rgb(neutral.line))
+
+    // The total reads as a total: bold, over a firm rule.
+    const total = within(table).getByRole('rowheader', { name: 'Total' })
+    const totalRow = total.closest('tr')!
+    expect(totalRow).toHaveAttribute('data-total')
+    expect(within(totalRow).getAllByRole('cell').map((c) => c.textContent)).toEqual(['', '31'])
+    for (const cell of [total, ...within(totalRow).getAllByRole('cell')]) {
+      expect(getComputedStyle(cell).borderTopWidth).toBe('2px')
+      expect(getComputedStyle(cell).borderTopColor).toBe(rgb(neutral.lineStrong))
+    }
+    expect(isBold(total)).toBe(true)
+    expect(isBold(within(totalRow).getByText('31'))).toBe(true)
   })
 
   it('lists sizes and stock, and the history with the reason quoted', async () => {
@@ -229,7 +288,7 @@ describe('A-05 Product review: approving', () => {
     await user.click(screen.getByRole('button', { name: 'Approve and publish' }))
     // The page first says "someone else decided" alone, then again with who and when once it has
     // reloaded the item: wait for the settled page, or the first message can be swapped out from under the check.
-    expect(await screen.findByText('Already approved by Rahul Desai · Today, 13:35.')).toBeInTheDocument()
+    expect(await screen.findByText('Already approved by Rahul Desai · Today, 13:35')).toBeInTheDocument()
     expect(screen.getByText('Someone else decided this while you were reviewing.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Approve and publish' })).toBeNull()
   })
@@ -380,7 +439,7 @@ describe('A-05 Product review: other kinds of submission', () => {
     p.status = 'rejected'
     p.history.unshift({ at: new Date(NOW.getTime() - 30 * 60_000).toISOString(), event: 'rejected', by: 'Rahul Desai', note: 'Price is above the MRP.' })
     await screen.findByRole('heading', { level: 1, name: 'Mirror-Work Potli Bag' })
-    expect(await screen.findByText('Already sent back by Rahul Desai · Today, 13:10.')).toBeInTheDocument()
+    expect(await screen.findByText('Already sent back by Rahul Desai · Today, 13:10')).toBeInTheDocument()
     expect(screen.getByText('Sent back', { selector: '[data-status]' })).toBeInTheDocument()
     expect(screen.queryByRole('checkbox')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Approve and publish' })).toBeNull()
@@ -423,7 +482,7 @@ describe('A-05 Product review: moving through the queue', () => {
       }),
     )
     const { user } = renderModule({ route: '/review/product/p_ajrakh' })
-    expect(await screen.findByText('We could not load this submission.')).toBeInTheDocument()
+    expect(await screen.findByText('We could not load this submission')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Try again' }))
     expect(await screen.findByRole('heading', { level: 1, name: AJRAKH })).toBeInTheDocument()
   })

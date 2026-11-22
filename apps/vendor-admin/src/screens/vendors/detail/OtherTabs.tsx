@@ -1,12 +1,14 @@
 import { Box, Card, Link, Skeleton, Stack, Typography } from '@mui/material'
-import { alpha } from '@mui/material/styles'
-import { brand, EmptyState, neutral, SectionCard, StatusPill, type PillStatus } from '@shazlo/ui'
+import { brand, emphasis, EmptyState, neutral, SectionCard, StatusPill, type PillStatus } from '@shazlo/ui'
+import { History, Store } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link as RouterLink } from 'react-router'
 import { useQueue } from '../../../api/queries'
 import type { components } from '../../../api/schema'
 import { modulePaths } from '../../../app/routes'
+import { CardTitle } from '../../../components/CardTitle'
 import { ProductThumb } from '../../../components/ProductThumb'
+import { focusRing, RowChevron } from '../../../components/rows'
 import { vendorDetailCopy } from '../../../copy/vendors'
 import { formatDate, formatINR, formatStamp } from '../../../lib/format'
 
@@ -23,7 +25,7 @@ function ProductRow({ product }: { product: Product }) {
       <ProductThumb src={product.thumbnail_url} size={40} />
       {/* On a phone the status sits under the title, so the title keeps a readable width. */}
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={{ xs: 0.5, sm: 2 }} sx={{ flex: 1, minWidth: 0, alignItems: { xs: 'flex-start', sm: 'center' } }}>
-        <Typography variant="body1" sx={{ flex: 1, minWidth: 0, overflowWrap: 'break-word', maxWidth: '100%' }}>
+        <Typography variant="body1" sx={{ ...emphasis.semibold, flex: 1, minWidth: 0, overflowWrap: 'break-word', maxWidth: '100%' }}>
           {product.title}
         </Typography>
         <StatusPill status={productPill[product.status] ?? 'draft'} label={copy.products.status[product.status] ?? product.status} />
@@ -31,12 +33,19 @@ function ProductRow({ product }: { product: Product }) {
       <Typography variant="body1" sx={{ width: { xs: 'auto', sm: 96 }, textAlign: 'right', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
         {formatINR(product.price_paise)}
       </Typography>
+      {/* A row that opens ends in a chevron; the others keep its room, so the prices line up. */}
+      <Box sx={{ width: 20, display: 'flex', flexShrink: 0 }}>{pending && <RowChevron />}</Box>
     </Stack>
   )
   return (
     <Box component="li" sx={{ borderTop: `1px solid ${neutral.line}`, '&:first-of-type': { borderTop: 0 } }}>
       {pending ? (
-        <Link component={RouterLink} to={modulePaths.product(product.id)} underline="none" sx={{ display: 'block', color: 'inherit', '@media (hover: hover)': { '&:hover': { bgcolor: alpha(brand.cream, 0.25) } } }}>
+        <Link
+          component={RouterLink}
+          to={modulePaths.product(product.id)}
+          underline="none"
+          sx={{ display: 'block', color: 'inherit', cursor: 'pointer', '@media (hover: hover)': { '&:hover': { bgcolor: 'action.hover' }, '&:hover [data-chevron]': { color: neutral.ink } }, '&:focus-visible': focusRing }}
+        >
           {row}
         </Link>
       ) : (
@@ -71,7 +80,7 @@ export function BrandTab({ vendor }: { vendor: Vendor }) {
   const waiting = queue.data?.items.find((item) => item.kind === 'brand_page' && item.subject_id === vendor.id)
   let draft: ReactNode
   if (queue.isPending) draft = <Skeleton variant="text" width={320} />
-  else if (queue.isError) draft = <Typography variant="body1" color="text.secondary">{copy.brand.error}</Typography>
+  else if (queue.isError) draft = <Typography variant="body1" color="textSecondary">{copy.brand.error}</Typography>
   else if (waiting)
     draft = (
       <Stack spacing={1}>
@@ -83,10 +92,10 @@ export function BrandTab({ vendor }: { vendor: Vendor }) {
         </Box>
       </Stack>
     )
-  else draft = <Typography variant="body1" color="text.secondary">{copy.brand.nothingWaiting}</Typography>
+  else draft = <Typography variant="body1" color="textSecondary">{copy.brand.nothingWaiting}</Typography>
 
   return (
-    <SectionCard title={copy.brand.title}>
+    <SectionCard title={<CardTitle icon={Store}>{copy.brand.title}</CardTitle>}>
       <Stack spacing={2} sx={{ maxWidth: '68ch' }}>
         <Typography variant="body1">{vendor.brand_live ? copy.brand.live : copy.brand.notLive}</Typography>
         {draft}
@@ -98,9 +107,9 @@ export function BrandTab({ vendor }: { vendor: Vendor }) {
 export function ActivityTab({ vendor }: { vendor: Vendor }) {
   const c = copy.activity
   return (
-    <SectionCard title={c.title}>
+    <SectionCard title={<CardTitle icon={History}>{c.title}</CardTitle>}>
       {vendor.history.length === 0 ? (
-        <Typography variant="body1" color="text.secondary">
+        <Typography variant="body1" color="textSecondary">
           {c.empty}
         </Typography>
       ) : (
@@ -112,8 +121,10 @@ export function ActivityTab({ vendor }: { vendor: Vendor }) {
                 {i < vendor.history.length - 1 && <Box sx={{ position: 'absolute', left: 4, top: 17, bottom: -3, width: 2, bgcolor: neutral.line }} />}
               </Box>
               <Box sx={{ minWidth: 0, maxWidth: '68ch' }}>
-                <Typography variant="body1">{c.events[entry.event]}</Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body1" sx={emphasis.semibold}>
+                  {c.events[entry.event]}
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
                   {`${c.by(entry.by)} · `}
                   <Box component="time" dateTime={entry.at}>
                     {formatStamp(entry.at)}

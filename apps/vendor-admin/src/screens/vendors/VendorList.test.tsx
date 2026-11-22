@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { renderModule } from '../../test/render'
 import { server } from '../../test/server'
+import { isSecondary, isSemibold } from '../../test/style'
 
 type Rendered = ReturnType<typeof renderModule>
 type User = Rendered['user']
@@ -33,6 +34,18 @@ async function waitForBrands(expected: string[]) {
 
 function row(t: HTMLElement, brand: string) {
   return within(t).getByRole('link', { name: brand }).closest('tr')!
+}
+
+// The router's location moves before React renders the page it names (route changes render in a
+// transition). Wait for the page itself, so no route change is still pending when the test clicks.
+async function onPage(name: string) {
+  return screen.findByRole('heading', { level: 1, name }, { timeout: 10_000 })
+}
+
+async function backToList(router: Rendered['router']) {
+  await router.navigate('/vendors')
+  await onPage('Vendors')
+  return waitForBrands(ALL)
 }
 
 function params(router: Rendered['router']) {
@@ -72,7 +85,8 @@ const ALL = [
   'Trendz Outlet',
 ]
 
-describe('A-08 Vendors', () => {
+// Screens render the full MUI tree and these tests read computed styles; give a busy machine room.
+describe('A-08 Vendors', { timeout: 40_000 }, () => {
   it('lists the 15 seed vendors with owner, status, since and commission', async () => {
     const { shell } = renderModule({ route: '/vendors' })
     // The first screen in a file compiles on demand; give it room on a busy machine.
@@ -81,7 +95,12 @@ describe('A-08 Vendors', () => {
     expect(await screen.findByText('15 brands · 3 applications waiting')).toBeInTheDocument()
     await waitFor(() => expect(shell.titles()).toContainEqual({ path: '/vendors', title: 'Vendors' }))
 
+    for (const name of ['Brand', 'Owner', 'Sells', 'Live products', 'Status', 'Since', 'Commission']) {
+      expect(isSemibold(within(t).getByRole('columnheader', { name }))).toBe(true)
+    }
     const kalki = row(t, 'Kalki Studio')
+    expect(isSemibold(within(kalki).getByRole('link', { name: 'Kalki Studio' }))).toBe(true)
+    expect(isSecondary(within(kalki).getByText('Ahmedabad, Gujarat'))).toBe(true)
     expect(within(kalki).getByText('Ahmedabad, Gujarat')).toBeInTheDocument()
     expect(within(kalki).getByText('Kiran Shah')).toBeInTheDocument()
     expect(within(kalki).getByText('Women')).toBeInTheDocument()
@@ -95,8 +114,9 @@ describe('A-08 Vendors', () => {
     expect(within(rann).getByText('Applied')).toBeInTheDocument()
     expect(within(rann).getByText('Not set')).toBeInTheDocument()
     expect(within(rann).getByText('Women and men')).toBeInTheDocument()
-    expect(within(rann).getByRole('link', { name: "Review Rann Weaves's application" })).toBeInTheDocument()
-    expect(within(rann).queryByRole('button', { name: /Actions for/ })).not.toBeInTheDocument()
+    // An application is opened from its row like any vendor; it has no row menu.
+    expect(within(rann).getAllByRole('link').map((l) => l.textContent)).toEqual(['Rann Weaves'])
+    expect(within(rann).queryByRole('button')).not.toBeInTheDocument()
     expect(within(row(t, 'Kaaya Ethnic')).getByText('More info asked')).toBeInTheDocument()
     expect(within(row(t, 'QuickFashion Hub')).getByText('Rejected')).toBeInTheDocument()
     expect(within(row(t, 'Trendz Outlet')).getByText('Suspended')).toBeInTheDocument()
@@ -185,17 +205,52 @@ describe('A-08 Vendors', () => {
     expect(screen.getByRole('tab', { name: 'Approved 10' })).toHaveAttribute('aria-selected', 'true')
   })
 
-  it('opens the vendor when a row is clicked, and applications through Review', async () => {
+  it('makes each whole row one link to the vendor, cued by a chevron, with the menu above it', async () => {
+    renderModule({ route: '/vendors' })
+    const t = await waitForBrands(ALL)
+    for (const r of rows(t)) {
+      const links = within(r).getAllByRole('link')
+      expect(links).toHaveLength(1)
+      expect(links[0]).toHaveAttribute('data-stretch')
+      expect(getComputedStyle(r).position).toBe('relative')
+      expect(getComputedStyle(r).cursor).toBe('pointer')
+      expect(r.querySelector('[data-chevron]')!.closest('[aria-hidden="true"]')).not.toBeNull()
+    }
+    expect(within(t).getAllByRole('columnheader').map((c) => c.textContent)).toEqual(['Brand', 'Owner', 'Sells', 'Live products', 'Status', 'Since', 'Commission', 'Actions'])
+    // The row menu is a separate control beside the link, never inside it, and sits above its cover.
+    const menu = within(row(t, 'Kalki Studio')).getByRole('button', { name: 'Actions for Kalki Studio' })
+    expect(menu.closest('a')).toBeNull()
+    expect(getComputedStyle(menu).position).toBe('relative')
+    expect(getComputedStyle(menu).zIndex).toBe('1')
+  })
+
+  it('opens the vendor from its row, its link or the keyboard, and applications the same way', async () => {
     const { user, router } = renderModule({ route: '/vendors' })
     const t = await waitForBrands(ALL)
     await user.click(within(row(t, 'Kalki Studio')).getByText('Kiran Shah'))
-    await waitFor(() => expect(router.state.location.pathname).toBe('/vendors/v_kalki'))
-    expect(await screen.findByRole('heading', { level: 1, name: 'Kalki Studio' })).toBeInTheDocument()
+    await onPage('Kalki Studio')
+    expect(router.state.location.pathname).toBe('/vendors/v_kalki')
 
-    await router.navigate('/vendors')
-    const again = await waitForBrands(ALL)
-    await user.click(within(row(again, 'Rann Weaves')).getByRole('link', { name: "Review Rann Weaves's application" }))
-    await waitFor(() => expect(router.state.location.pathname).toBe('/vendors/v_rann'))
+    const again = await backToList(router)
+    await user.click(within(row(again, 'Rann Weaves')).getByRole('link', { name: 'Rann Weaves' }))
+    await onPage('Rann Weaves')
+    expect(router.state.location.pathname).toBe('/vendors/v_rann')
+
+    const third = await backToList(router)
+    within(third).getByRole('link', { name: 'Saanjh Label' }).focus()
+    await user.keyboard('{Enter}')
+    await onPage('Saanjh Label')
+    expect(router.state.location.pathname).toBe('/vendors/v_saanjh')
+  })
+
+  it('opens the row menu without opening the vendor', async () => {
+    const { user, router } = renderModule({ route: '/vendors' })
+    const t = await waitForBrands(ALL)
+    await user.click(within(row(t, 'Kalki Studio')).getByRole('button', { name: 'Actions for Kalki Studio' }))
+    expect(await screen.findByRole('menuitem', { name: 'Suspend' })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/vendors')
+    await user.click(screen.getByRole('menuitem', { name: 'Open' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/vendors/v_kalki'))
   })
 
   it('suspends an approved vendor with a reason', async () => {

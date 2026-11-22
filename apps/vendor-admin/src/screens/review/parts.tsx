@@ -1,10 +1,11 @@
 import { Box, Button, Card, IconButton, Link, Skeleton, Stack, Tooltip, Typography } from '@mui/material'
 import { Banner, brand, EmptyState, neutral, radius, SectionCard } from '@shazlo/ui'
-import { ArrowLeft, ChevronLeft, ChevronRight, Info } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight, History as HistoryIcon, Info } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link as RouterLink } from 'react-router'
 import type { components } from '../../api/schema'
 import { modulePaths } from '../../app/routes'
+import { CardTitle } from '../../components/CardTitle'
 import { reviewCopy as copy } from '../../copy/review'
 import { formatStamp } from '../../lib/format'
 import { touchIcon } from '../../lib/responsive'
@@ -69,12 +70,12 @@ export function QueueNav({ prevId, nextId }: { prevId: string | null; nextId: st
   return (
     <Stack component="nav" aria-label={copy.nav.back} direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 2, gap: 2 }}>
       <Link component={RouterLink} to={modulePaths.queue} underline="hover" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75, color: neutral.inkSecondary, typography: 'body2', minHeight: { xs: 44, md: 36 } }}>
-        <ArrowLeft size={16} strokeWidth={1.5} aria-hidden="true" />
+        <ArrowLeft size={18} strokeWidth={1.75} aria-hidden="true" />
         {copy.nav.back}
       </Link>
       <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
-        <NavButton id={prevId} label={copy.nav.prev} empty={copy.nav.noPrev} icon={<ChevronLeft size={18} strokeWidth={1.5} aria-hidden="true" />} />
-        <NavButton id={nextId} label={copy.nav.next} empty={copy.nav.noNext} icon={<ChevronRight size={18} strokeWidth={1.5} aria-hidden="true" />} />
+        <NavButton id={prevId} label={copy.nav.prev} empty={copy.nav.noPrev} icon={<ChevronLeft size={20} strokeWidth={1.75} aria-hidden="true" />} />
+        <NavButton id={nextId} label={copy.nav.next} empty={copy.nav.noNext} icon={<ChevronRight size={20} strokeWidth={1.75} aria-hidden="true" />} />
       </Stack>
     </Stack>
   )
@@ -98,7 +99,7 @@ export function Quote({ children }: { children: ReactNode }) {
   return (
     <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', mt: 1, px: 1.5, py: 1.25, bgcolor: brand.cream, borderRadius: `${radius.card}px` }}>
       <Box component="span" sx={{ color: brand.brown, display: 'flex', pt: '2px', flexShrink: 0 }}>
-        <Info size={16} strokeWidth={1.5} aria-hidden="true" />
+        <Info size={16} strokeWidth={1.75} aria-hidden="true" />
       </Box>
       <Typography component="blockquote" variant="body2" sx={{ m: 0, overflowWrap: 'anywhere' }}>
         {children}
@@ -110,9 +111,9 @@ export function Quote({ children }: { children: ReactNode }) {
 export function HistoryCard({ history }: { history: History }) {
   const events = newestFirst(history)
   return (
-    <SectionCard title={copy.history.title}>
+    <SectionCard title={<CardTitle icon={HistoryIcon}>{copy.history.title}</CardTitle>}>
       {events.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {copy.history.empty}
         </Typography>
       ) : (
@@ -123,7 +124,7 @@ export function HistoryCard({ history }: { history: History }) {
               <Box aria-hidden="true" sx={{ position: 'absolute', left: 3, top: 7, width: 7, height: 7, borderRadius: '50%', bgcolor: i === 0 ? brand.brown : neutral.lineStrong }} />
               {i < events.length - 1 && <Box aria-hidden="true" sx={{ position: 'absolute', left: 6, top: 18, bottom: 2, width: '1px', bgcolor: neutral.line }} />}
               <Typography variant="body2">
-                {copy.history.event[e.event]} {e.by}
+                {copy.history.event[e.event]} <b>{e.by}</b>
                 <Box component="span" sx={{ color: neutral.inkSecondary }}>
                   {' · '}
                   {formatStamp(e.at)}

@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { renderModule } from '../../test/render'
 import { server } from '../../test/server'
+import { isSecondary, isSemibold } from '../../test/style'
 
 type Rendered = ReturnType<typeof renderModule>
 type Router = Rendered['router']
@@ -37,8 +38,9 @@ function rows(table: HTMLElement) {
   return within(table).getAllByRole('row').slice(1)
 }
 
+// Each row is one link, named after its item.
 function titles(table: HTMLElement) {
-  return rows(table).map((r) => within(r).getByRole('button', { name: /^Review / }).getAttribute('aria-label')!.replace(/^Review /, ''))
+  return rows(table).map((r) => within(r).getByRole('link').textContent)
 }
 
 async function waitForTitles(expected: string[]) {
@@ -50,8 +52,22 @@ async function waitForTitles(expected: string[]) {
   return table
 }
 
+// The router's location moves before React renders the page it names (route changes render in a
+// transition). Wait for the page itself, so no route change is still pending when the test clicks:
+// a pending commit would replace the queue under the click.
+async function onPage(name: string) {
+  return screen.findByRole('heading', { level: 1, name }, { timeout: 10_000 })
+}
+
+async function backToQueue(router: Router) {
+  await router.navigate(-1)
+  await onPage('Review queue')
+  expect(router.state.location.pathname).toBe('/queue')
+  return waitForTitles(OLDEST_FIRST)
+}
+
 function row(table: HTMLElement, title: string) {
-  return within(table).getByRole('button', { name: `Review ${title}` }).closest('tr')!
+  return within(table).getByRole('link', { name: title }).closest('tr')!
 }
 
 function params(router: Router) {
@@ -100,11 +116,16 @@ describe('A-04 Review queue', { timeout: 40_000 }, () => {
     expect(within(tabs).getAllByRole('tab').map((t) => t.textContent)).toEqual(['All 14', 'Products 9', 'Brand pages 2', 'Vendor applications 3'])
 
     const table = await waitForTitles(OLDEST_FIRST)
+    // Column headings in semibold; the chevron column is hidden from screen readers.
+    expect(within(table).getAllByRole('columnheader').map((c) => c.textContent)).toEqual(['Item', 'Vendor', 'Submitted', 'Waiting', 'Type'])
     for (const name of ['Item', 'Vendor', 'Submitted', 'Waiting', 'Type']) {
-      expect(within(table).getByRole('columnheader', { name })).toBeInTheDocument()
+      expect(isSemibold(within(table).getByRole('columnheader', { name }))).toBe(true)
     }
 
     const ajrakh = row(table, 'Ajrakh Block-Print Kurta')
+    // The title in semibold; the code under it regular, in the secondary ink.
+    expect(isSemibold(within(ajrakh).getByRole('link', { name: 'Ajrakh Block-Print Kurta' }))).toBe(true)
+    expect(isSecondary(within(ajrakh).getByText('KS-AJR-014'))).toBe(true)
     expect(within(ajrakh).getByText('KS-AJR-014')).toBeInTheDocument()
     expect(within(ajrakh).getByText('Kalki Studio')).toBeInTheDocument()
     expect(within(ajrakh).getByText(/^(Today|Yesterday), \d\d:\d\d$/)).toBeInTheDocument()
@@ -122,8 +143,38 @@ describe('A-04 Review queue', { timeout: 40_000 }, () => {
     expect(within(row(table, 'Mirror-Work Potli Bag')).getByText('New product')).toBeInTheDocument()
     const kaaya = row(table, 'Kaaya Ethnic')
     expect(within(kaaya).getByText('Application')).toBeInTheDocument()
-    expect(within(kaaya).getByText('Vendor application · Hyderabad, Telangana')).toBeInTheDocument()
+    expect(isSecondary(within(kaaya).getByText('Vendor application · Hyderabad, Telangana'))).toBe(true)
     expect(within(kaaya).getByText('KE')).toBeInTheDocument()
+  })
+
+  it('makes each whole row one link to its item, cued by a chevron', async () => {
+    renderModule({ route: '/queue' })
+    const table = await waitForTitles(OLDEST_FIRST)
+    for (const r of rows(table)) {
+      // One link and nothing else to press: no Review button beside it, nothing nested.
+      expect(within(r).getAllByRole('link')).toHaveLength(1)
+      expect(within(r).queryByRole('button')).toBeNull()
+      // The link's cover spans the row, which shows a pointer and holds a decorative chevron.
+      expect(within(r).getByRole('link')).toHaveAttribute('data-stretch')
+      expect(getComputedStyle(r).position).toBe('relative')
+      expect(getComputedStyle(r).cursor).toBe('pointer')
+      expect(r.querySelector('[data-chevron]')!.closest('[aria-hidden="true"]')).not.toBeNull()
+    }
+    expect(within(table).getByRole('link', { name: 'Ajrakh Block-Print Kurta' })).toHaveAttribute('href', '/review/product/p_ajrakh')
+    expect(within(table).getByRole('link', { name: 'Nila Handloom brand page' })).toHaveAttribute('href', '/review/brand/v_nila')
+    expect(within(table).getByRole('link', { name: 'Kaaya Ethnic' })).toHaveAttribute('href', '/vendors/v_kaaya')
+  })
+
+  it('opens an item from the keyboard: Tab reaches each title link, Enter opens it', async () => {
+    const { user, router } = renderModule({ route: '/queue' })
+    const table = await waitForTitles(OLDEST_FIRST)
+    const first = within(table).getByRole('link', { name: 'Kaaya Ethnic' })
+    first.focus()
+    await user.tab()
+    // The next stop is the next row's link: no Review button in between.
+    expect(within(table).getByRole('link', { name: 'Rann Weaves' })).toHaveFocus()
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(router.state.location.pathname).toBe('/vendors/v_rann'))
   })
 
   it('points to the commission rates brands proposed, which are decided on the vendor', async () => {
@@ -219,19 +270,22 @@ describe('A-04 Review queue', { timeout: 40_000 }, () => {
     const { user, router } = renderModule({ route: '/queue' })
     const table = await waitForTitles(OLDEST_FIRST)
 
-    // The whole row opens the item.
+    // A click anywhere on the row opens the item (jsdom draws no cover, so this is the fallback).
     await user.click(within(row(table, 'Ajrakh Block-Print Kurta')).getByText('Kalki Studio'))
-    await waitFor(() => expect(router.state.location.pathname).toBe('/review/product/p_ajrakh'))
+    await onPage('Ajrakh Block-Print Kurta')
+    expect(router.state.location.pathname).toBe('/review/product/p_ajrakh')
+    expect(router.state.historyAction).toBe('PUSH')
+    const again = await backToQueue(router)
 
-    await router.navigate('/queue')
-    const again = await waitForTitles(OLDEST_FIRST)
-    await user.click(within(again).getByRole('button', { name: 'Review Nila Handloom brand page' }))
-    await waitFor(() => expect(router.state.location.pathname).toBe('/review/brand/v_nila'))
+    await user.click(within(again).getByRole('link', { name: 'Nila Handloom brand page' }))
+    await onPage('Nila Handloom · brand page')
+    expect(router.state.location.pathname).toBe('/review/brand/v_nila')
+    // One click, one history entry: back returns to the queue.
+    const third = await backToQueue(router)
 
-    await router.navigate('/queue')
-    const third = await waitForTitles(OLDEST_FIRST)
-    await user.click(within(third).getByRole('button', { name: 'Review Kaaya Ethnic' }))
-    await waitFor(() => expect(router.state.location.pathname).toBe('/vendors/v_kaaya'))
+    await user.click(within(third).getByRole('link', { name: 'Kaaya Ethnic' }))
+    await onPage('Kaaya Ethnic')
+    expect(router.state.location.pathname).toBe('/vendors/v_kaaya')
   })
 
   it('exports the listed rows as a CSV file', async () => {

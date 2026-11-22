@@ -20,6 +20,11 @@ export const outboxPill: Record<S['OutboxStatus'], Pill> = {
   delivered: { status: 'live', label: 'Delivered' },
 }
 
+// The publishing page's filter in its link (?status=…), in tab order. Shazlo One's home links to
+// /vendors/publishing?status=<one of these>; anything else shows every event.
+export const OUTBOX_STATUSES: readonly S['OutboxStatus'][] = ['waiting', 'retrying', 'failed', 'delivered']
+export const isOutboxStatus = (value: string | null): value is S['OutboxStatus'] => (OUTBOX_STATUSES as readonly (string | null)[]).includes(value)
+
 export function queuePill(item: Pick<S['QueueItem'], 'kind' | 'change' | 'resubmission'>): Pill {
   if (item.kind === 'application') return { status: 'pending', label: 'Application' }
   if (item.resubmission > 0) return { status: 'sentBack', label: `Resubmission #${item.resubmission}` }

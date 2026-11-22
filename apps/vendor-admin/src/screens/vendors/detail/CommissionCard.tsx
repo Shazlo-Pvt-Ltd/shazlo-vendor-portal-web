@@ -2,12 +2,14 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { Box, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, InputAdornment, Stack, TextField, Typography, useMediaQuery } from '@mui/material'
 import type { Theme } from '@mui/material/styles'
 import { fontFamily, SectionCard, StatusPill } from '@shazlo/ui'
+import { Percent } from 'lucide-react'
 import { useEffect, useId, useState, type ReactNode } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { ApiError } from '../../../api/http'
 import { useCommissionAction } from '../../../api/queries'
 import type { components } from '../../../api/schema'
+import { CardTitle } from '../../../components/CardTitle'
 import { vendorActionsCopy, vendorDetailCopy } from '../../../copy/vendors'
 import { formatRate, rateField, rateText, toBps } from '../../../lib/commission'
 import { formatDate } from '../../../lib/format'
@@ -29,7 +31,7 @@ function Rate({ bps }: { bps: number }) {
       <Typography variant="stat" component="p" sx={{ ...tabular, fontFamily: fontFamily.display }}>
         {formatRate(bps)}
       </Typography>
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="textSecondary">
         {copy.ofEachSale}
       </Typography>
     </Box>
@@ -172,11 +174,11 @@ export function CommissionCard({ vendor, primary, onDone, onFailed }: Props) {
     body = (
       <>
         <Typography variant="body1">{copy.proposed(name, formatRate(proposed))}</Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {now}
         </Typography>
         {c.updated_at && (
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" color="textSecondary">
             {copy.proposedOn(formatDate(c.updated_at))}
           </Typography>
         )}
@@ -201,17 +203,17 @@ export function CommissionCard({ vendor, primary, onDone, onFailed }: Props) {
       <>
         <Typography variant="body1">{copy.sentBack}</Typography>
         {proposed != null && (
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             {copy.theyProposed(formatRate(proposed))}
           </Typography>
         )}
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {now}
         </Typography>
         {c.note && (
           <Box>
             {c.updated_at && (
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" color="textSecondary">
                 {copy.yourNote(formatDate(c.updated_at))}
               </Typography>
             )}
@@ -230,13 +232,13 @@ export function CommissionCard({ vendor, primary, onDone, onFailed }: Props) {
       <>
         <Rate bps={agreed} />
         {c.updated_at && (
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" color="textSecondary">
             {copy.since(formatDate(c.updated_at))}
           </Typography>
         )}
         {c.note && (
           <Box>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" color="textSecondary">
               {copy.agreedNote}
             </Typography>
             <Quote>{c.note}</Quote>
@@ -259,7 +261,7 @@ export function CommissionCard({ vendor, primary, onDone, onFailed }: Props) {
   }
 
   return (
-    <SectionCard title={copy.title} action={pill}>
+    <SectionCard title={<CardTitle icon={Percent}>{copy.title}</CardTitle>} action={pill}>
       <Stack spacing={1} sx={{ maxWidth: '68ch' }}>
         {body}
       </Stack>

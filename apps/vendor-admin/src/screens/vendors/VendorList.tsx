@@ -1,13 +1,13 @@
-import { Box, Button, Menu, MenuItem, Skeleton, Stack, Tab, Tabs } from '@mui/material'
-import { Banner, brand, EmptyState, neutral, PageHeader } from '@shazlo/ui'
+import { Button, Menu, MenuItem, Skeleton, Stack, Tab, Tabs } from '@mui/material'
+import { Banner, EmptyState, PageHeader } from '@shazlo/ui'
 import { Download } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useVendors } from '../../api/queries'
 import type { components } from '../../api/schema'
 import { modulePaths } from '../../app/routes'
+import { TabLabel, tabSx, tabsSx } from '../../components/tabs'
 import { vendorActionsCopy, vendorsCopy as copy, vendorTabs } from '../../copy/vendors'
-import { formatCount } from '../../lib/format'
 import { phoneFullWidth, scrollingTabs, useCompact } from '../../lib/responsive'
 import { useModuleTitle, useRuntime } from '../../runtime/runtime'
 import { VendorActionDialog, type DialogKind } from './dialogs'
@@ -21,7 +21,7 @@ type S = components['schemas']
 type Vendor = S['VendorSummary']
 type Counts = S['VendorPage']['counts']
 
-const icon = { size: 18, strokeWidth: 1.5, 'aria-hidden': true } as const
+const icon = { size: 18, strokeWidth: 1.75, 'aria-hidden': true } as const
 
 function StatusTabs({ value, counts, onChange }: { value: string; counts: Counts | undefined; onChange: (key: string) => void }) {
   return (
@@ -31,27 +31,10 @@ function StatusTabs({ value, counts, onChange }: { value: string; counts: Counts
       {...scrollingTabs}
       aria-label={copy.tabsLabel}
       textColor="inherit"
-      sx={{ borderBottom: `1px solid ${neutral.line}`, minHeight: 44, '& .MuiTabs-indicator': { bgcolor: brand.brown } }}
+      sx={tabsSx}
     >
       {vendorTabs.map((tab) => (
-        <Tab
-          key={tab.key}
-          value={tab.key}
-          sx={{ minHeight: 44, px: 2, color: 'text.secondary', '&.Mui-selected': { color: neutral.ink } }}
-          label={
-            <span>
-              {tab.label}
-              {counts && (
-                <>
-                  {' '}
-                  <Box component="span" sx={{ color: 'text.secondary', fontVariantNumeric: 'tabular-nums', ml: 0.25 }}>
-                    {formatCount(counts[tab.key])}
-                  </Box>
-                </>
-              )}
-            </span>
-          }
-        />
+        <Tab key={tab.key} value={tab.key} sx={tabSx} label={<TabLabel text={tab.label} count={counts?.[tab.key]} />} />
       ))}
     </Tabs>
   )

@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { renderModule } from '../test/render'
+import { isSecondary, isSemibold } from '../test/style'
 import { setViewport } from '../test/viewport'
 
 // On a phone the lists are cards: one list item per row, the same facts, and a link (or button)
@@ -16,6 +17,17 @@ async function cardList(name: string) {
 
 const card = (list: HTMLElement, name: string) => within(list).getByRole('link', { name }).closest('li')!
 
+// A card is pressable as a whole: its one main link covers it, a chevron says it opens, and the
+// pointer shows over all of it.
+function expectWholeCardLink(item: HTMLElement) {
+  const link = item.querySelector('a[data-stretch]')!
+  expect(link).not.toBeNull()
+  expect(isSemibold(link)).toBe(true)
+  expect(getComputedStyle(item).cursor).toBe('pointer')
+  expect(getComputedStyle(item).position).toBe('relative')
+  expect(item.querySelector('[data-chevron]')!.closest('[aria-hidden="true"]')).not.toBeNull()
+}
+
 describe('Phone layout', { timeout: 40_000 }, () => {
   it('shows the review queue as cards that open the item', async () => {
     const { user, router } = renderModule({ route: '/queue' })
@@ -23,9 +35,16 @@ describe('Phone layout', { timeout: 40_000 }, () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
     await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(14))
 
+    for (const item of within(list).getAllByRole('listitem')) {
+      expectWholeCardLink(item)
+      expect(within(item).getAllByRole('link')).toHaveLength(1)
+      expect(within(item).queryByRole('button')).toBeNull()
+    }
     const ajrakh = card(list, 'Ajrakh Block-Print Kurta')
     expect(within(ajrakh).getByRole('link', { name: 'Ajrakh Block-Print Kurta' })).toHaveAttribute('href', '/review/product/p_ajrakh')
     expect(within(ajrakh).getByText('KS-AJR-014')).toBeInTheDocument()
+    expect(isSecondary(within(ajrakh).getByText('KS-AJR-014'))).toBe(true)
+    expect(isSecondary(within(card(list, 'Kaaya Ethnic')).getByText('Vendor application · Hyderabad, Telangana'))).toBe(true)
     expect(within(ajrakh).getByText('Kalki Studio')).toBeInTheDocument()
     expect(within(ajrakh).getByText('Resubmission #1')).toBeInTheDocument()
     expect(within(ajrakh).getByText('2 h')).toBeInTheDocument()
@@ -47,8 +66,13 @@ describe('Phone layout', { timeout: 40_000 }, () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
     await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(15))
 
+    for (const item of within(list).getAllByRole('listitem')) expectWholeCardLink(item)
     const kalki = card(list, 'Kalki Studio')
     expect(within(kalki).getByRole('link', { name: 'Kalki Studio' })).toHaveAttribute('href', '/vendors/v_kalki')
+    // The menu sits beside the link and above its cover, never inside it.
+    const menu = within(kalki).getByRole('button', { name: 'Actions for Kalki Studio' })
+    expect(menu.closest('a')).toBeNull()
+    expect(getComputedStyle(menu).zIndex).toBe('1')
     expect(within(kalki).getByText('Kiran Shah')).toBeInTheDocument()
     expect(within(kalki).getByText('Approved')).toBeInTheDocument()
     expect(within(kalki).getByText('12%')).toBeInTheDocument()

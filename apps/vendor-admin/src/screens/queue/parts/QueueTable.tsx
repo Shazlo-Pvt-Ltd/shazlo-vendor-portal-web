@@ -1,13 +1,15 @@
-import { Box, Button, Card, LinearProgress, Skeleton, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material'
-import { alpha } from '@mui/material/styles'
-import { brand, neutral, radius, status, statusBackground, StatusPill } from '@shazlo/ui'
+import { Box, Card, LinearProgress, Link, Skeleton, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material'
+import { emphasis, neutral, radius, status, statusBackground, StatusPill } from '@shazlo/ui'
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
 import { Clock } from 'lucide-react'
-import { useMemo, type MouseEvent } from 'react'
+import { useMemo } from 'react'
+import { Link as RouterLink } from 'react-router'
 import type { components } from '../../../api/schema'
+import { modulePaths } from '../../../app/routes'
+import { stretchSx } from '../../../components/CardList'
 import { ProductThumb } from '../../../components/ProductThumb'
+import { linkRowSx, onRowClick, RowChevron } from '../../../components/rows'
 import { queueCopy } from '../../../copy/queue'
-import { srOnly } from '../../../lib/a11y'
 import { formatStamp } from '../../../lib/format'
 import { formatWait, queuePill } from '../../../lib/status'
 
@@ -25,10 +27,20 @@ const layout: Record<string, { width?: number | string }> = {
   submitted: { width: 140 },
   waiting: { width: 100 },
   type: { width: 190 },
-  actions: { width: 104 },
+  open: { width: 52 },
 }
 
+// The chevron column is a visual cue only; screen readers read the five columns of facts.
+const decorative = (id: string) => id === 'open'
+
 const waitedMs = (iso: string) => Date.now() - Date.parse(iso)
+
+// Where each kind of item is decided.
+export function reviewPath(item: Pick<QueueItem, 'kind' | 'subject_id'>): string {
+  if (item.kind === 'product') return modulePaths.product(item.subject_id)
+  if (item.kind === 'brand_page') return modulePaths.brand(item.subject_id)
+  return modulePaths.vendor(item.subject_id)
+}
 
 // Applications have no photo yet: the brand's initials stand in, shaped like the product thumbs.
 export function Initials({ name }: { name: string }) {
@@ -50,15 +62,16 @@ function ItemCell({ item }: { item: QueueItem }) {
     <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', minWidth: 0 }}>
       {item.kind === 'application' ? <Initials name={item.title} /> : <ProductThumb src={item.thumbnail_url} size={32} />}
       <Box sx={{ minWidth: 0 }}>
-        <Typography variant="body1" component="div" noWrap title={item.title} sx={{ color: neutral.ink }}>
+        {/* The row's one link: its cover (stretchSx) spans the whole row. */}
+        <Link component={RouterLink} to={reviewPath(item)} data-stretch="" underline="none" variant="body1" noWrap title={item.title} sx={{ ...stretchSx, ...emphasis.semibold, display: 'block', color: neutral.ink }}>
           {item.title}
-        </Typography>
+        </Link>
         {item.kind === 'product' ? (
-          <Typography variant="mono" component="div" color="text.secondary" noWrap>
+          <Typography variant="mono" component="div" color="textSecondary" noWrap>
             {item.detail}
           </Typography>
         ) : (
-          <Typography variant="caption" component="div" color="text.secondary" noWrap>
+          <Typography variant="caption" component="div" color="textSecondary" noWrap>
             {item.detail}
           </Typography>
         )}
@@ -108,9 +121,7 @@ function SkeletonRows({ columns }: { columns: number }) {
           <Skeleton variant="text" />
         </TableCell>
       ))}
-      <TableCell>
-        <Skeleton variant="rounded" width={72} height={30} />
-      </TableCell>
+      <TableCell aria-hidden="true" />
     </TableRow>
   ))
 }
@@ -138,7 +149,7 @@ export function QueueTable({ items, fetching, onOpen }: Props) {
         id: 'submitted',
         header: copy.submitted,
         cell: ({ row }) => (
-          <Typography variant="body2" color="text.secondary" component="span" sx={{ whiteSpace: 'nowrap' }}>
+          <Typography variant="body2" color="textSecondary" component="span" sx={{ whiteSpace: 'nowrap' }}>
             {formatStamp(row.original.submitted_at)}
           </Typography>
         ),
@@ -152,25 +163,9 @@ export function QueueTable({ items, fetching, onOpen }: Props) {
           return <StatusPill status={pill.status} label={pill.label} />
         },
       },
-      {
-        id: 'actions',
-        header: () => <Box sx={srOnly}>{copy.actions}</Box>,
-        cell: ({ row }) => (
-          <Button
-            variant="outlined"
-            size="small"
-            aria-label={copy.reviewLabel(row.original.title)}
-            onClick={(event: MouseEvent) => {
-              event.stopPropagation()
-              onOpen(row.original)
-            }}
-          >
-            {copy.review}
-          </Button>
-        ),
-      },
+      { id: 'open', header: () => null, cell: () => <RowChevron /> },
     ],
-    [onOpen],
+    [],
   )
 
   const data = useMemo(() => items ?? [], [items])
@@ -190,7 +185,11 @@ export function QueueTable({ items, fetching, onOpen }: Props) {
             {table.getHeaderGroups().map((group) => (
               <TableRow key={group.id}>
                 {group.headers.map((header) => (
-                  <TableCell key={header.id} sx={{ width: layout[header.column.id]?.width, typography: 'body2', color: 'text.secondary', py: 1, borderColor: neutral.line }}>
+                  <TableCell
+                    key={header.id}
+                    aria-hidden={decorative(header.column.id) || undefined}
+                    sx={{ width: layout[header.column.id]?.width, typography: 'subtitle2', color: neutral.ink, py: 1, borderColor: neutral.line }}
+                  >
                     {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                   </TableCell>
                 ))}
@@ -202,18 +201,9 @@ export function QueueTable({ items, fetching, onOpen }: Props) {
               <SkeletonRows columns={columns.length} />
             ) : (
               table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  onClick={() => onOpen(row.original)}
-                  sx={{
-                    height: 56,
-                    cursor: 'pointer',
-                    '@media (hover: hover)': { '&:hover': { bgcolor: alpha(brand.cream, 0.25) } },
-                    '&:last-of-type td': { borderBottom: 0 },
-                  }}
-                >
+                <TableRow key={row.id} onClick={onRowClick(() => onOpen(row.original))} sx={{ ...linkRowSx, height: 56, '&:last-of-type td': { borderBottom: 0 } }}>
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} sx={{ py: 1, borderColor: neutral.line }}>
+                    <TableCell key={cell.id} aria-hidden={decorative(cell.column.id) || undefined} sx={{ py: 1, borderColor: neutral.line, ...(decorative(cell.column.id) ? { pl: 0, textAlign: 'right' } : null) }}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}

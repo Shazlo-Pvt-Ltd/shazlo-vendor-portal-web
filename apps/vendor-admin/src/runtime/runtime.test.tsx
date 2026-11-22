@@ -5,6 +5,13 @@ import { describe, expect, it } from 'vitest'
 import { fakeShell, renderModule, VENDOR_API_URL } from '../test/render'
 import { server } from '../test/server'
 
+// The panels on the module's light page carry the new wordmark in navy, tagged "One".
+function expectNavyLogo() {
+  const mark = screen.getByRole('img', { name: 'Shazlo' })
+  expect(mark).toHaveAttribute('data-tone', 'navy')
+  expect(mark.parentElement).toHaveTextContent(/^One$/)
+}
+
 describe('module runtime (ADR 0001, module side)', () => {
   it('says ready with its versions before anything else, and renders only after auth', async () => {
     const shell = fakeShell({ autoAuth: false })
@@ -57,11 +64,13 @@ describe('module runtime (ADR 0001, module side)', () => {
     await screen.findByRole('heading', { level: 1, name: 'Review queue' })
     shell.deliver(createMessage('error', { code: 'version_unsupported', message: 'No' }))
     expect(await screen.findByRole('heading', { name: 'Your session ended' })).toBeInTheDocument()
+    expectNavyLogo()
   })
 
   it('outside Shazlo One, points people to it instead of loading', () => {
     renderModule({ shell: fakeShell({ framed: false }) })
     expect(screen.getByRole('heading', { name: 'Open this in Shazlo One' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open Shazlo One' })).toHaveAttribute('href', expect.stringContaining('http://localhost:5192/vendors'))
+    expectNavyLogo()
   })
 })

@@ -1,12 +1,13 @@
-import { Avatar, Box, Button, Card, IconButton, LinearProgress, Link, Skeleton, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material'
-import { alpha } from '@mui/material/styles'
-import { brand, neutral, StatusPill } from '@shazlo/ui'
+import { Avatar, Box, Card, IconButton, LinearProgress, Link, Skeleton, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material'
+import { brand, emphasis, neutral, StatusPill } from '@shazlo/ui'
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
 import { MoreHorizontal } from 'lucide-react'
-import { useMemo, type MouseEvent } from 'react'
+import { useMemo } from 'react'
 import { Link as RouterLink } from 'react-router'
 import type { components } from '../../../api/schema'
 import { modulePaths } from '../../../app/routes'
+import { aboveStretch, stretchSx } from '../../../components/CardList'
+import { linkRowSx, onRowClick, RowChevron } from '../../../components/rows'
 import { sellsLabel, vendorsCopy } from '../../../copy/vendors'
 import { srOnly } from '../../../lib/a11y'
 import { formatCount, formatDate } from '../../../lib/format'
@@ -17,14 +18,13 @@ const copy = vendorsCopy.table
 type Vendor = components['schemas']['VendorSummary']
 
 const tabular = { fontVariantNumeric: 'tabular-nums' } as const
-const stop = (event: MouseEvent) => event.stopPropagation()
 const SKELETON_ROWS = 8
 
 // Auto layout lets the columns share a 1024 px window; only the brand and sells columns wrap.
 const layout: Record<string, { align?: 'right'; width?: number | string }> = {
   live: { align: 'right' },
   commission: { align: 'right' },
-  actions: { align: 'right', width: 96 },
+  actions: { align: 'right', width: 88 },
 }
 
 export const isApplication = (v: Pick<Vendor, 'status'>) => v.status === 'applied' || v.status === 'under_review'
@@ -51,10 +51,11 @@ function BrandCell({ vendor }: { vendor: Vendor }) {
     <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', minWidth: 0 }}>
       <BrandAvatar name={vendor.brand_name} />
       <Box sx={{ minWidth: 0 }}>
-        <Link component={RouterLink} to={modulePaths.vendor(vendor.id)} onClick={stop} underline="hover" sx={{ display: 'block', color: neutral.ink, overflowWrap: 'anywhere' }}>
+        {/* The row's one link: its cover (stretchSx) spans the whole row. */}
+        <Link component={RouterLink} to={modulePaths.vendor(vendor.id)} data-stretch="" underline="none" sx={{ ...stretchSx, ...emphasis.semibold, display: 'block', color: neutral.ink, overflowWrap: 'anywhere' }}>
           {vendor.brand_name}
         </Link>
-        <Typography variant="caption" component="div" color="text.secondary">
+        <Typography variant="caption" component="div" color="textSecondary">
           {vendor.city}
         </Typography>
       </Box>
@@ -102,7 +103,7 @@ export function VendorTable({ items, fetching, onOpen, onMenu }: Props) {
             <Typography variant="body1" component="div" sx={{ whiteSpace: 'nowrap' }}>
               {row.original.owner_name}
             </Typography>
-            <Typography variant="mono" component="div" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+            <Typography variant="mono" component="div" color="textSecondary" sx={{ whiteSpace: 'nowrap' }}>
               {row.original.phone}
             </Typography>
           </>
@@ -130,7 +131,7 @@ export function VendorTable({ items, fetching, onOpen, onMenu }: Props) {
         id: 'since',
         header: copy.since,
         cell: ({ row }) => (
-          <Typography variant="body2" component="span" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+          <Typography variant="body2" component="span" color="textSecondary" sx={{ whiteSpace: 'nowrap' }}>
             {formatDate(row.original.since)}
           </Typography>
         ),
@@ -139,24 +140,17 @@ export function VendorTable({ items, fetching, onOpen, onMenu }: Props) {
       {
         id: 'actions',
         header: () => <Box sx={srOnly}>{copy.actionsHeader}</Box>,
-        cell: ({ row }) =>
-          isApplication(row.original) ? (
-            <Button variant="outlined" size="small" component={RouterLink} to={modulePaths.vendor(row.original.id)} onClick={stop} aria-label={copy.reviewLabel(row.original.brand_name)}>
-              {copy.review}
-            </Button>
-          ) : (
-            <IconButton
-              aria-label={copy.actions(row.original.brand_name)}
-              aria-haspopup="menu"
-              onClick={(event) => {
-                event.stopPropagation()
-                onMenu(event.currentTarget, row.original)
-              }}
-              sx={{ color: neutral.inkSecondary }}
-            >
-              <MoreHorizontal size={18} strokeWidth={1.5} aria-hidden="true" />
-            </IconButton>
-          ),
+        // Approved and suspended vendors keep their menu, above the row's link; every row ends in the chevron.
+        cell: ({ row }) => (
+          <Box sx={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5, verticalAlign: 'middle' }}>
+            {!isApplication(row.original) && (
+              <IconButton aria-label={copy.actions(row.original.brand_name)} aria-haspopup="menu" onClick={(event) => onMenu(event.currentTarget, row.original)} sx={{ ...aboveStretch, color: neutral.inkSecondary }}>
+                <MoreHorizontal size={18} strokeWidth={1.75} aria-hidden="true" />
+              </IconButton>
+            )}
+            <RowChevron />
+          </Box>
+        ),
       },
     ],
     [onMenu],
@@ -180,7 +174,7 @@ export function VendorTable({ items, fetching, onOpen, onMenu }: Props) {
                 {group.headers.map((header) => {
                   const { align, width } = layout[header.column.id] ?? {}
                   return (
-                    <TableCell key={header.id} align={align} sx={{ width, px: 1.5, typography: 'body2', color: 'text.secondary', py: 1, borderColor: neutral.line, whiteSpace: 'nowrap' }}>
+                    <TableCell key={header.id} align={align} sx={{ width, px: 1.5, typography: 'subtitle2', color: neutral.ink, py: 1, borderColor: neutral.line, whiteSpace: 'nowrap' }}>
                       {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                     </TableCell>
                   )
@@ -193,16 +187,7 @@ export function VendorTable({ items, fetching, onOpen, onMenu }: Props) {
               <SkeletonRows columns={columns.length} />
             ) : (
               table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  onClick={() => onOpen(row.original)}
-                  sx={{
-                    height: 56,
-                    cursor: 'pointer',
-                    '@media (hover: hover)': { '&:hover': { bgcolor: alpha(brand.cream, 0.25) } },
-                    '&:last-of-type td': { borderBottom: 0 },
-                  }}
-                >
+                <TableRow key={row.id} onClick={onRowClick(() => onOpen(row.original))} sx={{ ...linkRowSx, height: 56, '&:last-of-type td': { borderBottom: 0 } }}>
                   {row.getVisibleCells().map((cell) => {
                     const { align } = layout[cell.column.id] ?? {}
                     return (

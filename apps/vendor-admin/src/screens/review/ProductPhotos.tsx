@@ -1,8 +1,9 @@
 import { Box, ButtonBase, Stack, Typography } from '@mui/material'
 import { brand, neutral, radius, SectionCard, status } from '@shazlo/ui'
-import { ImageOff } from 'lucide-react'
+import { ImageOff, Images } from 'lucide-react'
 import { useId, useState, type ReactNode } from 'react'
 import type { components } from '../../api/schema'
+import { CardTitle } from '../../components/CardTitle'
 import { reviewCopy, type Slot } from '../../copy/review'
 import { srOnly } from '../../lib/a11y'
 
@@ -74,7 +75,7 @@ function Thumb({ photo, selected, onSelect }: { photo: Shown; selected: boolean;
 function MissingSlot({ name }: { name: string }) {
   return (
     <Box sx={{ ...THUMB, borderRadius: `${radius.control}px`, border: `1px dashed ${status.error}`, color: status.error, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0.5, px: 0.5, textAlign: 'center' }}>
-      <ImageOff size={16} strokeWidth={1.5} aria-hidden="true" />
+      <ImageOff size={16} strokeWidth={1.75} aria-hidden="true" />
       <Typography variant="caption" component="span" sx={{ lineHeight: 1.2, color: 'inherit' }}>
         {copy.missing(name)}
       </Typography>
@@ -96,7 +97,7 @@ function PhotoGroup({ title, count, hint, note, children }: { title: string; cou
         </Typography>
       </Stack>
       {hint && (
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+        <Typography variant="body2" color="textSecondary" sx={{ mt: 0.25 }}>
           {hint}
         </Typography>
       )}
@@ -126,7 +127,7 @@ export function ProductPhotos({ title, version, compareTo }: { title: string; ve
   const tryOnMissing = TRY_ONS - tryOnCount
 
   return (
-    <SectionCard title={copy.title}>
+    <SectionCard title={<CardTitle icon={Images}>{copy.title}</CardTitle>}>
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2.5} sx={{ alignItems: 'flex-start' }}>
         <Box sx={{ width: { xs: '100%', sm: 280 }, maxWidth: 360, flexShrink: 0, aspectRatio: '4 / 5', borderRadius: `${radius.card}px`, overflow: 'hidden', bgcolor: neutral.placeholder, display: 'grid', placeItems: 'center', color: neutral.inkSecondary }}>
           {current ? (

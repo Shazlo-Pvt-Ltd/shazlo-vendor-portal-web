@@ -1,6 +1,8 @@
 import { Box, Button, Checkbox, FormControlLabel, FormGroup, Link, Stack, Typography } from '@mui/material'
 import { neutral, SectionCard } from '@shazlo/ui'
+import { ListChecks } from 'lucide-react'
 import { useId, useState } from 'react'
+import { CardTitle } from '../../components/CardTitle'
 import { reviewCopy as copy } from '../../copy/review'
 
 export type Checklist = ReturnType<typeof useChecklist>
@@ -28,7 +30,13 @@ export function DecisionCard({ checklist, approving, onApprove, onSendBack, with
   const captionId = useId()
   const { checks, ticked, ready, toggle } = checklist
   return (
-    <SectionCard title={<span id={titleId}>{copy.checklist.title}</span>}>
+    <SectionCard
+      title={
+        <CardTitle icon={ListChecks}>
+          <span id={titleId}>{copy.checklist.title}</span>
+        </CardTitle>
+      }
+    >
       <FormGroup role="group" id={checklist.id} aria-labelledby={titleId} sx={{ scrollMarginTop: 16, scrollMarginBottom: 160 }}>
         {checks.map((label, i) => (
           <FormControlLabel
@@ -45,7 +53,7 @@ export function DecisionCard({ checklist, approving, onApprove, onSendBack, with
             {approving ? copy.checklist.approving : copy.checklist.approve}
           </Button>
           {!ready && (
-            <Typography id={captionId} variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
+            <Typography id={captionId} variant="caption" color="textSecondary" sx={{ textAlign: 'center' }}>
               {copy.checklist.tickAll}
             </Typography>
           )}
@@ -71,7 +79,7 @@ export function DecisionBar({ checklist, approving, onApprove, onSendBack }: Act
       sx={{ position: 'sticky', bottom: 0, zIndex: 3, mx: -2, mt: 3, px: 2, pt: 1.5, pb: 'calc(12px + env(safe-area-inset-bottom, 0px))', bgcolor: neutral.surface, borderTop: `1px solid ${neutral.line}` }}
     >
       {!ready && (
-        <Typography id={captionId} variant="caption" color="text.secondary" component="p" sx={{ mb: 1, textAlign: 'center' }}>
+        <Typography id={captionId} variant="caption" color="textSecondary" component="p" sx={{ mb: 1, textAlign: 'center' }}>
           <Link component="button" type="button" onClick={toChecklist} sx={{ typography: 'caption', verticalAlign: 'baseline' }}>
             {copy.checklist.tickAll}
           </Link>

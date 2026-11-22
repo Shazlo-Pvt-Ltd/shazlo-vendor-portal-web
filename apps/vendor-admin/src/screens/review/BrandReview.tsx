@@ -1,10 +1,12 @@
 import { Box, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material'
-import { Banner, neutral, PageHeader, radius, SectionCard, StatusPill } from '@shazlo/ui'
+import { Banner, emphasis, neutral, PageHeader, radius, SectionCard, StatusPill } from '@shazlo/ui'
+import { GitCompareArrows, Smartphone } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { useParams } from 'react-router'
 import { ApiError } from '../../api/http'
 import { useApproveBrand, useBrandReview, useRejectBrand } from '../../api/queries'
 import type { components } from '../../api/schema'
+import { CardTitle } from '../../components/CardTitle'
 import { reviewCopy } from '../../copy/review'
 import { usePhone } from '../../lib/responsive'
 import { decisionPill, queuePill } from '../../lib/status'
@@ -58,7 +60,7 @@ function ChangesCard({ live, draft, changed }: { live: Profile; draft: Profile; 
     </Box>
   )
   return (
-    <SectionCard title={copy.changes.title} padded={fields.length === 0}>
+    <SectionCard title={<CardTitle icon={GitCompareArrows}>{copy.changes.title}</CardTitle>} padded={fields.length === 0}>
       {fields.length > 0 && phone ? (
         <StackedCompare
           items={fields.map((f) => ({
@@ -71,7 +73,7 @@ function ChangesCard({ live, draft, changed }: { live: Profile; draft: Profile; 
           }))}
         />
       ) : fields.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {copy.changes.none}
         </Typography>
       ) : (
@@ -93,7 +95,7 @@ function ChangesCard({ live, draft, changed }: { live: Profile; draft: Profile; 
             <TableBody>
               {fields.map((f) => (
                 <TableRow key={f}>
-                  <TableCell component="th" scope="row" sx={{ ...cellSx, color: neutral.inkSecondary }}>
+                  <TableCell component="th" scope="row" sx={{ ...cellSx, ...emphasis.semibold, color: neutral.inkSecondary }}>
                     {copy.fields[f]}
                   </TableCell>
                   <TableCell sx={cellSx}>{before(f)}</TableCell>
@@ -153,7 +155,7 @@ function Review({ vendorId }: { vendorId: string }) {
         <ReviewColumns
           main={
             <>
-              <SectionCard title={copy.preview.title}>
+              <SectionCard title={<CardTitle icon={Smartphone}>{copy.preview.title}</CardTitle>}>
                 <Box sx={{ display: 'grid', gridTemplateColumns: data.live ? 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))' : 'minmax(0, 1fr)', gap: 3, pt: 1 }}>
                   {data.live && <PhonePreview heading={copy.preview.live} brandName={vendor} profile={data.live} />}
                   <PhonePreview heading={copy.preview.draft} brandName={vendor} profile={data.draft} note={data.live ? undefined : copy.preview.notLive} />

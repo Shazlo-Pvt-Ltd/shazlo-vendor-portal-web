@@ -1,8 +1,11 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
+import { OUTBOX_STATUSES } from '../../lib/status'
 import { renderModule } from '../../test/render'
 import { server } from '../../test/server'
+import { isSemibold } from '../../test/style'
+import { setViewport } from '../../test/viewport'
 
 type Router = ReturnType<typeof renderModule>['router']
 
@@ -61,6 +64,27 @@ function params(router: Router) {
   return new URLSearchParams(router.state.location.search)
 }
 
+// The seed's events with a status, in the outbox's order (newest first).
+const SEED: Record<(typeof OUTBOX_STATUSES)[number], string[]> = {
+  waiting: ['Handloom Cotton Shirt — Rust', 'Nila Handloom'],
+  retrying: ['Linen Co-ord Set — Indigo'],
+  failed: ['Phulkari Dupatta — Mustard'],
+  delivered: ALL.slice(4),
+}
+const TAB: Record<(typeof OUTBOX_STATUSES)[number], string> = { waiting: 'Waiting 2', retrying: 'Retrying 1', failed: 'Failed 1', delivered: 'Delivered 12' }
+
+async function waitForCards(expected: string[]) {
+  const list = await screen.findByRole('list', { name: 'Outbox events' }, { timeout: 10_000 })
+  await waitFor(
+    () => {
+      expect(list).not.toHaveAttribute('aria-busy', 'true')
+      expect(within(list).getAllByRole('listitem').map((li) => li.getAttribute('data-item'))).toEqual(expected)
+    },
+    { timeout: 10_000 },
+  )
+  return list
+}
+
 describe('A-10 Publishing to the app', { timeout: 40_000 }, () => {
   it('names itself to the shell and shows the outbox with its figures', async () => {
     const { shell } = renderModule({ route: '/publishing' })
@@ -78,10 +102,14 @@ describe('A-10 Publishing to the app', { timeout: 40_000 }, () => {
     await waitFor(() => expect(within(tabs).getAllByRole('tab').map((t) => t.textContent)).toEqual(['All 16', 'Waiting 2', 'Retrying 1', 'Failed 1', 'Delivered 12']))
 
     const table = await waitForItems(ALL)
+    expect(within(table).getAllByRole('columnheader').map((c) => c.textContent)).toEqual(['Event', 'Item', 'Vendor', 'Status', 'Tries', 'Last attempt', 'Next attempt'])
     for (const name of ['Event', 'Item', 'Vendor', 'Status', 'Tries', 'Last attempt', 'Next attempt']) {
-      expect(within(table).getByRole('columnheader', { name })).toBeInTheDocument()
+      expect(isSemibold(within(table).getByRole('columnheader', { name }))).toBe(true)
     }
     const failed = row(table, 'Phulkari Dupatta — Mustard')
+    // The item's name in semibold; each row ends in a chevron, as it opens the event's details.
+    expect(isSemibold(within(failed).getByText('Phulkari Dupatta — Mustard'))).toBe(true)
+    expect(failed.querySelector('[data-chevron]')!.closest('[aria-hidden="true"]')).not.toBeNull()
     expect(within(failed).getByText('product.published')).toBeInTheDocument()
     expect(within(failed).getByText('Nila Handloom')).toBeInTheDocument()
     expect(within(failed).getByText('Failed')).toBeInTheDocument()
@@ -227,5 +255,65 @@ describe('A-10 Publishing to the app', { timeout: 40_000 }, () => {
     await user.click(screen.getByRole('button', { name: 'Try again' }))
     await waitForItems(['Handloom Cotton Shirt — Rust', 'Nila Handloom'])
     expect(screen.queryByText('Events did not load')).toBeNull()
+  })
+})
+
+// Shazlo One's home links to /vendors/publishing?status=<status>; the shell opens the module at
+// /publishing?status=<status>, or sends it there with `navigate` when it is already open.
+describe('A-10 Publishing: deep links from the Shazlo One home', { timeout: 40_000 }, () => {
+  for (const status of OUTBOX_STATUSES) {
+    it(`opens ?status=${status} with that filter on a desktop`, async () => {
+      const { shell, router } = renderModule({ route: `/publishing?status=${status}` })
+      await waitForItems(SEED[status])
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(TAB[status])
+      expect(params(router).get('status')).toBe(status)
+      // The shell keeps the filter in its own URL.
+      await waitFor(() => expect(shell.titles()).toContainEqual({ path: `/publishing?status=${status}`, title: 'Publishing to the app' }))
+    })
+
+    it(`opens ?status=${status} with that filter on a phone`, async () => {
+      setViewport(390)
+      renderModule({ route: `/publishing?status=${status}` })
+      await waitForCards(SEED[status])
+      expect(screen.queryByRole('table')).toBeNull()
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(TAB[status])
+    })
+  }
+
+  it('follows the shell to each filter while open, and back to all', async () => {
+    const { shell } = renderModule({ route: '/publishing' })
+    await waitForItems(ALL)
+    for (const status of OUTBOX_STATUSES) {
+      shell.navigate(`/publishing?status=${status}`)
+      await waitForItems(SEED[status])
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(TAB[status])
+    }
+    shell.navigate('/publishing')
+    await waitForItems(ALL)
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('All 16')
+  })
+
+  it('keeps a chosen event open from the link along with the filter', async () => {
+    renderModule({ route: '/publishing?status=failed&event=evt_0001' })
+    await waitForItems(SEED.failed)
+    expect(within(await screen.findByRole('region', { name: 'Event details' })).getByRole('heading', { name: 'Phulkari Dupatta — Mustard' })).toBeInTheDocument()
+  })
+
+  it('shows every event for a status it does not know, and for an empty one', async () => {
+    const { shell } = renderModule({ route: '/publishing?status=Failed' })
+    await waitForItems(ALL)
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('All 16')
+    shell.navigate('/publishing?status=')
+    await waitForItems(ALL)
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('All 16')
+  })
+
+  it('draws its tabs as pressable', async () => {
+    renderModule({ route: '/publishing?status=failed' })
+    await waitForItems(SEED.failed)
+    for (const tab of screen.getAllByRole('tab')) {
+      expect(getComputedStyle(tab).cursor).toBe('pointer')
+      expect(isSemibold(tab)).toBe(true)
+    }
   })
 })

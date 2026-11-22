@@ -62,7 +62,7 @@ export function PhonePreview({ heading, brandName, profile, note }: { heading: s
               {brandName}
             </Typography>
             {profile.tagline && (
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, overflowWrap: 'anywhere' }}>
+              <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5, overflowWrap: 'anywhere' }}>
                 {profile.tagline}
               </Typography>
             )}
@@ -80,7 +80,7 @@ export function PhonePreview({ heading, brandName, profile, note }: { heading: s
         </Box>
       </Box>
       {note && (
-        <Typography variant="caption" color="text.secondary" component="p" sx={{ textAlign: 'center', mt: 1.5 }}>
+        <Typography variant="caption" color="textSecondary" component="p" sx={{ textAlign: 'center', mt: 1.5 }}>
           {note}
         </Typography>
       )}

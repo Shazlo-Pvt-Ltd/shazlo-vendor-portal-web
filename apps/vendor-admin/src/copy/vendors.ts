@@ -59,8 +59,6 @@ export const vendorsCopy = {
     commission: 'Commission',
     actionsHeader: 'Actions',
     actions: (brand: string) => `Actions for ${brand}`,
-    review: 'Review',
-    reviewLabel: (brand: string) => `Review ${brand}'s application`,
   },
   menu: { open: 'Open', suspend: 'Suspend', reactivate: 'Reactivate' },
   noResults: { title: 'No vendors match', body: 'Try a different name, phone number or city.', clear: 'Clear filters' },

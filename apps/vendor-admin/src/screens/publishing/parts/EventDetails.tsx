@@ -11,12 +11,13 @@ import { formatUntil } from './when'
 const copy = publishingCopy.details
 type OutboxEvent = components['schemas']['OutboxEvent']
 
-const icon = { size: 16, strokeWidth: 1.5, 'aria-hidden': true } as const
+const icon = { size: 18, strokeWidth: 1.75, 'aria-hidden': true } as const
 
+// A fact about the event: its label in semibold, the value in regular ink.
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <Box sx={{ display: 'grid', gridTemplateColumns: '112px minmax(0, 1fr)', gap: 1.5, py: 0.75, borderBottom: `1px solid ${neutral.line}`, '&:last-of-type': { borderBottom: 0 } }}>
-      <Typography component="dt" variant="body2" color="text.secondary">
+      <Typography component="dt" variant="subtitle2" color="textSecondary">
         {label}
       </Typography>
       <Typography component="dd" variant="body2" sx={{ m: 0, minWidth: 0, overflowWrap: 'anywhere' }}>
@@ -51,7 +52,7 @@ export function EventDetails({ event, retrying, retryError, onRetry, onCopy, onC
           </Box>
         </Box>
         <IconButton aria-label={copy.close} onClick={onClose} size="small" sx={{ color: neutral.inkSecondary, mt: -0.5, mr: -1 }}>
-          <X size={18} strokeWidth={1.5} aria-hidden="true" />
+          <X size={18} strokeWidth={1.75} aria-hidden="true" />
         </IconButton>
       </Stack>
 
@@ -85,7 +86,7 @@ export function EventDetails({ event, retrying, retryError, onRetry, onCopy, onC
         )}
 
         <Box>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 0.75 }}>
+          <Typography variant="subtitle2" component="p" color="textSecondary" sx={{ mb: 0.75 }}>
             {copy.payload}
           </Typography>
           <Box

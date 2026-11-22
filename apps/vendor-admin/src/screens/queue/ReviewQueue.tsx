@@ -1,26 +1,27 @@
 import { Box, Button, Link, Skeleton, Stack, Tab, Tabs, Typography } from '@mui/material'
-import { Banner, brand, EmptyState, neutral, PageHeader, StatFigure } from '@shazlo/ui'
+import { Banner, EmptyState, PageHeader, StatFigure } from '@shazlo/ui'
 import { Download } from 'lucide-react'
 import { useCallback, type ReactNode } from 'react'
 import { Link as RouterLink, useNavigate } from 'react-router'
 import { useQueue, useSummary } from '../../api/queries'
 import type { components } from '../../api/schema'
 import { modulePaths } from '../../app/routes'
+import { TabLabel, tabSx, tabsSx } from '../../components/tabs'
 import { queueCopy as copy, type KindKey } from '../../copy/queue'
 import { formatCount } from '../../lib/format'
 import { phoneFullWidth, scrollingTabs, statGrid, useCompact } from '../../lib/responsive'
 import { formatWait } from '../../lib/status'
 import { useModuleTitle, useRuntime } from '../../runtime/runtime'
 import { csvFilename, downloadText, queueCsv } from './parts/csv'
-import { QueueCards, reviewPath } from './parts/QueueCards'
+import { QueueCards } from './parts/QueueCards'
 import { QueueFilters } from './parts/QueueFilters'
-import { QueueTable } from './parts/QueueTable'
+import { QueueTable, reviewPath } from './parts/QueueTable'
 import { clearedFilters, hasFilters, toFilters, useQueueParams } from './parts/useQueueParams'
 
 type QueueItem = components['schemas']['QueueItem']
 type Counts = components['schemas']['QueuePage']['counts']
 
-const icon = { size: 18, strokeWidth: 1.5, 'aria-hidden': true } as const
+const icon = { size: 18, strokeWidth: 1.75, 'aria-hidden': true } as const
 
 // How long the oldest item has waited, from the whole queue (not the filtered view).
 function oldestWait(items: QueueItem[] | undefined): string | null {
@@ -37,27 +38,10 @@ function KindTabs({ value, counts, onChange }: { value: string; counts: Counts |
       {...scrollingTabs}
       aria-label={copy.tabsLabel}
       textColor="inherit"
-      sx={{ borderBottom: `1px solid ${neutral.line}`, minHeight: 44, '& .MuiTabs-indicator': { bgcolor: brand.brown } }}
+      sx={tabsSx}
     >
       {copy.tabs.map((tab) => (
-        <Tab
-          key={tab.key}
-          value={tab.key}
-          sx={{ minHeight: 44, px: 2, color: 'text.secondary', '&.Mui-selected': { color: neutral.ink } }}
-          label={
-            <span>
-              {tab.label}
-              {counts && (
-                <>
-                  {' '}
-                  <Box component="span" sx={{ color: 'text.secondary', fontVariantNumeric: 'tabular-nums', ml: 0.25 }}>
-                    {formatCount(counts[tab.key])}
-                  </Box>
-                </>
-              )}
-            </span>
-          }
-        />
+        <Tab key={tab.key} value={tab.key} sx={tabSx} label={<TabLabel text={tab.label} count={counts?.[tab.key]} />} />
       ))}
     </Tabs>
   )
@@ -82,7 +66,7 @@ function RatesLine() {
   const n = useSummary().data?.commission_proposals ?? 0
   if (n === 0) return null
   return (
-    <Typography variant="body2" color="text.secondary">
+    <Typography variant="body2" color="textSecondary">
       <span>{copy.rates.text(n)}</span>{' '}
       <Link component={RouterLink} to={modulePaths.rates}>
         {copy.rates.link}

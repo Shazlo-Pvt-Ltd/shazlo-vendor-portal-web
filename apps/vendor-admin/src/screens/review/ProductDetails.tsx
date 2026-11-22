@@ -1,7 +1,9 @@
 import { Box, Button, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material'
-import { fontFamily, neutral, radius, SectionCard, status, StatusPill } from '@shazlo/ui'
+import { emphasis, fontFamily, neutral, radius, SectionCard, status, StatusPill } from '@shazlo/ui'
+import { GitCompareArrows, IndianRupee, Ruler, Shirt, Tags } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import type { components } from '../../api/schema'
+import { CardTitle } from '../../components/CardTitle'
 import { reviewCopy } from '../../copy/review'
 import { formatCount, formatINR } from '../../lib/format'
 import { usePhone } from '../../lib/responsive'
@@ -13,6 +15,23 @@ type Version = S['ProductVersion']
 const CLIP = 80
 
 const num = { textAlign: 'right', fontVariantNumeric: 'tabular-nums' } as const
+
+// Reference tables (sizes and stock, the size chart) show their parts apart: a muted header row in
+// semibold over a firm rule, a rule under each row, sizes in semibold and a total in bold over a
+// firm rule. Table-level rules, so they win over each cell's own look.
+const referenceTableSx = {
+  '& thead th': { ...emphasis.semibold, color: neutral.ink, bgcolor: neutral.muted, borderBottom: `2px solid ${neutral.lineStrong}`, py: 1.25, verticalAlign: 'bottom' },
+  '& tbody th, & tbody td': { borderBottom: `1px solid ${neutral.line}`, py: 1.25 },
+  '& tbody th': { ...emphasis.semibold, color: neutral.ink },
+  '& tbody tr:last-of-type > *': { borderBottom: 0 },
+  '& tbody tr[data-total] > *': { ...emphasis.bold, color: neutral.ink, borderTop: `2px solid ${neutral.lineStrong}` },
+} as const
+
+// A grid of measurements also rules its columns, so each figure reads under its heading.
+const chartTableSx = {
+  ...referenceTableSx,
+  '& thead th + th, & tbody td': { borderLeft: `1px solid ${neutral.line}` },
+} as const
 const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1)
 
 function photosLine(v: Version): string {
@@ -64,7 +83,7 @@ export function StackedCompare({ items }: { items: { key: string; field: ReactNo
     <Box component="dl" sx={{ m: 0, px: 2, pb: 1 }}>
       {items.map((item) => (
         <Box key={item.key} sx={{ py: 1.5, borderTop: `1px solid ${neutral.line}` }}>
-          <Box component="dt" sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, typography: 'body2', color: neutral.inkSecondary }}>
+          <Box component="dt" sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, typography: 'subtitle2', color: neutral.inkSecondary }}>
             {item.field}
           </Box>
           <Box component="dd" sx={{ m: 0, mt: 0.75, display: 'grid', gap: 0.5 }}>
@@ -98,9 +117,10 @@ export function CompareCard({ label, before, after }: { label: 'sent_back' | 'li
       </Button>
     ) : null
 
+  const heading = <CardTitle icon={GitCompareArrows}>{title}</CardTitle>
   if (phone) {
     return (
-      <SectionCard title={title} padded={false}>
+      <SectionCard title={heading} padded={false}>
         <StackedCompare
           items={rows.map((row) => {
             const changed = row.before !== row.after
@@ -126,7 +146,7 @@ export function CompareCard({ label, before, after }: { label: 'sent_back' | 'li
   }
 
   return (
-    <SectionCard title={title} padded={false}>
+    <SectionCard title={heading} padded={false}>
       <Box sx={{ overflowX: 'auto' }}>
         <Table sx={{ tableLayout: 'fixed', minWidth: 520 }}>
           <TableHead>
@@ -149,7 +169,7 @@ export function CompareCard({ label, before, after }: { label: 'sent_back' | 'li
               const toggle = toggleFor(row.key)
               return (
                 <TableRow key={row.key}>
-                  <TableCell component="th" scope="row" sx={{ ...cellSx, color: neutral.inkSecondary }}>
+                  <TableCell component="th" scope="row" sx={{ ...cellSx, ...emphasis.semibold, color: neutral.inkSecondary }}>
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
                       {copy.compare.rows[row.key]}
                       {changed && <StatusPill status="pending" label={copy.compare.changed} />}
@@ -168,10 +188,11 @@ export function CompareCard({ label, before, after }: { label: 'sent_back' | 'li
   )
 }
 
+// A fact: its label in semibold, its value in regular ink.
 function Row({ term, children }: { term: string; children: ReactNode }) {
   return (
     <>
-      <Typography component="dt" variant="body2" color="text.secondary" sx={{ pt: '1px' }}>
+      <Typography component="dt" variant="subtitle2" color="textSecondary" sx={{ pt: '1px' }}>
         {term}
       </Typography>
       <Typography component="dd" variant="body1" sx={{ m: 0, minWidth: 0, maxWidth: '70ch', overflowWrap: 'anywhere' }}>
@@ -215,7 +236,7 @@ export function AboutCard({ version }: { version: Version }) {
   const c = copy.about
   const others = version.other_colours
   return (
-    <SectionCard title={c.title}>
+    <SectionCard title={<CardTitle icon={Shirt}>{c.title}</CardTitle>}>
       <Box component="dl" sx={dlSx}>
         <Row term={c.gender}>{c.genders[version.gender]}</Row>
         <Row term={c.type}>{version.product_type}</Row>
@@ -258,7 +279,7 @@ export function PriceCard({ version }: { version: Version }) {
   else if (mrp != null) note = c.shows(formatINR(price))
   else note = c.showsOnly(formatINR(price))
   return (
-    <SectionCard title={c.title}>
+    <SectionCard title={<CardTitle icon={IndianRupee}>{c.title}</CardTitle>}>
       <Box component="dl" sx={dlSx}>
         <Row term={c.selling}>
           <Box component="span" sx={{ fontVariantNumeric: 'tabular-nums' }}>
@@ -290,9 +311,9 @@ export function SizesCard({ version }: { version: Version }) {
   // One-size pieces (dupattas, sarees, bags) need no size chart, so none is missed for them.
   const noChart = version.size_chart === null && variants.length > 1
   return (
-    <SectionCard title={copy.sizes.title} padded={false}>
+    <SectionCard title={<CardTitle icon={Tags}>{copy.sizes.title}</CardTitle>} padded={false}>
       <Box sx={{ overflowX: 'auto' }}>
-        <Table>
+        <Table sx={referenceTableSx}>
           <TableHead>
             <TableRow>
               <TableCell component="th" scope="col">
@@ -316,18 +337,18 @@ export function SizesCard({ version }: { version: Version }) {
                 <TableCell sx={num}>{formatCount(v.stock)}</TableCell>
               </TableRow>
             ))}
-            <TableRow>
-              <TableCell component="th" scope="row" sx={{ borderBottom: 0 }}>
+            <TableRow data-total="">
+              <TableCell component="th" scope="row">
                 {copy.sizes.total}
               </TableCell>
-              <TableCell sx={{ borderBottom: 0 }} />
-              <TableCell sx={{ ...num, borderBottom: 0 }}>{formatCount(total)}</TableCell>
+              <TableCell />
+              <TableCell sx={num}>{formatCount(total)}</TableCell>
             </TableRow>
           </TableBody>
         </Table>
       </Box>
       {noChart && (
-        <Typography variant="body2" color="text.secondary" sx={{ px: { xs: 2, sm: 3 }, pb: 2.5 }}>
+        <Typography variant="body2" color="textSecondary" sx={{ px: { xs: 2, sm: 3 }, pb: 2.5 }}>
           {copy.sizeChart.none(version.product_type)}
         </Typography>
       )}
@@ -340,8 +361,8 @@ export function SizeChartCard({ chart }: { chart: NonNullable<Version['size_char
   const c = copy.sizeChart
   if (chart.kind === 'photo') {
     return (
-      <SectionCard title={c.title}>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+      <SectionCard title={<CardTitle icon={Ruler}>{c.title}</CardTitle>}>
+        <Typography variant="body2" color="textSecondary" sx={{ mb: 1.5 }}>
           {c.forTypePhoto(chart.product_type)}
         </Typography>
         <Box component="img" src={chart.url} alt={c.photoAlt(chart.product_type)} sx={{ display: 'block', width: '100%', maxWidth: 320, borderRadius: `${radius.card}px`, border: `1px solid ${neutral.line}` }} />
@@ -349,12 +370,12 @@ export function SizeChartCard({ chart }: { chart: NonNullable<Version['size_char
     )
   }
   return (
-    <SectionCard title={c.title} padded={false}>
-      <Typography variant="body2" color="text.secondary" sx={{ px: { xs: 2, sm: 3 }, pb: 1 }}>
+    <SectionCard title={<CardTitle icon={Ruler}>{c.title}</CardTitle>} padded={false}>
+      <Typography variant="body2" color="textSecondary" sx={{ px: { xs: 2, sm: 3 }, pb: 1.5 }}>
         {c.forType(chart.product_type)}
       </Typography>
       <Box sx={{ overflowX: 'auto' }}>
-        <Table>
+        <Table sx={chartTableSx}>
           <TableHead>
             <TableRow>
               <TableCell component="th" scope="col">
@@ -362,14 +383,17 @@ export function SizeChartCard({ chart }: { chart: NonNullable<Version['size_char
               </TableCell>
               {chart.measurements.map((m) => (
                 <TableCell key={m} component="th" scope="col" sx={num}>
-                  {m}
+                  {m}{' '}
+                  <Box component="span" sx={{ typography: 'caption', color: 'text.secondary', whiteSpace: 'nowrap' }}>
+                    {c.unit}
+                  </Box>
                 </TableCell>
               ))}
             </TableRow>
           </TableHead>
           <TableBody>
-            {chart.rows.map((row, i) => (
-              <TableRow key={row.size} sx={i === chart.rows.length - 1 ? { '& > *': { borderBottom: 0 } } : undefined}>
+            {chart.rows.map((row) => (
+              <TableRow key={row.size}>
                 <TableCell component="th" scope="row">
                   {row.size}
                 </TableCell>

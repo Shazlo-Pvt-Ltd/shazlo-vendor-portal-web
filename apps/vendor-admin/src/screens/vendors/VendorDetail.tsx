@@ -1,5 +1,5 @@
 import { Box, Button, Card, Link, Skeleton, Stack, Tab, Tabs, Typography } from '@mui/material'
-import { Banner, brand, EmptyState, neutral, PageHeader, StatusPill } from '@shazlo/ui'
+import { Banner, EmptyState, neutral, PageHeader, StatusPill } from '@shazlo/ui'
 import { ArrowLeft } from 'lucide-react'
 import { useId, useState, type ReactNode } from 'react'
 import { useWatch } from 'react-hook-form'
@@ -8,8 +8,9 @@ import { ApiError } from '../../api/http'
 import { useVendor, useVendorAction } from '../../api/queries'
 import type { components } from '../../api/schema'
 import { modulePaths } from '../../app/routes'
+import { TabLabel, tabSx, tabsSx } from '../../components/tabs'
 import { vendorActionsCopy, vendorDetailCopy as copy } from '../../copy/vendors'
-import { formatCount, formatDate } from '../../lib/format'
+import { formatDate } from '../../lib/format'
 import { phoneFullWidth, scrollingTabs } from '../../lib/responsive'
 import { vendorPill } from '../../lib/status'
 import { useModuleTitle, useRuntime } from '../../runtime/runtime'
@@ -30,7 +31,7 @@ const DAY_MS = 86_400_000
 function BackLink() {
   return (
     <Link component={RouterLink} to={modulePaths.vendors} underline="hover" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, mb: 1.5, color: neutral.inkSecondary, typography: 'body2', minHeight: { xs: 44, md: 0 } }}>
-      <ArrowLeft size={16} strokeWidth={1.5} aria-hidden="true" />
+      <ArrowLeft size={18} strokeWidth={1.75} aria-hidden="true" />
       {copy.back}
     </Link>
   )
@@ -65,22 +66,6 @@ function StateBanner({ vendor }: { vendor: Vendor }) {
     <Banner tone="info" label={rejected ? copy.rejected.label : copy.suspended.label} title={title}>
       {entry?.note ? `“${entry.note}”` : copy.rejected.noReason}
     </Banner>
-  )
-}
-
-function TabLabel({ text, count }: { text: string; count?: number }) {
-  return (
-    <span>
-      {text}
-      {count != null && (
-        <>
-          {' '}
-          <Box component="span" sx={{ color: 'text.secondary', fontVariantNumeric: 'tabular-nums', ml: 0.25 }}>
-            {formatCount(count)}
-          </Box>
-        </>
-      )}
-    </span>
   )
 }
 
@@ -179,7 +164,7 @@ function VendorView({ vendor }: { vendor: Vendor }) {
           </Button>
         </Stack>
         {blocked && (
-          <Typography id={hintId} variant="caption" color="text.secondary">
+          <Typography id={hintId} variant="caption" color="textSecondary">
             {blockedReason}
           </Typography>
         )}
@@ -237,7 +222,7 @@ function VendorView({ vendor }: { vendor: Vendor }) {
           aria-label={copy.tabsLabel}
           {...scrollingTabs}
           textColor="inherit"
-          sx={{ borderBottom: `1px solid ${neutral.line}`, minHeight: 44, '& .MuiTabs-indicator': { bgcolor: brand.brown } }}
+          sx={tabsSx}
         >
           {tabs.map((t) => (
             <Tab
@@ -246,7 +231,7 @@ function VendorView({ vendor }: { vendor: Vendor }) {
               id={`${tabsId}-tab-${t.key}`}
               aria-controls={`${tabsId}-panel-${t.key}`}
               label={<TabLabel text={t.text} count={t.count} />}
-              sx={{ minHeight: 44, px: 2, color: 'text.secondary', '&.Mui-selected': { color: neutral.ink } }}
+              sx={tabSx}
             />
           ))}
         </Tabs>

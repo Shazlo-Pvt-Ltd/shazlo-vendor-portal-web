@@ -13,10 +13,10 @@ const ConfigContext = createContext<Config | null>(null)
 function Panel({ title, body, action }: { title: string; body: string; action?: ReactNode }) {
   return (
     <Stack spacing={1.5} role="alert" sx={{ alignItems: 'center', textAlign: 'center', minHeight: '100dvh', justifyContent: 'center', px: 3 }}>
-      <Logo product="One" />
+      <Logo product="One" tone="navy" />
       <EmptyIllustration name="sheet" />
       <Typography variant="h1" component="h1">{title}</Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ maxWidth: '46ch' }}>{body}</Typography>
+      <Typography variant="body1" color="textSecondary" sx={{ maxWidth: '46ch' }}>{body}</Typography>
       {action}
     </Stack>
   )
