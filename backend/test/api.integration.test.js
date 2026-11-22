@@ -2,11 +2,13 @@ import { once } from 'node:events'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { Writable } from 'node:stream'
+import { readFileSync } from 'node:fs'
+import dotenv from 'dotenv'
 import mongoose from 'mongoose'
 import { MongoMemoryServer } from 'mongodb-memory-server-core'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { v2 as cloudinary } from 'cloudinary'
-import app from '../app.js'
+import app, { corsOrigins, createApp, legacyAdminEnabled } from '../app.js'
 import Brand from '../models/Brand.js'
 import Product from '../models/Product.js'
 import WaitlistUser from '../models/WaitlistUser.js'
@@ -15,6 +17,8 @@ import PreRegister from '../models/PreRegister.js'
 let mongo
 let server
 let baseUrl
+let legacyServer
+let legacyUrl
 
 const brandInput = () => ({
   brand_name: 'Kalki Studio', founder_contact: 'Kiran', product_type: 'clothing',
@@ -25,8 +29,8 @@ const productInput = (overrides = {}) => ({
   productId: 'KS-001', name: 'Cotton shirt', category: 'Shirts', price: 1200, stock: 5, ...overrides,
 })
 
-async function request(path, { method = 'GET', body, raw, headers = {} } = {}) {
-  const response = await fetch(`${baseUrl}${path}`, {
+async function request(path, { method = 'GET', body, raw, headers = {}, base = baseUrl } = {}) {
+  const response = await fetch(`${base}${path}`, {
     method, headers: { 'Content-Type': 'application/json', ...headers },
     body: raw ?? (body === undefined ? undefined : JSON.stringify(body)),
   })
@@ -34,6 +38,8 @@ async function request(path, { method = 'GET', body, raw, headers = {} } = {}) {
 }
 const json = (response) => JSON.parse(response.text)
 const post = (path, body) => request(path, { method: 'POST', body })
+const legacyRequest = (path, options) => request(path, { ...options, base: legacyUrl })
+const legacyPost = (path, body) => legacyRequest(path, { method: 'POST', body })
 
 beforeAll(async () => {
   // No DATABASE_URL or MONGODB_URI is consumed: this always owns its own local database.
@@ -43,6 +49,9 @@ beforeAll(async () => {
   server = app.listen(0, '127.0.0.1')
   await once(server, 'listening')
   baseUrl = `http://127.0.0.1:${server.address().port}`
+  legacyServer = createApp({ env: { LEGACY_ADMIN_ENABLED: 'true' } }).listen(0, '127.0.0.1')
+  await once(legacyServer, 'listening')
+  legacyUrl = `http://127.0.0.1:${legacyServer.address().port}`
 })
 
 beforeEach(async () => {
@@ -55,7 +64,9 @@ beforeEach(async () => {
 
 afterEach(() => vi.restoreAllMocks())
 afterAll(async () => {
-  if (server) await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
+  for (const s of [server, legacyServer]) {
+    if (s) await new Promise((resolve, reject) => s.close((error) => error ? reject(error) : resolve()))
+  }
   await mongoose.disconnect()
   if (mongo) await mongo.stop()
 })
@@ -197,16 +208,16 @@ describe('brand registration', () => {
   })
 })
 
-describe('catalog upload and moderation persistence (legacy routes have no authentication)', () => {
+describe('catalog upload and moderation persistence (routes mounted with LEGACY_ADMIN_ENABLED=true)', () => {
   it.each([{ products: [] }, { sellerId: '507f1f77bcf86cd799439011' }])('rejects an incomplete upload without creating products', async (body) => {
-    const response = await post('/api/upload/products', body)
+    const response = await legacyPost('/api/upload/products', body)
     expect(response.status).toBe(400)
     expect(await Product.countDocuments()).toBe(0)
   })
 
   it('assigns the requested seller to each product and defaults to pending', async () => {
     const seller = await Brand.create(brandInput())
-    const response = await post('/api/upload/products', {
+    const response = await legacyPost('/api/upload/products', {
       sellerId: seller.id, products: [productInput({ sellerId: new mongoose.Types.ObjectId() }), productInput({ productId: 'KS-002' })],
     })
     expect(response.status).toBe(200)
@@ -217,7 +228,7 @@ describe('catalog upload and moderation persistence (legacy routes have no authe
 
   it('cannot bypass moderation by uploading approval fields in the catalog', async () => {
     const seller = await Brand.create(brandInput())
-    const response = await post('/api/upload/products', {
+    const response = await legacyPost('/api/upload/products', {
       sellerId: seller.id,
       products: [productInput({ status: 'approved', approvedBy: seller.id, approvedAt: '2020-01-01T00:00:00Z' })],
     })
@@ -231,7 +242,7 @@ describe('catalog upload and moderation persistence (legacy routes have no authe
   it('keeps a validation failure from inserting any products in the batch', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const seller = await Brand.create(brandInput())
-    const response = await post('/api/upload/products', {
+    const response = await legacyPost('/api/upload/products', {
       sellerId: seller.id, products: [productInput(), productInput({ name: undefined })],
     })
     expect(response.status).toBe(500)
@@ -242,7 +253,7 @@ describe('catalog upload and moderation persistence (legacy routes have no authe
     const seller = await Brand.create(brandInput())
     const other = await Brand.create({ ...brandInput(), email: 'other@example.test' })
     await Product.create([productInput({ sellerId: seller.id }), productInput({ sellerId: other.id, productId: 'OTHER' })])
-    const response = await request(`/api/admin/products/${seller.id}`)
+    const response = await legacyRequest(`/api/admin/products/${seller.id}`)
     expect(response.status).toBe(200)
     expect(json(response).products).toHaveLength(1)
     expect(json(response).products[0]).toMatchObject({ productId: 'KS-001', sellerId: { _id: seller.id, email: 'kiran@example.test' } })
@@ -251,8 +262,8 @@ describe('catalog upload and moderation persistence (legacy routes have no authe
   it('lists registered sellers and the complete product catalog', async () => {
     const seller = await Brand.create(brandInput())
     await Product.create(productInput({ sellerId: seller.id }))
-    expect(json(await request('/api/admin/sellers')).sellers).toHaveLength(1)
-    expect(json(await request('/api/admin/products')).products).toHaveLength(1)
+    expect(json(await legacyRequest('/api/admin/sellers')).sellers).toHaveLength(1)
+    expect(json(await legacyRequest('/api/admin/products')).products).toHaveLength(1)
   })
 
   it('persists approval status, reviewer and decision time, then rejection', async () => {
@@ -260,20 +271,20 @@ describe('catalog upload and moderation persistence (legacy routes have no authe
     const reviewer = new mongoose.Types.ObjectId()
     const product = await Product.create(productInput({ sellerId: seller.id }))
     const earliest = Date.now()
-    const response = await request(`/api/admin/products/${product.id}/approve`, { method: 'PUT', body: { adminId: reviewer.toString() } })
+    const response = await legacyRequest(`/api/admin/products/${product.id}/approve`, { method: 'PUT', body: { adminId: reviewer.toString() } })
     expect(response.status).toBe(200)
     const approved = await Product.findById(product.id).lean()
     expect(approved.status).toBe('approved')
     expect(String(approved.approvedBy)).toBe(reviewer.toString())
     expect(approved.approvedAt.getTime()).toBeGreaterThanOrEqual(earliest)
     expect(approved.approvedAt.getTime()).toBeLessThanOrEqual(Date.now())
-    const rejection = await request(`/api/admin/products/${product.id}/reject`, { method: 'PUT' })
+    const rejection = await legacyRequest(`/api/admin/products/${product.id}/reject`, { method: 'PUT' })
     expect(rejection.status).toBe(200)
     expect((await Product.findById(product.id).lean()).status).toBe('rejected')
   })
 
   it.each(['approve', 'reject'])('returns 404 for %s of a missing product without creating one', async (action) => {
-    const response = await request(`/api/admin/products/${new mongoose.Types.ObjectId()}/${action}`, { method: 'PUT', body: {} })
+    const response = await legacyRequest(`/api/admin/products/${new mongoose.Types.ObjectId()}/${action}`, { method: 'PUT', body: {} })
     expect(response.status).toBe(404)
     expect(json(response)).toEqual({ message: 'Product not found' })
     expect(await Product.countDocuments()).toBe(0)
@@ -281,7 +292,7 @@ describe('catalog upload and moderation persistence (legacy routes have no authe
 
   it('rejects a missing image before contacting Cloudinary', async () => {
     const upload = vi.spyOn(cloudinary.uploader, 'upload_stream')
-    const response = await post('/api/upload/images', {})
+    const response = await legacyPost('/api/upload/images', {})
     expect(response.status).toBe(400)
     expect(upload).not.toHaveBeenCalled()
   })
@@ -297,7 +308,7 @@ describe('catalog upload and moderation persistence (legacy routes have no authe
     const form = new FormData()
     form.append('images', new Blob(['first']), 'first.png')
     form.append('images', new Blob(['second']), 'second.png')
-    const response = await fetch(`${baseUrl}/api/upload/images`, { method: 'POST', body: form })
+    const response = await fetch(`${legacyUrl}/api/upload/images`, { method: 'POST', body: form })
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ urls: ['https://images.example.test/first', 'https://images.example.test/second'] })
     expect(bytes).toEqual(['first', 'second'])
@@ -310,8 +321,77 @@ describe('catalog upload and moderation persistence (legacy routes have no authe
     }))
     const form = new FormData()
     form.append('images', new Blob(['image']), 'image.png')
-    const response = await fetch(`${baseUrl}/api/upload/images`, { method: 'POST', body: form })
+    const response = await fetch(`${legacyUrl}/api/upload/images`, { method: 'POST', body: form })
     expect(response.status).toBe(500)
     expect(await response.json()).toMatchObject({ message: 'Upload failed' })
+  })
+})
+
+describe('unauthenticated legacy routes are off by default (#264)', () => {
+  it.each([
+    ['GET', '/api/admin/sellers'],
+    ['GET', '/api/admin/products'],
+    ['GET', '/api/admin/products/507f1f77bcf86cd799439011'],
+    ['PUT', '/api/admin/products/507f1f77bcf86cd799439011/approve'],
+    ['PUT', '/api/admin/products/507f1f77bcf86cd799439011/reject'],
+    ['POST', '/api/upload/products'],
+    ['POST', '/api/upload/images'],
+  ])('%s %s answers 404 and never touches data or Cloudinary', async (method, path) => {
+    const seller = await Brand.create(brandInput())
+    await Product.create(productInput({ sellerId: seller.id }))
+    const upload = vi.spyOn(cloudinary.uploader, 'upload_stream')
+    const response = await request(path, { method, body: method === 'GET' ? undefined : {} })
+    expect(response.status).toBe(404)
+    expect(json(response)).toEqual({ message: 'Route not found' })
+    expect(response.text).not.toContain('kiran@example.test')
+    expect(upload).not.toHaveBeenCalled()
+    expect((await Product.findOne().lean()).status).not.toBe('approved')
+    expect(await Product.countDocuments()).toBe(1)
+  })
+
+  it.each([undefined, '', 'false', '1', 'yes'])('stays off when LEGACY_ADMIN_ENABLED is %j', (value) => {
+    expect(legacyAdminEnabled({ LEGACY_ADMIN_ENABLED: value })).toBe(false)
+  })
+
+  it.each(['true', ' TRUE '])('turns on only for an explicit true (%j)', (value) => {
+    expect(legacyAdminEnabled({ LEGACY_ADMIN_ENABLED: value })).toBe(true)
+  })
+
+  it('stays off in a .env copied from .env.example, as the README setup says to do', () => {
+    const example = dotenv.parse(readFileSync(fileURLToPath(new URL('../.env.example', import.meta.url))))
+    expect(Object.keys(example)).toContain('LEGACY_ADMIN_ENABLED')
+    expect(legacyAdminEnabled(example)).toBe(false)
+  })
+})
+
+describe('CORS allow-list (#264)', () => {
+  const origin = async (env, requestOrigin) => {
+    const instance = createApp({ env }).listen(0, '127.0.0.1')
+    await once(instance, 'listening')
+    try {
+      const response = await fetch(`http://127.0.0.1:${instance.address().port}/api/health`, { headers: { Origin: requestOrigin } })
+      return response.headers.get('access-control-allow-origin')
+    } finally {
+      await new Promise((resolve) => instance.close(resolve))
+    }
+  }
+
+  it('allows only the configured origins, ignoring spaces and trailing slashes', async () => {
+    const env = { CORS_ORIGIN: 'https://shazlo.store/, https://www.shazlo.store' }
+    expect(await origin(env, 'https://shazlo.store')).toBe('https://shazlo.store')
+    expect(await origin(env, 'https://www.shazlo.store')).toBe('https://www.shazlo.store')
+    expect(await origin(env, 'https://evil.example')).toBeNull()
+  })
+
+  it('parses the list and treats an empty value as unset', () => {
+    expect(corsOrigins({ CORS_ORIGIN: 'https://a.test, https://b.test/' })).toEqual(['https://a.test', 'https://b.test'])
+    // undefined, not null: CodeQL reads a null origin as permissive (js/cors-permissive-configuration).
+    expect(corsOrigins({ CORS_ORIGIN: ' ' })).toBeUndefined()
+    expect(corsOrigins({ CORS_ORIGIN: ',' })).toBeUndefined()
+    expect(corsOrigins({})).toBeUndefined()
+  })
+
+  it.each([{}, { CORS_ORIGIN: '' }, { CORS_ORIGIN: ' , ' }])('allows every origin while CORS_ORIGIN is unset (%j)', async (env) => {
+    expect(await origin(env, 'https://anything.example')).toBe('*')
   })
 })
