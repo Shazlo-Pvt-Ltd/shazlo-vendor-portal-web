@@ -385,7 +385,13 @@ describe('CORS allow-list (#264)', () => {
 
   it('parses the list and treats an empty value as unset', () => {
     expect(corsOrigins({ CORS_ORIGIN: 'https://a.test, https://b.test/' })).toEqual(['https://a.test', 'https://b.test'])
-    expect(corsOrigins({ CORS_ORIGIN: ' ' })).toBeNull()
-    expect(corsOrigins({})).toBeNull()
+    // undefined, not null: CodeQL reads a null origin as permissive (js/cors-permissive-configuration).
+    expect(corsOrigins({ CORS_ORIGIN: ' ' })).toBeUndefined()
+    expect(corsOrigins({ CORS_ORIGIN: ',' })).toBeUndefined()
+    expect(corsOrigins({})).toBeUndefined()
+  })
+
+  it.each([{}, { CORS_ORIGIN: '' }, { CORS_ORIGIN: ' , ' }])('allows every origin while CORS_ORIGIN is unset (%j)', async (env) => {
+    expect(await origin(env, 'https://anything.example')).toBe('*')
   })
 })

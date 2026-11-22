@@ -11,13 +11,14 @@ export function legacyAdminEnabled(env = process.env) {
   return String(env.LEGACY_ADMIN_ENABLED ?? "").trim().toLowerCase() === "true";
 }
 
-// CORS_ORIGIN is a comma-separated list of allowed origins. Unset keeps every origin allowed.
+// CORS_ORIGIN is a comma-separated list of allowed origins. Unset (undefined) keeps every origin
+// allowed. Not null: CodeQL treats a null origin as permissive, even behind the check below.
 export function corsOrigins(env = process.env) {
   const origins = String(env.CORS_ORIGIN ?? "")
     .split(",")
     .map((origin) => origin.trim().replace(/\/+$/, ""))
     .filter(Boolean);
-  return origins.length ? origins : null;
+  return origins.length ? origins : undefined;
 }
 
 // Keep HTTP composition separate from database connection and process lifecycle.
