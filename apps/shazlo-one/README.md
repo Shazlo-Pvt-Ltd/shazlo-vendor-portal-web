@@ -160,6 +160,34 @@ it without loading the app.
   not found"; a module the roles do not allow is the 403 page. Neither renders a frame.
 - **Home:** a card for each module the admin may open, or an explanation when there is none.
 
+## Admin management
+
+`/admins` (the "Admins" section, `src/pages/AdminsPage.tsx` and `src/features/admins/`) is for `super_admin` only:
+the route guard, the navigation and identity-api (on every call) each check it, and everyone else gets the 403 page
+without the admins being asked for at all.
+
+- **List:** name, email, roles, active or deactivated, and whether they must still change their password. The
+  search (name or email), the role and status filters and the page are in the address (`?q=&role=&status=&page=`):
+  shareable, they survive a reload and the back button steps through them. Typing replaces the address entry
+  rather than adding one; choosing a filter or a page adds one; a filter goes back to page 1.
+- **Create:** email, name, roles (from `GET /v1/roles`, each with its description) and a temporary password. The
+  dialog says they must change it at their first sign-in and that it must be handed over in person or through a
+  secure channel: it is never emailed. "Generate a password" makes a random 20-character one (no look-alike
+  characters) and shows it, because it has to be read once.
+- **Edit:** the name and the roles; deactivate and reactivate (a confirmation says their sessions end at once);
+  reset the password (a confirmation says the sessions end and they must choose a new password). You cannot
+  deactivate yourself, and the button says why.
+- **Refusals** are plain words next to the control they are about: `email_taken` by the email, `weak_password` by
+  the password, `unknown_role` by the roles, `cannot_deactivate_self` and `last_super_admin` by the control that
+  asked for it (the last super admin cannot be deactivated or lose the role, and the screen says why),
+  `admin_not_found` above the form (the list reloads), and a `403` means your own super admin role was removed
+  (your session is read again and the page becomes the 403 page).
+- **Roles take effect** at the admin's next token, within 15 minutes, and the dialog says so. A super admin who
+  edits their **own** roles has their session refreshed at once, so they see them.
+- **Temporary passwords:** the field is emptied the moment the call is sent (success or not), the mutation keeps
+  no copy, nothing is written to web storage, and a half-typed one is emptied when the session ends. Tests check
+  the form, the mutation cache, the query cache and the page.
+
 ## Security rules
 
 The shell is where admins sign in, so a script running on it could act as an admin. These rules are
