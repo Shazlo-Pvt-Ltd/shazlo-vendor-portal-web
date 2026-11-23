@@ -15,7 +15,13 @@ function sources(dir: string): Array<[string, string]> {
       if (name === 'node_modules' || name === 'dist') continue
       const path = join(current, name)
       if (statSync(path).isDirectory()) walk(path)
-      else if (/\.(ts|tsx)$/.test(name) && !/\.test\.(ts|tsx)$/.test(name) && !path.includes(`${join('src', 'test')}`)) {
+      else if (
+        /\.(ts|tsx)$/.test(name) &&
+        !/\.test\.(ts|tsx)$/.test(name) &&
+        !path.includes(join('src', 'test')) &&
+        // The reference module's test harness replaces postMessage on purpose, like this package's own.
+        !path.includes(join('dev-module', 'test'))
+      ) {
         found.push([relative(repoRoot, path).replaceAll('\\', '/'), readFileSync(path, 'utf8')])
       }
     }
@@ -68,12 +74,18 @@ describe('the package', () => {
 })
 
 describe('the apps', () => {
-  const apps = readdirSync(join(repoRoot, 'apps'))
-    .filter((name) => existsSync(join(repoRoot, 'apps', name, 'src')))
-    .flatMap((name) => sources(join(repoRoot, 'apps', name, 'src')))
+  // Each app's `src`, and the reference module (`dev-module`), which must go through the package too.
+  const apps = readdirSync(join(repoRoot, 'apps')).flatMap((name) =>
+    ['src', 'dev-module']
+      .filter((folder) => existsSync(join(repoRoot, 'apps', name, folder)))
+      .flatMap((folder) => sources(join(repoRoot, 'apps', name, folder))),
+  )
 
   it('finds the apps’ source files', () => {
     expect(apps.length).toBeGreaterThan(20)
+    // The reference module is checked too (this would be a vacuous pass if its files were skipped).
+    expect(apps.some(([path]) => path.endsWith('dev-module/src/ReferenceModule.tsx'))).toBe(true)
+    expect(apps.some(([path]) => path.includes('dev-module/test/'))).toBe(false)
   })
 
   it('post and read cross-frame messages only through @shazlo/shell-protocol', () => {

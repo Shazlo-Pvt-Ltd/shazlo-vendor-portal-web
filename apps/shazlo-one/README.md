@@ -42,6 +42,8 @@ never prints the value), instead of a blank page. `src/config/env.ts` has the ru
 | Command | What it does |
 | --- | --- |
 | `npm run dev -w @shazlo/shazlo-one` | Dev server on port 5173 |
+| `npm run dev:with-module -w @shazlo/shazlo-one` | The shell (5173) and the reference module (5175) together |
+| `npm run dev:module -w @shazlo/shazlo-one` | Only the reference module, on port 5175 |
 | `npm run build -w @shazlo/shazlo-one` | Typecheck, then a production build in `apps/shazlo-one/dist` |
 | `npm run typecheck -w @shazlo/shazlo-one` | `tsc` only |
 | `npx vitest run --project shazlo-one` | The shell's tests (jsdom, Testing Library) |
@@ -159,6 +161,35 @@ it without loading the app.
 - **Routes:** `/m/:moduleId/*` (the rest of the path belongs to the module). An unknown id is "Page
   not found"; a module the roles do not allow is the 403 page. Neither renders a frame.
 - **Home:** a card for each module the admin may open, or an explanation when there is none.
+
+## The reference module
+
+`dev-module/` is a tiny module for development and the shell's tests, and a model for module authors
+(Phase 7 and later). It is built on `createModuleClient` from `@shazlo/shell-protocol`, runs on its own
+origin (`http://localhost:5175`) and is **never built or deployed** (`vite build` on its config fails).
+It is in the **development** registry only, for `super_admin` and `vendor_reviewer`, so it can never be
+framed by a preview or production shell (a test checks it).
+
+```sh
+npm run dev:with-module -w @shazlo/shazlo-one   # shell on 5173, module on 5175
+```
+
+- It sends `ready`, keeps the token from `auth` **in memory only**, and shows the admin's email, roles and
+  when the token expires (never the token).
+- It calls vendor-api's `GET /v1/admin/me` with that token (`aud=vendor-api`) and shows the answer. A `401`
+  makes it send `token:request` (at most once every 30 seconds) and repeat the call when the shell answers.
+- Buttons send every module-to-shell message: `title` (in-module pages), a `toast` of each level, `logout`,
+  and a non-fatal and a fatal `error`. The shell's `navigate` and `error` are shown.
+- Its responses carry `Content-Security-Policy: frame-ancestors <shell origin>` (plus `http://localhost:5173`
+  in development) and `Referrer-Policy: no-referrer`, so any other origin that tries to frame it is refused.
+- Opened directly, outside the shell, it says so and does nothing else: no listener, no message, no request.
+- Settings: `VITE_SHELL_ORIGIN` (default `http://localhost:5173`) and `VITE_VENDOR_API_URL` (default
+  `http://localhost:8002`), both exact origins, checked by the protocol package. Put them in
+  `dev-module/.env.local` to change them.
+- vendor-api must allow the module's origin: compose and `.env.example` set `VENDOR_CORS_ALLOWED_ORIGINS` to
+  `http://localhost:5174,http://localhost:5175`. If you made your `.env` before this, add the second origin.
+- The module's config reads the protocol package, which is TypeScript source, so its dev server runs with
+  `--configLoader runner` (the scripts above do that).
 
 ## Security rules
 

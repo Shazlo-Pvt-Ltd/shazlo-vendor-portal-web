@@ -52,9 +52,18 @@ describe('the production Content-Security-Policy', () => {
     expect(policy.get('form-action')).toEqual(["'self'"])
   })
 
-  it('frames nothing while no module is registered', () => {
-    for (const environment of ENVIRONMENTS) expect(originsOf(MODULES[environment])).toEqual([])
+  it('frames nothing while no module is registered in a deployed build', () => {
+    expect(originsOf(MODULES.preview)).toEqual([])
+    expect(originsOf(MODULES.production)).toEqual([])
     expect(policy.get('frame-src')).toEqual(["'none'"])
+  })
+
+  it('registers the reference module in development only, so it can never be framed by a deployed shell', () => {
+    expect(originsOf(MODULES.development)).toEqual(['http://localhost:5175'])
+    for (const environment of ENVIRONMENTS) {
+      const ids = MODULES[environment].map((entry) => entry.id)
+      expect(ids.includes('reference'), environment).toBe(environment === 'development')
+    }
   })
 
   it('frames only the registered module origins, and nothing else gains them', () => {
