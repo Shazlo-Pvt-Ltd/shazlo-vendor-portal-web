@@ -64,7 +64,8 @@ src/
   app/                Providers (theme, error boundary, query cache), routes, router, query defaults
   api/                the typed client: client.ts, errors.ts, instance.ts, schema.d.ts (generated)
   config/env.ts       VITE_IDENTITY_API_URL, checked once at start
-  security/           headers.ts (every header, defined once), moduleOrigins.ts, and the tests
+  session/            the admin session: store, AuthProvider, guards, return-to check
+  security/           headers.ts (every header, defined once), moduleOrigins.ts, sensitiveState.ts, and the tests
   components/         ErrorBoundary, ErrorScreen, RouteError, NotFound, Misconfigured
   hooks/              usePageTitle
   pages/              one file per route
@@ -89,8 +90,30 @@ returning an error object:
 - `NetworkError` (`kind` is `network` or `timeout`) when nothing answers.
 - The browser's own `AbortError` when the caller cancels.
 
-Queries retry only network errors and `5xx` answers, twice. The access token and the renewal on a
-`401` are added by the session issue.
+Queries retry only network errors and `5xx` answers, twice. The client adds the access token and,
+on a `401` from anything but `/v1/auth/*`, renews the session once and repeats the call.
+
+## The admin session
+
+`src/session` holds the session (ADR 0009). Read it with `useSession()`.
+
+- The 15-minute access token lives in memory only, never in web storage, a URL or a log. After a
+  reload the session comes back from `POST /v1/auth/refresh` (the `identity_refresh` cookie), then
+  `GET /v1/me` gives the profile and roles.
+- It renews at 80% of the token's life and once on a `401`. Concurrent calls share one refresh. A
+  `409 refresh_conflict` is retried once. A `401` on refresh ends the session; a network or `5xx`
+  failure does not (`unavailable` before the first sign-in, a retry in 15 seconds after).
+- Tabs tell each other only the words `login` and `logout` on a `BroadcastChannel`, never a token.
+- States: `loading`, `signedIn`, `passwordChangeRequired`, `signedOut`, `unavailable`. An admin who
+  must change their password has a token with no roles; the guards hold them at `/change-password`.
+- Guards: `RequireAuth` (sends to `/login?return-to=...`, the path checked against `shellPaths`),
+  `PublicOnly`, `RequirePasswordChange` and `RequireRole anyOf={[...]}`.
+- `getModuleToken(audience)` exchanges the identity token (`POST /v1/auth/token`) for a module token,
+  shared between callers, never kept past its own or the identity token's expiry. `403
+  audience_not_allowed` and `400 unknown_audience` are `AudienceNotAllowedError` and
+  `UnknownAudienceError`.
+- Ending the session clears the query cache, the sensitive forms (`registerSensitiveReset`) and every
+  module token.
 
 ## Security rules
 

@@ -4,12 +4,17 @@ import { describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { Providers } from './app/Providers'
 import { routes } from './app/routes'
+import { AuthProvider } from './session/AuthProvider'
+import { makeStore, sessionBody } from './session/testing'
 
 function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] })
+  const { store } = makeStore({ fetchMe: async () => sessionBody().admin })
   return render(
     <Providers>
-      <RouterProvider router={router} />
+      <AuthProvider store={store}>
+        <RouterProvider router={router} />
+      </AuthProvider>
     </Providers>,
   )
 }
