@@ -9,6 +9,17 @@ function frame() {
   return screen.getByTitle('Vendors') as HTMLIFrameElement
 }
 
+const sidebar = () => screen.getByRole('navigation', { name: 'Shazlo One sections' })
+const topNav = () => screen.queryByRole('navigation', { name: 'Vendors pages' })
+const PAGES = ['Review queue', 'All vendors', 'Publishing']
+
+// The --shell-top the layout sets on its root, which the module iframe's height is computed from.
+function shellTop() {
+  let el: HTMLElement | null = screen.getByRole('main')
+  while (el && !getComputedStyle(el).getPropertyValue('--shell-top')) el = el.parentElement
+  return el ? getComputedStyle(el).getPropertyValue('--shell-top').trim() : null
+}
+
 // Sends a message as if it came from the module iframe.
 function fromModule(data: unknown, { origin = MODULE_ORIGIN, source }: { origin?: string; source?: MessageEventSource | null } = {}) {
   act(() => {
@@ -177,8 +188,20 @@ describe('module host (ADR 0001)', () => {
     ready()
     fromModule(createMessage('title', { path: '/queue', title: 'Review queue' }))
     const post = vi.spyOn(frame().contentWindow!, 'postMessage')
-    await user.click(screen.getByRole('link', { name: 'Publishing' }))
+    await user.click(within(sidebar()).getByRole('link', { name: 'Publishing' }))
     await waitFor(() => expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'navigate', payload: { path: '/publishing' } }), MODULE_ORIGIN))
+    expect(frame().getAttribute('src')).toBe('http://localhost:5193/queue')
+  })
+
+  it('moves the module back to its dashboard when the sidebar Vendors row is picked', async () => {
+    const { user, router } = await renderShell({ route: '/vendors/queue' })
+    await screen.findByTitle('Vendors')
+    ready()
+    fromModule(createMessage('title', { path: '/queue', title: 'Review queue' }))
+    const post = vi.spyOn(frame().contentWindow!, 'postMessage')
+    await user.click(within(sidebar()).getByRole('link', { name: /^Vendors/ }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/vendors/dashboard'))
+    await waitFor(() => expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'navigate', payload: { path: '/dashboard' } }), MODULE_ORIGIN))
     expect(frame().getAttribute('src')).toBe('http://localhost:5193/queue')
   })
 
@@ -234,5 +257,128 @@ describe('module host (ADR 0001)', () => {
     act(() => vi.advanceTimersByTime(10_000))
     expect(await screen.findByRole('heading', { name: 'Vendors is unavailable right now' })).toBeInTheDocument()
     expect(screen.queryByTitle('Vendors')).toBeNull()
+  })
+})
+
+describe('Vendors: the dashboard first, its pages in the top bar too', () => {
+  it.each(['/vendors/dashboard', '/vendors'])('makes the sidebar Vendors row open the dashboard, current on %s', async (route) => {
+    await renderShell({ route })
+    await screen.findByTitle('Vendors')
+    const vendors = within(sidebar()).getByRole('link', { name: /^Vendors/ })
+    expect(vendors).toHaveAttribute('href', '/vendors/dashboard')
+    expect(vendors).toHaveAttribute('aria-current', 'page')
+    for (const name of PAGES) expect(within(sidebar()).getByRole('link', { name })).not.toHaveAttribute('aria-current')
+  })
+
+  it('links the Vendors row and the Vendors crumb to the dashboard from a module page', async () => {
+    await renderShell({ route: '/vendors/queue' })
+    await screen.findByTitle('Vendors')
+    const vendors = within(sidebar()).getByRole('link', { name: /^Vendors/ })
+    expect(vendors).toHaveAttribute('href', '/vendors/dashboard')
+    expect(vendors).not.toHaveAttribute('aria-current')
+    // The module names its page; "Vendors" then becomes a crumb link.
+    ready()
+    fromModule(createMessage('title', { path: '/queue', title: 'Review queue' }))
+    const crumbs = screen.getByRole('navigation', { name: 'Breadcrumb' })
+    await waitFor(() => expect(within(crumbs).getByRole('link', { name: 'Vendors' })).toHaveAttribute('href', '/vendors/dashboard'))
+  })
+
+  it.each(['/vendors', '/vendors/'])('loads the module on its dashboard from the bare %s', async (route) => {
+    await renderShell({ route })
+    expect((await screen.findByTitle('Vendors')).getAttribute('src')).toBe('http://localhost:5193/dashboard')
+    expect(within(sidebar()).getByRole('link', { name: /^Vendors/ })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('keeps a page picked in the top bar while the module is still loading', async () => {
+    document.title = ''
+    const { user, router } = await renderShell({ route: '/vendors/dashboard' })
+    await screen.findByTitle('Vendors')
+    expect(screen.getByRole('status', { name: 'Loading Vendors' })).toBeInTheDocument()
+    await user.click(within(topNav()!).getByRole('link', { name: 'Review queue' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/vendors/queue'))
+    const post = vi.spyOn(frame().contentWindow!, 'postMessage')
+    ready()
+    // The module reports the page it was loaded on, after the admin had moved on.
+    fromModule(createMessage('title', { path: '/dashboard', title: 'Dashboard' }))
+    await waitFor(() => expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'navigate', payload: { path: '/queue' } }), MODULE_ORIGIN))
+    expect(router.state.location.pathname).toBe('/vendors/queue')
+    expect(document.title).toBe('')
+    expect(within(topNav()!).getByRole('link', { name: 'Review queue' })).toHaveAttribute('aria-current', 'page')
+    // The module arrives and names its page; the shell URL already matches, so nothing else moves.
+    fromModule(createMessage('title', { path: '/queue', title: 'Review queue' }))
+    await waitFor(() => expect(document.title).toBe('Review queue · Vendors · Shazlo One'))
+    expect(router.state.location.pathname).toBe('/vendors/queue')
+    expect(post.mock.calls.filter(([m]) => (m as { type: string }).type === 'navigate')).toHaveLength(1)
+  })
+
+  it.each([
+    ['/vendors/queue', 'Review queue'],
+    ['/vendors/vendors/v_kalki', 'All vendors'],
+    ['/vendors/review/product/p_x', 'Review queue'],
+    ['/vendors/publishing', 'Publishing'],
+    ['/vendors/dashboard', null],
+  ])('lists the three Vendors pages in the top bar on %s, with %s current', async (route, current) => {
+    await renderShell({ route })
+    await screen.findByTitle('Vendors')
+    const nav = topNav()!
+    expect(screen.getByRole('banner')).toContainElement(nav)
+    const links = within(nav).getAllByRole('link')
+    expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      ['Review queue', '/vendors/queue'],
+      ['All vendors', '/vendors/vendors'],
+      ['Publishing', '/vendors/publishing'],
+    ])
+    for (const a of links) {
+      const icon = a.querySelector('svg')
+      expect(icon).toHaveAttribute('aria-hidden', 'true')
+      expect(icon).toHaveAttribute('stroke-width', '1.75')
+      const isCurrent = a.textContent === current
+      expect(a.getAttribute('aria-current'), a.textContent!).toBe(isCurrent ? 'page' : null)
+      // The current page has a visible bar under it; the others do not.
+      expect(a.querySelector('[data-indicator]') !== null, a.textContent!).toBe(isCurrent)
+    }
+    // The sidebar marks the same page.
+    for (const name of PAGES) expect(within(sidebar()).getByRole('link', { name }).getAttribute('aria-current'), name).toBe(name === current ? 'page' : null)
+  })
+
+  it('moves the module with navigate when a top bar page is picked, without reloading it', async () => {
+    const { user, router } = await renderShell({ route: '/vendors/dashboard' })
+    await screen.findByTitle('Vendors')
+    ready()
+    fromModule(createMessage('title', { path: '/dashboard', title: 'Dashboard' }))
+    const post = vi.spyOn(frame().contentWindow!, 'postMessage')
+    await user.click(within(topNav()!).getByRole('link', { name: 'All vendors' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/vendors/vendors'))
+    await waitFor(() => expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'navigate', payload: { path: '/vendors' } }), MODULE_ORIGIN))
+    expect(frame().getAttribute('src')).toBe('http://localhost:5193/dashboard')
+    expect(within(topNav()!).getByRole('link', { name: 'All vendors' })).toHaveAttribute('aria-current', 'page')
+    expect(within(sidebar()).getByRole('link', { name: 'All vendors' })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it.each(['/', '/admins'])('shows no module pages row on %s', async (route) => {
+    await renderShell({ route })
+    await screen.findByRole('heading', { level: 1 })
+    expect(topNav()).toBeNull()
+  })
+
+  it('shows no module pages row, and keeps the header short, in a module the admin may not open', async () => {
+    const { context } = await renderShell({ route: '/vendors/queue', as: 'priya' })
+    await screen.findByTitle('Vendors')
+    expect(topNav()).not.toBeNull()
+    const admin = context.session.get().admin!
+    act(() => context.session.adopt({ access_token: context.session.accessToken()!, expires_in: 900, admin: { ...admin, roles: [] } }))
+    expect(await screen.findByRole('heading', { name: 'You do not have access to Vendors' })).toBeInTheDocument()
+    expect(topNav()).toBeNull()
+    expect(shellTop()).toBe('56px')
+  })
+
+  it('makes the header taller inside a module, so the iframe still fills the screen exactly', async () => {
+    const { router } = await renderShell({ route: '/vendors/queue' })
+    await screen.findByTitle('Vendors')
+    expect(shellTop()).toBe('104px')
+    await act(() => router.navigate('/'))
+    await screen.findByRole('heading', { level: 1 })
+    expect(topNav()).toBeNull()
+    expect(shellTop()).toBe('56px')
   })
 })
