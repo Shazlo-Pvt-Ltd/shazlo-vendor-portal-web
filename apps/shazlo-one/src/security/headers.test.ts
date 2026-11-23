@@ -63,7 +63,8 @@ describe('the production Content-Security-Policy', () => {
     expect(withModule.get('frame-src')).toEqual([MODULE])
     expect(withModule.get('connect-src')).toEqual([API])
     expect(withModule.get('frame-ancestors')).toEqual(["'none'"])
-    expect(text.match(new RegExp(MODULE.replace(/\./g, '\\.'), 'g'))).toHaveLength(1)
+    // Counted by splitting on the literal text: no regular expression to escape.
+    expect(text.split(MODULE).length - 1).toBe(1)
   })
 
   it('upgrades insecure requests and allows no wildcard, data: or blob: source', () => {
