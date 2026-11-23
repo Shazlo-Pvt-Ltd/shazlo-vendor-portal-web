@@ -36,8 +36,8 @@ Plan, phases and decisions: [docs/ROADMAP.md](docs/ROADMAP.md). Architecture dec
 | `packages/py-security/` | Shared Python package: password hashing, rate limiter, client IP, refresh-token store, signing keys and token issuer, request signing (ADR 0010, ADR 0003) |
 | `docs/` | [Roadmap](docs/ROADMAP.md), design documents, [ADRs](docs/adr), [runbooks](docs/runbooks), [test strategy](docs/testing.md) |
 | `docker-compose.yml`, `docker/` | Local Postgres, Redis, Mailpit and the services (see below); `docker/postgres/init` creates the databases |
-| `test/contracts/` | JavaScript contract tests for the ADR 0003 schemas and the shared-package install files |
-| `app/`, `backend/` | **Legacy** consumer landing/waitlist, Express + MongoDB. Untouched until Phase 8 |
+| `test/contracts/` | JavaScript contract tests for the ADR 0003 schemas, the shared-package install files and the secret-file ignore rules |
+| `app/`, `backend/` | **Legacy** consumer landing/waitlist, Express + MongoDB. Untouched until Phase 8, apart from security fixes |
 
 The three Python services and the two Python packages are built. Of the web apps, `apps/shazlo-one/` and `apps/vendor-admin/` are placeholders until their phase starts, and `apps/vendor-portal/` is being built (Phase 5: sign-in, the dashboard, the brand page editor, the products list, the product form, the bulk import, the team and account pages and submission status are merged); see the roadmap and the app's README.
 
