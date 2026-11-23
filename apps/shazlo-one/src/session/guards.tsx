@@ -5,6 +5,11 @@ import { CHANGE_PASSWORD_PATH, LOGIN_PATH } from '../app/shellPaths'
 import { useSession } from './AuthProvider'
 import { safeReturnTo } from './returnTo'
 
+/** The forced password-change screen, carrying the (already checked) place to continue to. */
+function passwordChangeTo(returnTo: string): string {
+  return returnTo === '/' ? CHANGE_PASSWORD_PATH : `${CHANGE_PASSWORD_PATH}?return-to=${encodeURIComponent(returnTo)}`
+}
+
 function Loading() {
   return (
     <Box role="status" aria-label="Loading" sx={{ display: 'grid', placeItems: 'center', minHeight: '60vh' }}>
@@ -42,7 +47,8 @@ export function RequireAuth({ children }: { children?: ReactNode }) {
     case 'unavailable':
       return <Unavailable />
     case 'passwordChangeRequired':
-      return <Navigate to={CHANGE_PASSWORD_PATH} replace />
+      // Remember where the admin was going: after choosing a password they continue there.
+      return <Navigate to={passwordChangeTo(safeReturnTo(`${location.pathname}${location.search}${location.hash}`))} replace />
     case 'signedOut': {
       // After a deliberate sign-out the next sign-in starts fresh; otherwise it returns to this screen.
       const returnTo = session.signedOutByUser ? '/' : safeReturnTo(`${location.pathname}${location.search}${location.hash}`)
@@ -77,11 +83,9 @@ export function PublicOnly({ children }: { children?: ReactNode }) {
   const session = useSession()
   const location = useLocation()
   if (session.status === 'loading') return <Loading />
-  if (session.status === 'passwordChangeRequired') return <Navigate to={CHANGE_PASSWORD_PATH} replace />
-  if (session.status === 'signedIn') {
-    const target = safeReturnTo(new URLSearchParams(location.search).get('return-to'))
-    return <Navigate to={target} replace />
-  }
+  const target = safeReturnTo(new URLSearchParams(location.search).get('return-to'))
+  if (session.status === 'passwordChangeRequired') return <Navigate to={passwordChangeTo(target)} replace />
+  if (session.status === 'signedIn') return <Navigate to={target} replace />
   return children ?? <Outlet />
 }
 

@@ -64,6 +64,14 @@ describe('the source files', () => {
     expect(offenders).toEqual([])
   })
 
+  it('render a password input only through PasswordField', () => {
+    const offenders = Object.entries(files)
+      .filter(([path]) => !/(^|\/)PasswordField\.tsx$/.test(path))
+      .filter(([, text]) => /type\s*[=:]\s*\{?\s*['"]password['"]/.test(text))
+      .map(([path]) => path)
+    expect(offenders).toEqual([])
+  })
+
   it('never put a token or password in a URL, a log call or an error message', () => {
     const offenders = Object.entries(files)
       .filter(([, text]) => /console\.\w+\([^)]*(token|password)/i.test(text))
