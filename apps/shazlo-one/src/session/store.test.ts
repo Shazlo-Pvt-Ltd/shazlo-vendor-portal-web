@@ -577,3 +577,99 @@ describe('isSessionResponse and isAdminProfile', () => {
     expect(isAdminProfile({ ...adminProfile(), email: 3 })).toBe(false)
   })
 })
+
+describe('module tokens per module', () => {
+  const tokenFor = (counter: { n: number }) =>
+    vi.fn(async (audience: string) => {
+      counter.n += 1
+      return { access_token: `t${counter.n}`, token_type: 'Bearer', expires_in: 300, audience }
+    })
+
+  it('keeps a token for each module, even when two share an audience, and reuses a module’s own', async () => {
+    const counter = { n: 0 }
+    const exchange = tokenFor(counter)
+    const { store } = makeStore({ exchange })
+    await store.start()
+    const a = await store.getModuleToken('vendor-api', 'module-a')
+    const b = await store.getModuleToken('vendor-api', 'module-b')
+    expect(a.accessToken).not.toBe(b.accessToken)
+    expect(await store.getModuleToken('vendor-api', 'module-a')).toBe(a)
+    expect(await store.getModuleToken('vendor-api', 'module-b')).toBe(b)
+    expect(exchange).toHaveBeenCalledTimes(2)
+    store.close()
+  })
+
+  it('defaults the scope to the audience, as before', async () => {
+    const counter = { n: 0 }
+    const exchange = tokenFor(counter)
+    const { store } = makeStore({ exchange })
+    await store.start()
+    expect(await store.getModuleToken('vendor-api')).toBe(await store.getModuleToken('vendor-api'))
+    expect(exchange).toHaveBeenCalledOnce()
+    store.close()
+  })
+
+  it('drops one module’s tokens and leaves another module’s alone', async () => {
+    const counter = { n: 0 }
+    const exchange = tokenFor(counter)
+    const { store } = makeStore({ exchange })
+    await store.start()
+    const a = await store.getModuleToken('vendor-api', 'module-a')
+    const b = await store.getModuleToken('vendor-api', 'module-b')
+    store.dropModuleTokens('module-a')
+    expect(await store.getModuleToken('vendor-api', 'module-b')).toBe(b)
+    const again = await store.getModuleToken('vendor-api', 'module-a')
+    expect(again.accessToken).not.toBe(a.accessToken)
+    expect(exchange).toHaveBeenCalledTimes(3)
+    store.close()
+  })
+
+  it('does not drop a scope that merely starts with another’s name', async () => {
+    const counter = { n: 0 }
+    const { store } = makeStore({ exchange: tokenFor(counter) })
+    await store.start()
+    const long = await store.getModuleToken('vendor-api', 'vendor-admin')
+    store.dropModuleTokens('vendor')
+    expect(await store.getModuleToken('vendor-api', 'vendor-admin')).toBe(long)
+    store.close()
+  })
+
+  it('hands a token still being exchanged to the caller that asked, but does not keep it after a drop', async () => {
+    let release: () => void = () => {}
+    let calls = 0
+    const exchange = vi.fn(
+      (audience: string) =>
+        new Promise<{ access_token: string; token_type: string; expires_in: number; audience: string }>((resolve) => {
+          calls += 1
+          const token = `late-${calls}`
+          release = () => resolve({ access_token: token, token_type: 'Bearer', expires_in: 300, audience })
+        }),
+    )
+    const { store } = makeStore({ exchange })
+    await store.start()
+    const pending = store.getModuleToken('vendor-api', 'module-a')
+    await vi.waitFor(() => expect(exchange).toHaveBeenCalledOnce())
+    store.dropModuleTokens('module-a')
+    release()
+    expect((await pending).accessToken).toBe('late-1')
+    // Nothing was kept: the next call exchanges again.
+    const next = store.getModuleToken('vendor-api', 'module-a')
+    await vi.waitFor(() => expect(exchange).toHaveBeenCalledTimes(2))
+    release()
+    expect((await next).accessToken).toBe('late-2')
+    store.close()
+  })
+
+  it('forgets every module’s tokens when the session ends, whatever their scope', async () => {
+    const counter = { n: 0 }
+    const exchange = tokenFor(counter)
+    const { store } = makeStore({ exchange })
+    await store.start()
+    await store.getModuleToken('vendor-api', 'module-a')
+    await store.logout()
+    store.signIn(sessionBody({ token: 'next-admin' }))
+    const next = await store.getModuleToken('vendor-api', 'module-a')
+    expect(next.accessToken).toBe('t2')
+    store.close()
+  })
+})

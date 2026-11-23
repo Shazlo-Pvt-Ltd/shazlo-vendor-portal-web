@@ -14,7 +14,9 @@ export interface Session extends SessionState {
   /** After `unavailable`. */
   retry: () => Promise<void>
   /** A short token for one module's backend; the iframe host uses it. */
-  getModuleToken: (audience: string) => Promise<ModuleToken>
+  getModuleToken: (audience: string, scope?: string) => Promise<ModuleToken>
+  /** Forgets the tokens kept for one module: call it when its page is left. */
+  dropModuleTokens: (scope: string) => void
 }
 
 const StoreContext = createContext<SessionStore | undefined>(undefined)
@@ -60,7 +62,8 @@ export function useSession(): Session {
       signIn: (session) => store.signIn(session),
       logout: () => store.logout(),
       retry: () => store.retry(),
-      getModuleToken: (audience) => store.getModuleToken(audience),
+      getModuleToken: (audience, scope) => store.getModuleToken(audience, scope),
+      dropModuleTokens: (scope) => store.dropModuleTokens(scope),
     }),
     [state, store],
   )

@@ -111,8 +111,9 @@ on a `401` from anything but `/v1/auth/*`, renews the session once and repeats t
   must change their password has a token with no roles; the guards hold them at `/change-password`.
 - Guards: `RequireAuth` (sends to `/login?return-to=...`, the path checked against `shellPaths`),
   `PublicOnly`, `RequirePasswordChange` and `RequireRole anyOf={[...]}`.
-- `getModuleToken(audience)` exchanges the identity token (`POST /v1/auth/token`) for a module token,
-  shared between callers, never kept past its own or the identity token's expiry. `403
+- `getModuleToken(audience, scope)` exchanges the identity token (`POST /v1/auth/token`) for a module token,
+  kept per `scope` (the module's id), shared only between callers of the same scope, never kept past its
+  own or the identity token's expiry. `dropModuleTokens(scope)` forgets a module's tokens when its page is left. `403
   audience_not_allowed` and `400 unknown_audience` are `AudienceNotAllowedError` and
   `UnknownAudienceError`.
 - Screens: `/login` (one message for every `401`, a countdown for `429`, the password dropped from
@@ -161,6 +162,36 @@ it without loading the app.
 - **Routes:** `/m/:moduleId/*` (the rest of the path belongs to the module). An unknown id is "Page
   not found"; a module the roles do not allow is the 403 page. Neither renders a frame.
 - **Home:** a card for each module the admin may open, or an explanation when there is none.
+
+## The module host
+
+`/m/:moduleId` puts the module in a frame and does the handshake of ADR 0001 (`src/components/ModuleHost.tsx`,
+built on `createShellChannel` from `@shazlo/shell-protocol`).
+
+- **The frame:** `title`, `sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"` (no top
+  navigation, popups or modals), `referrerpolicy="no-referrer"`, `allow=""`. Its `src` is exactly the
+  registry's `url`: a token is never in an address.
+- **Order:** the channel (and so the `message` listener) is created first, then `src` is set, so an early
+  `ready` is never missed.
+- **On `ready`** (from the module's exact origin **and** its frame window, nothing else is read): the shell
+  picks a version, exchanges a token for the registry's `audience`, and sends `auth` with `replyTo`. A second
+  `ready` (the module reloaded) gets the current `auth` again, from the cache while the token is good. With no
+  common version the shell sends `error` `version_unsupported` and shows a panel naming the module and its version.
+- **Tokens** are kept per module (its id), never shared (two modules on `vendor-api` get a token each), and
+  dropped when the page is left, when the frame is reloaded, and when the session ends.
+- **Exchange failures:** `403 audience_not_allowed` (the admin lost the role) is the 403 page, with no frame.
+  A network error, a 5xx, an unknown audience or an ended session is an error panel with **Retry**.
+- **No `ready` in 10 seconds** (also what a CSP or framing refusal looks like, because the parent cannot see
+  it): an error panel with Retry, which gives the frame a new load. After 3 failed retries it says "unavailable",
+  offers no more Retry and calls the failure reporter once (`setModuleFailureReporter` in
+  `src/modules/moduleFailure.ts`; nothing is wired up by default). A module that answers resets the count.
+- **While it starts** the page shows a loading state; the shell's navigation and account menu stay usable
+  throughout, and leaving the page removes the frame and its listener.
+
+Not here yet: pushing a fresh `auth` before the token ends and answering `token:request` (token refresh and
+session end across the frame), title and deep-link sync, toasts, and a module's `logout` and `error`
+messages (their own issues). Until then the reference module's buttons for those send messages the host
+does not act on.
 
 ## The reference module
 

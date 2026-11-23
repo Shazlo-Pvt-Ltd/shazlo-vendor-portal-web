@@ -94,6 +94,9 @@ export const SESSION_CHANNEL = 'shazlo-one-session'
 /** A module token this close to its end is replaced rather than handed out. */
 const MODULE_TOKEN_SKEW_MS = 10_000
 
+/** Between a module's id and an audience in a cache key; module ids cannot contain it. */
+const SCOPE_SEPARATOR = '|'
+
 /** The session body, checked: do not trust the answer blindly. */
 export function isSessionResponse(value: unknown): value is SessionResponse {
   if (typeof value !== 'object' || value === null) return false
@@ -138,6 +141,8 @@ export class SessionStore {
   private generation = 0
   private moduleTokens = new Map<string, ModuleToken>()
   private moduleRequests = new Map<string, Promise<ModuleToken>>()
+  /** Bumped when a module's tokens are dropped, so an exchange that started before knows not to keep its token. */
+  private scopeEpochs = new Map<string, number>()
 
   private channel: SessionDeps['channel'] | undefined
 
@@ -323,21 +328,44 @@ export class SessionStore {
    * the identity token it came from would have ended, whichever is first. Callers asking at the same
    * time share one exchange. Throws {@link AudienceNotAllowedError}, {@link UnknownAudienceError} or
    * {@link NotSignedInError}; other failures are the API client's own errors.
+   *
+   * `scope` says whose token it is: the module's id. A token is kept per scope, never shared, so two
+   * modules that use the same audience (`vendor-api`) each get a token of their own, and
+   * {@link SessionStore.dropModuleTokens} can drop one module's tokens when its page is left. It
+   * defaults to the audience, for callers that have no module.
    */
-  getModuleToken(audience: string): Promise<ModuleToken> {
-    const cached = this.moduleTokens.get(audience)
+  getModuleToken(audience: string, scope: string = audience): Promise<ModuleToken> {
+    const key = this.moduleKey(scope, audience)
+    const cached = this.moduleTokens.get(key)
     if (cached && cached.expiresAt - Date.now() > MODULE_TOKEN_SKEW_MS) return Promise.resolve(cached)
-    let pending = this.moduleRequests.get(audience)
+    let pending = this.moduleRequests.get(key)
     if (!pending) {
-      pending = this.exchangeFor(audience).finally(() => {
-        this.moduleRequests.delete(audience)
+      pending = this.exchangeFor(audience, scope).finally(() => {
+        // Only the entry this call made: a drop and a new request may have replaced it.
+        if (this.moduleRequests.get(key) === pending) this.moduleRequests.delete(key)
       })
-      this.moduleRequests.set(audience, pending)
+      this.moduleRequests.set(key, pending)
     }
     return pending
   }
 
-  private async exchangeFor(audience: string): Promise<ModuleToken> {
+  /**
+   * Forgets every token kept for a module (its page was left). An exchange still under way for it
+   * finishes, but its token is handed only to the caller that asked, never kept.
+   */
+  dropModuleTokens(scope: string): void {
+    const prefix = `${scope}${SCOPE_SEPARATOR}`
+    for (const key of [...this.moduleTokens.keys()]) if (key.startsWith(prefix)) this.moduleTokens.delete(key)
+    for (const key of [...this.moduleRequests.keys()]) if (key.startsWith(prefix)) this.moduleRequests.delete(key)
+    this.scopeEpochs.set(scope, (this.scopeEpochs.get(scope) ?? 0) + 1)
+  }
+
+  private moduleKey(scope: string, audience: string): string {
+    return `${scope}${SCOPE_SEPARATOR}${audience}`
+  }
+
+  private async exchangeFor(audience: string, scope: string): Promise<ModuleToken> {
+    const epoch = this.scopeEpochs.get(scope) ?? 0
     // Only a signed-in admin has roles to exchange; a password-change token gets nothing.
     if (this.state.status !== 'signedIn') throw new NotSignedInError()
     const generation = this.generation
@@ -366,7 +394,8 @@ export class SessionStore {
       audience,
       expiresAt: Math.min(Date.now() + response.expires_in * 1000, issuedFrom.expiresAt),
     }
-    this.moduleTokens.set(audience, moduleToken)
+    // Not kept if the module's page was left while the exchange ran.
+    if ((this.scopeEpochs.get(scope) ?? 0) === epoch) this.moduleTokens.set(this.moduleKey(scope, audience), moduleToken)
     return moduleToken
   }
 
