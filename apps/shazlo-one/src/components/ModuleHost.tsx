@@ -1,20 +1,36 @@
-import { shellSupportedVersions, createShellChannel, type ReadyInfo } from '@shazlo/shell-protocol'
-import { Alert, Box, Button, CircularProgress, Typography } from '@mui/material'
+import {
+  createShellChannel,
+  isModulePath,
+  shellSupportedVersions,
+  type ModuleErrorPayload,
+  type ReadyInfo,
+  type TitlePayload,
+  type ToastPayload,
+} from '@shazlo/shell-protocol'
+import { Alert, Box, Breadcrumbs, Button, CircularProgress, Link as MuiLink, Typography } from '@mui/material'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useLocation, useNavigate } from 'react-router'
 import { friendlyError } from '../api/friendlyError'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { reportModuleFailure } from '../modules/moduleFailure'
+import { createRateLimiter } from '../modules/rateLimit'
 import { TOKEN_REQUEST_THROTTLE_MS, backoffDelay, refreshDelay } from '../modules/refreshSchedule'
 import type { ModuleEntry } from '../modules/registry'
+import { modulePathFrom, shellUrlFor } from '../modules/shellPath'
 import { useSession } from '../session/AuthProvider'
 import { AudienceNotAllowedError, NotSignedInError, UnknownAudienceError, type ModuleToken } from '../session/store'
 import { NoAccess } from './NoAccess'
+import { useToast } from './ToastProvider'
 
 /** How long a module has to say `ready` after its frame starts loading (ADR 0001, section 7). */
 export const READY_TIMEOUT_MS = 10_000
 /** After this many failed retries the shell stops offering Retry and says the module is unavailable. */
 export const MAX_RETRIES = 3
+/** A module may ask for this many toasts in any `TOAST_WINDOW_MS`; more are dropped, so it cannot flood the screen. */
+export const MAX_TOASTS_PER_WINDOW = 5
+/** A module may report this many `title`s in any window; each can change the address bar, which browsers limit. */
+export const MAX_TITLES_PER_WINDOW = 20
+export const TOAST_WINDOW_MS = 10_000
 
 /**
  * The frame's `sandbox` (ADR 0001, section 5). Scripts and its own origin (it is a React app that
@@ -34,6 +50,8 @@ type Status =
   /** The token exchange said the admin's roles no longer allow this module. */
   | { kind: 'forbidden' }
   | { kind: 'error'; message: string }
+  /** The module sent `error` with `fatal: true`: it is replaced by the shell's own panel. */
+  | { kind: 'fatal'; code: string; message: string }
 
 /** What the admin is told when the token for the module could not be got. */
 function statusForExchangeError(error: unknown): Status {
@@ -48,13 +66,22 @@ interface FrameProps {
   /** True once the module has its token: only then is the frame shown. */
   visible: boolean
   onStatus: (status: Status) => void
+  /** Where the shell's address says the module should be, as a path inside the module (`/` for its root). */
+  deepLink: string
+  /**
+   * The module reported where it is. Returns the path the shell's address now stands for, or undefined when
+   * the report was refused (not a path inside the module, or too many).
+   */
+  onTitle: (payload: TitlePayload) => string | undefined
+  onToast: (payload: ToastPayload) => void
+  onModuleError: (payload: ModuleErrorPayload) => void
 }
 
 /**
  * One load of the module's frame. It is created fresh for each attempt (the parent gives it a new
  * `key`), so a retry is a new frame and a new listener, never state left over from a failed one.
  */
-function HostedFrame({ entry, visible, onStatus }: FrameProps) {
+function HostedFrame({ entry, visible, onStatus, deepLink, onTitle, onToast, onModuleError }: FrameProps) {
   const session = useSession()
   const frame = useRef<HTMLIFrameElement>(null)
   // The latest session and callback without restarting the handshake when they change.
@@ -62,6 +89,15 @@ function HostedFrame({ entry, visible, onStatus }: FrameProps) {
   sessionRef.current = session
   const onStatusRef = useRef(onStatus)
   onStatusRef.current = onStatus
+  const handlers = useRef({ onTitle, onToast, onModuleError })
+  handlers.current = { onTitle, onToast, onModuleError }
+  const deepLinkRef = useRef(deepLink)
+  deepLinkRef.current = deepLink
+  const channelRef = useRef<ReturnType<typeof createShellChannel> | undefined>(undefined)
+  // Whether the module has its token (so it is ready to be told where to go), and the last path the module
+  // and the shell agreed on, so a path the module itself reported is never sent back to it.
+  const authSent = useRef(false)
+  const lastSynced = useRef('')
 
   useEffect(() => {
     const iframe = frame.current
@@ -138,6 +174,17 @@ function HostedFrame({ entry, visible, onStatus }: FrameProps) {
       }
     }
 
+    /**
+     * Tells a module that just got its token where the shell's address says it should be. A module (re)starts at
+     * its root, so a deep link (`/m/<id>/orders/42`) or a reload mid-way sends `navigate` once it is ready.
+     */
+    function sendDeepLink(): void {
+      authSent.current = true
+      const path = deepLinkRef.current
+      lastSynced.current = path
+      if (path !== '/' && isModulePath(path)) channel.sendNavigate(path)
+    }
+
     async function answer(info: ReadyInfo): Promise<void> {
       // The module is alive: stop waiting for it. A second `ready` (the module reloaded) comes here
       // too and gets the current token, from the cache while it is still good.
@@ -149,6 +196,7 @@ function HostedFrame({ entry, visible, onStatus }: FrameProps) {
         if (disposed || mine !== newest) return
         if (sessionRef.current.admin === null) throw new NotSignedInError()
         const sent = deliver(token, info.id)
+        if (sent) sendDeepLink()
         report(sent ? { kind: 'ready' } : { kind: 'error', message: 'The session could not be sent to the module.' })
       } catch (error) {
         if (disposed || mine !== newest) return
@@ -166,6 +214,22 @@ function HostedFrame({ entry, visible, onStatus }: FrameProps) {
         clearTimeout(timer)
         report({ kind: 'version', moduleVersion: info.moduleVersion, supportedVersions: info.supportedVersions })
       },
+      onTitle: (payload) => {
+        const synced = handlers.current.onTitle(payload)
+        if (synced !== undefined) lastSynced.current = synced
+      },
+      onToast: (payload) => handlers.current.onToast(payload),
+      // The admin chose to sign out inside the module: the session ends (the refresh token is revoked), the
+      // frame goes with the page and the guards send the admin to sign in.
+      onLogout: () => void sessionRef.current.logout(),
+      onModuleError: (payload) => {
+        if (payload.fatal) {
+          clearTimeout(timer)
+          report({ kind: 'fatal', code: payload.code, message: payload.message })
+        } else {
+          handlers.current.onModuleError(payload)
+        }
+      },
       // A module that got a 401 asks for a new token. At most one answer every 30 seconds, whatever it sends.
       onTokenRequest: () => {
         const now = Date.now()
@@ -174,11 +238,14 @@ function HostedFrame({ entry, visible, onStatus }: FrameProps) {
         void refresh()
       },
     })
+    channelRef.current = channel
     // Only now does the frame get its address: exactly the registry's `url`, never anything token-like.
     iframe.src = entry.url
 
     return () => {
       disposed = true
+      authSent.current = false
+      channelRef.current = undefined
       clearTimeout(timer)
       clearTimeout(refreshTimer)
       clearTimeout(expiryTimer)
@@ -187,6 +254,14 @@ function HostedFrame({ entry, visible, onStatus }: FrameProps) {
       sessionRef.current.dropModuleTokens(entry.id)
     }
   }, [entry])
+
+  // The address changed under a module that is running (the browser's back or forward, or a link into another
+  // page of the module): move the module too. Not when the module itself reported that path.
+  useEffect(() => {
+    if (!authSent.current || deepLink === lastSynced.current) return
+    lastSynced.current = deepLink
+    if (isModulePath(deepLink)) channelRef.current?.sendNavigate(deepLink)
+  }, [deepLink])
 
   return (
     <iframe
@@ -222,8 +297,58 @@ function Panel({ title, children, retry }: { title: string; children: string; re
 export function ModuleHost({ entry }: { entry: ModuleEntry }) {
   const [attempt, setAttempt] = useState(0)
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
+  /** The title of the page the module reported it is on (the breadcrumb and the tab title follow it). */
+  const [pageTitle, setPageTitle] = useState<string | undefined>()
   const failures = useRef(0)
-  usePageTitle(status.kind === 'forbidden' ? "You don't have access" : entry.title)
+  const location = useLocation()
+  const navigate = useNavigate()
+  const toast = useToast()
+  const locationRef = useRef(location)
+  locationRef.current = location
+  const deepLink = modulePathFrom(entry.id, location)
+  // Limits on what a module can make the shell do: a flood of toasts or of address changes is dropped.
+  const toastAllowed = useRef(createRateLimiter({ max: MAX_TOASTS_PER_WINDOW, windowMs: TOAST_WINDOW_MS })).current
+  const titleAllowed = useRef(createRateLimiter({ max: MAX_TITLES_PER_WINDOW, windowMs: TOAST_WINDOW_MS })).current
+  const tabTitle = pageTitle !== undefined && pageTitle !== entry.title ? `${pageTitle} · ${entry.title}` : entry.title
+  usePageTitle(status.kind === 'forbidden' ? "You don't have access" : tabTitle)
+
+  /**
+   * The module says where it is. The shell shows it in the breadcrumb and the tab title and puts it in its own
+   * address (`/m/<id>/<path>`) **replacing** the current entry, so each step does not add a history entry. The
+   * path is checked first: it must stay inside this module's address, or it is ignored.
+   */
+  const handleTitle = useCallback(
+    (payload: TitlePayload): string | undefined => {
+      if (!titleAllowed()) return undefined
+      const url = shellUrlFor(entry.id, payload.path)
+      if (url === undefined) return undefined
+      setPageTitle(payload.title)
+      const here = locationRef.current
+      if (url !== `${here.pathname}${here.search}${here.hash}`) void navigate(url, { replace: true })
+      const target = new URL(url, 'https://shell.invalid')
+      return modulePathFrom(entry.id, { pathname: target.pathname, search: target.search, hash: target.hash })
+    },
+    [entry.id, navigate, titleAllowed],
+  )
+
+  /** A module's toast, shown by the shell's own component, labelled with the module it came from. */
+  const handleToast = useCallback(
+    (payload: ToastPayload) => {
+      if (!toastAllowed()) return
+      toast.show({ level: payload.level, message: payload.message, source: entry.title, ...(payload.durationMs === undefined ? {} : { durationMs: payload.durationMs }) })
+    },
+    [entry.title, toast, toastAllowed],
+  )
+
+  /** A non-fatal error: logged in development, and the admin gets a notice (it counts against the toast limit). */
+  const handleModuleError = useCallback(
+    (payload: ModuleErrorPayload) => {
+      if (import.meta.env.DEV) console.error(`[shell] ${entry.id} reported a non-fatal error (${payload.code}): ${payload.message}`)
+      if (!toastAllowed()) return
+      toast.show({ level: 'warning', message: `Something went wrong: ${payload.message}`.slice(0, 280), source: entry.title })
+    },
+    [entry.id, entry.title, toast, toastAllowed],
+  )
 
   const handle = useCallback(
     (next: Status) => {
@@ -243,6 +368,7 @@ export function ModuleHost({ entry }: { entry: ModuleEntry }) {
 
   const retry = () => {
     setStatus({ kind: 'loading' })
+    setPageTitle(undefined)
     setAttempt((value) => value + 1)
   }
 
@@ -252,6 +378,20 @@ export function ModuleHost({ entry }: { entry: ModuleEntry }) {
   const framed = status.kind === 'loading' || status.kind === 'ready'
   return (
     <Box>
+      <Breadcrumbs aria-label="Breadcrumb" sx={{ mb: 1 }}>
+        <MuiLink component={Link} to="/" underline="hover" color="inherit">
+          Home
+        </MuiLink>
+        {pageTitle !== undefined && pageTitle !== entry.title ? (
+          <MuiLink component={Link} to={`/m/${entry.id}`} underline="hover" color="inherit">
+            {entry.title}
+          </MuiLink>
+        ) : (
+          <Typography aria-current="page">{entry.title}</Typography>
+        )}
+        {pageTitle !== undefined && pageTitle !== entry.title ? <Typography aria-current="page">{pageTitle}</Typography> : null}
+      </Breadcrumbs>
+
       <Typography component="h1" variant="h4" gutterBottom tabIndex={-1}>
         {entry.title}
       </Typography>
@@ -292,7 +432,24 @@ export function ModuleHost({ entry }: { entry: ModuleEntry }) {
         </Panel>
       ) : null}
 
-      {framed ? <HostedFrame key={attempt} entry={entry} visible={status.kind === 'ready'} onStatus={handle} /> : null}
+      {status.kind === 'fatal' ? (
+        <Panel title={`${entry.title} stopped working`} retry={retry}>
+          {`It reported a problem it could not recover from (${status.code}): ${status.message}`}
+        </Panel>
+      ) : null}
+
+      {framed ? (
+        <HostedFrame
+          key={attempt}
+          entry={entry}
+          visible={status.kind === 'ready'}
+          onStatus={handle}
+          deepLink={deepLink}
+          onTitle={handleTitle}
+          onToast={handleToast}
+          onModuleError={handleModuleError}
+        />
+      ) : null}
     </Box>
   )
 }
