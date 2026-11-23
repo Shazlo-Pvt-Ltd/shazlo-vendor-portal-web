@@ -1,9 +1,9 @@
 # vendor-admin
 
-The Vendors module of Shazlo One (roadmap Phase 7): the review queue, product and brand-page review with
-send back, vendor applications and management, and publishing status. It only runs inside Shazlo One:
-`frame-ancestors` names the shell origin, and it gets its token only through the ADR 0001 postMessage
-protocol. Opened on its own, it explains that and links to Shazlo One.
+The Vendors module of Shazlo One (roadmap Phase 7): a vendor dashboard, the review queue, product and
+brand-page review with send back, vendor applications and management, and publishing status. It only
+runs inside Shazlo One: `frame-ancestors` names the shell origin, and it gets its token only through the
+ADR 0001 postMessage protocol. Opened on its own, it explains that and links to Shazlo One.
 
 Run it with the shell: see [apps/shazlo-one](../shazlo-one/README.md).
 
@@ -12,6 +12,8 @@ Run it with the shell: see [apps/shazlo-one](../shazlo-one/README.md).
 | Contract | `openapi/vendor-admin.yaml`: `/api/v1/admin/*` from docs/05 §6; routes marked `x-proposal` need agreeing with vendor-api |
 | Runtime | `src/runtime/runtime.tsx`: `ready` on load, token in memory, `token:request` on 401, follows `navigate`, `useModuleTitle` for every screen, `toast` to the shell |
 | Mock | `packages/mock-vendor-api`: MSW handlers in tests, a local HTTP server in the browser so shell and module share one state |
-| Screens | A-04 review queue, A-05 product review, A-06 send back, A-07 brand page review, A-08 vendors, A-09 vendor detail, A-10 publishing |
+| Screens | Vendor dashboard, A-04 review queue, A-05 product review, A-06 send back, A-07 brand page review, A-08 vendors, A-09 vendor detail, A-10 publishing |
+| Routes | `/dashboard` (the landing page: `/` redirects there, and Shazlo One's Vendors item opens `/vendors/dashboard`), `/queue`, `/review/product/:id`, `/review/brand/:vendorId`, `/vendors`, `/vendors/:id` (`?tab=products\|brand\|activity`), `/publishing` (`?status=`). Paths live in `modulePaths` (`src/app/routes.tsx`) |
+| Dashboard | `src/screens/dashboard`: the vendor side at a glance, from `summary`, `vendors` (counts) and `queue?kind=product`. Vendors (live, applications waiting, rates to review, suspended), Review queue (products and brand pages waiting, over 24 h, decided today), Brands with products waiting (one row per brand, most first, up to 8, each opening the brand's Products tab), Publishing (by status, with a warning when an event failed) and Recent decisions. Each figure opens its list through the filters that screen reads (`/vendors?status=`, `?commission=proposed`, `/queue?kind=`, `?sort=oldest`, `/publishing?status=`). Each card loads, fails and retries on its own |
 | Commission | Per brand, never a default rate ([vendor requirements §6](../../docs/ui-plan/vendor-requirements-and-phone-ux.md)). A-09's Commission card approves a proposal, sends it back with a note, or sets the rate (`/vendors/{id}/commission/approve`, `send-back`, `set`); approving an application asks for the rate, starting from the brand's proposal. A-08's "Rate to review" tab is `?commission=proposed`, linked from the queue |
 | Tests | `npx vitest run --project vendor-admin`, with a fake shell (`src/test/render.tsx`) |

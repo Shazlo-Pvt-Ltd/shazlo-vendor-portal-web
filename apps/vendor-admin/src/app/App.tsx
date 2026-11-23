@@ -1,8 +1,8 @@
 import { Box, Button, CircularProgress, CssBaseline, Stack, ThemeProvider, Typography } from '@mui/material'
 import { EmptyIllustration, Logo, theme } from '@shazlo/ui'
 import { QueryClientProvider } from '@tanstack/react-query'
-import { createContext, Suspense, useContext, type ReactNode } from 'react'
-import { Outlet, RouterProvider, type createBrowserRouter } from 'react-router'
+import { createContext, Suspense, useContext, useEffect, useRef, type ReactNode } from 'react'
+import { Outlet, RouterProvider, useLocation, useNavigationType, type createBrowserRouter } from 'react-router'
 import { ModuleRuntime, shellOrigin, useRuntime, type Host } from '../runtime/runtime'
 import { PageFallback } from './PageFallback'
 
@@ -22,8 +22,24 @@ function Panel({ title, body, action }: { title: string; body: string; action?: 
   )
 }
 
+// A new page starts at the top. The module is one document inside the shell's iframe, so without
+// this a page opened from the shell's menus or a dashboard card keeps the last page's scroll. Tabs
+// and filters (same path, new query) and replace navigations (the root redirect) are left alone.
+function useScrollToTopOnNewPage() {
+  const { pathname, hash } = useLocation()
+  const type = useNavigationType()
+  const previous = useRef(pathname)
+  useEffect(() => {
+    const from = previous.current
+    previous.current = pathname
+    if (from === pathname || type !== 'PUSH' || hash) return
+    window.scrollTo(0, 0)
+  }, [pathname, hash, type])
+}
+
 // Until the shell sends `auth`, nothing renders that could call the API.
 function Gate() {
+  useScrollToTopOnNewPage()
   const { status, queryClient } = useRuntime()
   if (status === 'standalone') {
     const shell = shellOrigin()
