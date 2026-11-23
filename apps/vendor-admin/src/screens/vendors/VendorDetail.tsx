@@ -16,12 +16,14 @@ import { vendorPill } from '../../lib/status'
 import { useModuleTitle, useRuntime } from '../../runtime/runtime'
 import { ApplicationTab, ExternalLink } from './detail/ApplicationTab'
 import { apiFieldToForm, toApproveBody, useApprovalForm, type ApprovalValues } from './detail/approval'
-import { ActivityTab, BrandTab, ProductsTab } from './detail/OtherTabs'
+import { ActivityTab, BrandTab } from './detail/OtherTabs'
+import { ProductsTab, type ProductsOutcome } from './detail/ProductsTab'
 import { VendorActionDialog, type DialogKind } from './dialogs'
 import { isApplication } from './list/VendorTable'
 
 type Vendor = components['schemas']['VendorDetail']
-type Outcome = { tone: 'success' | 'error'; text: string }
+// What the last action did. A warning says what went through and lists what did not (in `body`).
+type Outcome = { tone: 'success' | 'warning' | 'error'; text: string; body?: ReactNode }
 
 const TABS = ['application', 'products', 'brand', 'activity'] as const
 type TabKey = (typeof TABS)[number]
@@ -147,6 +149,12 @@ function VendorView({ vendor }: { vendor: Vendor }) {
   }
   const onCommissionFailed = (error: Error) => setOutcome({ tone: 'error', text: error.message || vendorActionsCopy.failed })
 
+  // Several products approved at once: all of them, or some with the others listed and why.
+  const onProductsApproved = (banner: ProductsOutcome, message: string) => {
+    setOutcome(banner)
+    toast(banner.tone, message)
+  }
+
   let actions: ReactNode = null
   if (open) {
     const blocked = !isValid
@@ -211,8 +219,8 @@ function VendorView({ vendor }: { vendor: Vendor }) {
       <PageHeader title={name} status={<StatusPill status={pill.status} label={pill.label} />} subtitle={subtitle} actions={actions} />
       <Stack spacing={3}>
         {outcome && (
-          <Banner tone={outcome.tone} title={outcome.tone === 'success' ? outcome.text : vendorActionsCopy.failed} onClose={() => setOutcome(null)}>
-            {outcome.tone === 'error' ? outcome.text : undefined}
+          <Banner tone={outcome.tone} title={outcome.tone === 'error' ? vendorActionsCopy.failed : outcome.text} onClose={() => setOutcome(null)}>
+            {outcome.tone === 'error' ? outcome.text : outcome.body}
           </Banner>
         )}
         <StateBanner vendor={vendor} />
@@ -239,7 +247,7 @@ function VendorView({ vendor }: { vendor: Vendor }) {
           {tab === 'application' && (
             <ApplicationTab vendor={vendor} open={open} form={form} onApprove={(event) => void approve(event)} approving={approveAction.isPending} onCommissionDone={onCommissionDone} onCommissionFailed={onCommissionFailed} />
           )}
-          {tab === 'products' && <ProductsTab vendor={vendor} />}
+          {tab === 'products' && <ProductsTab vendor={vendor} onProductsApproved={onProductsApproved} />}
           {tab === 'brand' && <BrandTab vendor={vendor} />}
           {tab === 'activity' && <ActivityTab vendor={vendor} />}
         </Box>

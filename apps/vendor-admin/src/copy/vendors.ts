@@ -5,6 +5,7 @@ type S = components['schemas']
 type HistoryEvent = S['History'][number]['event']
 
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString('en-IN')} ${n === 1 ? one : many}`
+const productCount = (n: number) => plural(n, 'product', 'products')
 
 export const SORTS = ['name', 'newest', 'products'] as const
 export type VendorSort = (typeof SORTS)[number]
@@ -274,6 +275,44 @@ export const vendorDetailCopy = {
     label: 'Products from this vendor',
     empty: { title: 'No products yet', body: 'Products show up here once the brand adds them.' },
     status: { pending_review: 'Pending review', approved: 'Live', rejected: 'Sent back' } as Record<string, string>,
+    // Approving several waiting products at once, from the vendor's Products tab.
+    bulk: {
+      toolbar: 'Approve waiting products',
+      selectAll: (n: number) => (n === 1 ? 'Select the 1 waiting product' : `Select all ${n.toLocaleString('en-IN')} waiting products`),
+      selected: (k: number) => `${k.toLocaleString('en-IN')} selected`,
+      select: (title: string) => `Select ${title}`,
+      approve: (k: number) => (k === 0 ? 'Approve selected' : `Approve ${productCount(k)}`),
+      // One approval takes up to 50 (the API's limit).
+      limit: { hint: (max: number) => `Approve up to ${max} products at a time. Untick some to go on.` },
+      dialog: {
+        title: (k: number, brand: string) => `Approve ${productCount(k)} from ${brand}?`,
+        body: (k: number) =>
+          k === 1
+            ? 'It will be published to the Shazlo app. To check it first, cancel and open it from the list.'
+            : 'They will be published to the Shazlo app. To check any of them first, cancel and open it from the list.',
+        label: 'Products to approve',
+        // The review page's photo rule: front, back, detail and worn, and 5 try-on photos.
+        photosMissing: (n: number) => `Missing ${plural(n, 'required photo', 'required photos')}`,
+        confirm: (k: number) => `Approve ${productCount(k)}`,
+        pending: 'Approving…',
+      },
+      done: {
+        banner: (k: number, brand: string) => `Approved ${productCount(k)} from ${brand}. ${k === 1 ? 'It is' : 'They are'} being published to the Shazlo app.`,
+        toast: (k: number, brand: string) => `Approved ${productCount(k)} from ${brand}`,
+      },
+      // Some were not approved: the count that were, then each one that was not, and why.
+      partial: {
+        banner: (approved: number, total: number, brand: string) =>
+          approved > 0 ? `Approved ${approved.toLocaleString('en-IN')} of ${productCount(total)} from ${brand}.` : total === 1 ? 'The product was not approved.' : `None of the ${productCount(total)} were approved.`,
+        intro: (n: number) => (n === 1 ? 'Not approved:' : `${n.toLocaleString('en-IN')} not approved:`),
+        toast: (approved: number, total: number, brand: string) => (approved > 0 ? `Approved ${approved.toLocaleString('en-IN')} of ${productCount(total)} from ${brand}` : `No products from ${brand} were approved`),
+      },
+      errors: {
+        not_pending: 'Someone already decided it.',
+        changed: 'The brand changed it since you looked. Open it to review the new version.',
+        not_found: 'We could not find it for this brand. It may have been removed.',
+      } satisfies Record<S['ApproveProductsResult']['failed'][number]['code'], string>,
+    },
   },
   brand: {
     title: 'Brand page',

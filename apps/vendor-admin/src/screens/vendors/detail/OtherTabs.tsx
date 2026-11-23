@@ -1,5 +1,5 @@
-import { Box, Card, Link, Skeleton, Stack, Typography } from '@mui/material'
-import { brand, emphasis, EmptyState, neutral, SectionCard, StatusPill, type PillStatus } from '@shazlo/ui'
+import { Box, Link, Skeleton, Stack, Typography } from '@mui/material'
+import { brand, emphasis, neutral, SectionCard } from '@shazlo/ui'
 import { History, Store } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link as RouterLink } from 'react-router'
@@ -7,72 +7,11 @@ import { useQueue } from '../../../api/queries'
 import type { components } from '../../../api/schema'
 import { modulePaths } from '../../../app/routes'
 import { CardTitle } from '../../../components/CardTitle'
-import { ProductThumb } from '../../../components/ProductThumb'
-import { focusRing, RowChevron } from '../../../components/rows'
 import { vendorDetailCopy } from '../../../copy/vendors'
-import { formatDate, formatINR, formatStamp } from '../../../lib/format'
+import { formatDate, formatStamp } from '../../../lib/format'
 
 const copy = vendorDetailCopy
 type Vendor = components['schemas']['VendorDetail']
-type Product = Vendor['products'][number]
-
-const productPill: Record<string, PillStatus> = { pending_review: 'pending', approved: 'live', rejected: 'sentBack' }
-
-function ProductRow({ product }: { product: Product }) {
-  const pending = product.status === 'pending_review'
-  const row: ReactNode = (
-    <Stack direction="row" spacing={2} sx={{ alignItems: 'center', minHeight: 64, px: { xs: 2, sm: 3 }, py: 1 }}>
-      <ProductThumb src={product.thumbnail_url} size={40} />
-      {/* On a phone the status sits under the title, so the title keeps a readable width. */}
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={{ xs: 0.5, sm: 2 }} sx={{ flex: 1, minWidth: 0, alignItems: { xs: 'flex-start', sm: 'center' } }}>
-        <Typography variant="body1" sx={{ ...emphasis.semibold, flex: 1, minWidth: 0, overflowWrap: 'break-word', maxWidth: '100%' }}>
-          {product.title}
-        </Typography>
-        <StatusPill status={productPill[product.status] ?? 'draft'} label={copy.products.status[product.status] ?? product.status} />
-      </Stack>
-      <Typography variant="body1" sx={{ width: { xs: 'auto', sm: 96 }, textAlign: 'right', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-        {formatINR(product.price_paise)}
-      </Typography>
-      {/* A row that opens ends in a chevron; the others keep its room, so the prices line up. */}
-      <Box sx={{ width: 20, display: 'flex', flexShrink: 0 }}>{pending && <RowChevron />}</Box>
-    </Stack>
-  )
-  return (
-    <Box component="li" sx={{ borderTop: `1px solid ${neutral.line}`, '&:first-of-type': { borderTop: 0 } }}>
-      {pending ? (
-        <Link
-          component={RouterLink}
-          to={modulePaths.product(product.id)}
-          underline="none"
-          sx={{ display: 'block', color: 'inherit', cursor: 'pointer', '@media (hover: hover)': { '&:hover': { bgcolor: 'action.hover' }, '&:hover [data-chevron]': { color: neutral.ink } }, '&:focus-visible': focusRing }}
-        >
-          {row}
-        </Link>
-      ) : (
-        row
-      )}
-    </Box>
-  )
-}
-
-export function ProductsTab({ vendor }: { vendor: Vendor }) {
-  if (vendor.products.length === 0) {
-    return (
-      <Card>
-        <EmptyState illustration="kurta" title={copy.products.empty.title} body={copy.products.empty.body} />
-      </Card>
-    )
-  }
-  return (
-    <Card>
-      <Box component="ul" aria-label={copy.products.label} sx={{ listStyle: 'none', p: 0, m: 0 }}>
-        {vendor.products.map((product) => (
-          <ProductRow key={product.id} product={product} />
-        ))}
-      </Box>
-    </Card>
-  )
-}
 
 // Whether a page is live comes with the vendor; a waiting draft is an item in the review queue.
 export function BrandTab({ vendor }: { vendor: Vendor }) {

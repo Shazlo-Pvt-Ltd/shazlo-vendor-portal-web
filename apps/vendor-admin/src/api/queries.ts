@@ -12,6 +12,7 @@ export const keys = {
   queue: (f: QueueFilters) => ['queue', f] as const,
   allQueue: ['queue'] as const,
   product: (id: string) => ['product-review', id] as const,
+  allProducts: ['product-review'] as const,
   brand: (vendorId: string) => ['brand-review', vendorId] as const,
   vendors: (f: VendorFilters) => ['vendors', f] as const,
   allVendors: ['vendors'] as const,
@@ -166,6 +167,22 @@ export function useCommissionAction(id: string) {
     onSuccess: (vendor) => {
       qc.setQueryData(keys.vendor(id), vendor)
       invalidate()
+    },
+  })
+}
+
+// Approve several of one vendor's waiting products at once, each with the version the reviewer saw.
+// The answer lists what was approved and what was not; both change the vendor and the product pages.
+export function useApproveProducts(vendorId: string) {
+  const { api } = useRuntime()
+  const invalidate = useInvalidateAfterDecision()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: S['ApproveProductsBody']) => api.call((c) => c.POST('/api/v1/admin/vendors/{id}/products/approve', { params: { path: { id: vendorId } }, body })),
+    onSuccess: () => {
+      invalidate()
+      void qc.invalidateQueries({ queryKey: keys.vendor(vendorId) })
+      void qc.invalidateQueries({ queryKey: keys.allProducts })
     },
   })
 }
