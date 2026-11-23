@@ -307,7 +307,7 @@ export function isTrustedMessage(
 
 **Follow-ups**
 - Create `packages/shell-protocol` with these types, runtime validators and a test harness (Phase 6).
-- Decide where the module registry lives (shell config per environment is the proposal).
+- ~~Decide where the module registry lives.~~ Decided (Phase 6, #252): the shell's own typed configuration, one list per environment (`development`, `preview`, `production`), in `apps/shazlo-one/src/modules/registry.ts`. An entry holds `id`, `title`, `description`, `url`, `origin`, `roles`, `audience` and `supportedVersions`. It is checked when the shell builds and when it starts, and refused if an origin is a wildcard or pattern, is not https outside development, is not the origin of its `url`, repeats an id or origin, or has an empty role list. The CSP `frame-src` is generated from it, so adding a module is one entry. `super_admin` opens every module.
 
 ## Alternatives considered
 

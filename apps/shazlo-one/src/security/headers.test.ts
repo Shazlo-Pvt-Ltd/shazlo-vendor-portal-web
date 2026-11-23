@@ -12,7 +12,7 @@ import {
   securityHeaders,
   vercelHeaders,
 } from './headers'
-import { MODULE_ORIGINS } from './moduleOrigins'
+import { MODULES, ENVIRONMENTS, modulesFor, originsOf } from '../modules/registry'
 
 const app = fileURLToPath(new URL('../../', import.meta.url))
 const API = 'https://identity.shazlo.test'
@@ -53,7 +53,7 @@ describe('the production Content-Security-Policy', () => {
   })
 
   it('frames nothing while no module is registered', () => {
-    expect(MODULE_ORIGINS).toEqual([])
+    for (const environment of ENVIRONMENTS) expect(originsOf(MODULES[environment])).toEqual([])
     expect(policy.get('frame-src')).toEqual(["'none'"])
   })
 
@@ -108,7 +108,7 @@ describe('vercel.json', () => {
   }
 
   it('carries exactly the production headers, for every path', () => {
-    expect(config.headers).toEqual(vercelHeaders(PLACEHOLDER_API_ORIGIN, MODULE_ORIGINS))
+    expect(config.headers).toEqual(vercelHeaders(PLACEHOLDER_API_ORIGIN, originsOf(modulesFor('production'))))
   })
 
   it('still rewrites every path to the single page', () => {
@@ -122,9 +122,10 @@ describe('the Vercel prebuild step', () => {
     try {
       mkdirSync(join(dir, 'scripts'))
       mkdirSync(join(dir, 'src/security'), { recursive: true })
+      mkdirSync(join(dir, 'src/modules'), { recursive: true })
       cpSync(join(app, 'scripts/write-vercel-headers.mjs'), join(dir, 'scripts/write-vercel-headers.mjs'))
       cpSync(join(app, 'src/security/headers.ts'), join(dir, 'src/security/headers.ts'))
-      cpSync(join(app, 'src/security/moduleOrigins.ts'), join(dir, 'src/security/moduleOrigins.ts'))
+      cpSync(join(app, 'src/modules/registry.ts'), join(dir, 'src/modules/registry.ts'))
       cpSync(join(app, 'vercel.json'), join(dir, 'vercel.json'))
       writeFileSync(join(dir, 'package.json'), '{"type":"module"}')
       run(dir)
@@ -153,8 +154,69 @@ describe('the Vercel prebuild step', () => {
         headers: unknown
         rewrites: unknown
       }
-      expect(written.headers).toEqual(vercelHeaders('https://identity.real.test', MODULE_ORIGINS))
+      expect(written.headers).toEqual(vercelHeaders('https://identity.real.test', originsOf(modulesFor('production'))))
       expect(JSON.stringify(written.headers)).not.toContain('identity.example.com')
+    })
+  })
+
+  /** An entry for the production registry of a temporary copy, to see the script follow the registry. */
+  const withProductionEntry = (dir: string, fields: Partial<Record<string, string>> = {}) => {
+    const entry = {
+      id: 'vendor-admin',
+      title: 'Vendor admin',
+      description: 'Review vendors.',
+      url: 'https://vendor-admin.shazlo.test/',
+      origin: 'https://vendor-admin.shazlo.test',
+      roles: "['vendor_reviewer']",
+      audience: 'vendor-api',
+      supportedVersions: '[1]',
+      ...fields,
+    }
+    const text = Object.entries(entry)
+      .map(([key, value]) => (key === 'roles' || key === 'supportedVersions' ? `${key}: ${value}` : `${key}: ${JSON.stringify(value)}`))
+      .join(', ')
+    const file = join(dir, 'src/modules/registry.ts')
+    const source = readFileSync(file, 'utf8')
+    expect(source).toContain('  production: [],')
+    writeFileSync(file, source.replace('  production: [],', `  production: [{ ${text} }],`))
+  }
+
+  it('on Vercel, frame-src follows the registry: add a module and its origin is allowed, nothing else', () => {
+    inTemporaryCopy((dir) => {
+      withProductionEntry(dir)
+      expect(run(dir, { VERCEL: '1', VITE_IDENTITY_API_URL: 'https://identity.real.test' }).status).toBe(0)
+      const written = JSON.parse(readFileSync(join(dir, 'vercel.json'), 'utf8')) as {
+        headers: Array<{ headers: Array<{ key: string; value: string }> }>
+      }
+      const csp = written.headers[0]!.headers.find((header) => header.key === 'Content-Security-Policy')!.value
+      expect(directives(csp).get('frame-src')).toEqual(['https://vendor-admin.shazlo.test'])
+    })
+  })
+
+  it.each([
+    ['a wildcard origin', { origin: 'https://*.shazlo.test', url: 'https://vendor-admin.shazlo.test/' }, /wildcard/],
+    ['a non-https origin', { origin: 'http://vendor-admin.shazlo.test', url: 'http://vendor-admin.shazlo.test/' }, /https outside development/],
+    ['a url on another origin', { url: 'https://evil.test/' }, /url is not on the module origin/],
+    ['an empty role list', { roles: '[]' }, /roles is empty/],
+  ])('on Vercel, fails the build for a registry with %s, saying what is wrong', (_name, fields, message) => {
+    inTemporaryCopy((dir) => {
+      withProductionEntry(dir, fields)
+      const result = run(dir, { VERCEL: '1', VITE_IDENTITY_API_URL: 'https://identity.real.test' })
+      expect(result.status).toBe(1)
+      expect(result.stderr).toMatch(message)
+      expect(result.stderr).toContain('vendor-admin')
+    })
+  })
+
+  it('on a Vercel preview deploy, uses the preview registry, not production', () => {
+    inTemporaryCopy((dir) => {
+      withProductionEntry(dir)
+      expect(run(dir, { VERCEL: '1', VERCEL_ENV: 'preview', VITE_IDENTITY_API_URL: 'https://identity.real.test' }).status).toBe(0)
+      const written = JSON.parse(readFileSync(join(dir, 'vercel.json'), 'utf8')) as {
+        headers: Array<{ headers: Array<{ key: string; value: string }> }>
+      }
+      const csp = written.headers[0]!.headers.find((header) => header.key === 'Content-Security-Policy')!.value
+      expect(directives(csp).get('frame-src')).toEqual(["'none'"])
     })
   })
 

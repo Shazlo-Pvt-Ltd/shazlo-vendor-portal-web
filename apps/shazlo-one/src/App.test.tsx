@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { Providers } from './app/Providers'
 import { routes } from './app/routes'
+import { ModuleRegistryProvider } from './modules/ModuleRegistryProvider'
 import { AuthProvider } from './session/AuthProvider'
 import { makeStore, sessionBody } from './session/testing'
 
@@ -12,9 +13,11 @@ function renderAt(path: string) {
   const { store } = makeStore({ fetchMe: async () => sessionBody().admin })
   return render(
     <Providers>
-      <AuthProvider store={store}>
-        <RouterProvider router={router} />
-      </AuthProvider>
+      <ModuleRegistryProvider entries={[]}>
+        <AuthProvider store={store}>
+          <RouterProvider router={router} />
+        </AuthProvider>
+      </ModuleRegistryProvider>
     </Providers>,
   )
 }

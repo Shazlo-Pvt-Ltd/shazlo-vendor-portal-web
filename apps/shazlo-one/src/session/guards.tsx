@@ -1,7 +1,8 @@
 import { Box, Button, CircularProgress, Typography } from '@mui/material'
 import type { ReactNode } from 'react'
-import { Link, Navigate, Outlet, useLocation } from 'react-router'
+import { Navigate, Outlet, useLocation } from 'react-router'
 import { CHANGE_PASSWORD_PATH, LOGIN_PATH } from '../app/shellPaths'
+import { NoAccess } from '../components/NoAccess'
 import { useSession } from './AuthProvider'
 import { safeReturnTo } from './returnTo'
 
@@ -96,19 +97,7 @@ export function PublicOnly({ children }: { children?: ReactNode }) {
 export function RequireRole({ anyOf, children }: { anyOf: readonly string[]; children?: ReactNode }) {
   const session = useSession()
   if (!anyOf.some((role) => session.roles.includes(role))) {
-    return (
-      <Box component="main" sx={{ p: 3, maxWidth: 720, mx: 'auto', mt: 8 }}>
-        <Typography component="h1" variant="h4" gutterBottom tabIndex={-1}>
-          You don't have access to this page
-        </Typography>
-        <Typography sx={{ mb: 3 }}>
-          Your role does not allow it (error 403). Ask a super admin if you need something done here.
-        </Typography>
-        <Button component={Link} to="/" variant="contained">
-          Go home
-        </Button>
-      </Box>
-    )
+    return <NoAccess />
   }
   return children ?? <Outlet />
 }

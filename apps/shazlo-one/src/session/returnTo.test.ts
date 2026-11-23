@@ -7,6 +7,20 @@ describe('safeReturnTo', () => {
     expect(safeReturnTo('/?tab=1#top')).toBe('/?tab=1#top')
   })
 
+  it.each(['/m/vendor-admin', '/m/vendor-admin/', '/m/vendor-admin/orders/9?tab=2#top', '/admins'])(
+    'keeps %s: a module and the rest of its path belong to the shell and the module',
+    (path) => {
+      expect(safeReturnTo(path)).toBe(path)
+    },
+  )
+
+  it.each(['/m', '/m/', '/mx/vendor-admin', '/admins/extra', '/m/vendor-admin/..\\evil'])(
+    'does not accept %s as a place inside the shell',
+    (path) => {
+      expect(safeReturnTo(path)).toBe('/')
+    },
+  )
+
   it.each([
     ['nothing', null],
     ['an empty value', ''],

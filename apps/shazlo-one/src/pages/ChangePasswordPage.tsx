@@ -100,7 +100,7 @@ export function ChangePasswordPage() {
 
   const title = forced ? 'Choose your password' : 'Change your password'
   return (
-    <Box component="main" sx={{ p: 2, maxWidth: 520, mx: 'auto', mt: { xs: 2, sm: 6 }, minWidth: 0 }}>
+    <Box sx={{ maxWidth: 520, minWidth: 0 }}>
       <Typography component="h1" variant="h4" gutterBottom tabIndex={-1}>
         {title}
       </Typography>

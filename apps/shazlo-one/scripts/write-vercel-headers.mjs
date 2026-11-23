@@ -4,7 +4,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { vercelHeaders } from '../src/security/headers.ts'
-import { MODULE_ORIGINS } from '../src/security/moduleOrigins.ts'
+import { environmentOf, modulesFor, originsOf } from '../src/modules/registry.ts'
 
 if (!process.env.VERCEL) {
   console.log('write-vercel-headers: not on Vercel, vercel.json left as it is.')
@@ -26,6 +26,16 @@ try {
 
 const file = fileURLToPath(new URL('../vercel.json', import.meta.url))
 const config = JSON.parse(readFileSync(file, 'utf8'))
-config.headers = vercelHeaders(origin, MODULE_ORIGINS)
+// A broken registry fails the build here, before anything is deployed.
+let moduleOrigins
+try {
+  const target = process.env.VITE_DEPLOY_ENV || process.env.VERCEL_ENV
+  moduleOrigins = originsOf(modulesFor(environmentOf({ dev: false, target })))
+} catch (error) {
+  console.error(`write-vercel-headers: ${error instanceof Error ? error.message : error}`)
+  process.exit(1)
+}
+
+config.headers = vercelHeaders(origin, moduleOrigins)
 writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`)
-console.log(`write-vercel-headers: connect-src now allows ${origin}.`)
+console.log(`write-vercel-headers: connect-src now allows ${origin}; frame-src allows ${moduleOrigins.length} module origin(s).`)
