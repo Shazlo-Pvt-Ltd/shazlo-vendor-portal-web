@@ -523,6 +523,8 @@ export function createDb({ now = () => new Date() }: { now?: () => Date } = {}):
   const live: BrandContent = {
     brand_name: 'Kalki Studio',
     based_in: 'Ahmedabad, Gujarat',
+    // From before the brand page dropped its tagline: vendor-api still has the field, the portal
+    // never shows it and clears it on save (BrandEditor.test.tsx relies on this old value).
     tagline: 'Hand block-printed, naturally dyed.',
     about: 'We work with Ajrakh printers in Kutch and dye every metre with indigo, madder and pomegranate rind.',
     logo_asset_id: null,

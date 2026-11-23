@@ -6,7 +6,6 @@ const fieldNames: Record<string, string> = {
   cover_url: 'cover image',
   logo_url: 'logo',
   story: 'story',
-  tagline: 'tagline',
   based_in: 'location',
   return_policy: 'return policy',
   dispatch_time: 'dispatch time',

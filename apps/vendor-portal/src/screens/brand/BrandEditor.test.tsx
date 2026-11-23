@@ -9,8 +9,9 @@ import { server, setupMockApi } from '../../test/server'
 import { addNewSeller, NEW_SELLER } from '../overview/testing'
 
 // Seed (src/mocks/db.ts): the draft (version 2) changes the story and the cover; everything else
-// matches the live page (version 1).
-const LIVE_TAGLINE = 'Hand block-printed, naturally dyed.'
+// matches the live page (version 1). Both still carry a tagline from before the brand page dropped
+// it: vendor-api keeps the field, the portal never shows it and clears it on save.
+const OLD_TAGLINE = 'Hand block-printed, naturally dyed.'
 const LIVE_STORY = 'We work with Ajrakh printers in Kutch and dye every metre with indigo, madder and pomegranate rind.'
 const DRAFT_STORY = `${LIVE_STORY} Small batches, made to last.`
 const AUTOSAVE_WAIT = { timeout: 4000 }
@@ -40,7 +41,7 @@ const assetUrl = (id: string | null) => (id ? db().assets.get(id)?.url : undefin
 
 async function openBrandPage({ viewport, credentials }: { viewport?: Viewport; credentials?: { email: string; password: string } } = {}) {
   const view = await renderApp({ route: '/brand', viewport, credentials })
-  await screen.findByRole('textbox', { name: /^Tagline/ }, { timeout: 8000 })
+  await screen.findByRole('textbox', { name: /^Story/ }, { timeout: 8000 })
   return view
 }
 
@@ -55,6 +56,14 @@ function sendDraftForReview(d: MockDb) {
 const preview = () => screen.getByRole('region', { name: 'Preview in the Shazlo app' })
 const textbox = (name: string | RegExp) => screen.getByRole('textbox', { name })
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** Adds text at the end of a field in one input event: no emptied field in between for the autosave to catch on a slow machine. */
+async function append(user: Awaited<ReturnType<typeof renderApp>>['user'], field: HTMLElement, text: string) {
+  const input = field as HTMLInputElement | HTMLTextAreaElement
+  await user.click(input)
+  input.setSelectionRange(input.value.length, input.value.length)
+  await user.paste(text)
+}
 
 async function replace(user: Awaited<ReturnType<typeof renderApp>>['user'], field: HTMLElement, text: string) {
   await user.clear(field)
@@ -72,7 +81,7 @@ describe('V-05 Brand page: the editor', () => {
     expect(loading).toHaveAttribute('aria-busy', 'true')
     expect(screen.getByRole('heading', { level: 1, name: 'Brand page' })).toBeInTheDocument()
     release()
-    expect(await screen.findByRole('textbox', { name: /^Tagline/ })).toBeInTheDocument()
+    expect(await screen.findByRole('textbox', { name: /^Story/ })).toBeInTheDocument()
     expect(screen.queryByRole('status', { name: 'Loading your brand page' })).toBeNull()
   })
 
@@ -90,7 +99,6 @@ describe('V-05 Brand page: the editor', () => {
     expect(brandName).toHaveValue('Kalki Studio')
     expect(brandName).toHaveAccessibleDescription('Contact us to change your brand name.')
     expect(within(identity).getByRole('textbox', { name: 'Based in' })).toHaveValue('Ahmedabad, Gujarat')
-    expect(within(identity).getByRole('textbox', { name: 'Tagline' })).toHaveValue(LIVE_TAGLINE)
     expect(within(identity).getByRole('textbox', { name: 'Story Changed' })).toHaveValue(DRAFT_STORY)
     expect(within(identity).getByRole('group', { name: 'Logo' })).toHaveTextContent('Square PNG or JPG, at least 400 × 400 px. The app shows it in a circle, so keep it centred.')
     const cover = within(identity).getByRole('group', { name: 'Cover image Changed' })
@@ -115,23 +123,38 @@ describe('V-05 Brand page: the editor', () => {
     expect(screen.getByRole('main').querySelectorAll('.MuiButton-contained')).toHaveLength(1)
   })
 
+  it('has no Tagline field, and an old tagline neither shows nor counts as a change', async () => {
+    // A draft whose hidden tagline differs from the live one still changes only the story and the cover.
+    draftOf().tagline = 'A tagline from before the brand page dropped it.'
+    await openBrandPage()
+    expect(screen.queryByRole('textbox', { name: /tagline/i })).toBeNull()
+    expect(screen.queryByText(/tagline/i)).toBeNull()
+    expect(screen.getByText('Draft · 2 changes')).toBeInTheDocument()
+    expect(screen.getAllByText('Changed')).toHaveLength(2)
+    expect(within(preview()).queryByText('A tagline from before the brand page dropped it.')).toBeNull()
+    expect(within(preview()).queryByText(OLD_TAGLINE)).toBeNull()
+  })
+
   it('counts characters and moves the Changed tags as you type', async () => {
     const { user } = await openBrandPage()
-    const tagline = textbox('Tagline')
+    const basedIn = textbox('Based in')
     const story = textbox('Story Changed')
-    expect(tagline).toHaveAccessibleDescription('35 / 60')
     expect(story).toHaveAccessibleDescription(`${DRAFT_STORY.length} / 600`)
 
-    await user.type(tagline, ' Since 2012.')
-    expect(textbox('Tagline Changed')).toBe(tagline)
-    expect(tagline).toHaveAccessibleDescription('47 / 60')
+    // Few keystrokes: every one redraws the form and the phone, which is slow on a busy machine.
+    await user.type(basedIn, '!')
+    expect(textbox('Based in Changed')).toBe(basedIn)
     expect(screen.getByText('Draft · 3 changes')).toBeInTheDocument()
 
-    await user.type(tagline, '{Backspace}'.repeat(12))
-    expect(textbox('Tagline')).toBe(tagline)
+    await user.type(basedIn, '{Backspace}')
+    expect(textbox('Based in')).toBe(basedIn)
+
+    await user.type(story, '!')
+    expect(story).toHaveAccessibleDescription(`${DRAFT_STORY.length + 1} / 600`)
 
     await replace(user, story, LIVE_STORY)
     expect(textbox('Story')).toBe(story)
+    expect(story).toHaveAccessibleDescription(`${LIVE_STORY.length} / 600`)
     expect(screen.getByText('Draft · 1 change')).toBeInTheDocument()
     expect(screen.getAllByText('Changed')).toHaveLength(1)
   }, SLOW)
@@ -147,23 +170,26 @@ describe('V-05 Brand page: the editor', () => {
     // The whole draft goes up (a PUT replaces it), so the earlier changes and what the editor does
     // not show (categories, the price range) stay.
     expect(draftOf()).toMatchObject({ about: DRAFT_STORY, categories: ['kurtas', 'dupattas', 'sarees'], price_min_paise: 89_900 })
+    // Except the old tagline: the brand page has none, so a save clears it.
+    expect(draftOf().tagline).toBeNull()
     expect(await screen.findByText('Saved · just now')).toBeInTheDocument()
     expect(screen.getByText('Draft · 3 changes')).toBeInTheDocument()
   }, SLOW)
 
   it('keeps the last edit when the seller leaves within the second', async () => {
     const { user, router } = await openBrandPage()
-    await replace(user, textbox('Tagline'), 'Ajrakh from Kutch.')
+    await replace(user, textbox('Based in'), 'Bhuj, Gujarat')
     await act(() => router.navigate('/products'))
-    await waitFor(() => expect(draftOf().tagline).toBe('Ajrakh from Kutch.'), AUTOSAVE_WAIT)
+    await waitFor(() => expect(draftOf().based_in).toBe('Bhuj, Gujarat'), AUTOSAVE_WAIT)
   }, SLOW)
 
   it('points out problems and holds the autosave until they are fixed', async () => {
     const { user } = await openBrandPage()
-    const tagline = textbox('Tagline')
-    await replace(user, tagline, 'Hand block-printed in Kutch, naturally dyed with indigo and madder.')
-    expect(tagline).toHaveAttribute('aria-invalid', 'true')
-    expect(tagline).toHaveAccessibleDescription('Keep the tagline to 60 characters. 67 / 60')
+    const story = textbox('Story Changed')
+    const more = ' Ajrakh from Kutch.'.repeat(26)
+    await append(user, story, more)
+    expect(story).toHaveAttribute('aria-invalid', 'true')
+    expect(story).toHaveAccessibleDescription(`Keep the story to 600 characters. ${DRAFT_STORY.length + more.length} / 600`)
 
     const instagram = textbox('Instagram')
     await replace(user, instagram, 'kalki studio')
@@ -175,16 +201,16 @@ describe('V-05 Brand page: the editor', () => {
     expect(website).toHaveAccessibleDescription('Enter a web address like kalkistudio.in.')
 
     await pause(1500)
-    expect(draftOf().tagline).toBe(LIVE_TAGLINE)
+    expect(draftOf().about).toBe(DRAFT_STORY)
     expect(draftOf().instagram_handle).toBe('kalki.studio')
 
-    await replace(user, tagline, 'Block-printed in Kutch.')
+    await replace(user, story, 'Block-printed in Kutch.')
     await replace(user, instagram, '@kalkistudio')
     await replace(user, website, '')
-    expect(tagline).toHaveAttribute('aria-invalid', 'false')
+    expect(story).toHaveAttribute('aria-invalid', 'false')
     expect(website).toHaveAttribute('aria-invalid', 'false')
     await waitFor(() => expect(draftOf().instagram_handle).toBe('kalkistudio'), AUTOSAVE_WAIT)
-    expect(draftOf().tagline).toBe('Block-printed in Kutch.')
+    expect(draftOf().about).toBe('Block-printed in Kutch.')
     expect(draftOf().website_url).toBeNull()
   }, SLOW)
 
@@ -214,21 +240,21 @@ describe('V-05 Brand page: the editor', () => {
 
   it('shows a refusal from vendor-api on the field it is about, not as a lost connection', async () => {
     const { user } = await openBrandPage()
-    db().faults.push({ path: '/v1/vendor/brand-profile', method: 'PUT', status: 422, code: 'validation_error', message: 'Request validation failed', details: [{ loc: ['body', 'tagline'], msg: 'That tagline uses a word we cannot show.', type: 'value_error' }] })
-    const tagline = textbox('Tagline')
-    await replace(user, tagline, 'Best kurtas in India.')
-    await waitFor(() => expect(tagline).toHaveAccessibleDescription(/That tagline uses a word we cannot show\./), AUTOSAVE_WAIT)
-    expect(tagline).toHaveAttribute('aria-invalid', 'true')
+    db().faults.push({ path: '/v1/vendor/brand-profile', method: 'PUT', status: 422, code: 'validation_error', message: 'Request validation failed', details: [{ loc: ['body', 'about'], msg: 'That story uses a word we cannot show.', type: 'value_error' }] })
+    const story = textbox('Story Changed')
+    await append(user, story, ' Best kurtas in India.')
+    await waitFor(() => expect(story).toHaveAccessibleDescription(/That story uses a word we cannot show\./), AUTOSAVE_WAIT)
+    expect(story).toHaveAttribute('aria-invalid', 'true')
     expect(screen.queryByText(/Check your connection/)).toBeNull()
   }, SLOW)
 
   it('says so when a save does not reach the server, and saves on the next edit', async () => {
     const { user } = await openBrandPage()
     db().faults.push({ path: '/v1/vendor/brand-profile', method: 'PUT', network: true })
-    await replace(user, textbox('Tagline'), 'Ajrakh from Kutch.')
+    await append(user, textbox('Based in'), ', India')
     expect(await screen.findByText(/Not saved\. Check your connection/, {}, AUTOSAVE_WAIT)).toBeInTheDocument()
-    await user.type(textbox('Tagline Changed'), '!')
-    await waitFor(() => expect(draftOf().tagline).toBe('Ajrakh from Kutch.!'), AUTOSAVE_WAIT)
+    await append(user, textbox('Based in Changed'), '!')
+    await waitFor(() => expect(draftOf().based_in).toBe('Ahmedabad, Gujarat, India!'), AUTOSAVE_WAIT)
   }, SLOW)
 
   it('keeps long and non-Latin text whole in the preview', async () => {
@@ -245,7 +271,8 @@ describe('V-05 Brand page: the preview', () => {
     const { user } = await openBrandPage()
     const phone = preview()
     expect(within(phone).getByText('Kalki Studio')).toBeInTheDocument()
-    expect(within(phone).getByText(LIVE_TAGLINE)).toBeInTheDocument()
+    // vendor-api still has the old tagline; the brand page has none.
+    expect(within(phone).queryByText(OLD_TAGLINE)).toBeNull()
     expect(within(phone).getByText('Ahmedabad')).toBeInTheDocument()
     // Delivery and returns come from Store details (the demo store: Shazlo delivery, 7-day returns).
     expect(await within(phone).findByText('Shazlo delivery')).toBeInTheDocument()
@@ -258,13 +285,13 @@ describe('V-05 Brand page: the preview', () => {
     const version = within(phone).getByRole('group', { name: 'Preview version' })
     expect(within(version).getByRole('button', { name: 'Draft' })).toHaveAttribute('aria-pressed', 'true')
 
-    await replace(user, textbox('Tagline'), 'Ajrakh from Kutch.')
+    await replace(user, textbox('Story Changed'), 'Ajrakh from Kutch.')
     expect(within(phone).getByText('Ajrakh from Kutch.')).toBeInTheDocument()
 
     await user.click(within(version).getByRole('button', { name: 'Live' }))
     expect(within(version).getByRole('button', { name: 'Live' })).toHaveAttribute('aria-pressed', 'true')
-    expect(within(phone).getByText(LIVE_TAGLINE)).toBeInTheDocument()
     expect(within(phone).getByText(LIVE_STORY)).toBeInTheDocument()
+    expect(within(phone).queryByText(OLD_TAGLINE)).toBeNull()
     expect(within(phone).queryByText('Ajrakh from Kutch.')).toBeNull()
 
     await user.click(within(version).getByRole('button', { name: 'Draft' }))
@@ -313,7 +340,7 @@ describe('V-05 Brand page: the preview', () => {
 
   it('never renders what the seller typed as markup', async () => {
     const { user } = await openBrandPage()
-    await replace(user, textbox('Tagline'), '<img src=x onerror=alert(1)><b>bold</b>')
+    await replace(user, textbox('Story Changed'), '<img src=x onerror=alert(1)><b>bold</b>')
     const phone = preview()
     expect(within(phone).getByText('<img src=x onerror=alert(1)><b>bold</b>')).toBeInTheDocument()
     expect(phone.querySelector('b')).toBeNull()
@@ -383,17 +410,17 @@ describe('V-05 Brand page: discard and submit', () => {
 
   it('saves the last edit, sends the draft for review and locks the page while it waits', async () => {
     const { user } = await openBrandPage()
-    const tagline = textbox('Tagline')
-    await replace(user, tagline, 'Ajrakh from Kutch.')
+    const story = textbox('Story Changed')
+    await replace(user, story, 'Ajrakh from Kutch.')
     // Straight to submit: the pending autosave is flushed first.
     await user.click(screen.getByRole('button', { name: 'Submit for review' }))
 
     expect(await screen.findByText('Sent for review. Your live page stays as it is until we approve the changes.')).toBeInTheDocument()
     const sent = versions().find((v) => v.state === 'pending_review')!
-    expect(sent.content.tagline).toBe('Ajrakh from Kutch.')
+    expect(sent.content).toMatchObject({ about: 'Ajrakh from Kutch.', tagline: null })
     expect(screen.getByText('Pending review', { selector: '[data-status="pending"]' })).toBeInTheDocument()
-    expect(tagline).toBeDisabled()
-    expect(textbox(/^Story/)).toBeDisabled()
+    expect(story).toBeDisabled()
+    expect(textbox('Based in')).toBeDisabled()
     expect(textbox('Instagram')).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Replace cover image' })).toBeDisabled()
     expect(screen.queryByRole('button', { name: 'Submit for review' })).toBeNull()
@@ -413,23 +440,34 @@ describe('V-05 Brand page: discard and submit', () => {
     server.events.removeAllListeners()
   }, SLOW)
 
+  it('sends an untouched draft without the old tagline it still had, and keeps the rest', async () => {
+    const cover = draftOf().banner_asset_id
+    expect(draftOf().tagline).toBe(OLD_TAGLINE)
+    const { user } = await openBrandPage()
+    await user.click(screen.getByRole('button', { name: 'Submit for review' }))
+    expect(await screen.findByText('Sent for review. Your live page stays as it is until we approve the changes.')).toBeInTheDocument()
+    const sent = versions().find((v) => v.state === 'pending_review')!.content
+    expect(sent.tagline).toBeNull()
+    expect(sent).toMatchObject({ about: DRAFT_STORY, banner_asset_id: cover, based_in: 'Ahmedabad, Gujarat', instagram_handle: 'kalki.studio', categories: ['kurtas', 'dupattas', 'sarees'] })
+  }, SLOW)
+
   it('opens locked while a version is in review, and lets the seller start a new draft', async () => {
     sendDraftForReview(db())
     const { user } = await openBrandPage()
     expect(screen.getByText('Your brand page is in review. You can keep editing a new draft; send it once our team has decided — usually within 24 hours.')).toBeInTheDocument()
     expect(screen.getByText('Pending review', { selector: '[data-status="pending"]' })).toBeInTheDocument()
-    expect(textbox('Tagline')).toBeDisabled()
+    expect(textbox(/^Story/)).toBeDisabled()
     expect(textbox('Instagram')).toBeDisabled()
     expect(screen.queryByRole('button', { name: 'Submit for review' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Discard draft' })).toBeNull()
 
     await user.click(screen.getByRole('button', { name: 'Edit a new draft' }))
-    const tagline = textbox('Tagline')
-    expect(tagline).toBeEnabled()
-    await replace(user, tagline, 'Ajrakh from Kutch.')
+    const story = textbox(/^Story/)
+    expect(story).toBeEnabled()
+    await replace(user, story, 'Ajrakh from Kutch.')
     // The new draft saves; the version in review is not touched.
-    await waitFor(() => expect(draftOf().tagline).toBe('Ajrakh from Kutch.'), AUTOSAVE_WAIT)
-    expect(versions().find((v) => v.state === 'pending_review')!.content.tagline).toBe(LIVE_TAGLINE)
+    await waitFor(() => expect(draftOf().about).toBe('Ajrakh from Kutch.'), AUTOSAVE_WAIT)
+    expect(versions().find((v) => v.state === 'pending_review')!.content.about).toBe(DRAFT_STORY)
     expect(screen.queryByRole('button', { name: 'Submit for review' })).toBeNull()
     expect(screen.getByText('You can send this draft once our team has decided on the version in review.')).toBeInTheDocument()
   }, SLOW)
@@ -442,7 +480,7 @@ describe('V-05 Brand page: discard and submit', () => {
     const alert = screen.getByRole('alert')
     expect(alert).toHaveTextContent('Our team sent your brand page back')
     expect(alert).toHaveTextContent(reason)
-    expect(textbox('Tagline')).toBeEnabled()
+    expect(textbox(/^Story/)).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Submit for review' })).toBeEnabled()
   })
 
@@ -450,12 +488,12 @@ describe('V-05 Brand page: discard and submit', () => {
     sendDraftForReview(db())
     const { user, queryClient } = await openBrandPage()
     await user.click(screen.getByRole('button', { name: 'Edit a new draft' }))
-    await replace(user, textbox('Tagline'), 'Ajrakh from Kutch.')
+    await replace(user, textbox(/^Story/), 'Ajrakh from Kutch.')
     decide(db(), { brandOf: kalki().id }, { approve: false, reason: 'Logo is cut off.' })
     await act(() => queryClient.invalidateQueries({ queryKey: ['brand-page'] }))
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('Logo is cut off.')
-    expect(textbox(/^Tagline/)).toHaveValue('Ajrakh from Kutch.')
+    expect(textbox(/^Story/)).toHaveValue('Ajrakh from Kutch.')
     expect(screen.getByRole('button', { name: 'Submit for review' })).toBeEnabled()
   }, SLOW)
 
@@ -471,18 +509,19 @@ describe('V-05 Brand page: discard and submit', () => {
     Object.assign(db().stores.get(vendor.id)!, { sells: 'both', city: 'Surat' })
     const { user } = await openBrandPage({ credentials: NEW_SELLER })
     expect(textbox('Brand name')).toHaveValue('Neel Threads')
-    expect(textbox('Tagline')).toHaveValue('')
+    expect(textbox('Story')).toHaveValue('')
+    expect(screen.queryByRole('textbox', { name: /tagline/i })).toBeNull()
     expect(screen.getByText('Draft · not live yet')).toBeInTheDocument()
     expect(screen.getByText('Changes are saved as a draft. Your brand page appears in the Shazlo app once our team approves it.')).toBeInTheDocument()
     expect(screen.queryAllByText('Changed')).toHaveLength(0)
     expect(within(preview()).queryByRole('group', { name: 'Preview version' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Discard draft' })).toBeNull()
 
-    await replace(user, textbox('Tagline'), 'Indigo, by hand.')
+    await replace(user, textbox('Story'), 'Indigo, by hand.')
     await user.click(screen.getByRole('button', { name: 'Submit for review' }))
     expect(await screen.findByText('Sent for review. Your brand page goes live once we approve it.')).toBeInTheDocument()
     const sent = db().brands.get(vendor.id)!.find((v) => v.state === 'pending_review')!
-    expect(sent.content).toMatchObject({ tagline: 'Indigo, by hand.', categories: ['women', 'men'] })
+    expect(sent.content).toMatchObject({ about: 'Indigo, by hand.', tagline: null, categories: ['women', 'men'] })
   }, SLOW)
 
   it('asks for store details first when vendor-api needs to know what the brand sells', async () => {
@@ -501,13 +540,13 @@ describe('V-05 Brand page: discard and submit', () => {
     expect(alert).toHaveTextContent('We could not load your brand page')
     expect(alert).toHaveTextContent('Only the store owner can edit the brand page.')
     await user.click(within(alert).getByRole('button', { name: 'Try again' }))
-    expect(await screen.findByRole('textbox', { name: 'Tagline' })).toHaveValue(LIVE_TAGLINE)
+    expect(await screen.findByRole('textbox', { name: 'Story Changed' })).toHaveValue(DRAFT_STORY)
   })
 
   it('lets staff edit the brand page too', async () => {
     const { user } = await openBrandPage({ credentials: DEMO_STAFF })
-    await replace(user, textbox('Tagline'), 'By the Kalki team.')
-    await waitFor(() => expect(draftOf().tagline).toBe('By the Kalki team.'), AUTOSAVE_WAIT)
+    await replace(user, textbox('Story Changed'), 'By the Kalki team.')
+    await waitFor(() => expect(draftOf().about).toBe('By the Kalki team.'), AUTOSAVE_WAIT)
   }, SLOW)
 })
 

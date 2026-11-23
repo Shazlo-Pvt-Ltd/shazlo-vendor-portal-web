@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ApiError } from '../errors'
 import type { BrandProfileOut, DraftOut, SubmissionOut } from '../wire'
-import { brandErrors, brandPageFromApi, draftBodyFromProfile, profileFromApi, publishedAsBody } from './brand'
+import { brandErrors, brandPageFromApi, draftBodyFromProfile, draftReadyForReview, profileFromApi, publishedAsBody } from './brand'
 
 const published: BrandProfileOut = {
   id: 'b-1',
@@ -50,7 +50,6 @@ describe('profileFromApi', () => {
     expect(profileFromApi(published)).toEqual({
       brand_name: 'Kalki Studio',
       based_in: 'Ahmedabad, Gujarat',
-      tagline: 'Hand block-printed.',
       story: 'We work with Ajrakh printers.',
       logo_url: null,
       cover_url: 'https://res.cloudinary.com/demo/cover-1.jpg',
@@ -62,7 +61,12 @@ describe('profileFromApi', () => {
   })
 
   it('shows blanks as empty text', () => {
-    expect(profileFromApi({ ...published, tagline: null, about: null, based_in: null, instagram_handle: null, website_url: null })).toMatchObject({ tagline: '', story: '', based_in: '', instagram: '', website: '' })
+    expect(profileFromApi({ ...published, tagline: null, about: null, based_in: null, instagram_handle: null, website_url: null })).toMatchObject({ story: '', based_in: '', instagram: '', website: '' })
+  })
+
+  it('leaves out a tagline vendor-api still has: the brand page has none', () => {
+    expect(profileFromApi(published)).not.toHaveProperty('tagline')
+    expect(profileFromApi(draft)).not.toHaveProperty('tagline')
   })
 })
 
@@ -88,6 +92,16 @@ describe('brandPageFromApi', () => {
     expect(page.review).toEqual({ state: 'rejected', reason: 'The cover is blurry.', at: '2026-11-10T10:00:00Z' })
   })
 
+  it('never counts an old tagline as a change', () => {
+    const page = brandPageFromApi({ draft: { ...draft, tagline: 'A different tagline.' }, published, latest: null })
+    expect(page.changed_fields).toEqual(['cover_url', 'story'])
+    // Nor once the editor has cleared it from the draft.
+    expect(brandPageFromApi({ draft: { ...draft, tagline: null }, published, latest: null }).changed_fields).toEqual(['cover_url', 'story'])
+    // A first page whose only content is a tagline has nothing of the seller's to show.
+    const first = { ...draft, about: null, based_in: null, banner_asset_id: null, banner_url: null, website_url: null, instagram_handle: null }
+    expect(brandPageFromApi({ draft: first, published: null, latest: null }).changed_fields).toEqual([])
+  })
+
   it('has no review before anything is sent', () => {
     const page = brandPageFromApi({ draft, published: null, latest: null })
     expect(page.review).toEqual({ state: 'none' })
@@ -100,7 +114,7 @@ describe('draftBodyFromProfile', () => {
 
   it('writes the editor\'s fields with vendor-api\'s names and keeps what the editor does not show', () => {
     const body = draftBodyFromProfile(
-      { ...profileFromApi(draft), logo_url: 'https://res.cloudinary.com/demo/new-logo.jpg', instagram: '@kalki.new', website: 'kalkistudio.in', tagline: ' ' },
+      { ...profileFromApi(draft), logo_url: 'https://res.cloudinary.com/demo/new-logo.jpg', instagram: '@kalki.new', website: 'kalkistudio.in' },
       draft,
       resolve,
     )
@@ -119,6 +133,12 @@ describe('draftBodyFromProfile', () => {
     })
   })
 
+  it('clears the old tagline the draft had: the brand page has none', () => {
+    expect(draft.tagline).toBe('Hand block-printed.')
+    const body = draftBodyFromProfile(profileFromApi(draft), draft, resolve)
+    expect(body).toHaveProperty('tagline', null)
+  })
+
   it('clears an image the seller removed', () => {
     expect(draftBodyFromProfile({ ...profileFromApi(draft), cover_url: null }, draft, resolve).banner_asset_id).toBeNull()
   })
@@ -128,7 +148,24 @@ describe('draftBodyFromProfile', () => {
   })
 
   it('turns the published version back into a draft (discarding changes)', () => {
-    expect(publishedAsBody(published)).toMatchObject({ about: 'We work with Ajrakh printers.', banner_asset_id: 'asset-cover-1', instagram_handle: 'kalki.studio' })
+    // As it is, tagline and all: the draft then matches the live page. Sending it for review clears the tagline.
+    expect(publishedAsBody(published)).toMatchObject({ about: 'We work with Ajrakh printers.', banner_asset_id: 'asset-cover-1', instagram_handle: 'kalki.studio', tagline: 'Hand block-printed.' })
+  })
+})
+
+describe('draftReadyForReview', () => {
+  it('needs nothing for a draft with categories and no tagline', () => {
+    expect(draftReadyForReview({ ...draft, tagline: null }, null)).toBeNull()
+    expect(draftReadyForReview({ ...draft, tagline: '  ' }, null)).toBeNull()
+  })
+
+  it('clears an old tagline and keeps the rest of the draft', () => {
+    expect(draftReadyForReview(draft, null)).toEqual({ ...publishedAsBody(draft), tagline: null })
+  })
+
+  it("adds the categories from the store details, and clears the tagline in the same PUT", () => {
+    expect(draftReadyForReview({ ...draft, tagline: null, categories: [] }, ['women', 'men'])).toMatchObject({ categories: ['women', 'men'], tagline: null })
+    expect(draftReadyForReview({ ...draft, categories: [] }, ['women'])).toMatchObject({ categories: ['women'], tagline: null, about: 'We work with Ajrakh printers. Small batches.' })
   })
 })
 
@@ -136,5 +173,10 @@ describe('brandErrors', () => {
   it('names vendor-api\'s fields as the editor does', () => {
     const error = new ApiError({ status: 422, code: 'validation_error', message: 'x', fieldErrors: { about: 'Too long', instagram_handle: 'Bad', website_url: 'Use https', banner_asset_id: 'Not yours' } })
     expect((brandErrors(error) as ApiError).fields).toEqual({ story: 'Too long', instagram: 'Bad', website: 'Use https', cover_url: 'Not yours' })
+  })
+
+  it('has no field for a tagline problem: it is about the whole page', () => {
+    const error = new ApiError({ status: 422, code: 'validation_error', message: 'x', fieldErrors: { tagline: 'Too long' } })
+    expect((brandErrors(error) as ApiError).fields).toEqual({ _form: 'Too long' })
   })
 })
