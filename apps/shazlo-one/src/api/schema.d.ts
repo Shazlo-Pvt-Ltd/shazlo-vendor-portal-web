@@ -853,7 +853,11 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description `unauthorized`: The access token is missing, invalid, expired, or its admin is deactivated. */
+            /**
+             * @description `unauthorized`: The access token is missing, invalid, expired, or its admin is deactivated.
+             *
+             *     `invalid_credentials`: The email or the password is wrong, or the admin is deactivated. From change-password: another password change or a deactivation finished first, so sign in again.
+             */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -917,7 +921,7 @@ export interface operations {
                     "application/json": components["schemas"]["SessionResponse"];
                 };
             };
-            /** @description `invalid_credentials`: The email or the password is wrong, or the admin is deactivated. */
+            /** @description `invalid_credentials`: The email or the password is wrong, or the admin is deactivated. From change-password: another password change or a deactivation finished first, so sign in again. */
             401: {
                 headers: {
                     [name: string]: unknown;
