@@ -32,6 +32,7 @@ Plan, phases and decisions: [docs/ROADMAP.md](docs/ROADMAP.md). Architecture dec
 | `apps/shazlo-one/` | React + TS: admin shell (login, nav, iframe host) |
 | `apps/vendor-admin/` | React + TS: vendor review module, loaded in a Shazlo-One iframe |
 | `packages/ui/` | Shared MUI theme and tokens |
+| `packages/shell-protocol/` | The postMessage protocol between Shazlo-One and its framed modules: types, validators, both ends of the channel |
 | `packages/py-auth/` | Shared Python package: access-token verifier, JWKS client, FastAPI `require_role` |
 | `packages/py-security/` | Shared Python package: password hashing, rate limiter, client IP, refresh-token store, signing keys and token issuer, request signing (ADR 0010, ADR 0003) |
 | `docs/` | [Roadmap](docs/ROADMAP.md), design documents, [ADRs](docs/adr), [runbooks](docs/runbooks), [test strategy](docs/testing.md) |

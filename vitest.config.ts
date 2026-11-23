@@ -6,6 +6,7 @@ export default defineConfig({
   test: {
     projects: [
       'packages/ui/vitest.config.ts',
+      'packages/shell-protocol/vitest.config.ts',
       'apps/vendor-portal/vitest.config.ts',
       {
         oxc: { jsx: { runtime: 'automatic' } },
@@ -56,7 +57,7 @@ export default defineConfig({
     maxWorkers: 1,
     coverage: {
       provider: 'v8',
-      include: ['app/src/**/*.{js,jsx}', 'backend/**/*.js', 'packages/ui/src/**/*.ts', 'apps/*/src/**/*.{ts,tsx}'],
+      include: ['app/src/**/*.{js,jsx}', 'backend/**/*.js', 'packages/ui/src/**/*.ts', 'packages/shell-protocol/src/**/*.ts', 'apps/*/src/**/*.{ts,tsx}'],
       exclude: ['**/*.test.*', 'backend/test/**', '**/node_modules/**'],
       reporter: ['text', 'html', 'json-summary'],
       reportsDirectory: 'coverage',
@@ -67,6 +68,8 @@ export default defineConfig({
       thresholds: {
         'apps/vendor-portal/src/**': { lines: 90, branches: 83, functions: 85, statements: 88 },
         'packages/ui/src/**': { lines: 95, branches: 90, functions: 90, statements: 95 },
+        // A mistake here is a security bug, so the floor is high.
+        'packages/shell-protocol/src/**': { lines: 97, branches: 90, functions: 95, statements: 93 },
       },
     },
   },
