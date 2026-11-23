@@ -470,11 +470,13 @@ describe('when the token cannot be got', () => {
   })
 
   it('an exchange failure on a reload replaces the frame with the panel rather than leave a half-working module', async () => {
-    await open('/m/vendor-admin', exchange((call) => (call === 2 ? new NetworkError('network') : undefined)))
+    // The server goes away after the first token: the shell's refreshes fail, so the cached token ages out.
+    await open('/m/vendor-admin', exchange((call) => (call >= 2 ? new NetworkError('network') : undefined)))
     const module = await moduleSaysReady()
     expect(screen.queryByRole('alert')).toBeNull()
-    // The module's token (5 minutes) is about to end, so the reload needs a new exchange, which fails.
-    await settle(295_000)
+    // Just before the token ends (it is under the 10-second cache margin), the module reloads and needs a new one.
+    await settle(292_000)
+    expect(screen.queryByRole('alert')).toBeNull()
     expect(module.client.sendReady()).toBe(true)
     await settle()
     expect(screen.getByRole('alert').textContent).toMatch(/Vendor admin could not be opened/)

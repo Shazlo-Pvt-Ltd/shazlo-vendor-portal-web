@@ -31,6 +31,8 @@ export interface SessionState {
 export interface ModuleToken {
   accessToken: string
   audience: string
+  /** Epoch milliseconds when the token was issued: with `expiresAt` it gives the token's own life. */
+  issuedAt: number
   /** Epoch milliseconds. Never later than the identity token it was exchanged with. */
   expiresAt: number
 }
@@ -94,6 +96,13 @@ export const SESSION_CHANNEL = 'shazlo-one-session'
 /** A module token this close to its end is replaced rather than handed out. */
 const MODULE_TOKEN_SKEW_MS = 10_000
 
+/**
+ * How long identity-api's exchanged tokens last by default (`EXCHANGED_TOKEN_TTL_SECONDS`, 300). Used
+ * until the first exchange says otherwise, to renew the identity token before a module token would
+ * outlive it.
+ */
+const DEFAULT_MODULE_TOKEN_TTL_MS = 300_000
+
 /** Between a module's id and an audience in a cache key; module ids cannot contain it. */
 const SCOPE_SEPARATOR = '|'
 
@@ -132,6 +141,10 @@ export class SessionStore {
   private state: SessionState = LOADING
   private token: string | null = null
   private tokenExpiresAt = 0
+  /** How long the identity token we hold was given to last (milliseconds). */
+  private identityLifetimeMs = 0
+  /** How long the last exchanged token was given to last, to know when the identity token is too old to ask with. */
+  private moduleTtlMs = DEFAULT_MODULE_TOKEN_TTL_MS
   private listeners = new Set<() => void>()
   private renewTimer: ReturnType<typeof setTimeout> | undefined
   private inFlight: Promise<boolean> | undefined
@@ -209,6 +222,17 @@ export class SessionStore {
     this.channel?.postMessage({ type: 'logout' })
   }
 
+  /**
+   * Ends the session because it could not be kept alive (for example a module's token ran out while the
+   * server could not be reached): flagged as expired, so the login screen says so and sends the admin
+   * back to where they were. Unlike {@link SessionStore.logout} it does not call the server (which may
+   * be what is down) and does not tell the other tabs; each finds out for itself.
+   */
+  expire(): void {
+    if (!this.hasSession()) return
+    this.end({ expired: true })
+  }
+
   /** Stops timers and listeners; for unmounting. */
   close(): void {
     this.closed = true
@@ -283,6 +307,7 @@ export class SessionStore {
     const mustChange = session.must_change_password
     this.token = session.access_token
     this.tokenExpiresAt = Date.now() + session.expires_in * 1000
+    this.identityLifetimeMs = session.expires_in * 1000
     this.set({
       status: mustChange ? 'passwordChangeRequired' : 'signedIn',
       admin: profile,
@@ -332,12 +357,17 @@ export class SessionStore {
    * `scope` says whose token it is: the module's id. A token is kept per scope, never shared, so two
    * modules that use the same audience (`vendor-api`) each get a token of their own, and
    * {@link SessionStore.dropModuleTokens} can drop one module's tokens when its page is left. It
-   * defaults to the audience, for callers that have no module.
+   * defaults to the audience, for callers that have no module. With `fresh` a new token is asked for even
+   * when a good one is kept (a refresh; it replaces the kept one).
+   *
+   * When the identity token would end before a new module token would (a module token lasts 5 minutes,
+   * an identity token 15), the identity token is renewed first, so the module token is not cut short.
    */
-  getModuleToken(audience: string, scope: string = audience): Promise<ModuleToken> {
+  getModuleToken(audience: string, scope: string = audience, options: { fresh?: boolean } = {}): Promise<ModuleToken> {
     const key = this.moduleKey(scope, audience)
     const cached = this.moduleTokens.get(key)
-    if (cached && cached.expiresAt - Date.now() > MODULE_TOKEN_SKEW_MS) return Promise.resolve(cached)
+    // `fresh` skips the cache: the refresh asks for a new token while the old one is still good.
+    if (!options.fresh && cached && cached.expiresAt - Date.now() > MODULE_TOKEN_SKEW_MS) return Promise.resolve(cached)
     let pending = this.moduleRequests.get(key)
     if (!pending) {
       pending = this.exchangeFor(audience, scope).finally(() => {
@@ -369,8 +399,16 @@ export class SessionStore {
     // Only a signed-in admin has roles to exchange; a password-change token gets nothing.
     if (this.state.status !== 'signedIn') throw new NotSignedInError()
     const generation = this.generation
-    if (this.tokenExpiresAt - Date.now() <= MODULE_TOKEN_SKEW_MS && !(await this.renew())) {
-      throw new NotSignedInError()
+    const remaining = this.tokenExpiresAt - Date.now()
+    if (remaining <= MODULE_TOKEN_SKEW_MS) {
+      // Too old to ask with at all.
+      if (!(await this.renew())) throw new NotSignedInError()
+    } else if (remaining < this.moduleTtlMs && this.identityLifetimeMs > this.moduleTtlMs) {
+      // It would end before the new module token should: renew it first so the module token gets its
+      // whole life. If renewal cannot be done now, the exchange goes ahead with what we hold (the module
+      // token is then cut short and refreshed again sooner); only an ended session stops it.
+      await this.renew()
+      if (this.state.status !== 'signedIn') throw new NotSignedInError()
     }
     let issuedFrom = { token: this.token, expiresAt: this.tokenExpiresAt }
     let response: TokenResponse
@@ -389,10 +427,13 @@ export class SessionStore {
     }
     // The session ended (or was replaced) while the exchange ran: this token belongs to nobody now.
     if (generation !== this.generation) throw new NotSignedInError()
+    const issuedAt = Date.now()
+    this.moduleTtlMs = response.expires_in * 1000
     const moduleToken: ModuleToken = {
       accessToken: response.access_token,
       audience,
-      expiresAt: Math.min(Date.now() + response.expires_in * 1000, issuedFrom.expiresAt),
+      issuedAt,
+      expiresAt: Math.min(issuedAt + response.expires_in * 1000, issuedFrom.expiresAt),
     }
     // Not kept if the module's page was left while the exchange ran.
     if ((this.scopeEpochs.get(scope) ?? 0) === epoch) this.moduleTokens.set(this.moduleKey(scope, audience), moduleToken)

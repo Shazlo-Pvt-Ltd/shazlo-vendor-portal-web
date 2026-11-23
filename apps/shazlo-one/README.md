@@ -188,10 +188,29 @@ built on `createShellChannel` from `@shazlo/shell-protocol`).
 - **While it starts** the page shows a loading state; the shell's navigation and account menu stay usable
   throughout, and leaving the page removes the frame and its listener.
 
-Not here yet: pushing a fresh `auth` before the token ends and answering `token:request` (token refresh and
-session end across the frame), title and deep-link sync, toasts, and a module's `logout` and `error`
-messages (their own issues). Until then the reference module's buttons for those send messages the host
-does not act on.
+### Keeping the module supplied
+
+A module's token lasts **5 minutes** (identity-api's `EXCHANGED_TOKEN_TTL_SECONDS`), the identity token **15**. The host
+(`ModuleHost.tsx`, with the maths in `src/modules/refreshSchedule.ts`) keeps the module's token fresh:
+
+- **Schedule:** from each token's own life, a new token is exchanged and sent as `auth` at 80% of its life or 30
+  seconds before it ends, whichever is first (never earlier than its half-life). A reload resumes from the token
+  the module was last given.
+- **Identity first:** if the identity token would end before a new module token should, it is renewed before the
+  exchange, so the module token gets its whole life. If that renewal cannot be done now, the exchange goes on with
+  what the shell holds and the module token is cut short.
+- **`token:request`:** answered with a fresh `auth`, at most once per 30 seconds per module, whatever it sends.
+- **A failed refresh** (network, 5xx): the module keeps its token; the shell retries after 5, 15, then every 30
+  seconds, and a retry that works resets the backoff. When the token ends, the frame is removed, the session ends
+  as *expired* (no server call) and the admin goes to login, back to `/m/<id>` afterwards.
+- **A role removed** (`403 audience_not_allowed` on a refresh or request): the module closes and the 403 page shows.
+  A role removed from the admin's own session (read again on renewal) does the same through the page's role check.
+- **The session ending anywhere** (sign-out here or in another tab, a revoked refresh family, a deactivated admin)
+  removes the frame and drops every token at once: the guards unmount the page, which clears its timers, closes the
+  channel and drops the module's tokens.
+
+Not here yet: title and deep-link sync, toasts, and a module's `logout` and `error` messages (#257). Until then the
+reference module's buttons for those send messages the host does not act on.
 
 ## The reference module
 

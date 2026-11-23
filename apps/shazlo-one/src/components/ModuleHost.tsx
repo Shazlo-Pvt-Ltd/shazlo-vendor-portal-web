@@ -5,9 +5,10 @@ import { Link } from 'react-router'
 import { friendlyError } from '../api/friendlyError'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { reportModuleFailure } from '../modules/moduleFailure'
+import { TOKEN_REQUEST_THROTTLE_MS, backoffDelay, refreshDelay } from '../modules/refreshSchedule'
 import type { ModuleEntry } from '../modules/registry'
 import { useSession } from '../session/AuthProvider'
-import { AudienceNotAllowedError, NotSignedInError, UnknownAudienceError } from '../session/store'
+import { AudienceNotAllowedError, NotSignedInError, UnknownAudienceError, type ModuleToken } from '../session/store'
 import { NoAccess } from './NoAccess'
 
 /** How long a module has to say `ready` after its frame starts loading (ADR 0001, section 7). */
@@ -67,11 +68,75 @@ function HostedFrame({ entry, visible, onStatus }: FrameProps) {
     if (iframe === null) return
     let disposed = false
     let newest = 0
+    // The token the module holds now (the last one sent), the timers that keep it fresh, and how many
+    // refreshes in a row have failed.
+    let held: ModuleToken | undefined
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined
+    let expiryTimer: ReturnType<typeof setTimeout> | undefined
+    let refreshing = false
+    let failures = 0
+    let lastTokenRequest = Number.NEGATIVE_INFINITY
     const report = (status: Status) => {
       if (!disposed) onStatusRef.current(status)
     }
     // A refused or blocked frame (CSP, framing) is invisible to the parent: it looks like "no ready".
     const timer = setTimeout(() => report({ kind: 'no-ready' }), READY_TIMEOUT_MS)
+
+    /** Sends `auth` for this token and arms the two timers that follow from it. Returns whether it was sent. */
+    function deliver(token: ModuleToken, replyTo?: string): boolean {
+      const { admin, roles } = sessionRef.current
+      if (admin === null) return false
+      const sent = channel.sendAuth(
+        {
+          accessToken: token.accessToken,
+          expiresAt: Math.floor(token.expiresAt / 1000),
+          user: { id: admin.id, email: admin.email, roles: [...roles] },
+        },
+        replyTo === undefined ? {} : { replyTo },
+      )
+      if (!sent) return false
+      held = token
+      failures = 0
+      // Replace it at 80% of its own life, or 30 seconds before it ends, whichever is first...
+      clearTimeout(refreshTimer)
+      refreshTimer = setTimeout(() => void refresh(), refreshDelay(token, Date.now()))
+      // ...and if it still could not be replaced by the time it ends, the session is over for this module.
+      clearTimeout(expiryTimer)
+      expiryTimer = setTimeout(onExpired, Math.max(0, token.expiresAt - Date.now()))
+      return true
+    }
+
+    /** The module's token ran out and none could be had: the module is removed and the admin signs in again. */
+    function onExpired(): void {
+      if (disposed) return
+      // Ends the session as expired; the guards send the admin to login, back to this module's path.
+      sessionRef.current.expireSession()
+    }
+
+    /** Gets a new token and sends it. On failure the module keeps the one it has, and the shell tries again. */
+    async function refresh(): Promise<void> {
+      if (disposed || refreshing) return
+      refreshing = true
+      clearTimeout(refreshTimer)
+      try {
+        // Asked for while the old one is still good: a new one, not the cached one.
+        const token = await sessionRef.current.getModuleToken(entry.audience, entry.id, { fresh: true })
+        if (disposed) return
+        if (!deliver(token)) throw new NotSignedInError()
+      } catch (error) {
+        if (disposed) return
+        const status = statusForExchangeError(error)
+        // The admin lost the role: this module closes, with the 403 page.
+        if (status.kind === 'forbidden') return report(status)
+        // The session ended meanwhile: the guards are already removing the page.
+        if (error instanceof NotSignedInError) return
+        // Anything else (network, a server error): keep what we hold until it ends, and try again soon.
+        refreshTimer = setTimeout(() => void refresh(), backoffDelay(failures))
+        failures += 1
+      } finally {
+        refreshing = false
+      }
+    }
 
     async function answer(info: ReadyInfo): Promise<void> {
       // The module is alive: stop waiting for it. A second `ready` (the module reloaded) comes here
@@ -82,16 +147,8 @@ function HostedFrame({ entry, visible, onStatus }: FrameProps) {
         // A token for this module's own audience, kept for this module only (its id is the scope).
         const token = await sessionRef.current.getModuleToken(entry.audience, entry.id)
         if (disposed || mine !== newest) return
-        const { admin, roles } = sessionRef.current
-        if (admin === null) throw new NotSignedInError()
-        const sent = channel.sendAuth(
-          {
-            accessToken: token.accessToken,
-            expiresAt: Math.floor(token.expiresAt / 1000),
-            user: { id: admin.id, email: admin.email, roles: [...roles] },
-          },
-          { replyTo: info.id },
-        )
+        if (sessionRef.current.admin === null) throw new NotSignedInError()
+        const sent = deliver(token, info.id)
         report(sent ? { kind: 'ready' } : { kind: 'error', message: 'The session could not be sent to the module.' })
       } catch (error) {
         if (disposed || mine !== newest) return
@@ -109,6 +166,13 @@ function HostedFrame({ entry, visible, onStatus }: FrameProps) {
         clearTimeout(timer)
         report({ kind: 'version', moduleVersion: info.moduleVersion, supportedVersions: info.supportedVersions })
       },
+      // A module that got a 401 asks for a new token. At most one answer every 30 seconds, whatever it sends.
+      onTokenRequest: () => {
+        const now = Date.now()
+        if (held === undefined || now - lastTokenRequest < TOKEN_REQUEST_THROTTLE_MS) return
+        lastTokenRequest = now
+        void refresh()
+      },
     })
     // Only now does the frame get its address: exactly the registry's `url`, never anything token-like.
     iframe.src = entry.url
@@ -116,6 +180,8 @@ function HostedFrame({ entry, visible, onStatus }: FrameProps) {
     return () => {
       disposed = true
       clearTimeout(timer)
+      clearTimeout(refreshTimer)
+      clearTimeout(expiryTimer)
       channel.dispose()
       // The page is left (or the frame is reloaded): the module's tokens go with it.
       sessionRef.current.dropModuleTokens(entry.id)
