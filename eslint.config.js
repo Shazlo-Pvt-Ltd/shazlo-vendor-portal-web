@@ -7,8 +7,8 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    // The vendor portal's security rules (apps/vendor-portal/README.md, "Security rules").
-    files: ['apps/vendor-portal/src/**/*.{ts,tsx}'],
+    // The security rules of the vendor portal and the Shazlo One shell (each app's README, "Security rules").
+    files: ['apps/vendor-portal/src/**/*.{ts,tsx}', 'apps/shazlo-one/src/**/*.{ts,tsx}'],
     ignores: ['**/*.test.{ts,tsx}', '**/test/**'],
     rules: {
       // A token, password or e-mail in web storage can be read by any script on the page. The
