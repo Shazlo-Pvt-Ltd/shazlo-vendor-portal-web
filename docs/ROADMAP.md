@@ -153,7 +153,7 @@ Planned scope:
 - Team (owner only: invite, resend, disable and enable staff) and account (profile, password change).
 
 ### Phase 6: Shazlo-One shell
-Status (2026-11-20): in progress. Merged so far: identity-api's committed `openapi.json` (checked by its tests), and the Shazlo-One scaffold (Vite, the typed identity-api client, the security headers and checks). `apps/shazlo-one/README.md` describes what the app does today.
+Status (2026-11-24): built, not yet delivered. Every issue except the browser checks has a pull request: #248 is merged; the scaffold, session, sign-in, module registry, protocol package, reference module, iframe host, token refresh, page messages and admin management are open as a stack of PRs (#303 to #313). Still to do (#259): the end-to-end journey and axe checks against real services, which also decide whether this phase is "Delivered". `apps/shazlo-one/README.md` describes what the app does today.
 
 - Scaffold, admin login against identity-api, and session handling.
 - Module registry and a nav that only shows the modules an admin's roles allow.
@@ -164,8 +164,16 @@ Status (2026-11-20): in progress. Merged so far: identity-api's committed `opena
   - The child can send `logout` and `toast` to the shell.
 - Admin user management UI.
 
+Differences from the plan, so far:
+- The shell exchanges a 5-minute token per module from its 15-minute identity token (identity-api's `POST /v1/auth/token`) instead of refreshing one token.
+- The protocol lives in its own package, `packages/shell-protocol`, used by the shell and every module.
+- A development-only reference module (`apps/shazlo-one/dev-module`) stands in for `vendor-admin` until Phase 7. It is never built or deployed.
+- No "confirm before leaving" message in protocol version 1; modules protect unsaved work themselves.
+- Nothing reports an "unavailable" module in production yet (the hook exists, nothing is wired to it).
+- A guide for module authors: [how to build a module](how-to-build-a-module.md).
+
 ### Phase 7: Vendor admin module
-Status: not started (`apps/vendor-admin` holds only a README). The API it needs is partly there: reviews, vendor accounts and the outbox are served under `/v1/admin/*` by vendor-api.
+Status: not started (`apps/vendor-admin` holds only a README); start with [how to build a module](how-to-build-a-module.md). The API it needs is partly there: reviews, vendor accounts and the outbox are served under `/v1/admin/*` by vendor-api.
 
 - Scaffold. It accepts auth only through postMessage from the Shazlo-One origin and sets `Content-Security-Policy: frame-ancestors`.
 - Review queue with stats and filters.

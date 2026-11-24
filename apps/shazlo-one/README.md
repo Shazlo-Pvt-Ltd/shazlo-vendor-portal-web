@@ -5,9 +5,10 @@ React + TypeScript (Vite) admin shell: the front door of the admins. It signs th
 each module's admin UI in an iframe ([ADR 0001](../../docs/adr/0001-iframe-postmessage-protocol.md)).
 Phase 6 of the [roadmap](../../docs/ROADMAP.md) builds it.
 
-Status: the scaffold. It serves an empty shell with the typed identity-api client, the security
-headers and the security checks in place. Sign-in, the session, the module registry and the iframe
-host are the next Phase 6 issues.
+Status: built (Phase 6, issues #249 to #258): sign-in and the first-login password change, the admin
+session, the module registry and role-filtered navigation, the iframe host with token refresh and the
+page-level messages, the reference module and admin management. The end-to-end and accessibility checks
+(the rest of #259) are not written yet: see "Testing".
 
 Stack: React 19, TypeScript (strict), Vite, MUI through the shared [`@shazlo/ui`](../../packages/ui)
 theme, React Router, TanStack Query. It starts from the foundations of the
@@ -27,6 +28,36 @@ It needs a running identity-api for anything beyond the empty page (compose: `do
 origin; compose already sets `http://localhost:5173`, which is why the dev server insists on that
 port (`strictPort`). The refresh cookie is `SameSite=Strict`, so the shell and the API must be the
 same site (both on `localhost`).
+
+## Running the whole thing
+
+To sign in and open a module you need identity-api, vendor-api, the shell and the reference module.
+
+```sh
+# 1. Postgres, Redis and Mailpit, then a signing key for each API in .env (IDENTITY_JWT_KEYS and
+#    VENDOR_JWT_KEYS: the root README, "Local development", has the one-line command that makes each)
+cp .env.example .env                       # set POSTGRES_PASSWORD
+docker compose up -d
+
+# 2. Schema, the first admin, then both APIs
+docker compose --profile identity run --rm identity-api alembic upgrade head
+docker compose --profile identity run --rm -e SEED_ADMIN_EMAIL=admin@shazlo.test -e SEED_ADMIN_PASSWORD='<at least 12 characters>' identity-api python -m identity_api.cli seed
+docker compose --profile vendor run --rm vendor-api alembic upgrade head
+docker compose --profile identity --profile vendor up -d --wait
+curl localhost:8001/ready && curl localhost:8002/ready      # identity-api, vendor-api
+
+# 3. The shell (5173) and the reference module (5175)
+npm ci
+cp apps/shazlo-one/.env.example apps/shazlo-one/.env.local
+npm run dev:with-module -w @shazlo/shazlo-one
+```
+
+Open <http://localhost:5173>, sign in as the seeded admin (it must choose a new password first), then open
+**Reference module** from the navigation. Demo vendors and reviews for vendor-api are `seed-dev` in
+[its README](../../services/vendor-api/README.md). Compose already allows
+the shell's origin in identity-api and the module's in vendor-api (`http://localhost:5175`); if your `.env`
+predates that, see "The reference module" below. A `vendor_reviewer` admin is created from "Admins" by a
+`super_admin`.
 
 ## Settings
 
@@ -56,6 +87,17 @@ the shell's dependencies.
 
 When identity-api's API changes, regenerate its document (`python -m identity_api.cli
 export-openapi` in `services/identity-api`), then `api:generate` here, and commit both.
+
+## Testing
+
+- **Unit and component tests:** `npx vitest run --project shazlo-one` (jsdom, Testing Library, MSW for the API).
+  Each screen, the session store, the module host, the registry and the security rules have tests; the shared
+  protocol has its own contract tests (`npm test -w @shazlo/shell-protocol`). CI runs them with coverage.
+- **Not covered yet:** a real browser against real services. The checks #259 asks for (the full admin journey,
+  token refresh with the clock moved, cross-origin messages and framing, roles, and axe on the main screens)
+  need the Phase 5 end-to-end setup (compose in CI, Playwright, axe), which is not in the repository yet. Until
+  they exist, nothing here has been run in a browser by CI.
+- **Building a module?** Read [how to build a module](../../docs/how-to-build-a-module.md).
 
 ## Layout
 
@@ -258,6 +300,34 @@ npm run dev:with-module -w @shazlo/shazlo-one   # shell on 5173, module on 5175
   `http://localhost:5174,http://localhost:5175`. If you made your `.env` before this, add the second origin.
 - The module's config reads the protocol package, which is TypeScript source, so its dev server runs with
   `--configLoader runner` (the scripts above do that).
+
+## Admin management
+
+`/admins` (the "Admins" section, `src/pages/AdminsPage.tsx` and `src/features/admins/`) is for `super_admin` only:
+the route guard, the navigation and identity-api (on every call) each check it, and everyone else gets the 403 page
+without the admins being asked for at all.
+
+- **List:** name, email, roles, active or deactivated, and whether they must still change their password. The
+  search (name or email), the role and status filters and the page are in the address (`?q=&role=&status=&page=`):
+  shareable, they survive a reload and the back button steps through them. Typing replaces the address entry
+  rather than adding one; choosing a filter or a page adds one; a filter goes back to page 1.
+- **Create:** email, name, roles (from `GET /v1/roles`, each with its description) and a temporary password. The
+  dialog says they must change it at their first sign-in and that it must be handed over in person or through a
+  secure channel: it is never emailed. "Generate a password" makes a random 20-character one (no look-alike
+  characters) and shows it, because it has to be read once.
+- **Edit:** the name and the roles; deactivate and reactivate (a confirmation says their sessions end at once);
+  reset the password (a confirmation says the sessions end and they must choose a new password). You cannot
+  deactivate yourself, and the button says why.
+- **Refusals** are plain words next to the control they are about: `email_taken` by the email, `weak_password` by
+  the password, `unknown_role` by the roles, `cannot_deactivate_self` and `last_super_admin` by the control that
+  asked for it (the last super admin cannot be deactivated or lose the role, and the screen says why),
+  `admin_not_found` above the form (the list reloads), and a `403` means your own super admin role was removed
+  (your session is read again and the page becomes the 403 page).
+- **Roles take effect** at the admin's next token, within 15 minutes, and the dialog says so. A super admin who
+  edits their **own** roles has their session refreshed at once, so they see them.
+- **Temporary passwords:** the field is emptied the moment the call is sent (success or not), the mutation keeps
+  no copy, nothing is written to web storage, and a half-typed one is emptied when the session ends. Tests check
+  the form, the mutation cache, the query cache and the page.
 
 ## Security rules
 

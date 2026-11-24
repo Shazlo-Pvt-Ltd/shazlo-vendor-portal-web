@@ -37,6 +37,7 @@ Where the code and the design documents use different names, the code is right:
 | 04 | [Database design](04-database-design.md) | The list of all 58 tables and their indexes, in two databases |
 | 04b | [Database notes](04b-database-notes.md) | Design rules, cross-database references, vectors, migration from today's tables, Redis keys, personal data, MVP delta |
 | 05 | [API design](05-api-design.md) | GraphQL schema for the app, REST for vendor, public, admin and webhooks, errors, limits |
+| - | [How to build a module](how-to-build-a-module.md) | How to build a React admin module for the Shazlo-One shell (Phase 7 and later) |
 | 06 | [MVP slice and migration](06-mvp-slice-and-migration.md) | Exactly what is built by Oct 30 on today's backend, and how it migrates to the new server |
 | 07 | [Website audit and plan](07-website-audit-and-plan.md) | What is wrong with the marketing site, and what to fix |
 | 08 | [Service split](08-service-split.md) | Core and Vendor-admin: the boundary rule, what changed in the redraw, builder checklist |

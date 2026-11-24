@@ -1,7 +1,7 @@
 # 0001. Iframe postMessage protocol between Shazlo-One and module UIs
 
-- Status: proposed
-- Date: 2026-10-23
+- Status: accepted
+- Date: 2026-10-23 (proposed); 2026-11-24 (accepted)
 - Issue: #30
 - Related: [ROADMAP](../ROADMAP.md) Phase 6 (Shazlo-One shell) and Phase 7 (vendor admin module); [0009 auth model](0009-auth-model.md) (#31)
 
@@ -155,6 +155,29 @@ The iframe element:
 - postMessage origin checks protect the **channel**. They are not an authentication boundary. Every API call is still validated server-side against the JWKS.
 - A cross-site scripting bug in a module can read its in-memory token. The short lifetime and the per-module audience limit the damage.
 - The shell never forwards one module's token to another module.
+
+## What changed from the proposal
+
+The shell, the protocol package and the reference module are built (Phase 6, #249 to #258). The decisions above
+stand; these are the differences from the text as first proposed, each recorded in detail under the follow-ups:
+
+| Proposed | Built |
+| --- | --- |
+| One token lifetime (the identity token, refreshed) | Two: the identity token (15 minutes) and a module token exchanged from it (5 minutes, never past the identity token). The shell exchanges, it does not refresh the module's token |
+| Whether tokens are shared by audience was not said | Kept per module (its registry id), so two modules on one audience never share a token |
+| The registry's home left open | The shell's own typed configuration, one list per environment, checked at build and at start (#252) |
+| A shell-to-module "may I leave?" message left open | None in version 1: it cannot be relied on from a hung or hostile module, and the sandbox has no `allow-modals` (#257) |
+| `title` sets the breadcrumb and the address | The address is **replaced**, not pushed, and the shell re-checks the path (dot segments, encoded dots) before writing it (#257) |
+| `toast`: plain text, at most 280 characters | Also labelled with the module's name, at most 3 visible and 5 taken per 10 seconds per module, durations held to 3 to 15 seconds, announced politely (#257) |
+| Runtime validation "for example with `zod`" | Hand-written validators; the protocol package has no runtime dependency (#253) |
+
+## Status of the evidence
+
+Accepted on the strength of the shared package's contract tests (both ends over two jsdom windows, including
+hostile messages) and the shell's and reference module's tests. The same behaviour has **not** yet been run in a
+real browser by CI: the end-to-end checks of #259 (cross-origin messages ignored, the module refused by another
+framing origin, no token in a URL, the request log or web storage, token refresh with the clock moved) are still to
+be written. If one of them shows that a decision here is wrong, amend this ADR rather than the code alone.
 
 ## Message flow
 
@@ -346,4 +369,4 @@ export function isTrustedMessage(
 ## Open items
 
 - ~~Whether `navigate` also needs a reverse "shell asks the module to confirm leaving" message for unsaved changes.~~ Decided in #257: **no, not in protocol version 1** (see "Decided in #257" below).
-- Telemetry: whether dropped messages are reported in production.
+- Telemetry: whether dropped messages, and a module marked "unavailable", are reported in production (the shell has the hook, `setModuleFailureReporter`, and nothing wired to it).
