@@ -7,8 +7,8 @@ Phase 6 of the [roadmap](../../docs/ROADMAP.md) builds it.
 
 Status: built (Phase 6, issues #249 to #258): sign-in and the first-login password change, the admin
 session, the module registry and role-filtered navigation, the iframe host with token refresh and the
-page-level messages, the reference module and admin management. The end-to-end and accessibility checks
-(the rest of #259) are not written yet: see "Testing".
+page-level messages, the reference module and admin management, with end-to-end and accessibility tests
+(see "End-to-end tests").
 
 Stack: React 19, TypeScript (strict), Vite, MUI through the shared [`@shazlo/ui`](../../packages/ui)
 theme, React Router, TanStack Query. It starts from the foundations of the
@@ -93,11 +93,40 @@ export-openapi` in `services/identity-api`), then `api:generate` here, and commi
 - **Unit and component tests:** `npx vitest run --project shazlo-one` (jsdom, Testing Library, MSW for the API).
   Each screen, the session store, the module host, the registry and the security rules have tests; the shared
   protocol has its own contract tests (`npm test -w @shazlo/shell-protocol`). CI runs them with coverage.
-- **Not covered yet:** a real browser against real services. The checks #259 asks for (the full admin journey,
-  token refresh with the clock moved, cross-origin messages and framing, roles, and axe on the main screens)
-  need the Phase 5 end-to-end setup (compose in CI, Playwright, axe), which is not in the repository yet. Until
-  they exist, nothing here has been run in a browser by CI.
+- **End-to-end tests and accessibility:** Playwright and axe in a real browser against the real stack, see
+  "End-to-end tests" below.
 - **Building a module?** Read [how to build a module](../../docs/how-to-build-a-module.md).
+
+## End-to-end tests
+
+`e2e/` drives Chromium against identity-api, vendor-api and the shell with the reference module, and runs axe
+on the main screens. Each test creates its own admin through identity-api (a temporary password they must
+change, the same as a freshly seeded admin), so the tests do not depend on each other's order; the seeded admin
+is used only to create them.
+
+| File | What it checks |
+| --- | --- |
+| `journey.spec.ts` | A new admin signs in and must choose a password; opens the reference module, which calls vendor-api with the exchanged token; the title and address follow the module; a toast shows; a deep link reopens the page after a reload |
+| `tokens.spec.ts` | With the clock moved forward 4m30s the shell exchanges a new token and the module keeps working; signing out (or the module's `logout`) removes the frame |
+| `security.spec.ts` | The shell ignores forged messages from its own window and from another origin; the module is refused by a framing page on another origin; the shell's CSP; no token in a URL, a `Referer`, web storage or a cookie |
+| `roles.spec.ts` | A `super_admin` creates a `vendor_reviewer` in the Admins screen; the reviewer sees only their modules and gets the 403 page for Admins; deactivating them ends their session |
+| `accessibility.spec.ts` | axe (WCAG 2.1 A and AA) on login, the first-login password change, home, a module page (the shell around the frame), change password, the admin list and the create and edit dialogs; serious or critical violations fail |
+
+To run them on a laptop, start the stack as in "Running the whole thing" but with the test overlay, seed the
+admin, then run the tests (they start the shell on 5173 and the module on 5175 themselves):
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile identity --profile vendor up -d --wait
+# seed once: SEED_ADMIN_EMAIL=admin@shazlo.test, SEED_ADMIN_PASSWORD=e2e-admin-password-1 (the tests' default)
+npm run e2e:install -w @shazlo/shazlo-one      # once: Chromium
+npm run e2e -w @shazlo/shazlo-one
+```
+
+The shell and the module run as Vite dev servers, not as a build: the reference module is development-only and is
+in the development registry only, so a production build does not frame it. CI is `.github/workflows/e2e-shazlo-one.yml`
+(compose, migrations, seed, the tests; traces, screenshots and the report are kept on failure). The settings are in
+`e2e/support/env.ts` (`E2E_SHELL_URL`, `E2E_IDENTITY_URL`, `E2E_ADMIN_PASSWORD`, ...). The tests make many sign-ins
+from one address; if identity-api's login rate limits are hit, raise them in the stack's environment.
 
 ## Layout
 

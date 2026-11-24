@@ -153,7 +153,7 @@ Planned scope:
 - Team (owner only: invite, resend, disable and enable staff) and account (profile, password change).
 
 ### Phase 6: Shazlo-One shell
-Status (2026-11-24): built, not yet delivered. Every issue except the browser checks has a pull request: #248 is merged; the scaffold, session, sign-in, module registry, protocol package, reference module, iframe host, token refresh, page messages and admin management are open as a stack of PRs (#303 to #313). Still to do (#259): the end-to-end journey and axe checks against real services, which also decide whether this phase is "Delivered". `apps/shazlo-one/README.md` describes what the app does today.
+Status (2026-11-24): built, not yet delivered. Every issue except the browser checks has a pull request: #248 is merged; the scaffold, session, sign-in, module registry, protocol package, reference module, iframe host, token refresh, page messages and admin management are open as a stack of PRs (#303 to #313). The end-to-end journey and axe checks (#259) are written (`apps/shazlo-one/e2e`, CI job `e2e-shazlo-one`) but had not yet run against real services; a green run and the merge of the stack decide whether this phase is "Delivered". `apps/shazlo-one/README.md` describes what the app does today.
 
 - Scaffold, admin login against identity-api, and session handling.
 - Module registry and a nav that only shows the modules an admin's roles allow.

@@ -174,10 +174,12 @@ stand; these are the differences from the text as first proposed, each recorded 
 ## Status of the evidence
 
 Accepted on the strength of the shared package's contract tests (both ends over two jsdom windows, including
-hostile messages) and the shell's and reference module's tests. The same behaviour has **not** yet been run in a
-real browser by CI: the end-to-end checks of #259 (cross-origin messages ignored, the module refused by another
-framing origin, no token in a URL, the request log or web storage, token refresh with the clock moved) are still to
-be written. If one of them shows that a decision here is wrong, amend this ADR rather than the code alone.
+hostile messages), the shell's and reference module's tests, and the browser tests of #259
+(`apps/shazlo-one/e2e`): forged messages from another origin and window are ignored, the module is refused by a
+framing page on another origin, no token appears in a URL, `Referer`, web storage or cookie, and the module keeps
+working across a token refresh. Those browser tests are written but had not yet been run against the real stack
+when this was accepted (their first run is the CI job `e2e-shazlo-one`). If one shows that a decision here is
+wrong, amend this ADR rather than the code alone.
 
 ## Message flow
 
