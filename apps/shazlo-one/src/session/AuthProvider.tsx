@@ -13,6 +13,8 @@ export interface Session extends SessionState {
   logout: () => Promise<void>
   /** After `unavailable`. */
   retry: () => Promise<void>
+  /** Gets a new token and reads `GET /v1/me` again now, so the admin's roles are current (true when signed in). */
+  renew: () => Promise<boolean>
   /** A short token for one module's backend; the iframe host uses it. */
   getModuleToken: (audience: string, scope?: string, options?: { fresh?: boolean }) => Promise<ModuleToken>
   /** Forgets the tokens kept for one module: call it when its page is left. */
@@ -67,6 +69,7 @@ export function useSession(): Session {
       getModuleToken: (audience, scope, options) => store.getModuleToken(audience, scope, options),
       expireSession: () => store.expire(),
       dropModuleTokens: (scope) => store.dropModuleTokens(scope),
+      renew: () => store.renew(),
     }),
     [state, store],
   )
