@@ -24,6 +24,38 @@ Demo accounts, mock data only:
 
 `shazloOneResetDemo()` in the console resets the identity mock; `POST http://localhost:5194/__reset` resets vendor-api.
 
+## Run it on the real identity-api
+
+The shell is mocked in the browser unless `VITE_MOCK_API=off`. To use a local identity-api instead:
+
+```bash
+docker compose up -d identity-api            # identity-api on :8001 (see services/identity-api/README.md)
+# the shell and the refresh cookie need these two settings on identity-api:
+#   CORS_ALLOWED_ORIGINS=http://localhost:5192,http://localhost:4192
+#   COOKIE_SECURE=false                       # local http only; never in production
+echo "VITE_MOCK_API=off" > apps/shazlo-one/.env.local
+npm run dev -w @shazlo/shazlo-one            # the shell on :5192
+```
+
+**Same origin, not CORS.** With the mock off the shell calls `/v1/...` on its own origin, and Vite (dev on
+:5192, preview on :4192) forwards `/v1` to `VITE_IDENTITY_PROXY_TARGET` (default `http://localhost:8001`).
+The `identity_refresh` cookie is then first-party, so identity-api's `SameSite=Strict` default works and no
+cross-origin cookie setup is needed. identity-api still checks the `Origin` header on the cookie routes
+(login, refresh, logout), which is why the two origins above go in `CORS_ALLOWED_ORIGINS`. To call identity-api
+cross-origin instead, set `VITE_IDENTITY_API_URL`, add the shell's origin to `CORS_ALLOWED_ORIGINS` and use
+`COOKIE_SAMESITE=none` with HTTPS.
+
+**First admin.** identity-api creates its roles and one `super_admin` with its CLI; that admin must change the
+password at the first sign-in:
+
+```bash
+cd services/identity-api
+SEED_ADMIN_EMAIL=admin@example.com SEED_ADMIN_PASSWORD='<at least 12 characters>' python -m identity_api.cli seed
+```
+
+Sign in with it, then invite a `vendor_reviewer` from **Admins**. The Vendors module also needs vendor-api
+(`VITE_VENDOR_API_URL`), which is the next sub-issue (#293).
+
 ## How it works
 
 | Area | Where |

@@ -2,6 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderShell } from '../test/render'
+import { ADMIN_ID } from '../mocks/identity'
 import { server } from '../test/server'
 
 const NOW = new Date('2026-11-09T14:00:00+05:30')
@@ -65,7 +66,7 @@ describe('Change password', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/'))
     expect(await screen.findByRole('heading', { level: 1, name: 'Good afternoon, Sneha' })).toBeInTheDocument()
     expect(await screen.findByText('Password saved')).toBeInTheDocument()
-    const sneha = identityDb.admins.find((a) => a.id === 'a_sneha')!
+    const sneha = identityDb.admins.find((a) => a.id === ADMIN_ID.sneha)!
     expect(sneha).toMatchObject({ must_change_password: false, password: NEW })
   })
 
@@ -85,7 +86,7 @@ describe('Change password', () => {
     await user.type(field('New password'), NEW)
     await user.click(screen.getByRole('button', { name: 'Save password and continue' }))
     expect(await screen.findByText('The two passwords do not match.')).toBeInTheDocument()
-    expect(identityDb.admins.find((a) => a.id === 'a_sneha')!.password).toBe(TEMP)
+    expect(identityDb.admins.find((a) => a.id === ADMIN_ID.sneha)!.password).toBe(TEMP)
   })
 
   it('puts a wrong temporary password on its field', async () => {

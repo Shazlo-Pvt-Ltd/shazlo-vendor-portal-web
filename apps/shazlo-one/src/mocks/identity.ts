@@ -9,7 +9,11 @@ type S = components['schemas']
 export const DEMO_ADMIN = { email: 'naman@shazlo.store', password: 'shazlo-one-2026' }
 export const INVITED_ADMIN = { email: 'sneha@shazlo.store', password: 'welcome-sneha-01' }
 
-export const ROLES: S['Role'][] = [
+// identity-api's ids are UUIDs; the seed ones are fixed so tests can name them.
+const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
+export const ADMIN_ID = { naman: uuid(1), priya: uuid(2), rahul: uuid(3), sneha: uuid(4), kabir: uuid(5) } as const
+
+export const ROLES: S['RoleOut'][] = [
   { name: 'super_admin', description: 'Manages admins and roles, and passes every role check in every module.' },
   { name: 'vendor_reviewer', description: 'Reviews vendor applications, brand pages and products in the Vendors module.' },
 ]
@@ -18,7 +22,7 @@ const AUDIENCE_ROLES: Record<string, string[]> = { 'vendor-api': ['super_admin',
 const ACCESS_SECONDS = 15 * 60
 const MAX_FAILURES = 5
 
-type AdminRecord = S['Admin'] & { password: string }
+type AdminRecord = S['AdminOut'] & { password: string }
 
 export interface IdentityDb {
   now: () => Date
@@ -39,11 +43,11 @@ export function createIdentityDb({ now = () => new Date() }: { now?: () => Date 
   return {
     now,
     admins: [
-      admin('a_naman', 'Naman Sinha', 'naman@shazlo.store', ['super_admin'], { last_login_at: at(0.2), created_at: at(24 * 120) }),
-      admin('a_priya', 'Priya Mehta', 'priya@shazlo.store', ['vendor_reviewer'], { last_login_at: at(1.5) }),
-      admin('a_rahul', 'Rahul Desai', 'rahul@shazlo.store', ['vendor_reviewer'], { last_login_at: at(26) }),
-      admin('a_sneha', 'Sneha Iyer', 'sneha@shazlo.store', ['vendor_reviewer'], { must_change_password: true, last_login_at: null, created_at: at(20), password: INVITED_ADMIN.password }),
-      admin('a_kabir', 'Kabir Shah', 'kabir@shazlo.store', ['vendor_reviewer'], { is_active: false, last_login_at: at(24 * 38) }),
+      admin(ADMIN_ID.naman, 'Naman Sinha', 'naman@shazlo.store', ['super_admin'], { last_login_at: at(0.2), created_at: at(24 * 120) }),
+      admin(ADMIN_ID.priya, 'Priya Mehta', 'priya@shazlo.store', ['vendor_reviewer'], { last_login_at: at(1.5) }),
+      admin(ADMIN_ID.rahul, 'Rahul Desai', 'rahul@shazlo.store', ['vendor_reviewer'], { last_login_at: at(26) }),
+      admin(ADMIN_ID.sneha, 'Sneha Iyer', 'sneha@shazlo.store', ['vendor_reviewer'], { must_change_password: true, last_login_at: null, created_at: at(20), password: INVITED_ADMIN.password }),
+      admin(ADMIN_ID.kabir, 'Kabir Shah', 'kabir@shazlo.store', ['vendor_reviewer'], { is_active: false, last_login_at: at(24 * 38) }),
     ],
     access: new Map(),
     cookie: null,
@@ -61,7 +65,7 @@ function fail(status: number, code: string, message: string, fields?: Record<str
 }
 
 const profile = (a: AdminRecord): S['AdminProfile'] => ({ id: a.id, email: a.email, display_name: a.display_name, roles: a.roles, must_change_password: a.must_change_password })
-const out = ({ password: _p, ...a }: AdminRecord): S['Admin'] => a
+const out = ({ password: _p, ...a }: AdminRecord): S['AdminOut'] => a
 
 function issue(db: IdentityDb, a: AdminRecord): S['SessionResponse'] {
   db.seq += 1
@@ -154,7 +158,7 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
 
     http.post('*/v1/admins', authed(async ({ request }) => {
       const db = getDb()
-      const body = (await request.json()) as S['CreateAdmin']
+      const body = (await request.json()) as S['CreateAdminRequest']
       const fields: Record<string, string> = {}
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.email ?? '')) fields.email = 'Enter an email like name@shazlo.store.'
       if (!body.display_name?.trim()) fields.display_name = 'Add their name.'
@@ -163,7 +167,7 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
       if (Object.keys(fields).length) return fail(422, 'validation_error', 'Check the highlighted fields.', fields)
       if (db.admins.some((a) => a.email === body.email.toLowerCase())) return fail(409, 'email_taken', 'This email already has an admin account.')
       db.seq += 1
-      const a: AdminRecord = { id: `a_${db.seq}`, email: body.email.toLowerCase(), display_name: body.display_name.trim(), roles: body.roles, is_active: true, must_change_password: true, created_at: db.now().toISOString(), last_login_at: null, password: body.password }
+      const a: AdminRecord = { id: uuid(1000 + db.seq), email: body.email.toLowerCase(), display_name: body.display_name.trim(), roles: body.roles, is_active: true, must_change_password: true, created_at: db.now().toISOString(), last_login_at: null, password: body.password }
       db.admins.push(a)
       return HttpResponse.json(out(a), { status: 201 })
     }, 'super_admin')),
@@ -177,7 +181,7 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
       const db = getDb()
       const a = db.admins.find((x) => x.id === params.id)
       if (!a) return fail(404, 'admin_not_found', 'We could not find that admin.')
-      const body = (await request.json()) as S['UpdateAdmin']
+      const body = (await request.json()) as S['UpdateAdminRequest']
       if (a.id === me.id && (body.is_active === false || (body.roles && !body.roles.includes('super_admin')))) {
         return fail(409, 'cannot_deactivate_self', 'You cannot remove your own super admin access or deactivate yourself.')
       }

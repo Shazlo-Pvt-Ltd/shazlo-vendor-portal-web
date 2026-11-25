@@ -3,6 +3,7 @@ import type { UserEvent } from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderShell } from '../test/render'
+import { ADMIN_ID } from '../mocks/identity'
 import { server } from '../test/server'
 
 // Monday 9 Nov 2026, 14:00 IST. The identity seed is built relative to it.
@@ -241,7 +242,7 @@ describe('A-11 Admins: edit roles', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Save roles' }))
     expect(await screen.findByText('Roles updated')).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-    expect(identityDb.admins.find((a) => a.id === 'a_priya')!.roles).toEqual(['super_admin', 'vendor_reviewer'])
+    expect(identityDb.admins.find((a) => a.id === ADMIN_ID.priya)!.roles).toEqual(['super_admin', 'vendor_reviewer'])
     await waitFor(() => expect(within(rowOf('Priya Mehta')).getByText('Super admin')).toBeInTheDocument())
   })
 
@@ -259,17 +260,17 @@ describe('A-11 Admins: edit roles', () => {
 describe('A-11 Admins: reset password', () => {
   it('makes a new temporary password and signs them out', async () => {
     const { user, identityDb } = await openAdmins()
-    identityDb.refresh.set('refresh.a_rahul.1', 'a_rahul')
+    identityDb.refresh.set(`refresh.${ADMIN_ID.rahul}.1`, ADMIN_ID.rahul)
     await menu(user, 'Rahul Desai', 'Reset password')
     const dialog = await screen.findByRole('dialog', { name: "Reset Rahul's password?" })
     expect(dialog).toHaveTextContent('They are signed out of every session')
     await user.click(within(dialog).getByRole('button', { name: 'Reset password' }))
     expect(await within(dialog).findByRole('heading', { name: 'Send Rahul the new temporary password' })).toBeInTheDocument()
-    const rahul = identityDb.admins.find((a) => a.id === 'a_rahul')!
+    const rahul = identityDb.admins.find((a) => a.id === ADMIN_ID.rahul)!
     expect(rahul.must_change_password).toBe(true)
     expect(rahul.password).toMatch(TEMP)
     expect(dialog).toHaveTextContent(rahul.password)
-    expect(identityDb.refresh.has('refresh.a_rahul.1')).toBe(false)
+    expect(identityDb.refresh.has(`refresh.${ADMIN_ID.rahul}.1`)).toBe(false)
     await user.click(within(dialog).getByRole('button', { name: 'Copy temporary password' }))
     expect(await screen.findByText('Copied')).toBeInTheDocument()
     await user.click(within(dialog).getByRole('button', { name: 'Done' }))
@@ -285,7 +286,7 @@ describe('A-11 Admins: deactivate and reactivate', () => {
     expect(dialog).toHaveTextContent('They lose access within 15 minutes, when their current session token expires.')
     await user.click(within(dialog).getByRole('button', { name: 'Deactivate' }))
     expect(await screen.findByText('Priya Mehta is deactivated')).toBeInTheDocument()
-    expect(identityDb.admins.find((a) => a.id === 'a_priya')!.is_active).toBe(false)
+    expect(identityDb.admins.find((a) => a.id === ADMIN_ID.priya)!.is_active).toBe(false)
     await waitFor(() => expect(within(table()).queryByText('Priya Mehta')).toBeNull())
   })
 
@@ -296,7 +297,7 @@ describe('A-11 Admins: deactivate and reactivate', () => {
     await menu(user, 'Kabir Shah', 'Reactivate')
     expect(await screen.findByText('Kabir Shah can sign in again')).toBeInTheDocument()
     expect(screen.queryByRole('dialog')).toBeNull()
-    expect(identityDb.admins.find((a) => a.id === 'a_kabir')!.is_active).toBe(true)
+    expect(identityDb.admins.find((a) => a.id === ADMIN_ID.kabir)!.is_active).toBe(true)
   })
 
   it('does not let you deactivate yourself', async () => {
@@ -314,6 +315,6 @@ describe('A-11 Admins: deactivate and reactivate', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Deactivate Priya Mehta?' })
     await user.click(within(dialog).getByRole('button', { name: 'Deactivate' }))
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('You cannot remove your own super admin access or deactivate yourself.')
-    expect(identityDb.admins.find((a) => a.id === 'a_priya')!.is_active).toBe(true)
+    expect(identityDb.admins.find((a) => a.id === ADMIN_ID.priya)!.is_active).toBe(true)
   })
 })
