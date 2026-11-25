@@ -20,8 +20,11 @@ function reviewerFrom(header: string | null, now: Date): string | null {
   return decodeURIComponent(parts[3]!)
 }
 
+// vendor-api's envelope: {error: {code, message, request_id, details?}}; a 422 lists pydantic-style problems.
 function fail(status: number, code: string, message: string, fields?: Record<string, string>) {
-  return HttpResponse.json({ message, extra: fields ? { code, fields } : { code } }, { status })
+  const details = fields ? Object.entries(fields).map(([field, msg]) => ({ loc: ['body', field], msg, type: 'value_error' })) : undefined
+  const request_id = crypto.randomUUID()
+  return HttpResponse.json({ error: { code, message, request_id, ...(details ? { details } : {}) } }, { status, headers: { 'X-Request-Id': request_id } })
 }
 
 const ref = (v: VendorRecord): S['VendorRef'] => ({ id: v.id, name: v.brand_name })
@@ -45,7 +48,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
   // The reviewer always comes from the token (ADR 0009).
   const guarded = (resolver: (info: Parameters<HttpResponseResolver>[0], reviewer: string) => ReturnType<HttpResponseResolver>): HttpResponseResolver => (info) => {
     const reviewer = reviewerFrom(info.request.headers.get('authorization'), getDb().now())
-    if (!reviewer) return fail(401, 'unauthenticated', 'Your session has ended. Sign in again.')
+    if (!reviewer) return fail(401, 'unauthorized', 'Your session has ended. Sign in again.')
     return resolver(info, reviewer)
   }
 
@@ -159,7 +162,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       const db = getDb()
       const p = db.products.find((x) => x.id === params.id) as ProductRecord | undefined
       if (!p) return fail(404, 'not_found', 'We could not find that product.')
-      if (p.status !== 'pending_review') return fail(409, 'invalid_transition', `This product was already ${p.status === 'approved' ? 'approved' : 'sent back'}.`)
+      if (p.status !== 'pending_review') return fail(409, 'review_already_decided', `This product was already ${p.status === 'approved' ? 'approved' : 'sent back'}.`)
       p.status = 'approved'
       p.history.unshift({ at: iso(), event: 'approved', by: reviewer })
       const v = vendorOf(p.vendorId)
@@ -173,7 +176,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       const db = getDb()
       const p = db.products.find((x) => x.id === params.id)
       if (!p) return fail(404, 'not_found', 'We could not find that product.')
-      if (p.status !== 'pending_review') return fail(409, 'invalid_transition', 'This product was already decided.')
+      if (p.status !== 'pending_review') return fail(409, 'review_already_decided', 'This product was already decided.')
       const body = (await request.json()) as Partial<S['RejectBody']>
       const problem = rejectBody(body)
       if (problem) return problem
@@ -195,7 +198,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       const db = getDb()
       const b = db.brands.find((x) => x.vendorId === params.vendorId)
       if (!b) return fail(404, 'not_found', 'We could not find that brand page.')
-      if (b.status !== 'pending_review') return fail(409, 'invalid_transition', 'This brand page was already decided.')
+      if (b.status !== 'pending_review') return fail(409, 'review_already_decided', 'This brand page was already decided.')
       b.status = 'approved'
       b.live = b.draft
       b.history.unshift({ at: iso(), event: 'approved', by: reviewer })
@@ -252,7 +255,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
       const open = v.status === 'applied' || v.status === 'under_review'
       if (action === 'approve') {
-        if (!open) return fail(409, 'invalid_transition', 'Only applications can be approved.')
+        if (!open) return fail(409, 'invalid_status_transition', 'Only applications can be approved.')
         // There is no default rate: the reviewer always sends the agreed one.
         const problem = rateProblem(body.commission_bps)
         if (problem) return problem
@@ -265,7 +268,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
         agree(db, v, bps, null)
         decide(db, 'application', v.id, v.brand_name, v.id, 'approved', reviewer)
       } else if (action === 'reject') {
-        if (!open) return fail(409, 'invalid_transition', 'Only applications can be rejected.')
+        if (!open) return fail(409, 'invalid_status_transition', 'Only applications can be rejected.')
         if (String(body.reason ?? '').trim().length < REASON_MIN) return fail(422, 'validation_error', 'Give a reason.', { reason: `Write at least ${REASON_MIN} characters; the applicant sees this.` })
         v.status = 'rejected'
         // Rejecting the application closes any rate the brand proposed with it.
@@ -273,18 +276,18 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
         v.history.unshift({ at: iso(), event: 'rejected', by: reviewer, note: String(body.reason).trim() })
         decide(db, 'application', v.id, v.brand_name, v.id, 'rejected', reviewer)
       } else if (action === 'request-info') {
-        if (!open) return fail(409, 'invalid_transition', 'Only applications can be asked for more information.')
+        if (!open) return fail(409, 'invalid_status_transition', 'Only applications can be asked for more information.')
         if (String(body.message ?? '').trim().length < REASON_MIN) return fail(422, 'validation_error', 'Write your question.', { message: `Write at least ${REASON_MIN} characters.` })
         v.status = 'under_review'
         v.history.unshift({ at: iso(), event: 'info_requested', by: reviewer, note: String(body.message).trim() })
       } else if (action === 'suspend') {
-        if (v.status !== 'approved') return fail(409, 'invalid_transition', 'Only approved vendors can be suspended.')
+        if (v.status !== 'approved') return fail(409, 'invalid_status_transition', 'Only approved vendors can be suspended.')
         if (String(body.reason ?? '').trim().length < REASON_MIN) return fail(422, 'validation_error', 'Give a reason.', { reason: `Write at least ${REASON_MIN} characters.` })
         v.status = 'suspended'
         v.history.unshift({ at: iso(), event: 'suspended', by: reviewer, note: String(body.reason).trim() })
         publish(db, 'vendor.status_changed', v.brand_name, v)
       } else if (action === 'reactivate') {
-        if (v.status !== 'suspended') return fail(409, 'invalid_transition', 'Only suspended vendors can be reactivated.')
+        if (v.status !== 'suspended') return fail(409, 'invalid_status_transition', 'Only suspended vendors can be reactivated.')
         v.status = 'approved'
         v.history.unshift({ at: iso(), event: 'reactivated', by: reviewer })
         publish(db, 'vendor.status_changed', v.brand_name, v)
@@ -299,18 +302,18 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       const db = getDb()
       const v = db.vendors.find((x) => x.id === params.id)
       if (!v) return fail(404, 'not_found', 'We could not find that vendor.')
-      if (v.status !== 'approved' && v.status !== 'suspended') return fail(409, 'invalid_transition', v.status === 'rejected' ? 'This application was rejected.' : 'Set the rate when you approve the application.')
+      if (v.status !== 'approved' && v.status !== 'suspended') return fail(409, 'invalid_status_transition', v.status === 'rejected' ? 'This application was rejected.' : 'Set the rate when you approve the application.')
       const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
       const before = v.commission.agreed_bps
       const was = before == null ? '' : ` (was ${percent(before)})`
       const step = String(params.step)
       if (step === 'approve') {
         const proposed = v.commission.proposed_bps
-        if (v.commission.state !== 'proposed' || proposed == null) return fail(409, 'invalid_transition', 'There is no proposed rate waiting.')
+        if (v.commission.state !== 'proposed' || proposed == null) return fail(409, 'no_proposal', 'There is no proposed rate waiting.')
         agree(db, v, proposed, null)
         v.history.unshift({ at: iso(), event: 'commission_approved', by: reviewer, note: `${percent(proposed)}${was}` })
       } else if (step === 'send-back') {
-        if (v.commission.state !== 'proposed') return fail(409, 'invalid_transition', 'There is no proposed rate waiting.')
+        if (v.commission.state !== 'proposed') return fail(409, 'no_proposal', 'There is no proposed rate waiting.')
         const note = String(body.note ?? '').trim()
         if (note.length < REASON_MIN) return fail(422, 'validation_error', 'Write a note to the brand.', { note: `Write at least ${REASON_MIN} characters so the brand knows what to propose.` })
         if (note.length > NOTE_MAX) return fail(422, 'validation_error', 'Shorten the note.', { note: `Keep the note to ${NOTE_MAX} characters.` })
@@ -348,7 +351,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
     http.post(`${API}/outbox/:id/retry`, guarded(({ params }) => {
       const e = getDb().outbox.find((x) => x.id === params.id)
       if (!e) return fail(404, 'not_found', 'We could not find that event.')
-      if (e.status === 'delivered') return fail(409, 'invalid_transition', 'This event was already delivered.')
+      if (e.status === 'delivered') return fail(409, 'invalid_status_transition', 'This event was already delivered.')
       Object.assign(e, { status: 'delivered', tries: e.tries + 1, last_attempt_at: iso(), next_attempt_at: null, last_error: null })
       return HttpResponse.json(e)
     })),

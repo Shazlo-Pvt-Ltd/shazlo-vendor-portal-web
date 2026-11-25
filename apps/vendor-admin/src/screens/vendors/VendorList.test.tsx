@@ -294,13 +294,13 @@ describe('A-08 Vendors', { timeout: 40_000 }, () => {
   })
 
   it('tells the shell when an action fails', async () => {
-    server.use(http.post('*/api/v1/admin/vendors/:id/reactivate', () => HttpResponse.json({ message: 'Only suspended vendors can be reactivated.', extra: { code: 'invalid_transition' } }, { status: 409 })))
+    server.use(http.post('*/api/v1/admin/vendors/:id/reactivate', () => HttpResponse.json({ error: { code: 'invalid_status_transition', message: 'Only suspended vendors can be reactivated.', request_id: 'r' } }, { status: 409 })))
     const { user, shell } = renderModule({ route: '/vendors?status=suspended' })
     const t = await waitForBrands(['Trendz Outlet'])
     await user.click(within(row(t, 'Trendz Outlet')).getByRole('button', { name: 'Actions for Trendz Outlet' }))
     await user.click(screen.getByRole('menuitem', { name: 'Reactivate' }))
     await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Reactivate vendor' }))
-    await waitFor(() => expect(shell.toasts()).toContainEqual({ level: 'error', message: 'Only suspended vendors can be reactivated.' }))
+    await waitFor(() => expect(shell.toasts()).toContainEqual({ level: 'error', message: 'This vendor’s status changed. Reload and try again.' }))
   })
 
   it('exports the listed rows as a CSV file', async () => {
@@ -346,7 +346,7 @@ describe('A-08 Vendors', { timeout: 40_000 }, () => {
     let fail = true
     server.use(
       http.get(LIST, () => {
-        if (fail) return HttpResponse.json({ message: 'Database is down.', extra: { code: 'unavailable' } }, { status: 400 })
+        if (fail) return HttpResponse.json({ error: { code: 'unavailable', message: 'Database is down.', request_id: 'r' } }, { status: 400 })
         return undefined
       }),
     )

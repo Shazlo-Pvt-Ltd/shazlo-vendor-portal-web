@@ -341,7 +341,7 @@ describe('A-04 Review queue', { timeout: 40_000 }, () => {
   })
 
   it('shows a load error with a way to try again', async () => {
-    server.use(http.get('*/api/v1/admin/queue', () => HttpResponse.json({ message: 'The queue is not available to your role.', extra: { code: 'forbidden' } }, { status: 403 })))
+    server.use(http.get('*/api/v1/admin/queue', () => HttpResponse.json({ error: { code: 'forbidden', message: 'The queue is not available to your role.', request_id: 'r' } }, { status: 403 })))
     const { user } = renderModule({ route: '/queue' })
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('The review queue did not load')

@@ -133,7 +133,7 @@ describe('A-09 Commission card', { timeout: 30_000 }, () => {
   })
 
   it('shows a failed approval in an error banner', async () => {
-    server.use(http.post('*/api/v1/admin/vendors/:id/commission/approve', () => HttpResponse.json({ message: 'There is no proposed rate waiting.', extra: { code: 'invalid_transition' } }, { status: 409 })))
+    server.use(http.post('*/api/v1/admin/vendors/:id/commission/approve', () => HttpResponse.json({ error: { code: 'no_proposal', message: 'There is no proposed rate waiting.', request_id: 'r' } }, { status: 409 })))
     const { user } = await open('v_indigo', 'Indigo Loom')
     await user.click(within(card()).getByRole('button', { name: 'Approve 10%' }))
     const alert = await screen.findByRole('alert')

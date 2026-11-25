@@ -247,7 +247,7 @@ describe('A-10 Publishing to the app', { timeout: 40_000 }, () => {
     await user.click(screen.getByRole('button', { name: 'Show all events' }))
     expect(params(router).get('status')).toBeNull()
 
-    server.use(http.get('*/api/v1/admin/outbox', () => HttpResponse.json({ message: 'The outbox is not available to your role.', extra: { code: 'forbidden' } }, { status: 403 })))
+    server.use(http.get('*/api/v1/admin/outbox', () => HttpResponse.json({ error: { code: 'forbidden', message: 'The outbox is not available to your role.', request_id: 'r' } }, { status: 403 })))
     await router.navigate('/publishing?status=waiting')
     expect(await screen.findByText('Events did not load')).toBeInTheDocument()
     expect(screen.getByText('The outbox is not available to your role.')).toBeInTheDocument()
