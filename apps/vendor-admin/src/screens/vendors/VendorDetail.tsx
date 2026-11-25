@@ -6,7 +6,7 @@ import { useWatch } from 'react-hook-form'
 import { Link as RouterLink, useParams, useSearchParams } from 'react-router'
 import { ApiError } from '../../api/http'
 import { useVendor, useVendorAction } from '../../api/queries'
-import type { components } from '../../api/schema'
+import type * as M from '../../api/model'
 import { modulePaths } from '../../app/routes'
 import { TabLabel, tabSx, tabsSx } from '../../components/tabs'
 import { vendorActionsCopy, vendorDetailCopy as copy } from '../../copy/vendors'
@@ -20,7 +20,7 @@ import { ActivityTab, BrandTab, ProductsTab } from './detail/OtherTabs'
 import { VendorActionDialog, type DialogKind } from './dialogs'
 import { isApplication } from './list/VendorTable'
 
-type Vendor = components['schemas']['VendorDetail']
+type Vendor = M.VendorDetail
 type Outcome = { tone: 'success' | 'error'; text: string }
 
 const TABS = ['application', 'products', 'brand', 'activity'] as const

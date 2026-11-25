@@ -2,13 +2,13 @@ import { Box, ButtonBase, Stack, Typography } from '@mui/material'
 import { brand, neutral, radius, SectionCard, status } from '@shazlo/ui'
 import { ImageOff, Images } from 'lucide-react'
 import { useId, useState, type ReactNode } from 'react'
-import type { components } from '../../api/schema'
+import type * as M from '../../api/model'
 import { CardTitle } from '../../components/CardTitle'
 import { reviewCopy, type Slot } from '../../copy/review'
 import { srOnly } from '../../lib/a11y'
 
 const copy = reviewCopy.product.photos
-type Version = components['schemas']['ProductVersion']
+type Version = M.ProductVersion
 // Spec §7: four named product photos and five try-on photos are required.
 const REQUIRED: Slot[] = ['front', 'back', 'detail', 'worn']
 export const TRY_ONS = 5

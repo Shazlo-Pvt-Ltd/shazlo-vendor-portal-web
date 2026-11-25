@@ -4,7 +4,7 @@ import { History, Store } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link as RouterLink } from 'react-router'
 import { useQueue } from '../../../api/queries'
-import type { components } from '../../../api/schema'
+import type * as M from '../../../api/model'
 import { modulePaths } from '../../../app/routes'
 import { CardTitle } from '../../../components/CardTitle'
 import { ProductThumb } from '../../../components/ProductThumb'
@@ -13,7 +13,7 @@ import { vendorDetailCopy } from '../../../copy/vendors'
 import { formatDate, formatINR, formatStamp } from '../../../lib/format'
 
 const copy = vendorDetailCopy
-type Vendor = components['schemas']['VendorDetail']
+type Vendor = M.VendorDetail
 type Product = Vendor['products'][number]
 
 const productPill: Record<string, PillStatus> = { pending_review: 'pending', approved: 'live', rejected: 'sentBack' }

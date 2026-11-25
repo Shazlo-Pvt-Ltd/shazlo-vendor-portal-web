@@ -3,7 +3,7 @@ import { emphasis, neutral, StatusPill } from '@shazlo/ui'
 import { MoreHorizontal } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link as RouterLink } from 'react-router'
-import type { components } from '../../../api/schema'
+import type * as M from '../../../api/model'
 import { modulePaths } from '../../../app/routes'
 import { aboveStretch, CardList, ListCard, stretchSx } from '../../../components/CardList'
 import { RowChevron } from '../../../components/rows'
@@ -14,7 +14,7 @@ import { CommissionValue } from './CommissionValue'
 import { BrandAvatar, isApplication } from './VendorTable'
 
 const copy = vendorsCopy.table
-type Vendor = components['schemas']['VendorSummary']
+type Vendor = M.VendorSummary
 
 const tabular = { fontVariantNumeric: 'tabular-nums' } as const
 

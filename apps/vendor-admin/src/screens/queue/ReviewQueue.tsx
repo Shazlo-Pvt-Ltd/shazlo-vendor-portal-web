@@ -4,7 +4,7 @@ import { Download } from 'lucide-react'
 import { useCallback, type ReactNode } from 'react'
 import { Link as RouterLink, useNavigate } from 'react-router'
 import { useQueue, useSummary } from '../../api/queries'
-import type { components } from '../../api/schema'
+import type * as M from '../../api/model'
 import { modulePaths } from '../../app/routes'
 import { TabLabel, tabSx, tabsSx } from '../../components/tabs'
 import { queueCopy as copy, type KindKey } from '../../copy/queue'
@@ -18,8 +18,8 @@ import { QueueFilters } from './parts/QueueFilters'
 import { QueueTable, reviewPath } from './parts/QueueTable'
 import { clearedFilters, hasFilters, toFilters, useQueueParams } from './parts/useQueueParams'
 
-type QueueItem = components['schemas']['QueueItem']
-type Counts = components['schemas']['QueuePage']['counts']
+type QueueItem = M.QueueItem
+type Counts = M.QueuePage['counts']
 
 const icon = { size: 18, strokeWidth: 1.75, 'aria-hidden': true } as const
 

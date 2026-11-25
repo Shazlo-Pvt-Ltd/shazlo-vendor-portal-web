@@ -2,11 +2,11 @@ import { Box, Stack, Typography } from '@mui/material'
 import { brand, fontFamily, neutral } from '@shazlo/ui'
 import { Clock, MapPin, RotateCcw, type LucideIcon } from 'lucide-react'
 import { useId, type ReactNode } from 'react'
-import type { components } from '../../api/schema'
+import type * as M from '../../api/model'
 import { reviewCopy } from '../../copy/review'
 
 const copy = reviewCopy.brand
-type Profile = components['schemas']['BrandProfile']
+type Profile = M.BrandProfile
 
 export const cityOf = (basedIn: string) => basedIn.split(',')[0]!.trim()
 export const returnsLabel = (code: string) => copy.returnPolicies[code] ?? code

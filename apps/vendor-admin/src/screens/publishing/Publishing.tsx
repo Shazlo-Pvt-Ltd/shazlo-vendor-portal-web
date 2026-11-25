@@ -4,7 +4,7 @@ import { RefreshCw } from 'lucide-react'
 import { useId, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router'
 import { useOutbox, useRetryEvent, useRetryFailed, useSummary } from '../../api/queries'
-import type { components } from '../../api/schema'
+import type * as M from '../../api/model'
 import { TabLabel, tabSx, tabsSx } from '../../components/tabs'
 import { publishingCopy as copy } from '../../copy/publishing'
 import { formatCount } from '../../lib/format'
@@ -15,8 +15,8 @@ import { EventCards } from './parts/EventCards'
 import { EventDetails } from './parts/EventDetails'
 import { EventsTable } from './parts/EventsTable'
 
-type OutboxEvent = components['schemas']['OutboxEvent']
-type Counts = components['schemas']['OutboxPage']['counts']
+type OutboxEvent = M.OutboxEvent
+type Counts = M.OutboxPage['counts']
 type TabKey = (typeof copy.tabs)[number]['key']
 
 const icon = { size: 18, strokeWidth: 1.75, 'aria-hidden': true } as const

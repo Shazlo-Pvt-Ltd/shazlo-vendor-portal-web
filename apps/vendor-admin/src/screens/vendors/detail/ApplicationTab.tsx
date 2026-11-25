@@ -3,7 +3,7 @@ import { emphasis, radius, SectionCard, status, statusBackground } from '@shazlo
 import { AlertTriangle, BadgeCheck, Briefcase, CheckCircle2, FileText, Landmark, RotateCcw, ShieldCheck, Store, Truck, UserRound, Wallet, type LucideIcon } from 'lucide-react'
 import { useId, type FormEventHandler, type ReactNode } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
-import type { components } from '../../../api/schema'
+import type * as M from '../../../api/model'
 import { CardTitle } from '../../../components/CardTitle'
 import { sellsLabel, vendorDetailCopy } from '../../../copy/vendors'
 import { srOnly } from '../../../lib/a11y'
@@ -15,8 +15,7 @@ import { CommissionCard } from './CommissionCard'
 
 const copy = vendorDetailCopy
 const a = copy.application
-type S = components['schemas']
-type Vendor = S['VendorDetail']
+type Vendor = M.VendorDetail
 
 const tabular = { fontVariantNumeric: 'tabular-nums' } as const
 
@@ -82,7 +81,7 @@ function Agreed({ ok, children }: { ok: boolean; children?: string }) {
   )
 }
 
-function DeliveryRows({ delivery }: { delivery: S['Delivery'] }) {
+function DeliveryRows({ delivery }: { delivery: M.Delivery }) {
   if (delivery.by === 'shazlo') {
     const p = delivery.pickup_address
     return (
@@ -111,7 +110,7 @@ function DeliveryRows({ delivery }: { delivery: S['Delivery'] }) {
   )
 }
 
-function ReturnRows({ returns }: { returns: S['Returns'] }) {
+function ReturnRows({ returns }: { returns: M.Returns }) {
   if (returns.window_days === 0) return <Row term={a.returnWindow}>{a.noReturns}</Row>
   return (
     <>
@@ -122,7 +121,7 @@ function ReturnRows({ returns }: { returns: S['Returns'] }) {
   )
 }
 
-function PayoutRows({ payout }: { payout: S['Payout'] }) {
+function PayoutRows({ payout }: { payout: M.Payout }) {
   if (payout.method === 'upi') {
     return (
       <>
@@ -147,7 +146,7 @@ function PayoutRows({ payout }: { payout: S['Payout'] }) {
   )
 }
 
-function takes({ cash, upi }: S['Application']['pay_on_delivery']) {
+function takes({ cash, upi }: M.Application['pay_on_delivery']) {
   if (cash && upi) return a.cashAndUpi
   if (cash) return a.cashOnly
   return upi ? a.upiOnly : a.neither

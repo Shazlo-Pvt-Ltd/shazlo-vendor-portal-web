@@ -5,7 +5,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { useController, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { ApiError } from '../../api/http'
-import type { components } from '../../api/schema'
+import type * as M from '../../api/model'
 import { reviewCopy, type ReasonCode } from '../../copy/review'
 import { fieldProps, noAsterisk } from '../../lib/forms'
 import { usePhone } from '../../lib/responsive'
@@ -21,7 +21,7 @@ const schema = z.object({
 type Values = z.infer<typeof schema>
 const EMPTY: Values = { reason_code: '', reason: '' }
 
-type Props = { subject: string; reasons: readonly ReasonCode[]; onClose: () => void; onSubmit: (body: components['schemas']['RejectBody']) => Promise<void> }
+type Props = { subject: string; reasons: readonly ReasonCode[]; onClose: () => void; onSubmit: (body: M.RejectBody) => Promise<void> }
 
 // A-06: send an item back with a reason the seller reads word for word. Picking a reason starts the
 // message from its template; the reviewer's own edits are kept if they pick another reason.

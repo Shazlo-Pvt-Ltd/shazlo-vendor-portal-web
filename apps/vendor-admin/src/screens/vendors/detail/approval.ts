@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
-import type { components } from '../../../api/schema'
+import type * as M from '../../../api/model'
 import { vendorDetailCopy } from '../../../copy/vendors'
 import { rateField, rateText, toBps, waitingProposal } from '../../../lib/commission'
 
@@ -29,7 +29,7 @@ export function toApproveBody(values: ApprovalValues) {
   return { commission_bps: toBps(values.commission), agreement_ref: AGREEMENT_REF, owner_email: values.owner_email.trim() }
 }
 
-export function useApprovalForm(vendor: components['schemas']['VendorDetail']) {
+export function useApprovalForm(vendor: M.VendorDetail) {
   return useForm<ApprovalValues>({
     resolver: zodResolver(approvalSchema),
     defaultValues: { commission: rateText(waitingProposal(vendor.commission)), owner_email: vendor.email, agreement: false },
