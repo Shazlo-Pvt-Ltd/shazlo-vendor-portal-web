@@ -5,17 +5,24 @@ export class ApiError extends Error {
   readonly status: number
   readonly code: string
   readonly fields: Record<string, string>
+  /** The request ID to quote to support (`X-Request-Id`, else the body's `request_id`). */
+  readonly requestId: string | undefined
+  /** Seconds to wait before retrying, from `Retry-After` on a 429. */
+  readonly retryAfter: number | undefined
 
-  constructor(status: number, code: string, message: string, fields: Record<string, string> = {}) {
+  constructor(status: number, code: string, message: string, fields: Record<string, string> = {}, extra: { requestId?: string; retryAfter?: number } = {}) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
     this.fields = fields
+    this.requestId = extra.requestId
+    this.retryAfter = extra.retryAfter
   }
 }
 
-type Envelope = { message?: string; extra?: { code?: string; fields?: Record<string, string> } }
+// Both services answer every error as {error: {code, message, request_id, details?}}.
+type Envelope = { error?: { code?: unknown; message?: unknown; request_id?: unknown; details?: unknown } }
 type Result<T> = { data?: T; error?: unknown; response: Response }
 
 const FALLBACK: Record<number, string> = {
@@ -26,9 +33,43 @@ const FALLBACK: Record<number, string> = {
   429: 'Too many attempts. Wait a minute and try again.',
 }
 
+const LOCATION_PREFIXES = new Set(['body', 'query', 'path', 'header', 'cookie'])
+
+// A 422's `details` is pydantic's [{loc: ['body', 'email'], msg, type}]. The first message per field wins.
+function fieldsFromDetails(details: unknown): Record<string, string> {
+  const fields: Record<string, string> = {}
+  if (!Array.isArray(details)) return fields
+  for (const item of details) {
+    if (typeof item !== 'object' || item === null) continue
+    const { loc, msg } = item as { loc?: unknown; msg?: unknown }
+    if (typeof msg !== 'string') continue
+    let path = Array.isArray(loc) ? loc.map(String) : []
+    if (LOCATION_PREFIXES.has(path[0] ?? '')) path = path.slice(1)
+    fields[path.length > 0 ? path.join('.') : '_form'] ??= msg.replace(/^Value error, /, '')
+  }
+  return fields
+}
+
+// Failures that have a code but no `details` still belong to one form field, so the screens show them there.
+const FIELDS_BY_CODE: Record<string, string[]> = {
+  weak_password: ['password', 'new_password'],
+  unknown_role: ['roles'],
+  invalid_current_password: ['current_password'],
+  email_taken: ['email'],
+}
+
+function retryAfterSeconds(value: string | null): number | undefined {
+  return value !== null && /^\d+$/.test(value.trim()) ? Number(value.trim()) : undefined
+}
+
 export function toApiError(response: Response, body: unknown): ApiError {
-  const env = (body ?? {}) as Envelope
-  return new ApiError(response.status, env.extra?.code ?? `http_${response.status}`, env.message || FALLBACK[response.status] || 'Something went wrong on our side. Try again in a moment.', env.extra?.fields ?? {})
+  const inner = (typeof body === 'object' && body !== null ? (body as Envelope).error : undefined) ?? {}
+  const code = typeof inner.code === 'string' && inner.code !== '' ? inner.code : `http_${response.status}`
+  const message = typeof inner.message === 'string' && inner.message !== '' ? inner.message : FALLBACK[response.status] || 'Something went wrong on our side. Try again in a moment.'
+  const requestId = response.headers.get('X-Request-Id') ?? (typeof inner.request_id === 'string' ? inner.request_id : undefined)
+  const fields = response.status === 422 ? fieldsFromDetails(inner.details) : {}
+  if (Object.keys(fields).length === 0) for (const name of FIELDS_BY_CODE[code] ?? []) fields[name] = message
+  return new ApiError(response.status, code, message, fields, { requestId, retryAfter: retryAfterSeconds(response.headers.get('Retry-After')) })
 }
 
 export interface Api<Paths extends object> {

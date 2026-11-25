@@ -308,7 +308,7 @@ describe('A-11 Admins: deactivate and reactivate', () => {
   })
 
   it('shows the API answer when a change is refused', async () => {
-    server.use(http.patch('*/v1/admins/:id', () => HttpResponse.json({ message: 'You cannot remove your own super admin access or deactivate yourself.', extra: { code: 'conflict' } }, { status: 409 })))
+    server.use(http.patch('*/v1/admins/:id', () => HttpResponse.json({ error: { code: 'cannot_deactivate_self', message: 'You cannot remove your own super admin access or deactivate yourself.', request_id: 'r' } }, { status: 409 })))
     const { user, identityDb } = await openAdmins()
     await menu(user, 'Priya Mehta', 'Deactivate')
     const dialog = await screen.findByRole('dialog', { name: 'Deactivate Priya Mehta?' })

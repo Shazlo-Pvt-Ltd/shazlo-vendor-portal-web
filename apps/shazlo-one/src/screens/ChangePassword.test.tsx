@@ -100,7 +100,7 @@ describe('Change password', () => {
   })
 
   it('puts the API answer about the new password on its field', async () => {
-    server.use(http.post('*/v1/auth/change-password', () => HttpResponse.json({ message: 'Choose a longer password.', extra: { code: 'validation_error', fields: { new_password: 'This password is on a list of common passwords.' } } }, { status: 422 })))
+    server.use(http.post('*/v1/auth/change-password', () => HttpResponse.json({ error: { code: 'validation_error', message: 'Request validation failed', request_id: 'r', details: [{ loc: ['body', 'new_password'], msg: 'This password is on a list of common passwords.', type: 'value_error' }] } }, { status: 422 })))
     const { user } = await open()
     await user.type(field('Temporary password'), TEMP)
     await user.type(field('New password'), NEW)

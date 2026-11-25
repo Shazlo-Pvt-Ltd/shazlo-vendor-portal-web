@@ -53,8 +53,11 @@ export function createIdentityDb({ now = () => new Date() }: { now?: () => Date 
   }
 }
 
-function fail(status: number, code: string, message: string, fields?: Record<string, string>) {
-  return HttpResponse.json({ message, extra: fields ? { code, fields } : { code } }, { status })
+// The real identity-api envelope: {error: {code, message, request_id, details?}}. A 422 `validation_error`
+// lists pydantic-style problems in `details`; other codes carry only a message.
+function fail(status: number, code: string, message: string, fields?: Record<string, string>, headers?: Record<string, string>) {
+  const details = fields ? Object.entries(fields).map(([field, msg]) => ({ loc: ['body', field], msg, type: 'value_error' })) : undefined
+  return HttpResponse.json({ error: { code, message, request_id: crypto.randomUUID(), ...(details ? { details } : {}) } }, { status, headers })
 }
 
 const profile = (a: AdminRecord): S['AdminProfile'] => ({ id: a.id, email: a.email, display_name: a.display_name, roles: a.roles, must_change_password: a.must_change_password })
@@ -80,7 +83,7 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
   }
   const authed = (fn: (info: Parameters<HttpResponseResolver>[0], me: AdminRecord) => ReturnType<HttpResponseResolver>, role?: string): HttpResponseResolver => (info) => {
     const me = caller(info.request)
-    if (!me) return fail(401, 'unauthenticated', 'Your session has ended. Sign in again.')
+    if (!me) return fail(401, 'unauthorized', 'Your session has ended. Sign in again.')
     if (role && !me.roles.includes(role)) return fail(403, 'forbidden', 'Only super admins can manage admins.')
     return fn(info, me)
   }
@@ -90,7 +93,7 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
       const db = getDb()
       const { email, password } = (await request.json()) as { email: string; password: string }
       const key = email.trim().toLowerCase()
-      if ((db.failures.get(key) ?? 0) >= MAX_FAILURES) return fail(429, 'rate_limited', 'Too many attempts. Wait 15 minutes, or ask a super admin to reset your password.')
+      if ((db.failures.get(key) ?? 0) >= MAX_FAILURES) return fail(429, 'rate_limited', 'Too many attempts. Wait 15 minutes, or ask a super admin to reset your password.', undefined, { 'Retry-After': '900' })
       const a = db.admins.find((x) => x.email === key)
       if (!a || !a.is_active || a.password !== password) {
         db.failures.set(key, (db.failures.get(key) ?? 0) + 1)
@@ -105,7 +108,7 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
       const db = getDb()
       const adminId = db.cookie ? db.refresh.get(db.cookie) : undefined
       const a = db.admins.find((x) => x.id === adminId)
-      if (!a || !a.is_active) return fail(401, 'unauthenticated', 'Your session has ended. Sign in again.')
+      if (!a || !a.is_active) return fail(401, 'invalid_refresh_token', 'Your session has ended. Sign in again.')
       db.refresh.delete(db.cookie!)
       return HttpResponse.json(issue(db, a))
     }),
@@ -119,9 +122,9 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
 
     http.post('*/v1/auth/change-password', authed(async ({ request }, me) => {
       const { current_password, new_password } = (await request.json()) as { current_password: string; new_password: string }
-      if (current_password !== me.password) return fail(400, 'invalid_credentials', 'Your current password is not right.', { current_password: 'This is not your current password.' })
-      if (new_password.length < 12) return fail(422, 'validation_error', 'Choose a longer password.', { new_password: 'Use at least 12 characters.' })
-      if (new_password === current_password) return fail(422, 'validation_error', 'Choose a new password.', { new_password: 'Use a different password from the temporary one.' })
+      if (current_password !== me.password) return fail(400, 'invalid_current_password', 'This is not your current password.')
+      if (new_password.length < 12) return fail(422, 'weak_password', 'Use at least 12 characters.')
+      if (new_password === current_password) return fail(422, 'weak_password', 'Use a different password from the temporary one.')
       me.password = new_password
       me.must_change_password = false
       return HttpResponse.json(issue(getDb(), me))
@@ -158,7 +161,7 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
       if (!body.roles?.length) fields.roles = 'Choose at least one role.'
       if ((body.password ?? '').length < 12) fields.password = 'Temporary passwords need at least 12 characters.'
       if (Object.keys(fields).length) return fail(422, 'validation_error', 'Check the highlighted fields.', fields)
-      if (db.admins.some((a) => a.email === body.email.toLowerCase())) return fail(409, 'conflict', 'An admin with this email already exists.', { email: 'This email already has an admin account.' })
+      if (db.admins.some((a) => a.email === body.email.toLowerCase())) return fail(409, 'email_taken', 'This email already has an admin account.')
       db.seq += 1
       const a: AdminRecord = { id: `a_${db.seq}`, email: body.email.toLowerCase(), display_name: body.display_name.trim(), roles: body.roles, is_active: true, must_change_password: true, created_at: db.now().toISOString(), last_login_at: null, password: body.password }
       db.admins.push(a)
@@ -167,16 +170,16 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
 
     http.get('*/v1/admins/:id', authed(({ params }) => {
       const a = getDb().admins.find((x) => x.id === params.id)
-      return a ? HttpResponse.json(out(a)) : fail(404, 'not_found', 'We could not find that admin.')
+      return a ? HttpResponse.json(out(a)) : fail(404, 'admin_not_found', 'We could not find that admin.')
     }, 'super_admin')),
 
     http.patch('*/v1/admins/:id', authed(async ({ params, request }, me) => {
       const db = getDb()
       const a = db.admins.find((x) => x.id === params.id)
-      if (!a) return fail(404, 'not_found', 'We could not find that admin.')
+      if (!a) return fail(404, 'admin_not_found', 'We could not find that admin.')
       const body = (await request.json()) as S['UpdateAdmin']
       if (a.id === me.id && (body.is_active === false || (body.roles && !body.roles.includes('super_admin')))) {
-        return fail(409, 'conflict', 'You cannot remove your own super admin access or deactivate yourself.')
+        return fail(409, 'cannot_deactivate_self', 'You cannot remove your own super admin access or deactivate yourself.')
       }
       if (body.roles && !body.roles.length) return fail(422, 'validation_error', 'Choose at least one role.', { roles: 'Choose at least one role.' })
       Object.assign(a, Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)))
@@ -187,9 +190,9 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
     http.post('*/v1/admins/:id/reset-password', authed(async ({ params, request }) => {
       const db = getDb()
       const a = db.admins.find((x) => x.id === params.id)
-      if (!a) return fail(404, 'not_found', 'We could not find that admin.')
+      if (!a) return fail(404, 'admin_not_found', 'We could not find that admin.')
       const { new_password } = (await request.json()) as { new_password: string }
-      if (new_password.length < 12) return fail(422, 'validation_error', 'Temporary passwords need at least 12 characters.')
+      if (new_password.length < 12) return fail(422, 'weak_password', 'Temporary passwords need at least 12 characters.')
       a.password = new_password
       a.must_change_password = true
       for (const [token, owner] of db.refresh) if (owner === a.id) db.refresh.delete(token)
