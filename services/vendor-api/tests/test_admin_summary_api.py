@@ -338,7 +338,7 @@ async def test_recent_decisions_are_the_latest_five_of_every_kind_newest_first(
     assert isinstance(recent, list)
     assert [r["kind"] for r in recent] == [
         "commission",
-        "product",
+        "application",
         "product",
         "product",
         "product",

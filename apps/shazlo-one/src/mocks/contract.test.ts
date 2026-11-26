@@ -64,6 +64,7 @@ function harness() {
     const text = await response.text()
     const parsed: unknown = text === '' ? null : contentType.includes('json') ? JSON.parse(text) : text
     exchanges.push({ method, path: path.split('?')[0]!, status: response.status, contentType, body: parsed })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the contract test reads fields off whatever shape each endpoint answers
     return { status: response.status, body: parsed as Record<string, any>, response }
   }
   return { db, send, exchanges, setToken: (next: string | null) => (token = next) }

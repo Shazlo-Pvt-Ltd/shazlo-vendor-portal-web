@@ -35,7 +35,7 @@ async def test_a_reviewer_can_look_up_names(
     admin, headers = await reviewer_headers(make_admin, client)
     other = await make_admin("other@shazlo.test", display_name="Arjun Rao")
     response = await client.get(
-        NAMES, params=[("ids", admin.id), ("ids", other.id)], headers=headers
+        NAMES, params=[("ids", str(admin.id)), ("ids", str(other.id))], headers=headers
     )
     assert response.status_code == 200
     assert {i["id"]: i["display_name"] for i in response.json()["items"]} == {
@@ -58,7 +58,7 @@ async def test_unknown_ids_are_left_out(
 ) -> None:
     admin, headers = await reviewer_headers(make_admin, client)
     response = await client.get(
-        NAMES, params=[("ids", admin.id), ("ids", uuid.uuid4())], headers=headers
+        NAMES, params=[("ids", str(admin.id)), ("ids", str(uuid.uuid4()))], headers=headers
     )
     assert [i["id"] for i in response.json()["items"]] == [str(admin.id)]
 
@@ -77,7 +77,7 @@ async def test_a_repeated_id_is_answered_once(
 ) -> None:
     admin, headers = await reviewer_headers(make_admin, client)
     response = await client.get(
-        NAMES, params=[("ids", admin.id), ("ids", admin.id)], headers=headers
+        NAMES, params=[("ids", str(admin.id)), ("ids", str(admin.id))], headers=headers
     )
     assert len(response.json()["items"]) == 1
 
@@ -99,7 +99,9 @@ async def test_bad_ids_are_422(make_admin: Callable[..., Any], client: httpx.Asy
     _, headers = await reviewer_headers(make_admin, client)
     assert (await client.get(NAMES, params={"ids": "nope"}, headers=headers)).status_code == 422
     assert (await client.get(NAMES, headers=headers)).status_code == 422
-    too_many = [("ids", uuid.uuid4()) for _ in range(101)]
+    too_many: list[tuple[str, str | int | float | bool | None]] = [
+        ("ids", str(uuid.uuid4())) for _ in range(101)
+    ]
     assert (await client.get(NAMES, params=too_many, headers=headers)).status_code == 422
 
 
