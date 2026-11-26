@@ -257,6 +257,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Summary
+         * @description What waits for a reviewer, what was decided today (midnight IST), the outbox in four
+         *     numbers, and the latest decisions. Every figure is a count, so the cost does not grow with
+         *     the queue.
+         */
+        get: operations["get_summary_v1_admin_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/vendors": {
         parameters: {
             query?: never;
@@ -1307,6 +1329,54 @@ export interface components {
             version: number;
         };
         /**
+         * AdminSummaryOut
+         * @example {
+         *       "commission_proposals": 1,
+         *       "decisions": {
+         *         "decided_today": 6,
+         *         "median_minutes": 95
+         *       },
+         *       "publishing": {
+         *         "delivered_24h": 38,
+         *         "failed": 0,
+         *         "retrying": 1,
+         *         "waiting": 2
+         *       },
+         *       "recent": [
+         *         {
+         *           "at": "2026-11-10T09:30:00Z",
+         *           "decision": "approved",
+         *           "id": "6f1d2c3b-4a59-4c7e-8b10-2d3e4f5a6b7c",
+         *           "kind": "product",
+         *           "review_id": "6f1d2c3b-4a59-4c7e-8b10-2d3e4f5a6b7c",
+         *           "reviewer_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+         *           "subject_id": "9b1c2d3e-4f50-4a61-8b72-c3d4e5f60718",
+         *           "title": "Block-print cotton kurta",
+         *           "vendor_id": "3f0c8a52-6b0e-4a8b-9c1d-2a7d5e9b1c10",
+         *           "vendor_name": "Jaipur Prints"
+         *         }
+         *       ],
+         *       "resubmissions": 2,
+         *       "waiting": {
+         *         "application": 2,
+         *         "brand_page": 1,
+         *         "over_24h": 3,
+         *         "product": 4
+         *       }
+         *     }
+         */
+        AdminSummaryOut: {
+            /** Commission Proposals */
+            commission_proposals: number;
+            decisions: components["schemas"]["DecisionsOut"];
+            publishing: components["schemas"]["PublishingOut"];
+            /** Recent */
+            recent: components["schemas"]["RecentDecisionOut"][];
+            /** Resubmissions */
+            resubmissions: number;
+            waiting: components["schemas"]["WaitingOut"];
+        };
+        /**
          * ApproveIn
          * @description The proposal the reviewer saw: approving a different one is a 409.
          * @example {
@@ -1619,6 +1689,13 @@ export interface components {
             variants?: components["schemas"]["VariantBody"][];
             /** Weight Grams */
             weight_grams?: number | null;
+        };
+        /** DecisionsOut */
+        DecisionsOut: {
+            /** Decided Today */
+            decided_today: number;
+            /** Median Minutes */
+            median_minutes: number | null;
         };
         /** DeliveryIn */
         DeliveryIn: {
@@ -2223,6 +2300,17 @@ export interface components {
             /** Rate Bps */
             rate_bps: number;
         };
+        /** PublishingOut */
+        PublishingOut: {
+            /** Delivered 24H */
+            delivered_24h: number;
+            /** Failed */
+            failed: number;
+            /** Retrying */
+            retrying: number;
+            /** Waiting */
+            waiting: number;
+        };
         /**
          * ReasonRequest
          * @description Rejecting and suspending need a reason, which the vendor is told: a missing, empty or
@@ -2234,6 +2322,44 @@ export interface components {
         ReasonRequest: {
             /** Reason */
             reason: string;
+        };
+        /** RecentDecisionOut */
+        RecentDecisionOut: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "rejected";
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "product" | "brand_page" | "application" | "commission";
+            /** Review Id */
+            review_id: string | null;
+            /** Reviewer Id */
+            reviewer_id: string | null;
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /** Title */
+            title: string;
+            /**
+             * Vendor Id
+             * Format: uuid
+             */
+            vendor_id: string;
+            /** Vendor Name */
+            vendor_name: string;
         };
         /**
          * RegisterRequest
@@ -2939,6 +3065,17 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** WaitingOut */
+        WaitingOut: {
+            /** Application */
+            application: number;
+            /** Brand Page */
+            brand_page: number;
+            /** Over 24H */
+            over_24h: number;
+            /** Product */
+            product: number;
+        };
     };
     responses: never;
     parameters: never;
@@ -3281,6 +3418,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_summary_v1_admin_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSummaryOut"];
                 };
             };
         };

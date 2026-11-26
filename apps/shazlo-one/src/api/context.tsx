@@ -2,7 +2,7 @@ import { QueryClient } from '@tanstack/react-query'
 import { createContext, useContext, type ReactNode } from 'react'
 import { ApiError, createApi, type Api } from './http'
 import type { paths as IdentityPaths } from './identity'
-import type { paths as VendorPaths } from './vendor-admin'
+import type { paths as VendorPaths } from './vendor-api'
 
 // The shell's session: identity-api access token in memory only (ADR 0001/0009), refreshed through the
 // HttpOnly identity_refresh cookie, plus short-lived module tokens from the token exchange.

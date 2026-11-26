@@ -141,6 +141,80 @@
         "title": "AdminReviewOut",
         "type": "object"
       },
+      "AdminSummaryOut": {
+        "examples": [
+          {
+            "commission_proposals": 1,
+            "decisions": {
+              "decided_today": 6,
+              "median_minutes": 95
+            },
+            "publishing": {
+              "delivered_24h": 38,
+              "failed": 0,
+              "retrying": 1,
+              "waiting": 2
+            },
+            "recent": [
+              {
+                "at": "2026-11-10T09:30:00Z",
+                "decision": "approved",
+                "id": "6f1d2c3b-4a59-4c7e-8b10-2d3e4f5a6b7c",
+                "kind": "product",
+                "review_id": "6f1d2c3b-4a59-4c7e-8b10-2d3e4f5a6b7c",
+                "reviewer_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                "subject_id": "9b1c2d3e-4f50-4a61-8b72-c3d4e5f60718",
+                "title": "Block-print cotton kurta",
+                "vendor_id": "3f0c8a52-6b0e-4a8b-9c1d-2a7d5e9b1c10",
+                "vendor_name": "Jaipur Prints"
+              }
+            ],
+            "resubmissions": 2,
+            "waiting": {
+              "application": 2,
+              "brand_page": 1,
+              "over_24h": 3,
+              "product": 4
+            }
+          }
+        ],
+        "properties": {
+          "commission_proposals": {
+            "title": "Commission Proposals",
+            "type": "integer"
+          },
+          "decisions": {
+            "$ref": "#/components/schemas/DecisionsOut"
+          },
+          "publishing": {
+            "$ref": "#/components/schemas/PublishingOut"
+          },
+          "recent": {
+            "items": {
+              "$ref": "#/components/schemas/RecentDecisionOut"
+            },
+            "title": "Recent",
+            "type": "array"
+          },
+          "resubmissions": {
+            "title": "Resubmissions",
+            "type": "integer"
+          },
+          "waiting": {
+            "$ref": "#/components/schemas/WaitingOut"
+          }
+        },
+        "required": [
+          "waiting",
+          "decisions",
+          "resubmissions",
+          "commission_proposals",
+          "publishing",
+          "recent"
+        ],
+        "title": "AdminSummaryOut",
+        "type": "object"
+      },
       "ApproveIn": {
         "additionalProperties": false,
         "description": "The proposal the reviewer saw: approving a different one is a 409.",
@@ -1060,6 +1134,31 @@
           "sku"
         ],
         "title": "CreateProductBody",
+        "type": "object"
+      },
+      "DecisionsOut": {
+        "properties": {
+          "decided_today": {
+            "title": "Decided Today",
+            "type": "integer"
+          },
+          "median_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Minutes"
+          }
+        },
+        "required": [
+          "decided_today",
+          "median_minutes"
+        ],
+        "title": "DecisionsOut",
         "type": "object"
       },
       "DeliveryIn": {
@@ -2574,6 +2673,34 @@
         "title": "ProposalIn",
         "type": "object"
       },
+      "PublishingOut": {
+        "properties": {
+          "delivered_24h": {
+            "title": "Delivered 24H",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "retrying": {
+            "title": "Retrying",
+            "type": "integer"
+          },
+          "waiting": {
+            "title": "Waiting",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "delivered_24h",
+          "waiting",
+          "retrying",
+          "failed"
+        ],
+        "title": "PublishingOut",
+        "type": "object"
+      },
       "ReasonRequest": {
         "additionalProperties": false,
         "description": "Rejecting and suspending need a reason, which the vendor is told: a missing, empty or\nwhitespace-only one is a 422.",
@@ -2594,6 +2721,93 @@
           "reason"
         ],
         "title": "ReasonRequest",
+        "type": "object"
+      },
+      "RecentDecisionOut": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "approved",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "product",
+              "brand_page",
+              "application",
+              "commission"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "review_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Id"
+          },
+          "reviewer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Id"
+          },
+          "subject_id": {
+            "format": "uuid",
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "vendor_id": {
+            "format": "uuid",
+            "title": "Vendor Id",
+            "type": "string"
+          },
+          "vendor_name": {
+            "title": "Vendor Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "review_id",
+          "subject_id",
+          "title",
+          "vendor_id",
+          "vendor_name",
+          "decision",
+          "at",
+          "reviewer_id"
+        ],
+        "title": "RecentDecisionOut",
         "type": "object"
       },
       "RegisterRequest": {
@@ -4495,6 +4709,34 @@
         ],
         "title": "VersionOut",
         "type": "object"
+      },
+      "WaitingOut": {
+        "properties": {
+          "application": {
+            "title": "Application",
+            "type": "integer"
+          },
+          "brand_page": {
+            "title": "Brand Page",
+            "type": "integer"
+          },
+          "over_24h": {
+            "title": "Over 24H",
+            "type": "integer"
+          },
+          "product": {
+            "title": "Product",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "product",
+          "brand_page",
+          "application",
+          "over_24h"
+        ],
+        "title": "WaitingOut",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -5132,6 +5374,33 @@
         "summary": "Reject Review",
         "tags": [
           "admin-reviews"
+        ]
+      }
+    },
+    "/v1/admin/summary": {
+      "get": {
+        "description": "What waits for a reviewer, what was decided today (midnight IST), the outbox in four\nnumbers, and the latest decisions. Every figure is a count, so the cost does not grow with\nthe queue.",
+        "operationId": "get_summary_v1_admin_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Summary",
+        "tags": [
+          "admin-summary"
         ]
       }
     },

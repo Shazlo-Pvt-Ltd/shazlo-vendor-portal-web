@@ -41,7 +41,7 @@ export const homeCopy = {
     approved: 'Approved',
     sentBack: 'Sent back',
     by: (name: string) => `by ${name}`,
-    kind: { product: 'Product', brand_page: 'Brand page', application: 'Application' } as Record<string, string>,
+    kind: { product: 'Product', brand_page: 'Brand page', application: 'Application', commission: 'Commission' } as Record<string, string>,
     emptyTitle: 'No decisions yet',
     emptyBody: 'Approvals and send-backs show here as reviewers make them.',
   },

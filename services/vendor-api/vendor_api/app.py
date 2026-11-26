@@ -18,6 +18,7 @@ from vendor_api.api import (
     admin_commission,
     admin_outbox,
     admin_reviews,
+    admin_summary,
     admin_vendors,
     assets,
     auth,
@@ -47,6 +48,7 @@ from vendor_api.core.security import (
 )
 from vendor_api.core.settings import Settings, get_settings
 from vendor_api.db.session import create_engine, create_sessionmaker
+from vendor_api.services.admin_summary import AdminSummaryService
 from vendor_api.services.assets import AssetService
 from vendor_api.services.auth import AuthService
 from vendor_api.services.brand_profiles import BrandProfileService
@@ -132,6 +134,7 @@ def create_app(
     app.state.team = TeamService(settings)
     app.state.outbox_writer = OutboxWriter(settings.outbox_events_enabled)
     app.state.outbox_admin = OutboxAdminService()
+    app.state.admin_summary = AdminSummaryService()
     app.state.brand_profiles = BrandProfileService()
     app.state.products = ProductService(events=app.state.outbox_writer)
     app.state.submissions = SubmissionService()
@@ -211,5 +214,6 @@ def create_app(
         v1.include_router(admin_vendors.router)
         v1.include_router(admin_commission.router)
         v1.include_router(admin_outbox.router)
+        v1.include_router(admin_summary.router)
     app.include_router(v1)  # feature routers are added here
     return app

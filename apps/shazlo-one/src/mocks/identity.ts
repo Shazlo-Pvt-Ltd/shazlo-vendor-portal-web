@@ -172,6 +172,13 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
       return HttpResponse.json(out(a), { status: 201 })
     }, 'super_admin')),
 
+    // Any signed-in admin: the display name behind an id, and nothing else. Unknown ids are left out.
+    http.get('*/v1/admins/names', authed(({ request }) => {
+      const ids = new Set(new URL(request.url).searchParams.getAll('ids'))
+      if (ids.size > 100) return fail(422, 'validation_error', 'Ask for at most 100 admins at a time.')
+      return HttpResponse.json({ items: getDb().admins.filter((a) => ids.has(a.id)).map((a) => ({ id: a.id, display_name: a.display_name })) })
+    })),
+
     http.get('*/v1/admins/:id', authed(({ params }) => {
       const a = getDb().admins.find((x) => x.id === params.id)
       return a ? HttpResponse.json(out(a)) : fail(404, 'admin_not_found', 'We could not find that admin.')

@@ -13,12 +13,17 @@ export function mockModuleToken(admin: { id: string; name: string }, expiresAt: 
   return `mock.vendor-api.${admin.id}.${encodeURIComponent(admin.name)}.${expiresAt}`
 }
 
-function reviewerFrom(header: string | null, now: Date): string | null {
+function reviewerFrom(header: string | null, now: Date): { id: string; name: string } | null {
   const parts = header?.replace(/^Bearer /, '').split('.') ?? []
   if (parts.length !== 5 || parts[0] !== 'mock' || parts[1] !== 'vendor-api') return null
   if (Number(parts[4]) * 1000 < now.getTime()) return null
-  return decodeURIComponent(parts[3]!)
+  return { id: parts[2]!, name: decodeURIComponent(parts[3]!) }
 }
+
+// The deciding admins of the seed, as identity-api knows them. vendor-api stores an admin's id, never
+// their name: the shell asks identity-api for the names (GET /v1/admins/names).
+const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
+const SEED_REVIEWERS: Record<string, string> = { 'Naman Sinha': uuid(1), 'Priya Mehta': uuid(2), 'Rahul Desai': uuid(3), 'Sneha Iyer': uuid(4), 'Kabir Shah': uuid(5) }
 
 // vendor-api's envelope: {error: {code, message, request_id, details?}}; a 422 lists pydantic-style problems.
 function fail(status: number, code: string, message: string, fields?: Record<string, string>) {
@@ -46,10 +51,12 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
   const vendorOf = (id: string) => getDb().vendors.find((v) => v.id === id)!
 
   // The reviewer always comes from the token (ADR 0009).
+  const reviewerIds = new Map(Object.entries(SEED_REVIEWERS))
   const guarded = (resolver: (info: Parameters<HttpResponseResolver>[0], reviewer: string) => ReturnType<HttpResponseResolver>): HttpResponseResolver => (info) => {
     const reviewer = reviewerFrom(info.request.headers.get('authorization'), getDb().now())
     if (!reviewer) return fail(401, 'unauthorized', 'Your session has ended. Sign in again.')
-    return resolver(info, reviewer)
+    reviewerIds.set(reviewer.name, reviewer.id)
+    return resolver(info, reviewer.name)
   }
 
   function queueItems(db: MockVendorApi): S['QueueItem'][] {
@@ -129,6 +136,40 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
         },
         recent: db.decisions.slice(0, 6).map((d) => ({ id: d.id, subject_id: d.subjectId, kind: d.kind, title: d.title, vendor: ref(vendorOf(d.vendorId)), decision: d.decision, at: d.at, reviewer: d.reviewer })),
       } satisfies S['Summary'])
+    })),
+
+    // Declared after the legacy `/api/v1/admin/summary` above: `*/v1/admin/summary` also matches that path.
+    // The real route (`GET /v1/admin/summary`): the same figures, with the deciding admin's id.
+    http.get('*/v1/admin/summary', guarded(() => {
+      const db = getDb()
+      const items = queueItems(db)
+      const day = new Date(db.now()).toISOString().slice(0, 10)
+      const count = (k: S['ItemKind']) => items.filter((i) => i.kind === k).length
+      const today = db.decisions.filter((d) => d.at.slice(0, 10) === day).length
+      return HttpResponse.json({
+        waiting: { product: count('product'), brand_page: count('brand_page'), application: count('application'), over_24h: items.filter((i) => db.now().getTime() - Date.parse(i.submitted_at) > 24 * 3_600_000).length },
+        decisions: { decided_today: today, median_minutes: today === 0 ? null : 320 },
+        resubmissions: items.filter((i) => i.resubmission > 0).length,
+        commission_proposals: db.vendors.filter((v) => v.commission.state === 'proposed').length,
+        publishing: {
+          delivered_24h: 312 + db.outbox.filter((e) => e.status === 'delivered').length,
+          waiting: db.outbox.filter((e) => e.status === 'waiting').length,
+          retrying: db.outbox.filter((e) => e.status === 'retrying').length,
+          failed: db.outbox.filter((e) => e.status === 'failed').length,
+        },
+        recent: db.decisions.slice(0, 5).map((d) => ({
+          id: d.id,
+          kind: d.kind,
+          review_id: d.kind === 'product' || d.kind === 'brand_page' ? `review_${d.id}` : null,
+          subject_id: d.subjectId,
+          title: d.title,
+          vendor_id: d.vendorId,
+          vendor_name: vendorOf(d.vendorId).brand_name,
+          decision: d.decision,
+          at: d.at,
+          reviewer_id: reviewerIds.get(d.reviewer) ?? null,
+        })),
+      })
     })),
 
     http.get(`${API}/queue`, guarded(({ request }) => {
