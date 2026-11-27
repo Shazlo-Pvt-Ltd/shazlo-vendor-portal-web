@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { DEMO_LOGIN } from '../../mocks/db'
 import { clearSensitiveState } from '../../security/sensitiveState'
+import { countdownClock } from '../../test/countdown'
 import { renderApp } from '../../test/render'
 import { setupMockApi } from '../../test/server'
 import { emptyDraft, readDraft, writeDraft, type ApplyDraft } from './applyModel'
@@ -544,9 +545,12 @@ describe('V-02 Apply to sell: sending', () => {
     await sendWithSecrets(user, { account: false })
     await screen.findByRole('heading', { level: 1, name: 'Application received' })
     server.use(http.post('*/v1/auth/resend-verification', () => HttpResponse.json({ error: { code: 'rate_limited', message: 'x' } }, { status: 429, headers: { 'Retry-After': '90' } }), { once: true }))
+    const countdown = countdownClock(90)
     await user.click(screen.getByRole('button', { name: 'Send the email again' }))
     expect(await screen.findByText('Too many attempts.')).toBeInTheDocument()
-    await waitFor(() => expect(screen.getByRole('button', { name: /^Send again in (90|89) s$/ })).toBeDisabled())
+    const again = await screen.findByRole('button', { name: /^Send again in \d+ s$/ })
+    expect(again).toBeDisabled()
+    countdown(again.textContent, /Send again in (\d+) s/)
   })
 
   it('gives the same answer for an email that already has an account, so nobody learns which do', async () => {
@@ -671,8 +675,9 @@ describe('V-02 Apply to sell: sending', () => {
   it('counts down after too many attempts and does not send until it ends', async () => {
     const { user } = await openAt(8, { change: upi })
     server.use(http.post('*/v1/auth/signup', () => HttpResponse.json({ error: { code: 'rate_limited', message: 'slow down' } }, { status: 429, headers: { 'Retry-After': '42' } }), { once: true }))
+    const countdown = countdownClock(42)
     await sendWithSecrets(user, { account: false })
-    expect(await screen.findByText(/Too many attempts. Try again in (42|41) s\./)).toBeInTheDocument()
+    countdown((await screen.findByText(/Too many attempts. Try again in \d+ s\./)).textContent, /Try again in (\d+) s\./)
     expect(screen.getByRole('button', { name: 'Send application' })).toBeDisabled()
   })
 

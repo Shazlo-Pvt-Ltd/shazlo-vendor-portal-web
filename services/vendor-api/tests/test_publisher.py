@@ -762,9 +762,10 @@ async def test_the_loop_keeps_going_when_the_database_fails_once(
     monkeypatch.setattr(publisher_module, "POLL_SECONDS", 0.01)
     stop = asyncio.Event()
     task = asyncio.create_task(publisher.run(stop))
-    for _ in range(300):  # the session is the publisher's while it runs: watch the receiver
-        if receiver.requests:
-            break
+    # The session is the publisher's while it runs: watch the receiver. A deadline rather than a
+    # count of short sleeps, so a slow runner waits longer instead of failing.
+    deadline = asyncio.get_running_loop().time() + 15
+    while not receiver.requests and asyncio.get_running_loop().time() < deadline:
         await asyncio.sleep(0.01)
     stop.set()
     await asyncio.wait_for(task, 5)

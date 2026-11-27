@@ -73,8 +73,9 @@ class BrandProfileBody(BaseModel):
     website_url: DatabaseText | None = Field(default=None, max_length=500)
     instagram_handle: str | None = Field(default=None, max_length=31)
     categories: list[DatabaseText] = Field(default_factory=list, max_length=MAX_CATEGORIES)
-    price_min_paise: int = Field(ge=0, le=MAX_PAISE)
-    price_max_paise: int = Field(ge=0, le=MAX_PAISE)
+    # Strict: a JSON integer only (lax parsing would take `false` as 0 and "999" as 999).
+    price_min_paise: int = Field(ge=0, le=MAX_PAISE, strict=True)
+    price_max_paise: int = Field(ge=0, le=MAX_PAISE, strict=True)
 
     @field_validator("brand_name", mode="before")
     @classmethod

@@ -26,6 +26,9 @@ export default defineConfig({
           include: ['test/**/*.test.{js,jsx}'],
           environment: 'jsdom',
           setupFiles: ['./test/setup.js'],
+          // The form tests type through MUI in jsdom; with coverage on a busy runner one can take
+          // longer than the 5 s default (the vendor-portal project allows 30 s for the same reason).
+          testTimeout: 30_000,
           restoreMocks: true,
           unstubGlobals: true,
           unstubEnvs: true,
@@ -61,6 +64,13 @@ export default defineConfig({
       reporter: ['text', 'html', 'json-summary'],
       reportsDirectory: 'coverage',
       reportOnFailure: true,
+      // Floors that catch a large drop (a test file lost, a module added without tests), a few
+      // points under what was measured on 2026-11-19 (docs/testing.md). Every `--coverage` run
+      // checks them: run a subset of the tests without `--coverage`, or it fails them.
+      thresholds: {
+        'apps/vendor-portal/src/**': { lines: 90, branches: 83, functions: 85, statements: 88 },
+        'packages/ui/src/**': { lines: 95, branches: 90, functions: 90, statements: 95 },
+      },
     },
   },
 })

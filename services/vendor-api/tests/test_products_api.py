@@ -270,6 +270,8 @@ async def test_a_variant_sku_used_by_another_product_of_the_vendor_is_refused(
         ({"return_window_days": 31}, "return_window_days"),
         ({"returnable": True, "return_window_days": None}, None),
         ({"variants": [variant(price_paise=0)]}, "price_paise"),
+        ({"variants": [variant(price_paise=True)]}, "price_paise"),  # not 1 paise
+        ({"variants": [variant(mrp_paise="199900")]}, "mrp_paise"),
         ({"variants": [variant(price_paise=500, mrp_paise=499)]}, None),
         ({"variants": [variant("A"), variant("a", size="L")]}, None),
         ({"variants": [variant("A"), variant("B")]}, None),  # same size and colour
