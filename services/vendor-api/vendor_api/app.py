@@ -17,6 +17,7 @@ from vendor_api.api import (
     admin,
     admin_commission,
     admin_outbox,
+    admin_queue,
     admin_reviews,
     admin_vendors,
     assets,
@@ -47,6 +48,7 @@ from vendor_api.core.security import (
 )
 from vendor_api.core.settings import Settings, get_settings
 from vendor_api.db.session import create_engine, create_sessionmaker
+from vendor_api.services.admin_queue import AdminQueueService
 from vendor_api.services.assets import AssetService
 from vendor_api.services.auth import AuthService
 from vendor_api.services.brand_profiles import BrandProfileService
@@ -154,6 +156,7 @@ def create_app(
     app.state.assets = AssetService(settings, image_host)
     app.state.product_import = ProductImportService(settings, app.state.products)
     app.state.review_queue = ReviewQueueService()
+    app.state.admin_queue = AdminQueueService()
     app.state.review_decisions = ReviewDecisionService()
     # An approval writes its central-app event in the same transaction (ADR 0003, section 5).
     app.state.review_decisions.add_hook(app.state.outbox_writer.on_decision)
@@ -207,6 +210,7 @@ def create_app(
     v1.include_router(size_charts.router)
     if settings.identity_jwks_url:
         v1.include_router(admin.router)
+        v1.include_router(admin_queue.router)
         v1.include_router(admin_reviews.router)
         v1.include_router(admin_vendors.router)
         v1.include_router(admin_commission.router)
