@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vendor_api.api.admin import reviewer_dependency
-from vendor_api.api.auth import no_store
+from vendor_api.api.common import no_store
 from vendor_api.db.session import get_session
 from vendor_api.services.admin_summary import AdminSummary, AdminSummaryService, RecentDecision
 

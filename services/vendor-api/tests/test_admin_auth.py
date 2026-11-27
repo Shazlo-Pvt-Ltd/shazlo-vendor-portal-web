@@ -12,12 +12,14 @@ from support import (
     ADMIN_ID,
     IDENTITY_ISSUER,
     JWKS_URL,
+    BothApps,
     Identity,
     identity_ring,
 )
 
+from vendor_api.admin_app import create_admin_app
 from vendor_api.api.admin import AdminRequest, Reviewer
-from vendor_api.app import create_app
+from vendor_api.app import create_seller_app
 from vendor_api.core.security import token_issuer
 from vendor_api.core.settings import Settings
 from vendor_api.db.models import VendorUserRole
@@ -44,14 +46,18 @@ def admin_settings(settings: Settings, override: Any) -> Settings:
 
 @pytest.fixture
 async def client(admin_settings: Settings, identity: Identity) -> AsyncIterator[httpx.AsyncClient]:
+    """Both apps behind one client, as two hostnames route them: `/v1/admin*` to the admin app,
+    the rest to the seller app. `client.app` is the admin app, `client.seller` the seller app."""
     redis = FakeAsyncRedis()
-    app = create_app(
+    app = create_admin_app(
         admin_settings, readiness_checks={}, redis=redis, identity_keys=identity.client
     )
+    seller = create_seller_app(admin_settings, readiness_checks={}, redis=redis)
     add_probe(app)
-    transport = httpx.ASGITransport(app=app)
+    transport = httpx.ASGITransport(app=BothApps(seller, app))
     async with httpx.AsyncClient(transport=transport, base_url="https://vendor-api.test") as http:
         http.app = app  # type: ignore[attr-defined]
+        http.seller = seller  # type: ignore[attr-defined]
         yield http
     await redis.aclose()
 
@@ -161,8 +167,8 @@ async def test_a_token_signed_with_an_unknown_kid_is_401(
 async def test_a_vendor_token_is_401_on_the_admin_group(
     client: httpx.AsyncClient, admin_settings: Settings
 ) -> None:
-    app: FastAPI = client.app  # type: ignore[attr-defined]
-    vendor = app.state.vendor_tokens.issue(
+    seller: FastAPI = client.seller  # type: ignore[attr-defined]
+    vendor = seller.state.vendor_tokens.issue(
         user_id=USER_ID, vendor_id=VENDOR_ID, role=VendorUserRole.OWNER
     )
     assert (await admin_me(client, vendor.token)).status_code == 401
@@ -181,8 +187,8 @@ async def test_a_vendor_token_with_an_admin_role_name_is_still_not_an_admin(
     client: httpx.AsyncClient, admin_settings: Settings
 ) -> None:
     """Even if a vendor-api key signed a token that claims `super_admin`: the keys differ."""
-    app: FastAPI = client.app  # type: ignore[attr-defined]
-    forged = token_issuer(admin_settings, app.state.keyring).issue(
+    seller: FastAPI = client.seller  # type: ignore[attr-defined]
+    forged = token_issuer(admin_settings, seller.state.keyring).issue(
         subject=ADMIN_ID, roles=["super_admin"], audience="vendor-api"
     )
     assert (await admin_me(client, forged.token)).status_code == 401
@@ -300,8 +306,17 @@ async def test_a_rotated_key_is_picked_up_after_the_next_fetch(
 # --- Without identity settings -----------------------------------------------------------
 
 
-async def test_without_identity_settings_there_is_no_admin_group(settings: Settings) -> None:
-    app = create_app(settings, readiness_checks={}, redis=FakeAsyncRedis())
+async def test_without_identity_settings_the_admin_app_refuses_to_start(
+    settings: Settings,
+) -> None:
+    with pytest.raises(RuntimeError, match="IDENTITY_JWKS_URL and IDENTITY_ISSUER"):
+        create_admin_app(settings, readiness_checks={}, redis=FakeAsyncRedis())
+
+
+async def test_the_seller_app_never_serves_the_admin_group(admin_settings: Settings) -> None:
+    """Even with identity settings (one .env shared by both apps), the seller app has no
+    identity-api verifier and no admin route (ADR 0011)."""
+    app = create_seller_app(admin_settings, readiness_checks={}, redis=FakeAsyncRedis())
     assert not hasattr(app.state, "token_verifier")
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="https://vendor-api.test") as http:

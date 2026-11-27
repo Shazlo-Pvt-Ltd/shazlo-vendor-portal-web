@@ -4,7 +4,7 @@ import { renderShell } from '../test/render'
 
 const PITCH = 'One place to run Shazlo'
 const POINTS = [
-  ['Vendors', 'Review applications, brand pages and products before they reach the app.'],
+  ['Every module in one place', 'Each module opens here under one sign-in, with the pages your role allows.'],
   ['Every decision on record', 'Each decision is recorded under your name, and sellers see your reason word for word.'],
   ['Roles, not shared logins', 'Everyone has their own account and sees only the modules their role allows.'],
 ] as const

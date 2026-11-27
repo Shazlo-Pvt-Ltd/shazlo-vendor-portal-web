@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from vendor_api.api import health
-from vendor_api.app import create_app
+from vendor_api.app import create_seller_app
 from vendor_api.core.settings import Settings
 
 
@@ -26,7 +26,7 @@ async def _hang() -> None:
 def make_client(
     settings: Settings, checks: dict[str, health.ReadinessCheck] | None = None
 ) -> TestClient:
-    app = create_app(settings, readiness_checks=checks if checks is not None else {"x": _ok})
+    app = create_seller_app(settings, readiness_checks=checks if checks is not None else {"x": _ok})
 
     class Body(BaseModel):
         name: str
@@ -73,7 +73,7 @@ async def test_a_request_id_that_is_not_safe_ascii_is_replaced_not_a_500(
     httpx's ASGI transport passes the raw bytes on, as uvicorn does (the TestClient re-encodes
     them as UTF-8, which hides the problem).
     """
-    app = create_app(settings, readiness_checks={"x": _ok})
+    app = create_seller_app(settings, readiness_checks={"x": _ok})
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with httpx.AsyncClient(transport=transport, base_url="http://vendor-api.test") as client:
         response = await client.get("/health", headers=[(b"X-Request-ID", value)])
@@ -122,7 +122,7 @@ def test_ready_503_with_real_checks_when_nothing_is_listening(settings: Settings
             "redis_url": "redis://127.0.0.1:1/0",
         }
     )
-    response = TestClient(create_app(unreachable)).get("/ready")
+    response = TestClient(create_seller_app(unreachable)).get("/ready")
     assert response.status_code == 503
     assert response.json()["checks"] == {"postgres": "unavailable", "redis": "unavailable"}
 

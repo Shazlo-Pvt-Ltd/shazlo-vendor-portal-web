@@ -1,25 +1,20 @@
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+"""The seller app: the Vendor Portal's backend (ADR 0011).
+
+It serves `/v1/auth`, `/v1/vendor/*`, `/v1/public/*`, the vendor JWKS and the probes, and never
+`/v1/admin/*` (that is the admin app, `vendor_api.admin_app`). It accepts only vendor tokens: it
+has no identity-api verifier at all.
+"""
 
 import httpx
 from fastapi import APIRouter, FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import Redis
-from shazlo_auth import JwksClient, KeySource, TokenVerifier
 from shazlo_security.client_ip import parse_networks
 from shazlo_security.keys import load_keyring
 from shazlo_security.passwords import PasswordService
 from shazlo_security.rate_limit import RateLimitGuard, RedisRateLimiter
 from shazlo_security.refresh_tokens import RefreshTokenStore
 
-from vendor_api import __version__
 from vendor_api.api import (
-    admin,
-    admin_commission,
-    admin_outbox,
-    admin_reviews,
-    admin_summary,
-    admin_vendors,
     assets,
     auth,
     brand_profile,
@@ -35,9 +30,7 @@ from vendor_api.api import (
     team,
     vendor,
 )
-from vendor_api.core.errors import register_exception_handlers
-from vendor_api.core.logging import configure_logging
-from vendor_api.core.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
+from vendor_api.app_common import add_common_state, add_middleware, new_app
 from vendor_api.core.security import (
     RATE_LIMIT_KEY_PREFIX,
     key_ring_config,
@@ -47,61 +40,43 @@ from vendor_api.core.security import (
     token_issuer,
 )
 from vendor_api.core.settings import Settings, get_settings
-from vendor_api.db.session import create_engine, create_sessionmaker
-from vendor_api.services.admin_summary import AdminSummaryService
 from vendor_api.services.assets import AssetService
 from vendor_api.services.auth import AuthService
 from vendor_api.services.brand_profiles import BrandProfileService
 from vendor_api.services.cloudinary import CloudinaryClient, ImageHost
-from vendor_api.services.commission import CommissionService
 from vendor_api.services.credentials import CredentialService
-from vendor_api.services.email import EmailService, build_sender
-from vendor_api.services.outbox import OutboxWriter
-from vendor_api.services.outbox_admin import OutboxAdminService
 from vendor_api.services.payout_cipher import PayoutCipher, parse_keys
 from vendor_api.services.product_import import ProductImportService
 from vendor_api.services.products import ProductService
-from vendor_api.services.review_decisions import ReviewDecisionService
-from vendor_api.services.review_queue import ReviewQueueService
 from vendor_api.services.signup import SignupService
 from vendor_api.services.size_charts import SizeChartService
 from vendor_api.services.store_details import StoreDetailsService
 from vendor_api.services.submissions import SubmissionService
 from vendor_api.services.team import TeamService
-from vendor_api.services.tokens import VENDOR_AUDIENCE as SELF_AUDIENCE
 from vendor_api.services.tokens import VendorTokens
-from vendor_api.services.vendor_accounts import VendorAccountService
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    yield
-    await app.state.engine.dispose()
-    await app.state.redis.aclose()
-    await app.state.http.aclose()
+def check_seller_settings(settings: Settings) -> None:
+    """What only the seller app needs. Settings leave these unset in prod when they are missing
+    (the admin app and the worker never hold them), so the seller app refuses to start here."""
+    missing = []
+    if settings.payout_encryption_keys is None or settings.payout_encryption_kid is None:
+        missing.append("PAYOUT_ENCRYPTION_KEYS and PAYOUT_ENCRYPTION_KID")
+    if settings.rate_limit_hmac_key is None:
+        missing.append("RATE_LIMIT_HMAC_KEY")
+    if missing:
+        raise RuntimeError("the seller app needs " + "; ".join(missing))
 
 
-def create_app(
+def create_seller_app(
     settings: Settings | None = None,
     readiness_checks: dict[str, health.ReadinessCheck] | None = None,
     redis: Redis | None = None,
-    identity_keys: KeySource | None = None,
     image_host: ImageHost | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
-    configure_logging(settings.log_level)
-
-    # OpenAPI docs are for development; production does not serve them.
-    docs_enabled = settings.env != "prod"
-    app = FastAPI(
-        title="vendor-api",
-        version=__version__,
-        docs_url="/docs" if docs_enabled else None,
-        redoc_url=None,
-        openapi_url="/openapi.json" if docs_enabled else None,
-        lifespan=lifespan,
-    )
-    app.state.settings = settings
+    check_seller_settings(settings)
+    app = new_app(settings, "vendor-api")
     # Keys are loaded now, so a missing or broken key stops the service at startup.
     app.state.keyring = load_keyring(key_ring_config(settings))
     app.state.vendor_tokens = VendorTokens(
@@ -109,21 +84,7 @@ def create_app(
         app.state.keyring,
         issuer_url=settings.jwt_issuer,
     )
-    # The engine and the Redis client connect lazily, so creating the app does not need either.
-    app.state.engine = create_engine(settings.database_url)
-    app.state.sessionmaker = create_sessionmaker(app.state.engine)
-    app.state.redis = redis or Redis.from_url(settings.redis_url)
-    app.state.emails = EmailService(build_sender(settings), attempts=settings.email_send_attempts)
-    if settings.identity_jwks_url and settings.identity_issuer:
-        # One client per process, created here and never per request. It fetches nothing now:
-        # the first admin token triggers the first fetch, so a down identity-api cannot stop
-        # this service from starting.
-        keys = identity_keys or JwksClient.from_url(
-            settings.identity_jwks_url, allow_insecure=settings.env == "dev"
-        )
-        app.state.token_verifier = TokenVerifier(
-            keys, issuer=settings.identity_issuer, audience=SELF_AUDIENCE
-        )
+    add_common_state(app, settings, redis=redis, readiness_checks=readiness_checks)
     app.state.passwords = PasswordService(password_config(settings))
     app.state.rate_limits = RateLimitGuard(
         RedisRateLimiter(app.state.redis, RATE_LIMIT_KEY_PREFIX), rate_limit_config(settings)
@@ -132,9 +93,6 @@ def create_app(
     app.state.signup = SignupService(settings, app.state.passwords)
     app.state.credentials = CredentialService(settings, app.state.passwords)
     app.state.team = TeamService(settings)
-    app.state.outbox_writer = OutboxWriter(settings.outbox_events_enabled)
-    app.state.outbox_admin = OutboxAdminService()
-    app.state.admin_summary = AdminSummaryService()
     app.state.brand_profiles = BrandProfileService()
     app.state.products = ProductService(events=app.state.outbox_writer)
     app.state.submissions = SubmissionService()
@@ -156,42 +114,23 @@ def create_app(
         )
     app.state.assets = AssetService(settings, image_host)
     app.state.product_import = ProductImportService(settings, app.state.products)
-    app.state.review_queue = ReviewQueueService()
-    app.state.review_decisions = ReviewDecisionService()
-    # An approval writes its central-app event in the same transaction (ADR 0003, section 5).
-    app.state.review_decisions.add_hook(app.state.outbox_writer.on_decision)
     app.state.refresh_tokens = RefreshTokenStore(app.state.redis, refresh_token_config(settings))
     app.state.sessions = AuthService(
         settings, app.state.passwords, app.state.vendor_tokens, app.state.refresh_tokens
     )
-    app.state.vendor_accounts = VendorAccountService(
-        app.state.sessions, events=app.state.outbox_writer
-    )
-    # Settings always fill both in (a random key outside prod when unset).
     payout_keys, payout_kid = settings.payout_encryption_keys, settings.payout_encryption_kid
-    if payout_keys is None or payout_kid is None:
-        raise RuntimeError("payout encryption keys are not configured")
+    assert payout_keys is not None and payout_kid is not None  # noqa: S101 (checked above)
     app.state.payout_cipher = PayoutCipher(parse_keys(payout_keys.get_secret_value()), payout_kid)
     app.state.store_details = StoreDetailsService(app.state.payout_cipher)
-    app.state.commissions = CommissionService()
     app.state.size_charts = SizeChartService()
-    app.state.readiness_checks = (
-        readiness_checks
-        if readiness_checks is not None
-        else health.default_readiness_checks(settings)
-    )
 
-    # Middleware added last runs first: request ID wraps CORS so even CORS answers carry an ID.
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_allowed_origins,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        allow_headers=["Authorization", "Content-Type", REQUEST_ID_HEADER],
-        expose_headers=[REQUEST_ID_HEADER],
+    # Credentials on: the refresh token is the HttpOnly `vendor_refresh` cookie.
+    add_middleware(
+        app,
+        origins=settings.cors_allowed_origins,
+        credentials=True,
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     )
-    app.add_middleware(RequestIdMiddleware)
-    register_exception_handlers(app)
 
     app.include_router(health.router)
     app.include_router(jwks.router)
@@ -208,12 +147,5 @@ def create_app(
     v1.include_router(public.router)
     v1.include_router(commission.router)
     v1.include_router(size_charts.router)
-    if settings.identity_jwks_url:
-        v1.include_router(admin.router)
-        v1.include_router(admin_reviews.router)
-        v1.include_router(admin_vendors.router)
-        v1.include_router(admin_commission.router)
-        v1.include_router(admin_outbox.router)
-        v1.include_router(admin_summary.router)
-    app.include_router(v1)  # feature routers are added here
+    app.include_router(v1)  # seller routers are added here; admin routers go in admin_app.py
     return app

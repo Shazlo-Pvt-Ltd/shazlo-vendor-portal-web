@@ -1,0 +1,3642 @@
+{
+  "components": {
+    "schemas": {
+      "ActivityEmptyOut": {
+        "properties": {
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "ActivityEmptyOut",
+        "type": "object"
+      },
+      "ActivityItemOut": {
+        "properties": {
+          "actor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ActivityStatusOut"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtitle"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "at",
+          "actor_id"
+        ],
+        "title": "ActivityItemOut",
+        "type": "object"
+      },
+      "ActivityOut": {
+        "properties": {
+          "empty": {
+            "$ref": "#/components/schemas/ActivityEmptyOut"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "empty",
+          "items"
+        ],
+        "title": "ActivityOut",
+        "type": "object"
+      },
+      "ActivityStatusOut": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "tone": {
+            "enum": [
+              "positive",
+              "attention"
+            ],
+            "title": "Tone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tone",
+          "label"
+        ],
+        "title": "ActivityStatusOut",
+        "type": "object"
+      },
+      "AdminMe": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "roles"
+        ],
+        "title": "AdminMe",
+        "type": "object"
+      },
+      "AdminReviewOut": {
+        "properties": {
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "product_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "reviewer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Id"
+          },
+          "sku": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sku"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          },
+          "submitted_by": {
+            "format": "uuid",
+            "title": "Submitted By",
+            "type": "string"
+          },
+          "submitted_by_email": {
+            "title": "Submitted By Email",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "vendor": {
+            "$ref": "#/components/schemas/ReviewVendorOut"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "subject",
+          "status",
+          "vendor",
+          "submitted_by",
+          "submitted_by_email",
+          "submitted_at",
+          "version",
+          "title",
+          "product_id",
+          "sku",
+          "reviewer_id",
+          "decided_at",
+          "reason"
+        ],
+        "title": "AdminReviewOut",
+        "type": "object"
+      },
+      "AdminSummaryOut": {
+        "examples": [
+          {
+            "commission_proposals": 1,
+            "decisions": {
+              "decided_today": 6,
+              "median_minutes": 95
+            },
+            "publishing": {
+              "delivered_24h": 38,
+              "failed": 0,
+              "retrying": 1,
+              "waiting": 2
+            },
+            "recent": [
+              {
+                "at": "2026-11-10T09:30:00Z",
+                "decision": "approved",
+                "id": "6f1d2c3b-4a59-4c7e-8b10-2d3e4f5a6b7c",
+                "kind": "product",
+                "review_id": "6f1d2c3b-4a59-4c7e-8b10-2d3e4f5a6b7c",
+                "reviewer_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                "subject_id": "9b1c2d3e-4f50-4a61-8b72-c3d4e5f60718",
+                "title": "Block-print cotton kurta",
+                "vendor_id": "3f0c8a52-6b0e-4a8b-9c1d-2a7d5e9b1c10",
+                "vendor_name": "Jaipur Prints"
+              }
+            ],
+            "resubmissions": 2,
+            "waiting": {
+              "application": 2,
+              "brand_page": 1,
+              "over_24h": 3,
+              "product": 4
+            }
+          }
+        ],
+        "properties": {
+          "commission_proposals": {
+            "title": "Commission Proposals",
+            "type": "integer"
+          },
+          "decisions": {
+            "$ref": "#/components/schemas/DecisionsOut"
+          },
+          "publishing": {
+            "$ref": "#/components/schemas/PublishingOut"
+          },
+          "recent": {
+            "items": {
+              "$ref": "#/components/schemas/RecentDecisionOut"
+            },
+            "title": "Recent",
+            "type": "array"
+          },
+          "resubmissions": {
+            "title": "Resubmissions",
+            "type": "integer"
+          },
+          "waiting": {
+            "$ref": "#/components/schemas/WaitingOut"
+          }
+        },
+        "required": [
+          "waiting",
+          "decisions",
+          "resubmissions",
+          "commission_proposals",
+          "publishing",
+          "recent"
+        ],
+        "title": "AdminSummaryOut",
+        "type": "object"
+      },
+      "ApproveIn": {
+        "additionalProperties": false,
+        "description": "The proposal the reviewer saw: approving a different one is a 409.",
+        "examples": [
+          {
+            "proposed_bps": 1000
+          }
+        ],
+        "properties": {
+          "proposed_bps": {
+            "maximum": 4000.0,
+            "minimum": 0.0,
+            "title": "Proposed Bps",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "proposed_bps"
+        ],
+        "title": "ApproveIn",
+        "type": "object"
+      },
+      "ApproveReviewRequest": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "version": 3
+          }
+        ],
+        "properties": {
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "ApproveReviewRequest",
+        "type": "object"
+      },
+      "ApproveVendorRequest": {
+        "additionalProperties": false,
+        "description": "A reason is optional when approving (for example why a rejection was overturned).",
+        "examples": [
+          {
+            "reason": "Documents checked."
+          },
+          {}
+        ],
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "ApproveVendorRequest",
+        "type": "object"
+      },
+      "ChangeOut": {
+        "properties": {
+          "after": {
+            "title": "After"
+          },
+          "before": {
+            "title": "Before"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "before",
+          "after"
+        ],
+        "title": "ChangeOut",
+        "type": "object"
+      },
+      "CommissionOut": {
+        "properties": {
+          "agreed_bps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agreed Bps"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "proposed_bps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Bps"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "state",
+          "agreed_bps",
+          "proposed_bps",
+          "note",
+          "updated_at"
+        ],
+        "title": "CommissionOut",
+        "type": "object"
+      },
+      "CommissionState": {
+        "enum": [
+          "not_set",
+          "proposed",
+          "sent_back",
+          "agreed"
+        ],
+        "title": "CommissionState",
+        "type": "string"
+      },
+      "DecisionsOut": {
+        "properties": {
+          "decided_today": {
+            "title": "Decided Today",
+            "type": "integer"
+          },
+          "median_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Minutes"
+          }
+        },
+        "required": [
+          "decided_today",
+          "median_minutes"
+        ],
+        "title": "DecisionsOut",
+        "type": "object"
+      },
+      "EventOut": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "actor_type": {
+            "title": "Actor Type",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "action",
+          "actor_type",
+          "actor_id",
+          "reason",
+          "detail",
+          "created_at"
+        ],
+        "title": "EventOut",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LogEntryOut": {
+        "properties": {
+          "actor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "attempt",
+              "retry"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "created_at",
+          "kind",
+          "outcome",
+          "actor_id"
+        ],
+        "title": "LogEntryOut",
+        "type": "object"
+      },
+      "ModuleSummaryOut": {
+        "description": "`ModuleSummary` v1 (packages/shell-protocol/src/summary.ts); the shell refuses anything\nelse, so a change here is a change to that schema first.",
+        "examples": [
+          {
+            "activity": {
+              "empty": {
+                "body": "Approvals and send-backs show here as reviewers make them.",
+                "title": "No decisions yet"
+              },
+              "icon": "clipboard-check",
+              "items": [
+                {
+                  "actor_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                  "at": "2026-11-10T09:30:00Z",
+                  "id": "6f1d2c3b-4a59-4c7e-8b10-2d3e4f5a6b7c",
+                  "path": "/queue",
+                  "status": {
+                    "label": "Approved",
+                    "tone": "positive"
+                  },
+                  "subtitle": "Jaipur Prints · Product",
+                  "title": "Block-print cotton kurta"
+                }
+              ],
+              "title": "Recent decisions"
+            },
+            "badge": {
+              "count": 7,
+              "label": "7 waiting"
+            },
+            "sections": [
+              {
+                "action": {
+                  "label": "Open review queue",
+                  "path": "/queue"
+                },
+                "figures": [
+                  {
+                    "hint": "Products 4 · Brand pages 1 · Applications 2",
+                    "label": "Waiting",
+                    "path": "/queue",
+                    "unit": "count",
+                    "value": 7
+                  },
+                  {
+                    "hint": "From submission to decision",
+                    "label": "Median time to decision",
+                    "unit": "minutes",
+                    "value": 95
+                  }
+                ],
+                "icon": "store",
+                "title": "Vendors"
+              },
+              {
+                "action": {
+                  "label": "Open publishing",
+                  "path": "/publishing"
+                },
+                "alert": {
+                  "action": {
+                    "label": "Open publishing",
+                    "path": "/publishing"
+                  },
+                  "text": "1 event did not reach the app. It retries automatically, or you can retry it now.",
+                  "tone": "warning"
+                },
+                "figures": [
+                  {
+                    "hint": "Needs a look",
+                    "label": "Failed",
+                    "path": "/publishing?status=failed",
+                    "unit": "count",
+                    "value": 1
+                  }
+                ],
+                "icon": "send",
+                "title": "Publishing to the app"
+              }
+            ],
+            "v": 1
+          }
+        ],
+        "properties": {
+          "activity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActivityOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "badge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SummaryBadgeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/SummarySectionOut"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "v": {
+            "const": 1,
+            "default": 1,
+            "title": "V",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "badge",
+          "sections"
+        ],
+        "title": "ModuleSummaryOut",
+        "type": "object"
+      },
+      "OutboxEventDetailOut": {
+        "examples": [
+          {
+            "aggregate_id": "9b1c2d3e-4f50-4a61-8b72-c3d4e5f60718",
+            "aggregate_type": "product",
+            "attempts": 8,
+            "created_at": "2026-11-08T09:00:00Z",
+            "event_type": "product.published",
+            "history": [
+              {
+                "created_at": "2026-11-10T09:29:00Z",
+                "kind": "attempt",
+                "outcome": "failed for good: HTTP 503 (after 8 attempts)"
+              },
+              {
+                "actor_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                "created_at": "2026-11-11T08:00:00Z",
+                "kind": "retry",
+                "outcome": "put back by an admin"
+              }
+            ],
+            "id": "d2c8a7b1-3e5f-4092-8b4c-6f9e1d8b2c35",
+            "last_error": "HTTP 503 (after 8 attempts)",
+            "next_attempt_at": "2026-11-10T09:30:00Z",
+            "payload": {
+              "sku": "KURTA-001",
+              "title": "Block-print cotton kurta"
+            },
+            "status": "dead",
+            "vendor_id": "3f0c8a52-6b0e-4a8b-9c1d-2a7d5e9b1c10",
+            "version": 2
+          }
+        ],
+        "properties": {
+          "aggregate_id": {
+            "format": "uuid",
+            "title": "Aggregate Id",
+            "type": "string"
+          },
+          "aggregate_type": {
+            "title": "Aggregate Type",
+            "type": "string"
+          },
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/LogEntryOut"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "locked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locked At"
+          },
+          "next_attempt_at": {
+            "format": "date-time",
+            "title": "Next Attempt At",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "vendor_id": {
+            "format": "uuid",
+            "title": "Vendor Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "vendor_id",
+          "aggregate_type",
+          "aggregate_id",
+          "event_type",
+          "version",
+          "status",
+          "attempts",
+          "next_attempt_at",
+          "locked_at",
+          "last_error",
+          "created_at",
+          "sent_at",
+          "payload",
+          "history"
+        ],
+        "title": "OutboxEventDetailOut",
+        "type": "object"
+      },
+      "OutboxEventOut": {
+        "properties": {
+          "aggregate_id": {
+            "format": "uuid",
+            "title": "Aggregate Id",
+            "type": "string"
+          },
+          "aggregate_type": {
+            "title": "Aggregate Type",
+            "type": "string"
+          },
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "locked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locked At"
+          },
+          "next_attempt_at": {
+            "format": "date-time",
+            "title": "Next Attempt At",
+            "type": "string"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "vendor_id": {
+            "format": "uuid",
+            "title": "Vendor Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "vendor_id",
+          "aggregate_type",
+          "aggregate_id",
+          "event_type",
+          "version",
+          "status",
+          "attempts",
+          "next_attempt_at",
+          "locked_at",
+          "last_error",
+          "created_at",
+          "sent_at"
+        ],
+        "title": "OutboxEventOut",
+        "type": "object"
+      },
+      "OutboxPageOut": {
+        "examples": [
+          {
+            "items": [
+              {
+                "aggregate_id": "9b1c2d3e-4f50-4a61-8b72-c3d4e5f60718",
+                "aggregate_type": "product",
+                "attempts": 8,
+                "created_at": "2026-11-08T09:00:00Z",
+                "event_type": "product.published",
+                "id": "d2c8a7b1-3e5f-4092-8b4c-6f9e1d8b2c35",
+                "last_error": "HTTP 503 (after 8 attempts)",
+                "next_attempt_at": "2026-11-10T09:30:00Z",
+                "status": "dead",
+                "vendor_id": "3f0c8a52-6b0e-4a8b-9c1d-2a7d5e9b1c10",
+                "version": 2
+              }
+            ],
+            "limit": 25,
+            "offset": 0,
+            "total": 1
+          }
+        ],
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OutboxEventOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OutboxPageOut",
+        "type": "object"
+      },
+      "OutboxStatsOut": {
+        "examples": [
+          {
+            "dead": 1,
+            "oldest_due_age_seconds": 42,
+            "pending": 3,
+            "sending": 0
+          }
+        ],
+        "properties": {
+          "dead": {
+            "title": "Dead",
+            "type": "integer"
+          },
+          "oldest_due_age_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Due Age Seconds"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "sending": {
+            "title": "Sending",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pending",
+          "sending",
+          "dead",
+          "oldest_due_age_seconds"
+        ],
+        "title": "OutboxStatsOut",
+        "type": "object"
+      },
+      "PublishingOut": {
+        "properties": {
+          "delivered_24h": {
+            "title": "Delivered 24H",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "retrying": {
+            "title": "Retrying",
+            "type": "integer"
+          },
+          "waiting": {
+            "title": "Waiting",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "delivered_24h",
+          "waiting",
+          "retrying",
+          "failed"
+        ],
+        "title": "PublishingOut",
+        "type": "object"
+      },
+      "ReasonRequest": {
+        "additionalProperties": false,
+        "description": "Rejecting and suspending need a reason, which the vendor is told: a missing, empty or\nwhitespace-only one is a 422.",
+        "examples": [
+          {
+            "reason": "Repeated chargebacks: contact support."
+          }
+        ],
+        "properties": {
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "ReasonRequest",
+        "type": "object"
+      },
+      "RecentDecisionOut": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "approved",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "product",
+              "brand_page",
+              "application",
+              "commission"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "review_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Id"
+          },
+          "reviewer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Id"
+          },
+          "subject_id": {
+            "format": "uuid",
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "vendor_id": {
+            "format": "uuid",
+            "title": "Vendor Id",
+            "type": "string"
+          },
+          "vendor_name": {
+            "title": "Vendor Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "review_id",
+          "subject_id",
+          "title",
+          "vendor_id",
+          "vendor_name",
+          "decision",
+          "at",
+          "reviewer_id"
+        ],
+        "title": "RecentDecisionOut",
+        "type": "object"
+      },
+      "RejectReviewRequest": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "reason": "The logo is too small to read. Upload a larger one.",
+            "version": 3
+          }
+        ],
+        "properties": {
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "reason"
+        ],
+        "title": "RejectReviewRequest",
+        "type": "object"
+      },
+      "ReviewDetailOut": {
+        "properties": {
+          "base": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VersionOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/ChangeOut"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "content": {
+            "$ref": "#/components/schemas/VersionOut"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/EventOut"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "product_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "reviewer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Id"
+          },
+          "sku": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sku"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          },
+          "submitted_by": {
+            "format": "uuid",
+            "title": "Submitted By",
+            "type": "string"
+          },
+          "submitted_by_email": {
+            "title": "Submitted By Email",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "vendor": {
+            "$ref": "#/components/schemas/ReviewVendorOut"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "subject",
+          "status",
+          "vendor",
+          "submitted_by",
+          "submitted_by_email",
+          "submitted_at",
+          "version",
+          "title",
+          "product_id",
+          "sku",
+          "reviewer_id",
+          "decided_at",
+          "reason",
+          "events",
+          "content",
+          "base",
+          "changes"
+        ],
+        "title": "ReviewDetailOut",
+        "type": "object"
+      },
+      "ReviewPageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminReviewOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "ReviewPageOut",
+        "type": "object"
+      },
+      "ReviewSubject": {
+        "enum": [
+          "brand_profile",
+          "product"
+        ],
+        "title": "ReviewSubject",
+        "type": "string"
+      },
+      "ReviewVendorOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "status"
+        ],
+        "title": "ReviewVendorOut",
+        "type": "object"
+      },
+      "SendBackIn": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "note": "Our rate for kurtas is 12%. Propose again?"
+          }
+        ],
+        "properties": {
+          "note": {
+            "maxLength": 2000,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "note"
+        ],
+        "title": "SendBackIn",
+        "type": "object"
+      },
+      "SetRateIn": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "commission_bps": 1200,
+            "note": "Agreed on the call."
+          }
+        ],
+        "properties": {
+          "commission_bps": {
+            "maximum": 4000.0,
+            "minimum": 0.0,
+            "title": "Commission Bps",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "commission_bps"
+        ],
+        "title": "SetRateIn",
+        "type": "object"
+      },
+      "StatusEventOut": {
+        "properties": {
+          "actor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "actor_type": {
+            "title": "Actor Type",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "from_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Status"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "to_status": {
+            "title": "To Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_status",
+          "to_status",
+          "actor_type",
+          "actor_id",
+          "reason",
+          "created_at"
+        ],
+        "title": "StatusEventOut",
+        "type": "object"
+      },
+      "StoreDetailsOut": {
+        "properties": {
+          "brand_name": {
+            "title": "Brand Name",
+            "type": "string"
+          },
+          "business": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Business",
+            "type": "object"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "complete": {
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact"
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery"
+          },
+          "instagram_or_website": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instagram Or Website"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "pay_on_delivery": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "boolean"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pay On Delivery"
+          },
+          "payout": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payout"
+          },
+          "returns": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returns"
+          },
+          "sells": {
+            "anyOf": [
+              {
+                "enum": [
+                  "women",
+                  "men",
+                  "both"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sells"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "brand_name",
+          "sells",
+          "city",
+          "instagram_or_website",
+          "contact",
+          "delivery",
+          "returns",
+          "pay_on_delivery",
+          "payout",
+          "business",
+          "missing",
+          "complete",
+          "updated_at"
+        ],
+        "title": "StoreDetailsOut",
+        "type": "object"
+      },
+      "SummaryAlertOut": {
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SummaryLinkOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "tone": {
+            "enum": [
+              "warning",
+              "error"
+            ],
+            "title": "Tone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tone",
+          "text"
+        ],
+        "title": "SummaryAlertOut",
+        "type": "object"
+      },
+      "SummaryBadgeOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "label"
+        ],
+        "title": "SummaryBadgeOut",
+        "type": "object"
+      },
+      "SummaryFigureOut": {
+        "properties": {
+          "hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "unit": {
+            "default": "count",
+            "enum": [
+              "count",
+              "minutes"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "label",
+          "value"
+        ],
+        "title": "SummaryFigureOut",
+        "type": "object"
+      },
+      "SummaryLinkOut": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "path"
+        ],
+        "title": "SummaryLinkOut",
+        "type": "object"
+      },
+      "SummarySectionOut": {
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SummaryLinkOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "alert": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SummaryAlertOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "figures": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryFigureOut"
+            },
+            "title": "Figures",
+            "type": "array"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "figures"
+        ],
+        "title": "SummarySectionOut",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VendorDetailOut": {
+        "properties": {
+          "commission": {
+            "$ref": "#/components/schemas/CommissionOut"
+          },
+          "contact_name": {
+            "title": "Contact Name",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/StatusEventOut"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "phone": {
+            "title": "Phone",
+            "type": "string"
+          },
+          "price_max_paise": {
+            "title": "Price Max Paise",
+            "type": "integer"
+          },
+          "price_min_paise": {
+            "title": "Price Min Paise",
+            "type": "integer"
+          },
+          "product_type": {
+            "title": "Product Type",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_changed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Changed At"
+          },
+          "status_changed_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Changed By"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
+          },
+          "website_or_instagram": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Or Instagram"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "email",
+          "phone",
+          "contact_name",
+          "product_type",
+          "website_or_instagram",
+          "price_min_paise",
+          "price_max_paise",
+          "status",
+          "status_reason",
+          "status_changed_at",
+          "status_changed_by",
+          "created_at",
+          "commission",
+          "events"
+        ],
+        "title": "VendorDetailOut",
+        "type": "object"
+      },
+      "VendorOut": {
+        "properties": {
+          "commission": {
+            "$ref": "#/components/schemas/CommissionOut"
+          },
+          "contact_name": {
+            "title": "Contact Name",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "phone": {
+            "title": "Phone",
+            "type": "string"
+          },
+          "price_max_paise": {
+            "title": "Price Max Paise",
+            "type": "integer"
+          },
+          "price_min_paise": {
+            "title": "Price Min Paise",
+            "type": "integer"
+          },
+          "product_type": {
+            "title": "Product Type",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_changed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Changed At"
+          },
+          "status_changed_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Changed By"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
+          },
+          "website_or_instagram": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Or Instagram"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "email",
+          "phone",
+          "contact_name",
+          "product_type",
+          "website_or_instagram",
+          "price_min_paise",
+          "price_max_paise",
+          "status",
+          "status_reason",
+          "status_changed_at",
+          "status_changed_by",
+          "created_at",
+          "commission"
+        ],
+        "title": "VendorOut",
+        "type": "object"
+      },
+      "VendorPageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/VendorOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "VendorPageOut",
+        "type": "object"
+      },
+      "VersionOut": {
+        "properties": {
+          "content": {
+            "additionalProperties": true,
+            "title": "Content",
+            "type": "object"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "published_at",
+          "content"
+        ],
+        "title": "VersionOut",
+        "type": "object"
+      },
+      "WaitingOut": {
+        "properties": {
+          "application": {
+            "title": "Application",
+            "type": "integer"
+          },
+          "brand_page": {
+            "title": "Brand Page",
+            "type": "integer"
+          },
+          "over_24h": {
+            "title": "Over 24H",
+            "type": "integer"
+          },
+          "product": {
+            "title": "Product",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "product",
+          "brand_page",
+          "application",
+          "over_24h"
+        ],
+        "title": "WaitingOut",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "vendor-api (admin)",
+    "version": "0.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/health": {
+      "get": {
+        "description": "Liveness: the process is up. Does not touch any dependency.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/ready": {
+      "get": {
+        "description": "Readiness: every dependency answers. 503 if any check fails or times out.",
+        "operationId": "ready_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ready",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/v1/admin/me": {
+      "get": {
+        "description": "The admin behind the token: the id and the roles in it. Nothing is looked up, because\nadmins live in identity-api; this is the first admin endpoint and a check for Phase 3.",
+        "operationId": "me_v1_admin_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMe"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Me",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/v1/admin/module-summary": {
+      "get": {
+        "description": "What Shazlo One shows for the Vendors module: the badge (everything waiting), a Vendors\ncard and a Publishing card with figures that open the module's pages, and the latest\ndecisions. The same counts as `GET /v1/admin/summary`, in the shell's shared shape.",
+        "operationId": "get_module_summary_v1_admin_module_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModuleSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Module Summary",
+        "tags": [
+          "admin-summary"
+        ]
+      }
+    },
+    "/v1/admin/outbox": {
+      "get": {
+        "description": "Outbox events, paged, without their bodies. Newest first; with no `status` filter the\n`dead` ones come first, since they need a person.",
+        "operationId": "list_outbox_v1_admin_outbox_get",
+        "parameters": [
+          {
+            "description": "Only events in this status",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "pending",
+                    "sending",
+                    "sent",
+                    "dead"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only events in this status",
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "aggregate_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "brand_profile",
+                    "product",
+                    "vendor"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Aggregate Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "vendor_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Vendor Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 100000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboxPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Outbox",
+        "tags": [
+          "admin-outbox"
+        ]
+      }
+    },
+    "/v1/admin/outbox/stats": {
+      "get": {
+        "description": "How many events are `pending`, `sending` and `dead`, and how long the oldest due one has\nwaited (also on `/ready`, for monitoring).",
+        "operationId": "get_stats_v1_admin_outbox_stats_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboxStatsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Stats",
+        "tags": [
+          "admin-outbox"
+        ]
+      }
+    },
+    "/v1/admin/outbox/{event_id}": {
+      "get": {
+        "description": "One event with its body and what happened to it.",
+        "operationId": "get_event_v1_admin_outbox__event_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboxEventDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Event",
+        "tags": [
+          "admin-outbox"
+        ]
+      }
+    },
+    "/v1/admin/outbox/{event_id}/retry": {
+      "post": {
+        "description": "Puts a `dead` event back to `pending` (its attempts start again, and the log records the\nadmin). The worker sends it in its turn: it never overtakes an earlier version of the same\naggregate that is still waiting. `409 invalid_outbox_status` for any other status.",
+        "operationId": "retry_event_v1_admin_outbox__event_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboxEventDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retry Event",
+        "tags": [
+          "admin-outbox"
+        ]
+      }
+    },
+    "/v1/admin/reviews": {
+      "get": {
+        "description": "The queue: what vendors have submitted, filterable and paged. Pending reviews come oldest\nfirst, so the one that has waited longest is on top; other statuses come newest first.",
+        "operationId": "list_reviews_v1_admin_reviews_get",
+        "parameters": [
+          {
+            "description": "`pending` (default), `approved`, `rejected`, `withdrawn` or `all`",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "pending",
+              "description": "`pending` (default), `approved`, `rejected`, `withdrawn` or `all`",
+              "enum": [
+                "pending",
+                "approved",
+                "rejected",
+                "withdrawn",
+                "all"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "subject",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ReviewSubject"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subject"
+            }
+          },
+          {
+            "in": "query",
+            "name": "vendor_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Vendor Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 100000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Reviews",
+        "tags": [
+          "admin-reviews"
+        ]
+      }
+    },
+    "/v1/admin/reviews/{review_id}": {
+      "get": {
+        "description": "One review with the version under review, the version it is compared with, **the fields\nthat changed**, and its audit trail.",
+        "operationId": "get_review_v1_admin_reviews__review_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Review",
+        "tags": [
+          "admin-reviews"
+        ]
+      }
+    },
+    "/v1/admin/reviews/{review_id}/approve": {
+      "post": {
+        "description": "Approves a pending review: a brand profile version becomes the published one (the old one\nis superseded), a product revision becomes the live revision. All in one transaction, with one\naudit event naming the reviewer from the token and what changed. `409 stale_review` if the\nsubmission is not the `version` the reviewer saw (or is no longer waiting, or a newer profile\nversion is already live); `409 review_already_decided` if it was decided first.",
+        "operationId": "approve_review_v1_admin_reviews__review_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Approve Review",
+        "tags": [
+          "admin-reviews"
+        ]
+      }
+    },
+    "/v1/admin/reviews/{review_id}/reject": {
+      "post": {
+        "description": "Rejects a pending review. A reason is required (`422` without one) and the vendor sees it.\nSame `409`s as approving. A live product stays live: only the rejected revision is turned\ndown.",
+        "operationId": "reject_review_v1_admin_reviews__review_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reject Review",
+        "tags": [
+          "admin-reviews"
+        ]
+      }
+    },
+    "/v1/admin/summary": {
+      "get": {
+        "description": "What waits for a reviewer, what was decided today (midnight IST), the outbox in four\nnumbers, and the latest decisions. Every figure is a count, so the cost does not grow with\nthe queue.",
+        "operationId": "get_summary_v1_admin_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Summary",
+        "tags": [
+          "admin-summary"
+        ]
+      }
+    },
+    "/v1/admin/vendors": {
+      "get": {
+        "description": "Vendors, paged. Pending applications come oldest first, so the one that has waited\nlongest is on top; other statuses come newest first.",
+        "operationId": "list_vendors_v1_admin_vendors_get",
+        "parameters": [
+          {
+            "description": "`pending` (default), `approved`, `rejected`, `suspended` or `all`",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "pending",
+              "description": "`pending` (default), `approved`, `rejected`, `suspended` or `all`",
+              "enum": [
+                "pending",
+                "approved",
+                "rejected",
+                "suspended",
+                "all"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Part of the name, slug or email",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Part of the name, slug or email",
+              "title": "Q"
+            }
+          },
+          {
+            "description": "Only brands whose commission is in this state (`proposed`: to review)",
+            "in": "query",
+            "name": "commission",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CommissionState"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only brands whose commission is in this state (`proposed`: to review)",
+              "title": "Commission"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 100000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VendorPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Vendors",
+        "tags": [
+          "admin-vendors"
+        ]
+      }
+    },
+    "/v1/admin/vendors/{vendor_id}": {
+      "get": {
+        "description": "One vendor with its status history and commission.",
+        "operationId": "get_vendor_v1_admin_vendors__vendor_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vendor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vendor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VendorDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Vendor",
+        "tags": [
+          "admin-vendors"
+        ]
+      }
+    },
+    "/v1/admin/vendors/{vendor_id}/approve": {
+      "post": {
+        "description": "Approves a pending, rejected or suspended vendor, and tells it by email. `409\ninvalid_status_transition` for one that is already approved.",
+        "operationId": "approve_vendor_v1_admin_vendors__vendor_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vendor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vendor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveVendorRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VendorDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Approve Vendor",
+        "tags": [
+          "admin-vendors"
+        ]
+      }
+    },
+    "/v1/admin/vendors/{vendor_id}/commission": {
+      "get": {
+        "description": "A brand's commission. `404` for an unknown vendor.",
+        "operationId": "get_vendor_commission_v1_admin_vendors__vendor_id__commission_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vendor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vendor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommissionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Vendor Commission",
+        "tags": [
+          "admin-commission"
+        ]
+      }
+    },
+    "/v1/admin/vendors/{vendor_id}/commission/approve": {
+      "post": {
+        "description": "Agrees the brand's waiting proposal. `409 no_proposal` when none waits;\n`409 commission_changed` when it is not the `proposed_bps` sent.",
+        "operationId": "approve_commission_v1_admin_vendors__vendor_id__commission_approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vendor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vendor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommissionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Approve Commission",
+        "tags": [
+          "admin-commission"
+        ]
+      }
+    },
+    "/v1/admin/vendors/{vendor_id}/commission/send-back": {
+      "post": {
+        "description": "Sends the waiting proposal back with a note (10 to 600 characters) the brand sees. The\nagreed rate, if any, stays. `409 no_proposal` when none waits.",
+        "operationId": "send_back_commission_v1_admin_vendors__vendor_id__commission_send_back_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vendor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vendor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendBackIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommissionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Send Back Commission",
+        "tags": [
+          "admin-commission"
+        ]
+      }
+    },
+    "/v1/admin/vendors/{vendor_id}/commission/set": {
+      "post": {
+        "description": "Sets the agreed rate directly (for example agreed on a call), whatever was proposed; an\noptional note up to 600 characters. `409 vendor_not_eligible` for a rejected application.",
+        "operationId": "set_commission_v1_admin_vendors__vendor_id__commission_set_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vendor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vendor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetRateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommissionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Commission",
+        "tags": [
+          "admin-commission"
+        ]
+      }
+    },
+    "/v1/admin/vendors/{vendor_id}/reject": {
+      "post": {
+        "description": "Rejects a **pending** vendor (a reason is required, and the vendor is told it). Ends every\nsession of the vendor at once. `409 invalid_status_transition` otherwise: an approved vendor\nis suspended, not rejected.",
+        "operationId": "reject_vendor_v1_admin_vendors__vendor_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vendor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vendor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReasonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VendorDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reject Vendor",
+        "tags": [
+          "admin-vendors"
+        ]
+      }
+    },
+    "/v1/admin/vendors/{vendor_id}/store-details": {
+      "get": {
+        "description": "A vendor's store details as the vendor sees them: payouts masked (bank, last four digits\nor a masked UPI ID), never the number. `404` for an unknown vendor.",
+        "operationId": "get_vendor_store_details_v1_admin_vendors__vendor_id__store_details_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vendor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vendor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreDetailsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Vendor Store Details",
+        "tags": [
+          "admin-vendors"
+        ]
+      }
+    },
+    "/v1/admin/vendors/{vendor_id}/suspend": {
+      "post": {
+        "description": "Suspends an **approved** vendor (a reason is required, and the vendor is told it). Ends\nevery session of the vendor at once: it cannot sign in or refresh, and its access tokens stop\nworking immediately. Approving it again reinstates it. `409 invalid_status_transition`\notherwise.",
+        "operationId": "suspend_vendor_v1_admin_vendors__vendor_id__suspend_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vendor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vendor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReasonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VendorDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Suspend Vendor",
+        "tags": [
+          "admin-vendors"
+        ]
+      }
+    }
+  }
+}

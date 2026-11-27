@@ -49,13 +49,14 @@ describe('phone shell: top bar and menu drawer', () => {
   })
 
   it('gives the drawer the same icons, nesting and amber logo as the sidebar', async () => {
-    const { user } = await renderShell({ route: '/vendors/queue' })
-    await screen.findByTitle('Vendors')
+    const { user } = await renderShell({ route: '/catalogue/queue' })
+    await screen.findByTitle('Catalogue')
     await user.click(menuButton())
     const nav = await screen.findByRole('navigation', { name: 'Shazlo One sections' })
-    for (const name of ['Home', /^Vendors/, 'Review queue', 'All vendors', 'Publishing', 'Admins & roles']) expect(within(nav).getByRole('link', { name }).querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+    await within(nav).findByRole('link', { name: 'Review queue' })
+    for (const name of ['Home', /^Catalogue/, 'Review queue', 'All sellers', 'Publishing', 'Admins & roles']) expect(within(nav).getByRole('link', { name }).querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
     const pages = within(nav).getByRole('link', { name: 'Review queue' }).closest('ul')!
-    expect(pages.closest('li')).toContainElement(within(nav).getByRole('link', { name: /^Vendors/ }))
+    expect(pages.closest('li')).toContainElement(within(nav).getByRole('link', { name: /^Catalogue/ }))
     expect(within(nav).getByRole('link', { name: 'Review queue' })).toHaveAttribute('aria-current', 'page')
     const drawer = screen.getByRole('dialog', { name: 'Menu' })
     expect(within(drawer).getByRole('img', { name: 'Shazlo' })).toHaveAttribute('data-tone', 'amber')
@@ -69,7 +70,7 @@ describe('phone shell: top bar and menu drawer', () => {
     const nav = await screen.findByRole('navigation', { name: 'Shazlo One sections' })
     expect(document.getElementById(menuButton().getAttribute('aria-controls')!)).toContainElement(nav)
     expect(within(nav).getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page')
-    await waitFor(() => expect(within(nav).getByRole('link', { name: /^Vendors\s*, 14 waiting$/ })).toBeInTheDocument())
+    await waitFor(() => expect(within(nav).getByRole('link', { name: /^Catalogue\s*, 14 waiting$/ })).toBeInTheDocument())
     expect(screen.getByText('Naman Sinha')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
 
@@ -101,14 +102,14 @@ describe('phone shell: top bar and menu drawer', () => {
   })
 
   it('shows only the last breadcrumb', async () => {
-    await renderShell({ route: '/vendors/queue' })
-    const iframe = (await screen.findByTitle('Vendors')) as HTMLIFrameElement
-    const send = (data: unknown) => act(() => void window.dispatchEvent(new MessageEvent('message', { data, origin: 'http://localhost:5193', source: iframe.contentWindow })))
-    send(createMessage('ready', { module: 'vendor-admin', supportedVersions: [1], moduleVersion: '0.1.0' }))
+    await renderShell({ route: '/catalogue/queue' })
+    const iframe = (await screen.findByTitle('Catalogue')) as HTMLIFrameElement
+    const send = (data: unknown) => act(() => void window.dispatchEvent(new MessageEvent('message', { data, origin: 'http://catalogue.test', source: iframe.contentWindow })))
+    send(createMessage('ready', { module: 'catalogue', supportedVersions: [1], moduleVersion: '0.1.0' }))
     send(createMessage('title', { path: '/review/product/p_ajrakh', title: 'Ajrakh Block-Print Kurta' }))
     const crumbs = screen.getByRole('navigation', { name: 'Breadcrumb' })
     await waitFor(() => expect(crumbs).toHaveTextContent('Ajrakh Block-Print Kurta'))
-    expect(within(crumbs).queryByRole('link', { name: 'Vendors' })).toBeNull()
+    expect(within(crumbs).queryByRole('link', { name: 'Catalogue' })).toBeNull()
   })
 })
 

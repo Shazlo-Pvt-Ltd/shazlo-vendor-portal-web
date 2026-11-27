@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { modulePath } from './paths'
 
 // ADR 0001: the postMessage protocol between the Shazlo One shell and each module iframe.
 // Both sides drop anything that is not exactly this protocol, from exactly the expected origin and window.
@@ -10,7 +11,6 @@ export const SHELL_VERSIONS = [CURRENT_VERSION] as const
 export const MAX_MESSAGE_BYTES = 64 * 1024
 
 const user = z.object({ id: z.string().min(1), email: z.string(), roles: z.array(z.string()), name: z.string().optional() })
-const modulePath = z.string().regex(/^\/(?!\/)/, 'paths are module-relative')
 
 const shellToModule = {
   auth: z.object({ accessToken: z.string().min(1), expiresAt: z.number().int(), user, locale: z.string().optional() }),
@@ -129,3 +129,9 @@ export function listenAsModule({ shellOrigin, onMessage }: { shellOrigin: string
   window.addEventListener('message', handler)
   return () => window.removeEventListener('message', handler)
 }
+
+// ADR 0011: the module registry, manifests and summaries.
+export * from './manifest'
+export * from './paths'
+export * from './registry'
+export * from './summary'

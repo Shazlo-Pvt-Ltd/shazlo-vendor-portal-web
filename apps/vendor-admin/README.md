@@ -10,6 +10,7 @@ Run it with the shell: see [apps/shazlo-one](../shazlo-one/README.md).
 | Area | Where |
 |---|---|
 | Contract | `openapi/vendor-admin.yaml`: `/api/v1/admin/*` from docs/05 §6; routes marked `x-proposal` need agreeing with vendor-api |
+| In Shazlo One's sidebar | `public/shazlo-module.json` (ADR 0011): the module's title, icon and pages, read by the shell from `/shazlo-module.json` without a token (Vite's dev server sends CORS for localhost; production hosting must allow the shell's origin). `src/app/manifest.test.ts` checks it with the shell's parser and against `src/app/routes.tsx`. The Home cards and badge come from vendor-api's `GET /v1/admin/module-summary` |
 | Runtime | `src/runtime/runtime.tsx`: `ready` on load, token in memory, `token:request` on 401, follows `navigate`, `useModuleTitle` for every screen, `toast` to the shell |
 | Mock | `packages/mock-vendor-api`: MSW handlers in tests, a local HTTP server in the browser so shell and module share one state |
 | Screens | A-04 review queue, A-05 product review, A-06 send back, A-07 brand page review, A-08 vendors, A-09 vendor detail, A-10 publishing |

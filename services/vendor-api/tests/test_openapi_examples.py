@@ -53,7 +53,15 @@ PHASE_3 = (
 
 @pytest.fixture(scope="module")
 def document() -> dict[str, Any]:
-    result: dict[str, Any] = json.loads(build_openapi())
+    """Both apps' documents in one (ADR 0011): the seller's routes and the admin's never overlap,
+    and a schema both use is the same model in both."""
+    seller, admin = json.loads(build_openapi("seller")), json.loads(build_openapi("admin"))
+    result: dict[str, Any] = {
+        "paths": {**seller["paths"], **admin["paths"]},
+        "components": {
+            "schemas": {**seller["components"]["schemas"], **admin["components"]["schemas"]}
+        },
+    }
     return result
 
 

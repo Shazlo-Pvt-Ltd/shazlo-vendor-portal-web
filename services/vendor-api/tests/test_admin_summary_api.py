@@ -39,7 +39,7 @@ def hours_ago(hours: float) -> datetime:
 
 
 async def get(tenants: Tenants, token: str | None = None) -> httpx.Response:
-    tenants.api.app.state.admin_summary = AdminSummaryService(clock=lambda: NOW)
+    tenants.api.admin.state.admin_summary = AdminSummaryService(clock=lambda: NOW)
     return await tenants.api.http.get(SUMMARY, headers=bearer(token or tenants.admin_token))
 
 

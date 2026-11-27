@@ -41,9 +41,10 @@ jobs:
           files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename')
           printf '%s\n' "$files"
           # Unlisted paths run the web jobs. The contract tests read docs/adr/0003-contract, and the
-          # portal's generated API types are checked against services/vendor-api/openapi.json.
+          # portal's generated API types are checked against services/vendor-api/openapi.json
+          # (the seller app) and the admin module's against openapi.admin.json (the admin app).
           web=$( {
-            printf '%s\n' "$files" | grep -E '^docs/adr/0003-contract/|^services/vendor-api/openapi\.json$'
+            printf '%s\n' "$files" | grep -E '^docs/adr/0003-contract/|^services/vendor-api/openapi(\.admin)?\.json$'
             printf '%s\n' "$files" | grep -Ev '^(services/|packages/py-|docker/|docs/)|^docker-compose\.yml$|^\.env\.example$|^\.github/workflows/(services-ci|codeql|footer_removal)\.yml$'
           } || true)
           deps=$(printf '%s\n' "$files" | grep -E '(^|/)package(-lock)?\.json$' || true)

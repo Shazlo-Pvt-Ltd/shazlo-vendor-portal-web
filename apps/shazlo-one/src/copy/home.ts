@@ -1,53 +1,21 @@
-const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
-
+// Home's own words. What a module's cards say comes from that module's summary (ADR 0011).
 export const homeCopy = {
   greeting: (part: 'morning' | 'afternoon' | 'evening', name: string) => `Good ${part}, ${name}`,
   subtitle: 'Here is what is waiting across Shazlo One.',
   retry: 'Try again',
-  vendors: {
-    title: 'Vendors',
-    label: 'Vendor review in numbers',
-    loading: 'Loading vendor figures',
-    openQueue: 'Open review queue',
-    waiting: 'Waiting',
-    waitingBaseline: (products: string, brands: string, applications: string) => `Products ${products} · Brand pages ${brands} · Applications ${applications}`,
-    over24h: 'Waiting over 24 hours',
-    over24hBaseline: 'Oldest first in the queue',
-    decidedToday: 'Decided today',
-    decidedTodayBaseline: 'Approved or sent back since midnight',
-    median: 'Median time to decision',
-    medianBaseline: 'From submission to decision',
-    error: 'Vendor figures did not load',
+  module: {
+    loading: (title: string) => `Loading ${title} figures`,
+    error: (title: string) => `${title} figures did not load`,
+    open: (title: string) => `Open ${title}`,
+    noSummary: { body: 'This module has no figures to show here. Open it to see its work.' },
   },
-  publishing: {
-    title: 'Publishing to the app',
-    label: 'Publishing in numbers',
-    loading: 'Loading publishing figures',
-    delivered: 'Delivered in the last 24 h',
-    deliveredBaseline: 'Reached the Shazlo app',
-    waiting: 'Waiting',
-    waitingBaseline: 'Sent within a minute',
-    retrying: 'Retrying',
-    retryingBaseline: 'The app did not answer yet',
-    failed: 'Failed',
-    failedBaseline: 'Needs a look',
-    failedBaselineNone: 'Nothing failed',
-    failedTitle: (n: number) => `${n} ${plural(n, 'event did', 'events did')} not reach the app. ${plural(n, 'It retries', 'They retry')} automatically, or you can retry ${plural(n, 'it', 'them')} now.`,
-    open: 'Open publishing',
-  },
-  decisions: {
-    title: 'Recent decisions',
-    loading: 'Loading recent decisions',
-    approved: 'Approved',
-    sentBack: 'Sent back',
+  activity: {
     by: (name: string) => `by ${name}`,
-    kind: { product: 'Product', brand_page: 'Brand page', application: 'Application', commission: 'Commission' } as Record<string, string>,
-    emptyTitle: 'No decisions yet',
-    emptyBody: 'Approvals and send-backs show here as reviewers make them.',
+    // Where an admin's name cannot be found: the admin was deleted, never recorded, or identity-api did not answer.
+    formerAdmin: 'a former admin',
   },
   noModules: {
     title: 'No modules for your role yet',
     body: 'Your account has no module roles, so there is nothing to review here. Ask a super admin to add the role you need in Admins & roles.',
   },
 } as const
-

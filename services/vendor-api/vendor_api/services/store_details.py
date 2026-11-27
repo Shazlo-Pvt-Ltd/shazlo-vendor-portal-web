@@ -367,19 +367,29 @@ def view_of(vendor: Vendor, row: StoreDetails | None) -> StoreDetailsView:
 # --- saving --------------------------------------------------------------------------------
 
 
+async def stored_row(db: AsyncSession, vendor_id: uuid.UUID) -> StoreDetails | None:
+    return await db.scalar(
+        select(StoreDetails)
+        .where(StoreDetails.vendor_id == vendor_id)
+        .execution_options(populate_existing=True)
+    )
+
+
+async def read_store_details(db: AsyncSession, vendor: Vendor) -> StoreDetailsView:
+    """A vendor's store details, payout masked. Needs no payout key, so the admin app
+    (which never holds one) reads them too."""
+    return view_of(vendor, await stored_row(db, vendor.id))
+
+
 class StoreDetailsService:
     def __init__(self, cipher: PayoutCipher) -> None:
         self._cipher = cipher
 
     async def _row(self, db: AsyncSession, vendor_id: uuid.UUID) -> StoreDetails | None:
-        return await db.scalar(
-            select(StoreDetails)
-            .where(StoreDetails.vendor_id == vendor_id)
-            .execution_options(populate_existing=True)
-        )
+        return await stored_row(db, vendor_id)
 
     async def get(self, db: AsyncSession, vendor: Vendor) -> StoreDetailsView:
-        return view_of(vendor, await self._row(db, vendor.id))
+        return await read_store_details(db, vendor)
 
     async def _locked_row(self, db: AsyncSession, vendor_id: uuid.UUID) -> StoreDetails:
         """The vendor's row, created if missing, locked until the commit: two saves of the same

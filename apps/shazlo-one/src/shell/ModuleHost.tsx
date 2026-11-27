@@ -5,7 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useLocation, useNavigate } from 'react-router'
 import { useAppContext } from '../api/context'
 import { paths } from '../app/paths'
-import type { ShellModule } from '../app/registry'
+import type { ResolvedModule } from '../app/registry'
 import { useCrumb } from '../app/crumbs'
 import { shellCopy } from '../copy/shell'
 import { useSession } from '../session/useSession'
@@ -19,7 +19,7 @@ type State = { kind: 'loading' } | { kind: 'ready' } | { kind: 'failed' } | { ki
 
 // Hosts one module in an iframe and speaks ADR 0001 with it: ready → auth, token refresh, title and
 // URL sync, toasts, logout, and the 10-second / three-attempt failure handling.
-export function ModuleHost({ module }: { module: ShellModule }) {
+export function ModuleHost({ module }: { module: ResolvedModule }) {
   const { session } = useAppContext()
   const { admin, signOut } = useSession()
   const notify = useSnackbar()
@@ -35,7 +35,7 @@ export function ModuleHost({ module }: { module: ShellModule }) {
   const sendAuthRef = useRef<(replyTo?: string, force?: boolean) => Promise<void>>(async () => {})
   useCrumb(title)
 
-  const pathInModule = location.pathname.slice(module.basePath.length) || module.links[0]!.path
+  const pathInModule = location.pathname.slice(module.basePath.length) || module.home.path
   const target = pathInModule + location.search
 
   const send = useCallback((message: Message) => {

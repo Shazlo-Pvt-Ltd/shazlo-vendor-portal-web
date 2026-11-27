@@ -1,13 +1,16 @@
 import { createMessage } from '@shazlo/shell-protocol'
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { http, HttpResponse } from 'msw'
 import { ADMIN_ID } from '../mocks/identity'
+import { catalogue } from '../test/modules'
 import { renderShell } from '../test/render'
+import { server } from '../test/server'
 
-const MODULE_ORIGIN = 'http://localhost:5193'
+const MODULE_ORIGIN = 'http://catalogue.test'
 
 function frame() {
-  return screen.getByTitle('Vendors') as HTMLIFrameElement
+  return screen.getByTitle('Catalogue') as HTMLIFrameElement
 }
 
 // Sends a message as if it came from the module iframe.
@@ -18,7 +21,7 @@ function fromModule(data: unknown, { origin = MODULE_ORIGIN, source }: { origin?
 }
 
 function ready() {
-  const msg = createMessage('ready', { module: 'vendor-admin', supportedVersions: [1], moduleVersion: '0.1.0' })
+  const msg = createMessage('ready', { module: 'catalogue', supportedVersions: [1], moduleVersion: '0.1.0' })
   fromModule(msg)
   return msg
 }
@@ -56,9 +59,9 @@ describe('A-01 sign in', () => {
   })
 
   it('remembers where a signed-out admin was going', async () => {
-    const { router } = await renderShell({ route: '/vendors/publishing', as: null })
+    const { router } = await renderShell({ route: '/catalogue/publishing', as: null })
     await waitFor(() => expect(router.state.location.pathname).toBe('/sign-in'))
-    expect(new URLSearchParams(router.state.location.search).get('next')).toBe('/vendors/publishing')
+    expect(new URLSearchParams(router.state.location.search).get('next')).toBe('/catalogue/publishing')
   })
 })
 
@@ -67,27 +70,32 @@ describe('navy sidebar', () => {
     await renderShell({ route: '/' })
     const nav = await screen.findByRole('navigation', { name: 'Shazlo One sections' })
     expect(within(nav).getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page')
-    await waitFor(() => expect(within(nav).getByRole('link', { name: /^Vendors\s*, 14 waiting$/ })).toBeInTheDocument())
-    for (const name of ['Review queue', 'All vendors', 'Publishing', 'Admins & roles']) expect(within(nav).getByRole('link', { name })).toBeInTheDocument()
+    await waitFor(() => expect(within(nav).getByRole('link', { name: /^Catalogue\s*, 14 waiting$/ })).toBeInTheDocument())
+    // Module pages come from each module's manifest, which arrives after the sidebar is drawn.
+    for (const name of ['Review queue', 'All sellers', 'Publishing', 'Drafts', 'Admins & roles']) expect(await within(nav).findByRole('link', { name })).toBeInTheDocument()
+    // Each module's badge comes from its own summary, with its own words.
+    expect(within(nav).getByRole('link', { name: /^Campaigns\s*, 3 to approve$/ })).toBeInTheDocument()
   })
 
-  it('gives every link an icon and nests the Vendors pages under Vendors, on a guide line', async () => {
-    await renderShell({ route: '/vendors/publishing' })
+  it('gives every link an icon and nests each module page under its module, on a guide line', async () => {
+    await renderShell({ route: '/catalogue/publishing' })
     const nav = await screen.findByRole('navigation', { name: 'Shazlo One sections' })
-    for (const name of ['Home', /^Vendors/, 'Review queue', 'All vendors', 'Publishing', 'Admins & roles']) {
+    // The pages come from the module's manifest, which arrives after the sidebar is drawn.
+    await within(nav).findByRole('link', { name: 'Review queue' })
+    for (const name of ['Home', /^Catalogue/, 'Review queue', 'All sellers', 'Publishing', 'Admins & roles']) {
       const icon = within(nav).getByRole('link', { name }).querySelector('svg')
       expect(icon, String(name)).toHaveAttribute('aria-hidden', 'true')
       expect(icon).toHaveAttribute('stroke-width', '1.75')
     }
-    const vendors = within(nav).getByRole('link', { name: /^Vendors/ })
+    const parent = within(nav).getByRole('link', { name: /^Catalogue/ })
     const pages = within(nav).getByRole('link', { name: 'Review queue' }).closest('ul')!
-    expect(pages).not.toContainElement(vendors)
-    expect(pages.closest('li')).toContainElement(vendors)
-    expect(within(pages).getAllByRole('link').map((a) => a.textContent)).toEqual(['Review queue', 'All vendors', 'Publishing'])
+    expect(pages).not.toContainElement(parent)
+    expect(pages.closest('li')).toContainElement(parent)
+    expect(within(pages).getAllByRole('link').map((a) => a.textContent)).toEqual(['Review queue', 'All sellers', 'Publishing'])
     expect(getComputedStyle(pages).borderLeftWidth).toBe('1px')
-    // The page you are on is the one marked current; Vendors itself is the parent, not the page.
+    // The page you are on is the one marked current; the module itself is the parent, not the page.
     expect(within(nav).getByRole('link', { name: 'Publishing' })).toHaveAttribute('aria-current', 'page')
-    for (const name of ['Home', /^Vendors/, 'Review queue', 'All vendors', 'Admins & roles']) expect(within(nav).getByRole('link', { name })).not.toHaveAttribute('aria-current')
+    for (const name of ['Home', /^Catalogue/, 'Review queue', 'All sellers', 'Admins & roles']) expect(within(nav).getByRole('link', { name })).not.toHaveAttribute('aria-current')
   })
 
   it('draws the logo in amber on the navy sidebar, with no colour filter', async () => {
@@ -101,14 +109,17 @@ describe('navy sidebar', () => {
   it('reaches every sidebar link from the keyboard, in order', async () => {
     const { user } = await renderShell({ route: '/' })
     const nav = await screen.findByRole('navigation', { name: 'Shazlo One sections' })
-    await waitFor(() => expect(within(nav).getByRole('link', { name: /^Vendors\s*, 14 waiting$/ })).toBeInTheDocument())
+    await waitFor(() => expect(within(nav).getByRole('link', { name: /^Catalogue\s*, 14 waiting$/ })).toBeInTheDocument())
+    await within(nav).findByRole('link', { name: 'Review queue' })
+    await within(nav).findByRole('link', { name: 'Drafts' })
+    await within(nav).findByRole('link', { name: /^Campaigns\s*, 3 to approve$/ })
     const order = within(nav).getAllByRole('link')
     order[0]!.focus()
     for (const link of order.slice(1)) {
       await user.tab()
       expect(link).toHaveFocus()
     }
-    expect(order.map((a) => a.textContent?.replace(/\d+$/, '').replace(/, \d+ waiting/, ''))).toEqual(['Home', 'Vendors', 'Review queue', 'All vendors', 'Publishing', 'Admins & roles'])
+    expect(order.map((a) => a.textContent?.replace(/\d+$/, '').replace(/, \d+ .*$/, ''))).toEqual(['Home', 'Catalogue', 'Review queue', 'All sellers', 'Publishing', 'Campaigns', 'Drafts', 'Admins & roles'])
   })
 
   it('hides administration from reviewers and blocks the page', async () => {
@@ -129,17 +140,17 @@ describe('navy sidebar', () => {
 
 describe('module host (ADR 0001)', () => {
   it('frames the module with the documented sandbox and loads the deep link', async () => {
-    await renderShell({ route: '/vendors/vendors?status=applied' })
-    const iframe = await screen.findByTitle('Vendors')
-    expect(iframe.getAttribute('src')).toBe('http://localhost:5193/vendors?status=applied')
+    await renderShell({ route: '/catalogue/sellers?status=applied' })
+    const iframe = await screen.findByTitle('Catalogue')
+    expect(iframe.getAttribute('src')).toBe('http://catalogue.test/sellers?status=applied')
     expect(iframe.getAttribute('sandbox')).toBe('allow-scripts allow-same-origin allow-forms allow-downloads')
     expect(iframe.getAttribute('referrerpolicy')).toBe('no-referrer')
-    expect(screen.getByRole('status', { name: 'Loading Vendors' })).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Loading Catalogue' })).toBeInTheDocument()
   })
 
-  it('answers ready with auth: a vendor-api token and the admin, sent only to the module origin', async () => {
-    await renderShell({ route: '/vendors/queue' })
-    await screen.findByTitle('Vendors')
+  it('answers ready with auth: a token for the module audience and the admin, sent only to the module origin', async () => {
+    await renderShell({ route: '/catalogue/queue' })
+    await screen.findByTitle('Catalogue')
     const post = vi.spyOn(frame().contentWindow!, 'postMessage')
     const msg = ready()
     await waitFor(() => expect(post).toHaveBeenCalled())
@@ -147,53 +158,53 @@ describe('module host (ADR 0001)', () => {
     expect(origin).toBe(MODULE_ORIGIN)
     expect(auth).toMatchObject({ protocol: 'shazlo-one', type: 'auth', replyTo: msg.id, payload: { user: { email: 'naman@shazlo.store', roles: ['super_admin'] } } })
     expect((auth as { payload: { accessToken: string } }).payload.accessToken).toMatch(new RegExp(`^mock\\.vendor-api\\.${ADMIN_ID.naman}\\.`))
-    await waitFor(() => expect(screen.queryByRole('status', { name: 'Loading Vendors' })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('status', { name: 'Loading Catalogue' })).toBeNull())
   })
 
   it('ignores messages from another origin or another window', async () => {
-    await renderShell({ route: '/vendors/queue' })
-    await screen.findByTitle('Vendors')
+    await renderShell({ route: '/catalogue/queue' })
+    await screen.findByTitle('Catalogue')
     const post = vi.spyOn(frame().contentWindow!, 'postMessage')
-    const msg = createMessage('ready', { module: 'vendor-admin', supportedVersions: [1], moduleVersion: '0.1.0' })
+    const msg = createMessage('ready', { module: 'catalogue', supportedVersions: [1], moduleVersion: '0.1.0' })
     fromModule(msg, { origin: 'https://evil.example' })
     fromModule(msg, { source: window })
     await new Promise((r) => setTimeout(r, 50))
     expect(post).not.toHaveBeenCalled()
-    expect(screen.getByRole('status', { name: 'Loading Vendors' })).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Loading Catalogue' })).toBeInTheDocument()
   })
 
   it('syncs the module title into the breadcrumb, tab title and URL', async () => {
-    const { router } = await renderShell({ route: '/vendors/queue' })
-    await screen.findByTitle('Vendors')
+    const { router } = await renderShell({ route: '/catalogue/queue' })
+    await screen.findByTitle('Catalogue')
     ready()
     fromModule(createMessage('title', { path: '/review/product/p_ajrakh', title: 'Ajrakh Block-Print Kurta' }))
-    await waitFor(() => expect(router.state.location.pathname).toBe('/vendors/review/product/p_ajrakh'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/catalogue/review/product/p_ajrakh'))
     expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('Ajrakh Block-Print Kurta')
-    expect(document.title).toBe('Ajrakh Block-Print Kurta · Vendors · Shazlo One')
+    expect(document.title).toBe('Ajrakh Block-Print Kurta · Catalogue · Shazlo One')
   })
 
   it('moves the module with navigate when a sidebar link is picked', async () => {
-    const { user } = await renderShell({ route: '/vendors/queue' })
-    await screen.findByTitle('Vendors')
+    const { user } = await renderShell({ route: '/catalogue/queue' })
+    await screen.findByTitle('Catalogue')
     ready()
     fromModule(createMessage('title', { path: '/queue', title: 'Review queue' }))
     const post = vi.spyOn(frame().contentWindow!, 'postMessage')
-    await user.click(screen.getByRole('link', { name: 'Publishing' }))
+    await user.click(await screen.findByRole('link', { name: 'Publishing' }))
     await waitFor(() => expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'navigate', payload: { path: '/publishing' } }), MODULE_ORIGIN))
-    expect(frame().getAttribute('src')).toBe('http://localhost:5193/queue')
+    expect(frame().getAttribute('src')).toBe('http://catalogue.test/queue')
   })
 
   it('shows module toasts in the shell', async () => {
-    await renderShell({ route: '/vendors/queue' })
-    await screen.findByTitle('Vendors')
+    await renderShell({ route: '/catalogue/queue' })
+    await screen.findByTitle('Catalogue')
     ready()
     fromModule(createMessage('toast', { level: 'success', message: 'Approved. Publishing to the app.' }))
     expect(await screen.findByText('Approved. Publishing to the app.')).toBeInTheDocument()
   })
 
   it('answers token:request with a fresh token, at most once every 30 seconds', async () => {
-    await renderShell({ route: '/vendors/queue' })
-    await screen.findByTitle('Vendors')
+    await renderShell({ route: '/catalogue/queue' })
+    await screen.findByTitle('Catalogue')
     const post = vi.spyOn(frame().contentWindow!, 'postMessage')
     ready()
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
@@ -206,34 +217,104 @@ describe('module host (ADR 0001)', () => {
   })
 
   it('signs out when the module asks to', async () => {
-    const { router } = await renderShell({ route: '/vendors/queue' })
-    await screen.findByTitle('Vendors')
+    const { router } = await renderShell({ route: '/catalogue/queue' })
+    await screen.findByTitle('Catalogue')
     ready()
     fromModule(createMessage('logout', {}))
     await waitFor(() => expect(router.state.location.pathname).toBe('/sign-in'))
   })
 
   it('refuses a module version it does not support', async () => {
-    await renderShell({ route: '/vendors/queue' })
-    await screen.findByTitle('Vendors')
+    await renderShell({ route: '/catalogue/queue' })
+    await screen.findByTitle('Catalogue')
     const post = vi.spyOn(frame().contentWindow!, 'postMessage')
-    fromModule(createMessage('ready', { module: 'vendor-admin', supportedVersions: [9], moduleVersion: '9.0.0' }))
-    expect(await screen.findByRole('heading', { name: 'Vendors 9.0.0 needs a newer Shazlo One' })).toBeInTheDocument()
+    fromModule(createMessage('ready', { module: 'catalogue', supportedVersions: [9], moduleVersion: '9.0.0' }))
+    expect(await screen.findByRole('heading', { name: 'Catalogue 9.0.0 needs a newer Shazlo One' })).toBeInTheDocument()
     expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'error', payload: expect.objectContaining({ code: 'version_unsupported' }) }), MODULE_ORIGIN)
   })
 
   it('shows Try again after 10 silent seconds, and gives up after three attempts', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
-    const { user } = await renderShell({ route: '/vendors/queue' })
-    await screen.findByTitle('Vendors')
+    const { user } = await renderShell({ route: '/catalogue/queue' })
+    await screen.findByTitle('Catalogue')
     for (const attempt of [1, 2]) {
       act(() => vi.advanceTimersByTime(10_000))
-      expect(await screen.findByRole('heading', { name: 'Vendors did not load' })).toBeInTheDocument()
+      expect(await screen.findByRole('heading', { name: 'Catalogue did not load' })).toBeInTheDocument()
       expect(screen.getByText(`Attempt ${attempt} of 3`)).toBeInTheDocument()
       await user.click(screen.getByRole('button', { name: 'Try again' }))
     }
     act(() => vi.advanceTimersByTime(10_000))
-    expect(await screen.findByRole('heading', { name: 'Vendors is unavailable right now' })).toBeInTheDocument()
-    expect(screen.queryByTitle('Vendors')).toBeNull()
+    expect(await screen.findByRole('heading', { name: 'Catalogue is unavailable right now' })).toBeInTheDocument()
+    expect(screen.queryByTitle('Catalogue')).toBeNull()
+  })
+})
+
+// ADR 0011: a module that is down (its web app and its backend) takes down only itself.
+describe('a module that is down', () => {
+  function catalogueDown() {
+    server.use(
+      http.get(catalogue.manifestUrl, () => HttpResponse.error()),
+      http.get(catalogue.entry.summaryUrl!, () => HttpResponse.error()),
+    )
+  }
+
+  it('keeps sign-in, Home, Admins and change-password working, and marks only that module', async () => {
+    catalogueDown()
+    const { user, router } = await renderShell({ route: '/sign-in', as: null })
+    await user.type(await screen.findByLabelText('Work email'), 'naman@shazlo.store')
+    await user.type(screen.getByLabelText('Password'), 'shazlo-one-2026')
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+
+    // Home: the module's own card says it did not load; the other module's card is untouched.
+    const failed = (await screen.findByText('Catalogue figures did not load')).closest<HTMLElement>('[role="alert"]')!
+    expect(failed).toHaveTextContent('The module did not answer.')
+    const campaigns = await screen.findByRole('region', { name: 'Campaigns' })
+    expect(within(await within(campaigns).findByRole('group', { name: 'Drafts to approve' })).getByText('3')).toBeInTheDocument()
+
+    // Sidebar: the module keeps its registry title, with no pages and no badge (never a 0).
+    const nav = screen.getByRole('navigation', { name: 'Shazlo One sections' })
+    await waitFor(() => expect(within(nav).getByRole('link', { name: /^Campaigns\s*, 3 to approve$/ })).toBeInTheDocument())
+    expect(within(nav).getByRole('link', { name: 'Catalogue' })).toHaveAttribute('href', '/catalogue/')
+    expect(within(nav).queryByRole('link', { name: 'Review queue' })).toBeNull()
+
+    await user.click(within(nav).getByRole('link', { name: 'Admins & roles' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Admins & roles' })).toBeInTheDocument()
+    await act(() => router.navigate('/change-password'))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Choose your own password' })).toBeInTheDocument()
+  })
+
+  it('still frames the module under its registry title, and gives up on it after three silent attempts', async () => {
+    catalogueDown()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const { user, router } = await renderShell({ route: '/catalogue/queue' })
+    expect((await screen.findByTitle('Catalogue')).getAttribute('src')).toBe('http://catalogue.test/queue')
+    for (let attempt = 1; attempt < 3; attempt++) {
+      act(() => vi.advanceTimersByTime(10_000))
+      await user.click(await screen.findByRole('button', { name: 'Try again' }))
+    }
+    act(() => vi.advanceTimersByTime(10_000))
+    expect(await screen.findByRole('heading', { name: 'Catalogue is unavailable right now' })).toBeInTheDocument()
+    expect(screen.getByText(/The rest of Shazlo One still works/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Back to Home' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+    expect(await screen.findByRole('region', { name: 'Campaigns' })).toBeInTheDocument()
+  })
+
+  it('shows no badge while a summary is slow, and no badge once it fails', async () => {
+    let answer: 'wait' | 'fail' = 'wait'
+    server.use(
+      http.get(catalogue.entry.summaryUrl!, async () => {
+        if (answer === 'fail') return HttpResponse.json({ error: { code: 'internal_error', message: 'Down', request_id: 'r' } }, { status: 500 })
+        await new Promise(() => {})
+      }),
+    )
+    const { context } = await renderShell({ route: '/admins' })
+    const nav = await screen.findByRole('navigation', { name: 'Shazlo One sections' })
+    await waitFor(() => expect(within(nav).getByRole('link', { name: /^Campaigns\s*, 3 to approve$/ })).toBeInTheDocument())
+    expect(within(nav).getByRole('link', { name: /^Catalogue/ })).toHaveAccessibleName('Catalogue')
+    answer = 'fail'
+    await act(() => context.queryClient.refetchQueries({ queryKey: ['module-summary', 'catalogue'] }))
+    expect(within(nav).getByRole('link', { name: /^Catalogue/ })).toHaveAccessibleName('Catalogue')
   })
 })

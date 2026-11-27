@@ -1,44 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAppContext } from './context'
 import type { components } from './identity'
-import { reviewerIds, toHomeSummary, type HomeSummary } from './summary'
 
 type S = components['schemas']
 
 export const keys = {
-  summary: ['vendor-summary'] as const,
   admins: (q: AdminFilters) => ['admins', q] as const,
   allAdmins: ['admins'] as const,
   roles: ['roles'] as const,
 }
 
 export type AdminFilters = { q?: string; role?: string; is_active?: boolean }
-
-// Counts and recent decisions for Home and the sidebar badge, from vendor-api with an exchanged token.
-// A decision names its admin by id; the names come from identity-api, and a lookup that fails or
-// misses an id leaves "a former admin" there rather than failing the figures.
-export function useVendorSummary(enabled = true) {
-  const { vendorApi, identity } = useAppContext()
-  return useQuery<HomeSummary>({
-    queryKey: keys.summary,
-    queryFn: async () => {
-      const wire = await vendorApi.call((c) => c.GET('/v1/admin/summary'))
-      const ids = reviewerIds(wire)
-      const names = new Map<string, string>()
-      if (ids.length > 0) {
-        try {
-          const found = await identity.call((c) => c.GET('/v1/admins/names', { params: { query: { ids } } }))
-          for (const admin of found.items) names.set(admin.id, admin.display_name)
-        } catch {
-          // The figures matter more than the names.
-        }
-      }
-      return toHomeSummary(wire, names)
-    },
-    enabled,
-    refetchInterval: 60_000,
-  })
-}
 
 export function useAdmins(filters: AdminFilters) {
   const { identity } = useAppContext()

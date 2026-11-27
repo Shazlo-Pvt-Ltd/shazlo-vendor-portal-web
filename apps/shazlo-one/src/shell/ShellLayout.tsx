@@ -3,10 +3,11 @@ import { brand, emphasis, fontFamily, Logo, radius } from '@shazlo/ui'
 import { House, LogOut, Menu, Users, X, type LucideIcon } from 'lucide-react'
 import { Suspense, useId, useState, type ReactNode } from 'react'
 import { Link as RouterLink, Outlet, useLocation, useMatches, useNavigate } from 'react-router'
-import { useVendorSummary } from '../api/queries'
+import type { RegistryEntry } from '@shazlo/shell-protocol'
+import { useModuleBadge, useModuleManifest } from '../api/modules'
 import { usePageCrumb, type RouteHandle } from '../app/crumbs'
 import { paths } from '../app/paths'
-import { modules } from '../app/registry'
+import { isOnLink, moduleFor, registry, resolveModule } from '../app/registry'
 import { shellCopy as copy } from '../copy/shell'
 import { srOnly } from '../lib/a11y'
 import { useSession } from '../session/useSession'
@@ -100,13 +101,33 @@ function SectionLabel({ children }: { children: string }) {
   )
 }
 
+// One module's row: its title, icon and pages from its manifest, its badge from its summary. Until the
+// manifest arrives (or if it never does), the row shows the registry's title with no pages.
+function ModuleNav({ entry, touch, onNavigate }: { entry: RegistryEntry; touch: boolean; onNavigate?: () => void }) {
+  const { pathname } = useLocation()
+  const module = resolveModule(entry, useModuleManifest(entry).data)
+  const badge = useModuleBadge(entry)
+  const inModule = moduleFor(pathname)?.id === entry.id
+  const link = { touch, onNavigate }
+  return (
+    <NavLink {...link} to={module.basePath + module.home.path} label={module.title} icon={module.icon} active={false} parent={inModule} count={badge?.count} countLabel={badge?.label}>
+      {module.links.length > 0 && (
+        <Box component="ul" sx={{ listStyle: 'none', m: 0, mb: 0.5, p: 0, ml: `${GUIDE_X}px`, pl: `${NESTED_PL}px`, borderLeft: `1px solid ${NAVY_GUIDE}` }}>
+          {module.links.map((l) => (
+            <NavLink {...link} key={l.path} nested to={module.basePath + l.path} label={l.label} icon={l.icon} active={inModule && isOnLink(pathname, module, l)} />
+          ))}
+        </Box>
+      )}
+    </NavLink>
+  )
+}
+
 // The sections, then the signed-in person. The desktop sidebar and the phone drawer both use it.
 function Navigation({ touch, onNavigate }: { touch: boolean; onNavigate?: () => void }) {
   const { admin, can, signOut } = useSession()
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  const allowed = modules.filter((m) => can(m.roles))
-  const summary = useVendorSummary(allowed.length > 0).data
+  const allowed = registry.filter((m) => can(m.roles))
   const initials = admin?.display_name.split(' ').map((p) => p[0]).join('').slice(0, 2) ?? ''
   const role = admin?.roles.map((r) => copy.roles[r] ?? r).join(', ')
   const link = { touch, onNavigate }
@@ -118,18 +139,9 @@ function Navigation({ touch, onNavigate }: { touch: boolean; onNavigate?: () => 
         </List>
         {allowed.length > 0 && <SectionLabel>{copy.modules}</SectionLabel>}
         <List disablePadding>
-          {allowed.map((m) => {
-            const inModule = pathname.startsWith(m.basePath)
-            return (
-              <NavLink key={m.id} {...link} to={m.basePath + m.links[0]!.path} label={m.title} icon={m.icon} active={false} parent={inModule} count={summary?.queue.all} countLabel={copy.waiting(summary?.queue.all ?? 0)}>
-                <Box component="ul" sx={{ listStyle: 'none', m: 0, mb: 0.5, p: 0, ml: `${GUIDE_X}px`, pl: `${NESTED_PL}px`, borderLeft: `1px solid ${NAVY_GUIDE}` }}>
-                  {m.links.map((l) => (
-                    <NavLink {...link} key={l.path} nested to={m.basePath + l.path} label={l.label} icon={l.icon} active={inModule && pathname.startsWith(m.basePath + l.path)} />
-                  ))}
-                </Box>
-              </NavLink>
-            )
-          })}
+          {allowed.map((m) => (
+            <ModuleNav key={m.id} entry={m} {...link} />
+          ))}
         </List>
         {can(['super_admin']) && admin?.roles.includes('super_admin') && (
           <>
@@ -266,7 +278,7 @@ export function ShellLayout() {
   const theme = useTheme()
   // noSsr reads the query on the first render, so a phone never flashes the desktop sidebar.
   const phone = useMediaQuery(theme.breakpoints.down('md'), { noSsr: true })
-  const inModule = modules.some((m) => pathname.startsWith(m.basePath))
+  const inModule = moduleFor(pathname) !== undefined
   return (
     <Box sx={{ display: 'flex', minHeight: '100dvh', bgcolor: 'background.default', '--shell-top': `${phone ? TOP + PHONE_CRUMBS : TOP}px` }}>
       <Link href="#content" sx={{ position: 'absolute', left: 8, top: -48, zIndex: 50, bgcolor: 'background.paper', px: 2, py: 1, '&:focus': { top: 8 } }}>{copy.skip}</Link>

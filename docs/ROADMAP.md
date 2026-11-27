@@ -25,6 +25,7 @@ We are rewriting it in phases. Each phase is a GitHub milestone, and its issues 
 | Database | PostgreSQL |
 | Media | Cloudinary (signed direct uploads) |
 | Admin micro-frontends | Shazlo-One embeds each service's admin UI in an **iframe** |
+| Vendor services | The Vendor Portal and Shazlo One's Vendors module are two microservices over one vendor database: vendor-api runs as a **seller app** (`/v1/auth`, `/v1/vendor/*`, port 8002) and an **admin app** (`/v1/admin/*`, port 8004), from one package ([ADR 0011](adr/0011-vendor-portal-and-vendors-module-as-microservices.md)) |
 | Code and issues | This repo (`Shazlo-Pvt-Ltd/shazlo-vendor-portal-web`) |
 
 ## Repo layout
@@ -35,7 +36,8 @@ shazlo-vendor-portal-web/
   app/, backend/            legacy; untouched until Phase 8 (app/ also hosts the consumer landing/waitlist)
   services/
     identity-api/           FastAPI: Shazlo-One admin users, roles, JWT (RS256) + JWKS
-    vendor-api/             FastAPI: vendors, brand profiles, products, assets, reviews, outbox and publisher worker
+    vendor-api/             FastAPI: vendors, brand profiles, products, assets, reviews, outbox and publisher worker;
+                            runs as the seller app (main.py) and the admin app (admin_main.py), ADR 0011
     central-stub/           FastAPI: stand-in for the central app's ingest API (ADR 0003), local dev and tests only
   apps/
     vendor-portal/          React+TS: vendor-facing app
