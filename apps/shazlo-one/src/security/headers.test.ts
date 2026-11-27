@@ -166,7 +166,7 @@ describe('the Vercel prebuild step', () => {
     })
   })
 
-  it.each(['', 'http://identity.real.test', 'https://user:pw@identity.real.test', 'https://identity.real.test/v1', 'nonsense'])(
+  it.each(['', 'http://identity.real.test', 'https://user:pw@identity.real.test', 'https://identity.real.test/v1', 'https://identity.real.test;sandbox', 'nonsense'])(
     'on Vercel, fails the build for VITE_IDENTITY_API_URL=%j',
     (value) => {
       inTemporaryCopy((dir) => {
