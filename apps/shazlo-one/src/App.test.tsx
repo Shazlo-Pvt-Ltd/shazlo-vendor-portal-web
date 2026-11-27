@@ -3,6 +3,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { Providers } from './app/Providers'
+import { RouteError } from './components/RouteError'
 import { routes } from './app/routes'
 
 function renderAt(path: string) {
@@ -42,5 +43,12 @@ describe('the empty shell', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeTruthy()
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
     expect(document.title).toBe('Page not found · Shazlo-One')
+  })
+
+  it('puts the route error element on every route, so a throwing page never shows a stack trace', () => {
+    expect(routes.length).toBeGreaterThan(0)
+    for (const route of routes) {
+      expect((route.errorElement as { type?: unknown } | undefined)?.type).toBe(RouteError)
+    }
   })
 })
