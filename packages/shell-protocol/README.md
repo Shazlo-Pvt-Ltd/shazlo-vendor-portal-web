@@ -32,7 +32,8 @@ test/
 
 Every message is one object: `{ protocol: "shazlo-one", v, type, id, replyTo?, sentAt, payload }`.
 `id` and `replyTo` are UUIDs, `sentAt` is milliseconds since the epoch (informational), `v` is an
-integer protocol version (currently `1`). A message over **64 KB** is dropped.
+integer protocol version (currently `1`). A message over **64 KB** is dropped, and so is one holding a
+Map, Set, buffer or Blob (JSON writes those as `{}`, so their size could not be counted).
 
 **Shell to module**
 
@@ -61,8 +62,8 @@ integer protocol version (currently `1`). A message over **64 KB** is dropped.
 - **Unknown `type`s are dropped**, as are a wrong `protocol`, a version the receiver does not speak,
   and a payload that fails its checks. A type that is valid in the other direction is unknown here
   (a module cannot send `auth`).
-- `expiresAt` must be a finite positive number; `path`s start with `/`; strings have length limits and
-  no control characters.
+- `expiresAt` must be a finite positive number of epoch seconds (a value in milliseconds is refused);
+  `path`s start with `/`; strings have length limits and no control characters.
 
 ## Trust and origins
 
@@ -70,7 +71,8 @@ Both ends accept a message only if `event.origin` is the **exact** expected orig
 `event.source` is the **exact** expected window (the iframe's `contentWindow` for the shell, `window.parent`
 for a module). Both ends post only to that exact origin. `*` is refused everywhere: `postExact` throws
 on `*`, an empty or an opaque origin, and the constructors throw on a missing, wildcard, pattern, path
-or non-https origin (`http://localhost` is allowed only with `development: true`). The check runs
+or non-https origin (`http://localhost` is allowed only with `development: true`), and on a version
+list or module id the other end would refuse. The check runs
 before anything about the message is read, and a message from anyone else is ignored without a log
 line, so a page that frames us cannot flood the console.
 
