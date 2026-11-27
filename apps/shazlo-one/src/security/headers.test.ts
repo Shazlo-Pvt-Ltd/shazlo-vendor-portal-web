@@ -41,8 +41,16 @@ describe('the production Content-Security-Policy', () => {
     expect(policy.get('connect-src')).toEqual([API])
   })
 
-  it('loads images only from the app itself', () => {
+  it('loads images and fonts only from the app itself', () => {
     expect(policy.get('img-src')).toEqual(["'self'"])
+    expect(policy.get('font-src')).toEqual(["'self'"])
+  })
+
+  it('never lets anything frame the shell, in any mode and with modules registered', () => {
+    for (const mode of ['production', 'preview', 'development'] as const) {
+      const text = contentSecurityPolicy({ apiOrigin: API, mode, moduleOrigins: [MODULE] })
+      expect(directives(text).get('frame-ancestors')).toEqual(["'none'"])
+    }
   })
 
   it('is never framed, and allows no plugin, new <base> or form post elsewhere', () => {
