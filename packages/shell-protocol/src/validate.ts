@@ -196,15 +196,11 @@ function fail(reason: DropReason, type?: unknown): { ok: false; reason: DropReas
  * `id`, an optional UUID `replyTo`, a numeric `sentAt` and a `payload`. It does not look at the payload.
  */
 export function isEnvelope(data: unknown): data is Envelope<string, unknown> {
-  if (!isObject(data)) return false
-  return (
-    data.protocol === PROTOCOL &&
-    typeof data.v === 'number' &&
-    typeof data.type === 'string' &&
-    typeof data.id === 'string' &&
-    typeof data.sentAt === 'number' &&
-    'payload' in data
-  )
+  try {
+    return readEnvelope(data).ok
+  } catch {
+    return false
+  }
 }
 
 function readEnvelope(data: unknown): { ok: true; envelope: RawEnvelope } | { ok: false; reason: DropReason; type?: string } {
