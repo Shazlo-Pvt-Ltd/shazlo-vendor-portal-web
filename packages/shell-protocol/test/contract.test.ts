@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { MAX_MESSAGE_BYTES } from '../src/constants'
+import { MAX_MESSAGE_BYTES, MAX_TOAST_MESSAGE_LENGTH, PROTOCOL, PROTOCOL_VERSION, TOKEN_REQUEST_INTERVAL_MS } from '../src/constants'
 import { ProtocolConfigError } from '../src/origin'
 import { createModuleClient } from '../src/moduleClient'
 import { createShellChannel, type ReadyInfo } from '../src/shellChannel'
@@ -497,6 +497,53 @@ describe('hostile cases: a bad message from the right sender', () => {
     await flush()
     expect(toasts.map((toast) => toast.message)).toEqual(['boom', 'after'])
     expect(logged).toContain('handler_error')
+  })
+})
+
+describe('the wire format is the one ADR 0001 fixes', () => {
+  // Literal values from the ADR, not the package's constants: a change to a constant must fail here.
+  it('has the ADR constants', () => {
+    expect(PROTOCOL).toBe('shazlo-one')
+    expect(PROTOCOL_VERSION).toBe(1)
+    expect(MAX_MESSAGE_BYTES).toBe(65_536)
+    expect(MAX_TOAST_MESSAGE_LENGTH).toBe(280)
+    expect(TOKEN_REQUEST_INTERVAL_MS).toBe(30_000)
+  })
+
+  it('every message on the wire is exactly the envelope, with each type and payload as the catalogue names them', async () => {
+    const t = setup()
+    await t.handshake(authPayload({ locale: 'en-IN' }))
+    t.client.sendTitle('/orders/42', 'Order 42')
+    t.client.requestToken('expired')
+    t.client.sendLogout()
+    t.client.sendToast({ level: 'warning', message: 'Check this.', durationMs: 4000 })
+    t.client.sendError('render_failed', 'Broken.', false)
+    t.shell.sendNavigate('/orders/42')
+    t.shell.sendError('session_ending', 'Ending.')
+    await flush()
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    const ids = new Set<string>()
+    for (const { data } of t.posts) {
+      const message = data as Record<string, unknown>
+      const keys = message.type === 'auth' ? ['id', 'payload', 'protocol', 'replyTo', 'sentAt', 'type', 'v'] : ['id', 'payload', 'protocol', 'sentAt', 'type', 'v']
+      expect(Object.keys(message).sort()).toEqual(keys)
+      expect(message).toMatchObject({ protocol: 'shazlo-one', v: 1, sentAt: 1_700_000_000_000 })
+      expect(message.id).toMatch(uuid)
+      ids.add(message.id as string)
+    }
+    expect(ids.size).toBe(t.posts.length)
+    expect(t.posts.map(({ from, data }) => [from, (data as { type: string }).type, (data as { payload: unknown }).payload])).toEqual([
+      ['module', 'ready', { module: 'vendor-admin', supportedVersions: [1], moduleVersion: '1.0.0' }],
+      ['shell', 'auth', { accessToken: 'token-1', expiresAt: 2_000_000_000, user: USER, locale: 'en-IN' }],
+      ['module', 'title', { path: '/orders/42', title: 'Order 42' }],
+      ['module', 'token:request', { reason: 'expired' }],
+      ['module', 'logout', {}],
+      ['module', 'toast', { level: 'warning', message: 'Check this.', durationMs: 4000 }],
+      ['module', 'error', { code: 'render_failed', message: 'Broken.', fatal: false }],
+      ['shell', 'navigate', { path: '/orders/42' }],
+      ['shell', 'error', { code: 'session_ending', message: 'Ending.' }],
+    ])
+    expect((t.posts[1]!.data as { replyTo: string }).replyTo).toBe((t.posts[0]!.data as { id: string }).id)
   })
 })
 
