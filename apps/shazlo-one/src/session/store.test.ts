@@ -333,6 +333,97 @@ describe('signing out', () => {
   })
 })
 
+describe('a sign-out while a renewal is under way', () => {
+  type Body = ReturnType<typeof sessionBody>
+
+  it('is not undone when the refresh answers afterwards', async () => {
+    let answer: (value: Body) => void = () => {}
+    let calls = 0
+    const refresh = () => {
+      calls += 1
+      if (calls === 1) return Promise.resolve(sessionBody({ token: 't1' }))
+      return new Promise<Body>((resolve) => {
+        answer = resolve
+      })
+    }
+    const { store } = makeStore({ refresh })
+    await store.start()
+    const renewing = store.renew()
+    await store.logout()
+    answer(sessionBody({ token: 'too-late' }))
+    expect(await renewing).toBe(false)
+    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', signedOutByUser: true })
+    expect(store.getAccessToken()).toBeNull()
+    store.close()
+  })
+
+  it('is not undone when /v1/me answers afterwards', async () => {
+    let answer: (value: ReturnType<typeof adminProfile>) => void = () => {}
+    let calls = 0
+    const fetchMe = () => {
+      calls += 1
+      if (calls === 1) return Promise.resolve(adminProfile())
+      return new Promise<ReturnType<typeof adminProfile>>((resolve) => {
+        answer = resolve
+      })
+    }
+    const { store } = makeStore({ fetchMe })
+    await store.start()
+    const renewing = store.renew()
+    await vi.waitFor(() => expect(calls).toBe(2))
+    await store.logout()
+    answer(adminProfile())
+    expect(await renewing).toBe(false)
+    expect(store.getSnapshot().status).toBe('signedOut')
+    expect(store.getAccessToken()).toBeNull()
+    store.close()
+  })
+
+  it('from another tab wins over this tab’s renewal', async () => {
+    const channels = fakeChannels()
+    let answer: (value: Body) => void = () => {}
+    let calls = 0
+    const refresh = () => {
+      calls += 1
+      if (calls === 1) return Promise.resolve(sessionBody())
+      return new Promise<Body>((resolve) => {
+        answer = resolve
+      })
+    }
+    const a = makeStore({ channel: channels() }).store
+    const b = makeStore({ channel: channels(), refresh }).store
+    await Promise.all([a.start(), b.start()])
+    const renewing = b.renew()
+    await a.logout()
+    answer(sessionBody({ token: 'too-late' }))
+    await renewing
+    expect(b.getSnapshot().status).toBe('signedOut')
+    expect(b.getAccessToken()).toBeNull()
+    a.close()
+    b.close()
+  })
+
+  it('keeps the admin’s choice when the refresh then fails with a 401', async () => {
+    let fail: (error: unknown) => void = () => {}
+    let calls = 0
+    const refresh = () => {
+      calls += 1
+      if (calls === 1) return Promise.resolve(sessionBody())
+      return new Promise<Body>((_resolve, reject) => {
+        fail = reject
+      })
+    }
+    const { store } = makeStore({ refresh })
+    await store.start()
+    const renewing = store.renew()
+    await store.logout()
+    fail(apiError(401, 'invalid_refresh_token'))
+    await renewing
+    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', signedOutByUser: true, expired: false })
+    store.close()
+  })
+})
+
 describe('tabs', () => {
   it('signing out in one tab signs out every tab, and no token travels', async () => {
     const channels = fakeChannels()

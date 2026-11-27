@@ -136,6 +136,11 @@ export class SessionStore {
   private closed = true
   /** Bumped whenever a session ends, so an answer that arrives later knows it is stale. */
   private generation = 0
+  /**
+   * Bumped only when a session ends (sign-out here or in another tab, a refused refresh), not on
+   * {@link close}: a renewal under way at that moment must not sign the tab back in.
+   */
+  private endings = 0
   private moduleTokens = new Map<string, ModuleToken>()
   private moduleRequests = new Map<string, Promise<ModuleToken>>()
 
@@ -230,17 +235,19 @@ export class SessionStore {
 
   private async doRenew(): Promise<boolean> {
     const hadSession = this.hasSession()
+    const endings = this.endings
+    const stale = () => this.closed || endings !== this.endings
     try {
       const session = await this.refreshWithConflictRetry()
-      if (this.closed) return false
+      if (stale()) return false
       // An admin who must change their password has a token with no roles, which `/v1/me` refuses:
       // the answer to refresh already says who they are.
       const profile = session.must_change_password ? session.admin : await this.deps.fetchMe(session.access_token)
-      if (this.closed) return false
+      if (stale()) return false
       this.adopt(session, profile)
       return true
     } catch (error) {
-      if (this.closed) return false
+      if (stale()) return false
       if (error instanceof ApiError && error.status === 401) {
         this.end({ expired: hadSession })
       } else if (error instanceof NetworkError || error instanceof ApiError) {
@@ -300,6 +307,7 @@ export class SessionStore {
   }
 
   private end(options: { expired: boolean; byUser?: boolean }): void {
+    this.endings += 1
     this.clearToken()
     // Typed passwords and half-filled sensitive forms never survive the session, expired or not.
     clearSensitiveState()
