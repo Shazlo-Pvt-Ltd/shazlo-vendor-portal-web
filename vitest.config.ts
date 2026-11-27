@@ -7,6 +7,7 @@ export default defineConfig({
     projects: [
       'packages/ui/vitest.config.ts',
       'apps/vendor-portal/vitest.config.ts',
+      'apps/shazlo-one/vitest.config.ts',
       {
         oxc: { jsx: { runtime: 'automatic' } },
         // The legacy application has its own lockfile and React 19.1 runtime.
