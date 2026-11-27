@@ -46,7 +46,8 @@ async def get(tenants: Tenants, query: str = "", token: str | None = None) -> ht
 async def page(tenants: Tenants, query: str = "") -> dict[str, Any]:
     response = await get(tenants, query)
     assert response.status_code == 200, response.text
-    return response.json()
+    body: dict[str, Any] = response.json()
+    return body
 
 
 @pytest.fixture(autouse=True)
