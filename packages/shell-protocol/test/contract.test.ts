@@ -561,6 +561,33 @@ describe('no message is ever posted to *', () => {
   })
 })
 
+describe('a bad set-up fails at start, not as a silent handshake', () => {
+  it.each([[[]], [[0]], [[1.5]], [['1']], [Array.from({ length: 21 }, (_, i) => i + 1)]])(
+    'neither end can be set up with the versions %j',
+    (versions) => {
+      const frames = createFrames()
+      const base = { shellOrigin: SHELL_ORIGIN, window: frames.moduleWindow, module: 'm', moduleVersion: '1' }
+      expect(() => createModuleClient({ ...base, supportedVersions: versions as number[] })).toThrow(ProtocolConfigError)
+      expect(() =>
+        createShellChannel({ iframe: frames.moduleFrame, origin: MODULE_ORIGIN, window: frames.shellWindow, supportedVersions: versions as number[] }),
+      ).toThrow(ProtocolConfigError)
+      expect(frames.posts).toEqual([])
+    },
+  )
+
+  it.each([
+    ['an empty module id', { module: '' }],
+    ['a module id over 64 characters', { module: 'm'.repeat(65) }],
+    ['an empty module version', { moduleVersion: '' }],
+    ['a module version with a control character', { moduleVersion: '1\u0000' }],
+  ])('a module cannot be set up with %s (the shell would drop its ready)', (_name, overrides) => {
+    const frames = createFrames()
+    expect(() =>
+      createModuleClient({ shellOrigin: SHELL_ORIGIN, window: frames.moduleWindow, module: 'm', moduleVersion: '1', ...overrides }),
+    ).toThrow(ProtocolConfigError)
+  })
+})
+
 describe('listening before sending', () => {
   it('the shell hears a ready that arrives the moment the frame loads, because it listened first', async () => {
     const frames = createFrames()
