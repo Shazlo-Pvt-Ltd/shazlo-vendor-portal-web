@@ -218,6 +218,8 @@ describe('everything the shell can say', () => {
     expect(t.shell.sendNavigate('//evil.example')).toBe(false)
     expect(t.shell.sendNavigate('https://evil.example')).toBe(false)
     expect(t.shell.sendAuth({ ...authPayload(), accessToken: '' } as unknown as AuthPayload)).toBe(false)
+    // Milliseconds by mistake: the module would hold it for millennia and refuse every later auth.
+    expect(t.shell.sendAuth({ ...authPayload(), expiresAt: 1_700_000_900_000 } as unknown as AuthPayload)).toBe(false)
     expect(t.shell.sendError('', 'x')).toBe(false)
     expect(t.posts.length).toBe(before)
   })

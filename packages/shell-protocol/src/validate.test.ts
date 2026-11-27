@@ -119,6 +119,7 @@ describe('auth (shell to module)', () => {
     ['no expiresAt', { expiresAt: undefined }],
     ['a zero expiresAt', { expiresAt: 0 }],
     ['a NaN expiresAt', { expiresAt: NaN }],
+    ['an expiresAt in milliseconds, not seconds', { expiresAt: 1_700_000_900_000 }],
     ['no user', { user: undefined }],
     ['a user that is a string', { user: 'asha' }],
     ['a user with no id', { user: { ...USER, id: undefined } }],
