@@ -1,9 +1,9 @@
 import { Box, Button, Link, Skeleton, Stack, Tab, Tabs, Typography } from '@mui/material'
 import { Banner, EmptyState, PageHeader, StatFigure } from '@shazlo/ui'
 import { Download } from 'lucide-react'
-import { useCallback, type ReactNode } from 'react'
+import { useCallback, useState, type ReactNode } from 'react'
 import { Link as RouterLink, useNavigate } from 'react-router'
-import { useQueue, useSummary } from '../../api/queries'
+import { fetchEveryQueueItem, useQueue, useSummary } from '../../api/queries'
 import type * as M from '../../api/model'
 import { modulePaths } from '../../app/routes'
 import { TabLabel, tabSx, tabsSx } from '../../components/tabs'
@@ -79,7 +79,8 @@ export default function ReviewQueue() {
   useModuleTitle(copy.title)
   const navigate = useNavigate()
   const compact = useCompact()
-  const { toast } = useRuntime()
+  const { toast, api } = useRuntime()
+  const [exporting, setExporting] = useState(false)
   const [params, update] = useQueueParams()
   const query = useQueue(toFilters(params))
   // The whole queue gives the header its count and oldest wait. With no filters it is the same request.
@@ -91,10 +92,19 @@ export default function ReviewQueue() {
   const onOpen = useCallback((item: QueueItem) => navigate(reviewPath(item)), [navigate])
   const clearFilters = () => update(clearedFilters)
 
-  function exportCsv() {
-    if (!items?.length) return
-    downloadText(csvFilename(), queueCsv(items))
-    toast('success', copy.exported(items.length))
+  // Every item that matches the filters, not only the pages shown.
+  async function exportCsv() {
+    if (!items?.length || exporting) return
+    setExporting(true)
+    try {
+      const everything = await fetchEveryQueueItem(api, toFilters(params))
+      downloadText(csvFilename(), queueCsv(everything))
+      toast('success', copy.exported(everything.length))
+    } catch {
+      toast('error', copy.exportFailed)
+    } finally {
+      setExporting(false)
+    }
   }
 
   const queueEmpty = data !== undefined && data.counts.all === 0
@@ -156,8 +166,8 @@ export default function ReviewQueue() {
         title={copy.title}
         subtitle={subtitle}
         actions={
-          <Button variant="outlined" startIcon={<Download {...icon} />} onClick={exportCsv} disabled={!items?.length} sx={phoneFullWidth}>
-            {copy.exportCsv}
+          <Button variant="outlined" startIcon={<Download {...icon} />} onClick={() => void exportCsv()} disabled={!items?.length || exporting} sx={phoneFullWidth}>
+            {exporting ? copy.exporting : copy.exportCsv}
           </Button>
         }
       />
@@ -171,6 +181,18 @@ export default function ReviewQueue() {
           <KindTabs value={params.kind ?? 'all'} counts={data?.counts} onChange={(key) => update({ kind: key === 'all' ? undefined : (key as KindKey) })} />
           {!queueEmpty && <QueueFilters params={params} update={update} onSearch={onSearch} vendors={data?.vendors ?? []} />}
           {body}
+          {data && data.items.length > 0 && data.total > data.items.length && (
+            <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'center' }}>
+              <Typography variant="body2" color="textSecondary">
+                {copy.showing(data.items.length, data.total)}
+              </Typography>
+              {query.hasNextPage && (
+                <Button variant="outlined" onClick={() => void query.fetchNextPage()} disabled={query.isFetchingNextPage}>
+                  {query.isFetchingNextPage ? copy.showingMore : copy.showMore}
+                </Button>
+              )}
+            </Stack>
+          )}
         </Stack>
       </Stack>
     </>

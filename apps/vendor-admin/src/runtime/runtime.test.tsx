@@ -37,11 +37,11 @@ describe('module runtime (ADR 0001, module side)', () => {
   it('asks the shell for a new token on 401, then retries with it', async () => {
     let calls = 0
     server.use(
-      http.get(`${VENDOR_API_URL}/api/v1/admin/queue`, ({ request }) => {
+      http.get(`${VENDOR_API_URL}/v1/admin/queue`, ({ request }) => {
         calls += 1
         if (calls === 1) return HttpResponse.json({ error: { code: 'unauthorized', message: 'Expired', request_id: 'r' } }, { status: 401 })
         expect(request.headers.get('authorization')).toMatch(/^Bearer mock\.vendor-api\./)
-        return HttpResponse.json({ items: [], counts: { all: 0, product: 0, brand_page: 0, application: 0 }, vendors: [] })
+        return HttpResponse.json({ items: [], total: 0, limit: 50, offset: 0, counts: { all: 0, product: 0, brand_page: 0, application: 0 }, vendors: [] })
       }),
     )
     // The review queue loads on open, so its first call meets the 401.
