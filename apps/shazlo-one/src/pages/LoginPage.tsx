@@ -71,8 +71,9 @@ export function LoginPage() {
         setFormError('Check your email address and password and try again.')
       } else {
         const friendly = friendlyError(caught)
-        setFormError(friendly.message)
+        // A wait has its own notice, which goes away when the wait is over.
         if (friendly.retryAfter) countdown.start(friendly.retryAfter)
+        else setFormError(friendly.message)
       }
       passwordInput.current?.focus()
     } finally {

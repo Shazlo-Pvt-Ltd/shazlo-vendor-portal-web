@@ -257,6 +257,20 @@ describe('login, under pressure', () => {
     },
   )
 
+  it('announces the wait once, shows one notice, and lets the admin try again when it ends', async () => {
+    server.use(http.post(`${BASE}/v1/auth/login`, () => apiErrorResponse(429, 'rate_limited', 'slow', { 'Retry-After': '2' })))
+    const { user } = await open()
+    await signIn(user)
+    const notice = await screen.findByText(/Try again in \d+ s\./)
+    const alerts = screen.getAllByRole('alert')
+    expect(alerts).toHaveLength(1)
+    const spoken = alerts[0]!.querySelector('span:not([aria-hidden])')!.textContent
+    await waitFor(() => expect(notice.textContent).toBe('Too many attempts. Try again in 1 s.'), { timeout: 2500 })
+    expect(alerts[0]!.querySelector('span:not([aria-hidden])')!.textContent).toBe(spoken)
+    await waitFor(() => expect(screen.queryByText(/Too many attempts/)).toBeNull(), { timeout: 2500 })
+    expect((screen.getByRole('button', { name: 'Sign in' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
   it('accepts the longest password the server takes and cuts nothing short', async () => {
     let body: { password?: string } = {}
     server.use(http.post(`${BASE}/v1/auth/login`, async ({ request }) => { body = (await request.json()) as typeof body; return HttpResponse.json(sessionBody()) }))
