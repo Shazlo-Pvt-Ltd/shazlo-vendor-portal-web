@@ -33,15 +33,15 @@ test.describe('signed in', () => {
   test('the first-login password change, the home page, a module page and the admin screens', async ({ page }) => {
     await page.goto('/login')
     await page.getByLabel('Email address').fill(admin.email)
-    await page.getByLabel('Password', { exact: true }).fill(TEMPORARY_PASSWORD)
+    await page.getByLabel(/^Password(?: \*)?$/).fill(TEMPORARY_PASSWORD)
     await page.getByRole('button', { name: 'Sign in' }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'Choose your password' })).toBeVisible()
     await expectNoSeriousViolations(page, 'First-login password change')
 
     // Finish the change, then walk the rest.
-    await page.getByLabel('Current (temporary) password', { exact: true }).fill(TEMPORARY_PASSWORD)
-    await page.getByLabel('New password', { exact: true }).fill(CHOSEN_PASSWORD)
-    await page.getByLabel('Repeat the new password', { exact: true }).fill(CHOSEN_PASSWORD)
+    await page.getByLabel(/^Current \(temporary\) password(?: \*)?$/).fill(TEMPORARY_PASSWORD)
+    await page.getByLabel(/^New password(?: \*)?$/).fill(CHOSEN_PASSWORD)
+    await page.getByLabel(/^Repeat the new password(?: \*)?$/).fill(CHOSEN_PASSWORD)
     await page.getByRole('button', { name: 'Save and continue' }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'Shazlo-One' })).toBeVisible()
     await expectNoSeriousViolations(page, 'Home')
