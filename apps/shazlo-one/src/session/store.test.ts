@@ -699,6 +699,32 @@ describe('module tokens', () => {
     store.close()
   })
 
+  it('an exchange from an ended session does not stop the next session’s callers sharing theirs', async () => {
+    const releases: Array<() => void> = []
+    const exchange = vi.fn(
+      (audience: string, token: string) =>
+        new Promise<{ access_token: string; token_type: string; expires_in: number; audience: string }>((resolve) => {
+          releases.push(() => resolve({ access_token: `m-${token}`, token_type: 'Bearer', expires_in: 300, audience }))
+        }),
+    )
+    const { store } = makeStore({ exchange })
+    await store.start()
+    const old = store.getModuleToken('m').catch((error: unknown) => error)
+    await vi.waitFor(() => expect(exchange).toHaveBeenCalledTimes(1))
+    await store.logout()
+    store.signIn(sessionBody({ token: 'next' }))
+    const first = store.getModuleToken('m')
+    await vi.waitFor(() => expect(exchange).toHaveBeenCalledTimes(2))
+    releases[0]()
+    expect(await old).toBeInstanceOf(NotSignedInError)
+    const second = store.getModuleToken('m')
+    // Before the fix the old exchange's clean-up removed the new one, so this started a third.
+    for (const release of releases.slice(1)) release()
+    await Promise.all([first, second])
+    expect(exchange).toHaveBeenCalledTimes(2)
+    store.close()
+  })
+
   it('drops a token whose exchange finishes after the session ended', async () => {
     let release: () => void = () => {}
     const exchange = vi.fn(

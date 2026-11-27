@@ -380,9 +380,11 @@ export class SessionStore {
     if (cached && cached.expiresAt - Date.now() > MODULE_TOKEN_SKEW_MS) return Promise.resolve(cached)
     let pending = this.moduleRequests.get(audience)
     if (!pending) {
-      pending = this.exchangeFor(audience).finally(() => {
-        this.moduleRequests.delete(audience)
+      const request: Promise<ModuleToken> = this.exchangeFor(audience).finally(() => {
+        // Only its own entry: a session that ended meanwhile may have started a newer exchange.
+        if (this.moduleRequests.get(audience) === request) this.moduleRequests.delete(audience)
       })
+      pending = request
       this.moduleRequests.set(audience, pending)
     }
     return pending
