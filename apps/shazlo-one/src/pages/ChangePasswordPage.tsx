@@ -78,6 +78,11 @@ export function ChangePasswordPage() {
         const next = { current: 'This is not your current password.' }
         setErrors(next)
         focus(next)
+      } else if (caught instanceof ApiError && caught.status === 401) {
+        // The session behind the call is gone (another password change or a deactivation finished
+        // first) or its token ran out; `/v1/auth/*` is never renewed on its own. Check it again:
+        // the guards then show the login screen, or this step with a fresh token.
+        void session.retry()
       } else if (caught instanceof ApiError && caught.status === 422) {
         const message = caught.fieldErrors.new_password ?? (caught.code === 'weak_password' ? caught.message : undefined)
         if (message) {
