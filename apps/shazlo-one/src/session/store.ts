@@ -134,7 +134,10 @@ export class SessionStore {
   private inFlight: Promise<boolean> | undefined
   private started: Promise<void> | undefined
   private closed = true
-  /** Bumped whenever a session ends, so an answer that arrives later knows it is stale. */
+  /**
+   * Bumped whenever a session ends or passes to another admin (or to a password-change token), so
+   * a module-token exchange that answers later knows it is stale.
+   */
   private generation = 0
   /**
    * Bumped only when a session ends (sign-out here or in another tab, a refused refresh), not on
@@ -283,13 +286,28 @@ export class SessionStore {
 
   private adopt(session: SessionResponse, profile: AdminProfile): void {
     const mustChange = session.must_change_password
+    const roles = mustChange ? [] : [...profile.roles]
+    const previous = this.state.admin
+    if (previous !== null && previous.id !== profile.id) {
+      // The cookie now belongs to another admin (another tab signed out and in while this one
+      // missed the messages): nothing of the previous admin may carry over.
+      this.forgetModuleTokens()
+      clearSensitiveState()
+      this.deps.onCleared()
+    } else if (mustChange) {
+      // A password-change token gets no module tokens at all.
+      this.forgetModuleTokens()
+    } else if (roles.length !== this.state.roles.length || roles.some((role, i) => role !== this.state.roles[i])) {
+      // The cached module tokens were issued for the old roles.
+      this.moduleTokens.clear()
+    }
     this.token = session.access_token
     this.tokenExpiresAt = Date.now() + session.expires_in * 1000
     this.set({
       status: mustChange ? 'passwordChangeRequired' : 'signedIn',
       admin: profile,
       // No roles until the password is changed, whatever the profile says.
-      roles: mustChange ? [] : [...profile.roles],
+      roles,
       expired: false,
       signedOutByUser: false,
     })
@@ -318,10 +336,15 @@ export class SessionStore {
   private clearToken(): void {
     this.token = null
     this.tokenExpiresAt = 0
+    this.forgetModuleTokens()
+    clearTimeout(this.renewTimer)
+  }
+
+  /** Drops every module token, and makes an exchange under way throw away its answer. */
+  private forgetModuleTokens(): void {
     this.generation += 1
     this.moduleTokens.clear()
     this.moduleRequests.clear()
-    clearTimeout(this.renewTimer)
   }
 
   // --- module tokens ---------------------------------------------------------------------------
@@ -333,6 +356,8 @@ export class SessionStore {
    * {@link NotSignedInError}; other failures are the API client's own errors.
    */
   getModuleToken(audience: string): Promise<ModuleToken> {
+    // Only a signed-in admin has roles to exchange; a password-change token gets nothing.
+    if (this.state.status !== 'signedIn') return Promise.reject(new NotSignedInError())
     const cached = this.moduleTokens.get(audience)
     if (cached && cached.expiresAt - Date.now() > MODULE_TOKEN_SKEW_MS) return Promise.resolve(cached)
     let pending = this.moduleRequests.get(audience)
@@ -346,8 +371,6 @@ export class SessionStore {
   }
 
   private async exchangeFor(audience: string): Promise<ModuleToken> {
-    // Only a signed-in admin has roles to exchange; a password-change token gets nothing.
-    if (this.state.status !== 'signedIn') throw new NotSignedInError()
     const generation = this.generation
     if (this.tokenExpiresAt - Date.now() <= MODULE_TOKEN_SKEW_MS && !(await this.renew())) {
       throw new NotSignedInError()

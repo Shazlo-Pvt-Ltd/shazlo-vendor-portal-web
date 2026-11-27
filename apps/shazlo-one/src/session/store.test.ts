@@ -631,6 +631,73 @@ describe('module tokens', () => {
     store.close()
   })
 
+  it('drops the previous admin’s caches and module tokens when a renewal brings another admin', async () => {
+    const onCleared = vi.fn()
+    const reset = vi.fn()
+    const undo = registerSensitiveReset(reset)
+    let n = 0
+    const exchange = vi.fn(async (audience: string, token: string) => ({
+      access_token: `m-for-${token}`,
+      token_type: 'Bearer',
+      expires_in: 300,
+      audience,
+    }))
+    const { store } = makeStore({
+      onCleared,
+      exchange,
+      refresh: async () => sessionBody({ token: `t${(n += 1)}` }),
+      fetchMe: async () => (n === 1 ? adminProfile({ id: 'a1' }) : adminProfile({ id: 'b2', email: 'b@shazlo.test' })),
+    })
+    await store.start()
+    expect((await store.getModuleToken('m')).accessToken).toBe('m-for-t1')
+    await store.renew()
+    expect(store.getSnapshot().admin?.id).toBe('b2')
+    expect(onCleared).toHaveBeenCalledOnce()
+    expect(reset).toHaveBeenCalledOnce()
+    expect((await store.getModuleToken('m')).accessToken).toBe('m-for-t2')
+    undo()
+    store.close()
+  })
+
+  it('keeps the caches when a renewal brings the same admin', async () => {
+    const onCleared = vi.fn()
+    const exchange = vi.fn(async (audience: string) => ({ access_token: 'm', token_type: 'Bearer', expires_in: 300, audience }))
+    const { store } = makeStore({ onCleared, exchange })
+    await store.start()
+    await store.getModuleToken('m')
+    await store.renew()
+    await store.getModuleToken('m')
+    expect(onCleared).not.toHaveBeenCalled()
+    expect(exchange).toHaveBeenCalledOnce()
+    store.close()
+  })
+
+  it('exchanges again when a renewal changes the admin’s roles', async () => {
+    let n = 0
+    const exchange = vi.fn(async (audience: string) => ({ access_token: 'm', token_type: 'Bearer', expires_in: 300, audience }))
+    const { store } = makeStore({
+      exchange,
+      fetchMe: async () => adminProfile({ roles: (n += 1) === 1 ? ['super_admin'] : ['vendor_reviewer'] }),
+    })
+    await store.start()
+    await store.getModuleToken('m')
+    await store.renew()
+    await store.getModuleToken('m')
+    expect(exchange).toHaveBeenCalledTimes(2)
+    store.close()
+  })
+
+  it('hands out no cached module token once a renewal says the password must change', async () => {
+    let n = 0
+    const { store } = makeStore({ refresh: async () => sessionBody({ must_change_password: (n += 1) > 1 }) })
+    await store.start()
+    await store.getModuleToken('m')
+    await store.renew()
+    expect(store.getSnapshot().status).toBe('passwordChangeRequired')
+    await expect(store.getModuleToken('m')).rejects.toBeInstanceOf(NotSignedInError)
+    store.close()
+  })
+
   it('drops a token whose exchange finishes after the session ended', async () => {
     let release: () => void = () => {}
     const exchange = vi.fn(
