@@ -20,6 +20,7 @@ describe('the empty shell', () => {
     render(<App />)
     expect(screen.getByRole('heading', { level: 1, name: 'The shell is misconfigured' })).toBeTruthy()
     expect(screen.getByText('VITE_IDENTITY_API_URL is not set.')).toBeTruthy()
+    expect(document.title).toBe('Misconfigured · Shazlo-One')
   })
 
   it('names a URL that is not allowed without repeating it', () => {
@@ -40,5 +41,6 @@ describe('the empty shell', () => {
     renderAt('/nowhere')
     expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeTruthy()
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(document.title).toBe('Page not found · Shazlo-One')
   })
 })
