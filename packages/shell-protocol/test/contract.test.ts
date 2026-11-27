@@ -374,6 +374,18 @@ describe('hostile cases: a bad message from the right sender', () => {
     expect(t.lines.some((line) => line[0] === 'too_large')).toBe(true)
   })
 
+  it('drops a message that hides its bulk in something JSON cannot see (a Map, a buffer)', async () => {
+    const t = setup({ development: true })
+    await ready(t)
+    const padded = envelope('toast', { level: 'info', message: 'ok', padding: new Map([['k', 'x'.repeat(MAX_MESSAGE_BYTES)]]) })
+    t.toShell(structuredClone(padded), MODULE_ORIGIN, t.moduleWindow)
+    t.toModule(structuredClone(envelope('navigate', { path: '/', padding: new ArrayBuffer(MAX_MESSAGE_BYTES * 4) })), SHELL_ORIGIN, t.shellWindow)
+    await flush()
+    expect(t.seen.toasts).toEqual([])
+    expect(t.navigations).toEqual([])
+    expect(t.lines.filter((line) => line[0] === 'too_large')).toHaveLength(2)
+  })
+
   it('drops an oversize auth in the module too', async () => {
     const t = setup()
     t.toModule(envelope('auth', authPayload({ padding: 'x'.repeat(MAX_MESSAGE_BYTES) })), SHELL_ORIGIN, t.shellWindow)
