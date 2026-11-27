@@ -7,6 +7,7 @@ import {
   UnknownAudienceError,
   isAdminProfile,
   isSessionResponse,
+  isTokenResponse,
 } from './store'
 import { adminProfile, apiError, fakeChannels, makeStore, sessionBody } from './testing'
 
@@ -295,7 +296,7 @@ describe('renewal', () => {
 
   it('never schedules a renewal sooner than a second, whatever expires_in says', async () => {
     vi.useFakeTimers()
-    const refresh = vi.fn(async () => sessionBody({ expires_in: 0 }))
+    const refresh = vi.fn(async () => sessionBody({ expires_in: 1 }))
     const { store } = makeStore({ refresh })
     await store.start()
     await vi.advanceTimersByTimeAsync(999)
@@ -725,8 +726,20 @@ describe('isSessionResponse and isAdminProfile', () => {
     ['no flag', { access_token: 'a', expires_in: 1, admin: adminProfile() }],
     ['a numeric token', { ...sessionBody(), access_token: 1 }],
     ['roles that are not strings', { ...sessionBody(), admin: { ...adminProfile(), roles: [1] } }],
+    ['an empty token', { ...sessionBody(), access_token: '' }],
+    ['a zero lifetime', { ...sessionBody(), expires_in: 0 }],
+    ['a negative lifetime', { ...sessionBody(), expires_in: -5 }],
+    ['a lifetime setTimeout cannot hold', { ...sessionBody(), expires_in: 1e12 }],
   ])('rejects %s', (_name, value) => {
     expect(isSessionResponse(value)).toBe(false)
+  })
+
+  it('checks the token exchange answer the same way', () => {
+    const good = { access_token: 'm', token_type: 'Bearer', expires_in: 300, audience: 'vendor-api' }
+    expect(isTokenResponse(good)).toBe(true)
+    expect(isTokenResponse({ ...good, access_token: '' })).toBe(false)
+    expect(isTokenResponse({ ...good, expires_in: undefined })).toBe(false)
+    expect(isTokenResponse(null)).toBe(false)
   })
 
   it('accepts a real session and profile', () => {

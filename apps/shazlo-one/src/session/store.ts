@@ -94,16 +94,34 @@ export const SESSION_CHANNEL = 'shazlo-one-session'
 /** A module token this close to its end is replaced rather than handed out. */
 const MODULE_TOKEN_SKEW_MS = 10_000
 
+/**
+ * Longest token life accepted, in seconds (identity-api allows at most an hour). A longer one would
+ * overflow `setTimeout`, which then fires at once and refreshes in a loop.
+ */
+const MAX_TOKEN_LIFE_S = 24 * 60 * 60
+
+function isLifetime(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= MAX_TOKEN_LIFE_S
+}
+
 /** The session body, checked: do not trust the answer blindly. */
 export function isSessionResponse(value: unknown): value is SessionResponse {
   if (typeof value !== 'object' || value === null) return false
   const v = value as Partial<SessionResponse>
   return (
     typeof v.access_token === 'string' &&
-    typeof v.expires_in === 'number' &&
+    v.access_token !== '' &&
+    isLifetime(v.expires_in) &&
     typeof v.must_change_password === 'boolean' &&
     isAdminProfile(v.admin)
   )
+}
+
+/** The `POST /v1/auth/token` body, checked. */
+export function isTokenResponse(value: unknown): value is TokenResponse {
+  if (typeof value !== 'object' || value === null) return false
+  const v = value as Partial<TokenResponse>
+  return typeof v.access_token === 'string' && v.access_token !== '' && isLifetime(v.expires_in)
 }
 
 export function isAdminProfile(value: unknown): value is AdminProfile {
