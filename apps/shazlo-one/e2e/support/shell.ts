@@ -5,7 +5,7 @@ import type { TestAdmin } from './identity'
 /** Fills the sign-in form and submits it. */
 export async function submitSignIn(page: Page, email: string, password: string): Promise<void> {
   await page.getByLabel('Email address').fill(email)
-  await page.getByLabel(/^Password(?: \*)?$/).fill(password)
+  await page.getByLabel(/^Password(?:\s*\*)?$/).fill(password)
   await page.getByRole('button', { name: 'Sign in' }).click()
 }
 
@@ -14,9 +14,9 @@ export async function signInFirstTime(page: Page, admin: TestAdmin): Promise<voi
   await page.goto('/login')
   await submitSignIn(page, admin.email, TEMPORARY_PASSWORD)
   await expect(page.getByRole('heading', { level: 1, name: 'Choose your password' })).toBeVisible()
-  await page.getByLabel(/^Current \(temporary\) password(?: \*)?$/).fill(TEMPORARY_PASSWORD)
-  await page.getByLabel(/^New password(?: \*)?$/).fill(CHOSEN_PASSWORD)
-  await page.getByLabel(/^Repeat the new password(?: \*)?$/).fill(CHOSEN_PASSWORD)
+  await page.getByLabel(/^Current \(temporary\) password(?:\s*\*)?$/).fill(TEMPORARY_PASSWORD)
+  await page.getByLabel(/^New password(?:\s*\*)?$/).fill(CHOSEN_PASSWORD)
+  await page.getByLabel(/^Repeat the new password(?:\s*\*)?$/).fill(CHOSEN_PASSWORD)
   await page.getByRole('button', { name: 'Save and continue' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Shazlo-One' })).toBeVisible()
 }

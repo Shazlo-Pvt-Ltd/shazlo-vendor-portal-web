@@ -43,7 +43,7 @@ test.describe('the main journey', () => {
     const admin = await createAdmin(request, 'forced', ['vendor_reviewer'])
     await page.goto('/login')
     await page.getByLabel('Email address').fill(admin.email)
-    await page.getByLabel(/^Password(?: \*)?$/).fill(TEMPORARY_PASSWORD)
+    await page.getByLabel(/^Password(?:\s*\*)?$/).fill(TEMPORARY_PASSWORD)
     await page.getByRole('button', { name: 'Sign in' }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'Choose your password' })).toBeVisible()
     for (const path of ['/', '/m/reference', '/admins']) {
