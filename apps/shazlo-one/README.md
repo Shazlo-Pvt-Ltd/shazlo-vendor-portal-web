@@ -199,8 +199,8 @@ A module's token lasts **5 minutes** (identity-api's `EXCHANGED_TOKEN_TTL_SECOND
 (`ModuleHost.tsx`, with the maths in `src/modules/refreshSchedule.ts`) keeps the module's token fresh:
 
 - **Schedule:** from each token's own life, a new token is exchanged and sent as `auth` at 80% of its life or 30
-  seconds before it ends, whichever is first (never earlier than its half-life). A reload resumes from the token
-  the module was last given.
+  seconds before it ends, whichever is first (never earlier than its half-life). A reload (a second `ready`) gets
+  the token the module was last given, with no exchange, and its schedule and any backoff carry on unchanged.
 - **Identity first:** if the identity token would end before a new module token should, it is renewed before the
   exchange, so the module token gets its whole life. If that renewal cannot be done now, the exchange goes on with
   what the shell holds and the module token is cut short.
@@ -210,6 +210,9 @@ A module's token lasts **5 minutes** (identity-api's `EXCHANGED_TOKEN_TTL_SECOND
   as *expired* (no server call) and the admin goes to login, back to `/m/<id>` afterwards.
 - **A role removed** (`403 audience_not_allowed` on a refresh or request): the module closes and the 403 page shows.
   A role removed from the admin's own session (read again on renewal) does the same through the page's role check.
+- **A renewal that changes the roles** sends the module a token for the new ones at once; **one that names another
+  admin** (another tab signed out and in, and this one missed it) replaces the frame, so nothing given for the
+  previous admin survives.
 - **The session ending anywhere** (sign-out here or in another tab, a revoked refresh family, a deactivated admin)
   removes the frame and drops every token at once: the guards unmount the page, which clears its timers, closes the
   channel and drops the module's tokens.
