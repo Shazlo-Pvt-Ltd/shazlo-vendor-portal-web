@@ -252,7 +252,7 @@ services:
   # Catches every email the services send, so signup and invite links can be read locally.
   # Nothing leaves the machine. Services in compose send to mailpit:1025.
   mailpit:
-    image: axllent/mailpit:v1.21.8
+    image: axllent/mailpit:v1.34.0
     restart: unless-stopped
     ports:
       - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
