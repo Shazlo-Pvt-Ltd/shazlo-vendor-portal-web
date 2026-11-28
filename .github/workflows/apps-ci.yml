@@ -92,6 +92,8 @@ jobs:
       - run: npm run lint
       # Fails when services/vendor-api/openapi.json changed and the portal's types were not regenerated.
       - run: npm run api:check --workspace @shazlo/vendor-portal
+      # The portal's proposed routes (openapi/proposed.yaml) against their generated types.
+      - run: npm run api:proposed:check --workspace @shazlo/vendor-portal
       # The same for the admin module, and for its proposed routes.
       - run: npm run api:check --workspace @shazlo/vendor-admin
       - run: npm run api:proposed:check --workspace @shazlo/vendor-admin
