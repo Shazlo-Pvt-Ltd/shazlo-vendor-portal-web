@@ -57,6 +57,8 @@ function setup(options: Options = {}) {
     tokenRequests: [] as TokenRequestPayload[],
   }
   const apiCalls: Array<string | null> = []
+  // What the module asked fetch for (MSW in Node does not keep `credentials` or `referrerPolicy`).
+  const requests: Array<{ credentials: RequestCredentials | undefined; referrerPolicy: ReferrerPolicy | undefined }> = []
   server.use(
     http.get(`${API}/v1/admin/me`, ({ request }) => {
       const header = request.headers.get('Authorization')
@@ -92,6 +94,7 @@ function setup(options: Options = {}) {
   let inflight = 0
   const realFetch = globalThis.fetch
   vi.stubGlobal('fetch', (...args: Parameters<typeof fetch>) => {
+    requests.push({ credentials: args[1]?.credentials, referrerPolicy: args[1]?.referrerPolicy })
     inflight += 1
     return realFetch(...args).finally(() => {
       inflight -= 1
@@ -107,7 +110,7 @@ function setup(options: Options = {}) {
   const container = frames.frameDocument.body.appendChild(frames.frameDocument.createElement('div'))
   const view = render(<ReferenceModule config={config} frameWindow={frames.moduleWindow} now={options.now ?? (() => NOW)} />, { container })
   const page = within(frames.frameDocument.body)
-  return { ...frames, shell, seen, apiCalls, page, view, settle }
+  return { ...frames, shell, seen, apiCalls, requests, page, view, settle }
 }
 
 const text = (frame: Document) => frame.body.textContent ?? ''
@@ -164,6 +167,7 @@ describe('inside the shell', () => {
     const t = setup()
     await t.settle()
     expect(t.apiCalls).toHaveLength(1)
+    expect(t.requests).toEqual([{ credentials: 'omit', referrerPolicy: 'no-referrer' }])
     // The only requests are the one MSW handled (onUnhandledFrame would have thrown on any other).
     // What the module itself posts to the shell never contains the token (only the shell's auth does).
     const fromModule = t.posts.filter((post) => post.from === 'module')
