@@ -1,6 +1,5 @@
 import { z } from 'zod'
-import { moduleIcon } from './manifest'
-import { modulePath } from './paths'
+import { moduleIcon, modulePath } from './manifest'
 
 // ADR 0011: the summary a module's backend may serve, in one shape for every module. The shell
 // reads it with the module's own token and draws it the same way for each: the badge on the

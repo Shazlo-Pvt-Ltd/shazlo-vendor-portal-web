@@ -1,7 +1,7 @@
-import { createMessage } from '@shazlo/shell-protocol'
-import { act, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { renderShell } from '../test/render'
+import { moduleMessage, postFromFrame } from '../test/frames'
 
 // A phone-sized viewport: matchMedia answers min/max-width queries for a 390 px screen, so
 // useMediaQuery(theme.breakpoints.down(...)) sees a phone.
@@ -114,9 +114,9 @@ describe('phone shell: top bar and menu drawer', () => {
   it('shows only the last breadcrumb', async () => {
     await renderShell({ route: '/catalogue/queue' })
     const iframe = (await screen.findByTitle('Catalogue')) as HTMLIFrameElement
-    const send = (data: unknown) => act(() => void window.dispatchEvent(new MessageEvent('message', { data, origin: 'http://catalogue.test', source: iframe.contentWindow })))
-    send(createMessage('ready', { module: 'catalogue', supportedVersions: [1], moduleVersion: '0.1.0' }))
-    send(createMessage('title', { path: '/review/product/p_ajrakh', title: 'Ajrakh Block-Print Kurta' }))
+    const send = (data: unknown) => postFromFrame(iframe as HTMLIFrameElement, data, { origin: 'https://catalogue.test' })
+    send(moduleMessage('ready', { module: 'catalogue', supportedVersions: [1], moduleVersion: '0.1.0' }))
+    send(moduleMessage('title', { path: '/review/product/p_ajrakh', title: 'Ajrakh Block-Print Kurta' }))
     const crumbs = screen.getByRole('navigation', { name: 'Breadcrumb' })
     await waitFor(() => expect(crumbs).toHaveTextContent('Ajrakh Block-Print Kurta'))
     expect(within(crumbs).queryByRole('link', { name: 'Catalogue' })).toBeNull()

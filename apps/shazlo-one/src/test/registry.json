@@ -3,18 +3,18 @@
     "id": "catalogue",
     "fallbackTitle": "Catalogue",
     "basePath": "/catalogue",
-    "url": "http://catalogue.test/",
+    "url": "https://catalogue.test/",
     "roles": ["vendor_reviewer", "super_admin"],
     "audience": "vendor-api",
-    "summaryUrl": "http://catalogue-api.test/v1/summary"
+    "summaryUrl": "https://catalogue-api.test/v1/summary"
   },
   {
     "id": "campaigns",
     "fallbackTitle": "Campaigns",
     "basePath": "/campaigns",
-    "url": "http://campaigns.test/",
+    "url": "https://campaigns.test/",
     "roles": ["super_admin"],
     "audience": "vendor-api",
-    "summaryUrl": "http://campaigns-api.test/v1/summary"
+    "summaryUrl": "https://campaigns-api.test/v1/summary"
   }
 ]

@@ -1,13 +1,13 @@
-import { createMessage } from '@shazlo/shell-protocol'
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { ADMIN_ID } from '../mocks/identity'
 import { catalogue } from '../test/modules'
+import { moduleMessage, postFromFrame } from '../test/frames'
 import { renderShell } from '../test/render'
 import { server } from '../test/server'
 
-const MODULE_ORIGIN = 'http://catalogue.test'
+const MODULE_ORIGIN = 'https://catalogue.test'
 
 function frame() {
   return screen.getByTitle('Catalogue') as HTMLIFrameElement
@@ -27,14 +27,12 @@ function shellTop() {
 }
 
 // Sends a message as if it came from the module iframe.
-function fromModule(data: unknown, { origin = MODULE_ORIGIN, source }: { origin?: string; source?: MessageEventSource | null } = {}) {
-  act(() => {
-    window.dispatchEvent(new MessageEvent('message', { data, origin, source: source === undefined ? frame().contentWindow : source }))
-  })
+function fromModule(data: unknown, { origin = MODULE_ORIGIN, source }: { origin?: string; source?: unknown } = {}) {
+  postFromFrame(frame(), data, { origin, source })
 }
 
 function ready() {
-  const msg = createMessage('ready', { module: 'catalogue', supportedVersions: [1], moduleVersion: '0.1.0' })
+  const msg = moduleMessage('ready', { module: 'catalogue', supportedVersions: [1], moduleVersion: '0.1.0' })
   fromModule(msg)
   return msg
 }
@@ -155,7 +153,7 @@ describe('module host (ADR 0001)', () => {
   it('frames the module with the documented sandbox and loads the deep link', async () => {
     await renderShell({ route: '/catalogue/sellers?status=applied' })
     const iframe = await screen.findByTitle('Catalogue')
-    expect(iframe.getAttribute('src')).toBe('http://catalogue.test/sellers?status=applied')
+    expect(iframe.getAttribute('src')).toBe('https://catalogue.test/sellers?status=applied')
     expect(iframe.getAttribute('sandbox')).toBe('allow-scripts allow-same-origin allow-forms allow-downloads')
     expect(iframe.getAttribute('referrerpolicy')).toBe('no-referrer')
     expect(screen.getByRole('status', { name: 'Loading Catalogue' })).toBeInTheDocument()
@@ -178,7 +176,7 @@ describe('module host (ADR 0001)', () => {
     await renderShell({ route: '/catalogue/queue' })
     await screen.findByTitle('Catalogue')
     const post = vi.spyOn(frame().contentWindow!, 'postMessage')
-    const msg = createMessage('ready', { module: 'catalogue', supportedVersions: [1], moduleVersion: '0.1.0' })
+    const msg = moduleMessage('ready', { module: 'catalogue', supportedVersions: [1], moduleVersion: '0.1.0' })
     fromModule(msg, { origin: 'https://evil.example' })
     fromModule(msg, { source: window })
     await new Promise((r) => setTimeout(r, 50))
@@ -190,7 +188,7 @@ describe('module host (ADR 0001)', () => {
     const { router } = await renderShell({ route: '/catalogue/queue' })
     await screen.findByTitle('Catalogue')
     ready()
-    fromModule(createMessage('title', { path: '/review/product/p_ajrakh', title: 'Ajrakh Block-Print Kurta' }))
+    fromModule(moduleMessage('title', { path: '/review/product/p_ajrakh', title: 'Ajrakh Block-Print Kurta' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/catalogue/review/product/p_ajrakh'))
     expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('Ajrakh Block-Print Kurta')
     expect(document.title).toBe('Ajrakh Block-Print Kurta · Catalogue · Shazlo One')
@@ -200,11 +198,11 @@ describe('module host (ADR 0001)', () => {
     const { user } = await renderShell({ route: '/catalogue/queue' })
     await screen.findByTitle('Catalogue')
     ready()
-    fromModule(createMessage('title', { path: '/queue', title: 'Review queue' }))
+    fromModule(moduleMessage('title', { path: '/queue', title: 'Review queue' }))
     const post = vi.spyOn(frame().contentWindow!, 'postMessage')
     await user.click(await within(sidebar()).findByRole('link', { name: 'Publishing' }))
     await waitFor(() => expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'navigate', payload: { path: '/publishing' } }), MODULE_ORIGIN))
-    expect(frame().getAttribute('src')).toBe('http://catalogue.test/queue')
+    expect(frame().getAttribute('src')).toBe('https://catalogue.test/queue')
   })
 
   it('moves the module back to its home page when its sidebar row is picked', async () => {
@@ -212,19 +210,19 @@ describe('module host (ADR 0001)', () => {
     await screen.findByTitle('Catalogue')
     await manifestIn()
     ready()
-    fromModule(createMessage('title', { path: '/queue', title: 'Review queue' }))
+    fromModule(moduleMessage('title', { path: '/queue', title: 'Review queue' }))
     const post = vi.spyOn(frame().contentWindow!, 'postMessage')
     await user.click(within(sidebar()).getByRole('link', { name: /^Catalogue/ }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/catalogue/dashboard'))
     await waitFor(() => expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'navigate', payload: { path: '/dashboard' } }), MODULE_ORIGIN))
-    expect(frame().getAttribute('src')).toBe('http://catalogue.test/queue')
+    expect(frame().getAttribute('src')).toBe('https://catalogue.test/queue')
   })
 
   it('shows module toasts in the shell', async () => {
     await renderShell({ route: '/catalogue/queue' })
     await screen.findByTitle('Catalogue')
     ready()
-    fromModule(createMessage('toast', { level: 'success', message: 'Approved. Publishing to the app.' }))
+    fromModule(moduleMessage('toast', { level: 'success', message: 'Approved. Publishing to the app.' }))
     expect(await screen.findByText('Approved. Publishing to the app.')).toBeInTheDocument()
   })
 
@@ -234,8 +232,8 @@ describe('module host (ADR 0001)', () => {
     const post = vi.spyOn(frame().contentWindow!, 'postMessage')
     ready()
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
-    fromModule(createMessage('token:request', { reason: 'unauthorized' }))
-    fromModule(createMessage('token:request', { reason: 'unauthorized' }))
+    fromModule(moduleMessage('token:request', { reason: 'unauthorized' }))
+    fromModule(moduleMessage('token:request', { reason: 'unauthorized' }))
     await waitFor(() => expect(post).toHaveBeenCalledTimes(2))
     await new Promise((r) => setTimeout(r, 50))
     expect(post).toHaveBeenCalledTimes(2)
@@ -246,7 +244,7 @@ describe('module host (ADR 0001)', () => {
     const { router } = await renderShell({ route: '/catalogue/queue' })
     await screen.findByTitle('Catalogue')
     ready()
-    fromModule(createMessage('logout', {}))
+    fromModule(moduleMessage('logout', {}))
     await waitFor(() => expect(router.state.location.pathname).toBe('/sign-in'))
   })
 
@@ -254,7 +252,7 @@ describe('module host (ADR 0001)', () => {
     await renderShell({ route: '/catalogue/queue' })
     await screen.findByTitle('Catalogue')
     const post = vi.spyOn(frame().contentWindow!, 'postMessage')
-    fromModule(createMessage('ready', { module: 'catalogue', supportedVersions: [9], moduleVersion: '9.0.0' }))
+    fromModule(moduleMessage('ready', { module: 'catalogue', supportedVersions: [9], moduleVersion: '9.0.0' }))
     expect(await screen.findByRole('heading', { name: 'Catalogue 9.0.0 needs a newer Shazlo One' })).toBeInTheDocument()
     expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'error', payload: expect.objectContaining({ code: 'version_unsupported' }) }), MODULE_ORIGIN)
   })
@@ -314,7 +312,7 @@ describe('a module that is down', () => {
     catalogueDown()
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const { user, router } = await renderShell({ route: '/catalogue/queue' })
-    expect((await screen.findByTitle('Catalogue')).getAttribute('src')).toBe('http://catalogue.test/queue')
+    expect((await screen.findByTitle('Catalogue')).getAttribute('src')).toBe('https://catalogue.test/queue')
     for (let attempt = 1; attempt < 3; attempt++) {
       act(() => vi.advanceTimersByTime(10_000))
       await user.click(await screen.findByRole('button', { name: 'Try again' }))
@@ -365,7 +363,7 @@ describe('a module: its home page first, its pages in the top bar too', () => {
     expect(row).not.toHaveAttribute('aria-current')
     // The module names its page; "Catalogue" then becomes a crumb link. The bare base path opens the home page.
     ready()
-    fromModule(createMessage('title', { path: '/queue', title: 'Review queue' }))
+    fromModule(moduleMessage('title', { path: '/queue', title: 'Review queue' }))
     const crumbs = screen.getByRole('navigation', { name: 'Breadcrumb' })
     await waitFor(() => expect(within(crumbs).getByRole('link', { name: 'Catalogue' })).toHaveAttribute('href', '/catalogue'))
   })
@@ -374,15 +372,15 @@ describe('a module: its home page first, its pages in the top bar too', () => {
     const { router } = await renderShell({ route: '/' })
     await within(sidebar()).findByRole('link', { name: 'Review queue' })
     await act(() => router.navigate(route))
-    expect((await screen.findByTitle('Catalogue')).getAttribute('src')).toBe('http://catalogue.test/dashboard')
+    expect((await screen.findByTitle('Catalogue')).getAttribute('src')).toBe('https://catalogue.test/dashboard')
     expect(within(sidebar()).getByRole('link', { name: /^Catalogue/ })).toHaveAttribute('aria-current', 'page')
   })
 
   it('loads the module root from the bare base path before the manifest is in, and follows the page the module opens on', async () => {
     const { router } = await renderShell({ route: '/catalogue' })
-    expect((await screen.findByTitle('Catalogue')).getAttribute('src')).toBe('http://catalogue.test/')
+    expect((await screen.findByTitle('Catalogue')).getAttribute('src')).toBe('https://catalogue.test/')
     ready()
-    fromModule(createMessage('title', { path: '/dashboard', title: 'Dashboard' }))
+    fromModule(moduleMessage('title', { path: '/dashboard', title: 'Dashboard' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/catalogue/dashboard'))
     // The row knows the home page once the manifest names it.
     await waitFor(() => expect(within(sidebar()).getByRole('link', { name: /^Catalogue/ })).toHaveAttribute('aria-current', 'page'))
@@ -399,13 +397,13 @@ describe('a module: its home page first, its pages in the top bar too', () => {
     const post = vi.spyOn(frame().contentWindow!, 'postMessage')
     ready()
     // The module reports the page it was loaded on, after the admin had moved on.
-    fromModule(createMessage('title', { path: '/dashboard', title: 'Dashboard' }))
+    fromModule(moduleMessage('title', { path: '/dashboard', title: 'Dashboard' }))
     await waitFor(() => expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'navigate', payload: { path: '/queue' } }), MODULE_ORIGIN))
     expect(router.state.location.pathname).toBe('/catalogue/queue')
     expect(document.title).toBe('')
     expect(within(topNav()!).getByRole('link', { name: 'Review queue' })).toHaveAttribute('aria-current', 'page')
     // The module arrives and names its page; the shell URL already matches, so nothing else moves.
-    fromModule(createMessage('title', { path: '/queue', title: 'Review queue' }))
+    fromModule(moduleMessage('title', { path: '/queue', title: 'Review queue' }))
     await waitFor(() => expect(document.title).toBe('Review queue · Catalogue · Shazlo One'))
     expect(router.state.location.pathname).toBe('/catalogue/queue')
     expect(post.mock.calls.filter(([m]) => (m as { type: string }).type === 'navigate')).toHaveLength(1)
@@ -447,12 +445,12 @@ describe('a module: its home page first, its pages in the top bar too', () => {
     await screen.findByTitle('Catalogue')
     await manifestIn()
     ready()
-    fromModule(createMessage('title', { path: '/dashboard', title: 'Dashboard' }))
+    fromModule(moduleMessage('title', { path: '/dashboard', title: 'Dashboard' }))
     const post = vi.spyOn(frame().contentWindow!, 'postMessage')
     await user.click(within(topNav()!).getByRole('link', { name: 'All sellers' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/catalogue/sellers'))
     await waitFor(() => expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'navigate', payload: { path: '/sellers' } }), MODULE_ORIGIN))
-    expect(frame().getAttribute('src')).toBe('http://catalogue.test/dashboard')
+    expect(frame().getAttribute('src')).toBe('https://catalogue.test/dashboard')
     expect(within(topNav()!).getByRole('link', { name: 'All sellers' })).toHaveAttribute('aria-current', 'page')
     expect(within(sidebar()).getByRole('link', { name: 'All sellers' })).toHaveAttribute('aria-current', 'page')
   })

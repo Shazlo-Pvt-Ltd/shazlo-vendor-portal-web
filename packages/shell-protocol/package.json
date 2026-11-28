@@ -2,7 +2,7 @@
   "name": "@shazlo/shell-protocol",
   "private": true,
   "version": "0.1.0",
-  "description": "ADR 0001 postMessage protocol between the Shazlo One shell and its module iframes",
+  "description": "The Shazlo One shell protocol: the postMessage channel between the shell and its module iframes (ADR 0001), and the module registry, manifest and summary (ADR 0011)",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",

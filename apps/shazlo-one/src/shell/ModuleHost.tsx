@@ -1,6 +1,6 @@
 import { Box, Button, Skeleton, Stack, Typography } from '@mui/material'
 import { EmptyIllustration, neutral, useSnackbar } from '@shazlo/ui'
-import { createMessage, listenAsShell, pickVersion, sendTo, type Message, type ModuleMessage } from '@shazlo/shell-protocol'
+import { createShellChannel, type ReadyInfo, type ShellChannel, type TitlePayload } from '@shazlo/shell-protocol'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { useAppContext } from '../api/context'
@@ -17,8 +17,9 @@ const TOKEN_REQUEST_GAP_MS = 30_000
 
 type State = { kind: 'loading' } | { kind: 'ready' } | { kind: 'failed' } | { kind: 'unavailable' } | { kind: 'version'; moduleVersion: string }
 
-// Hosts one module in an iframe and speaks ADR 0001 with it: ready → auth, token refresh, title and
-// URL sync, toasts, logout, and the 10-second / three-attempt failure handling.
+// Hosts one module in an iframe and speaks ADR 0001 with it through @shazlo/shell-protocol: ready →
+// auth, token refresh, title and URL sync, toasts, logout, and the 10-second / three-attempt failure
+// handling.
 export function ModuleHost({ module }: { module: ResolvedModule }) {
   const { session } = useAppContext()
   const { admin, signOut } = useSession()
@@ -26,6 +27,7 @@ export function ModuleHost({ module }: { module: ResolvedModule }) {
   const navigate = useNavigate()
   const location = useLocation()
   const frame = useRef<HTMLIFrameElement>(null)
+  const channel = useRef<ShellChannel | null>(null)
   const [state, setState] = useState<State>({ kind: 'loading' })
   const [attempt, setAttempt] = useState(1)
   const [title, setTitle] = useState<string | null>(null)
@@ -44,82 +46,92 @@ export function ModuleHost({ module }: { module: ResolvedModule }) {
   // The iframe loads its first URL once; later URL changes are sent as `navigate`.
   const [firstTarget] = useState(target)
 
-  const send = useCallback((message: Message) => {
-    const win = frame.current?.contentWindow
-    if (win) sendTo(win, module.origin, message)
-  }, [module.origin])
-
   // Pushes a fresh token before the current one runs out (80% of its life, ADR 0001 §3.5).
   const sendAuth = useCallback(async (replyTo?: string, force = false) => {
     if (!admin) return
     try {
       const { token, expiresAt } = await session.moduleToken(module.audience, force)
-      send(createMessage('auth', { accessToken: token, expiresAt, user: { id: admin.id, email: admin.email, roles: admin.roles, name: admin.display_name }, locale: 'en-IN' }, replyTo))
+      channel.current?.sendAuth({ accessToken: token, expiresAt, user: { id: admin.id, email: admin.email, roles: admin.roles }, locale: 'en-IN' }, replyTo === undefined ? {} : { replyTo })
       if (refreshTimer.current) clearTimeout(refreshTimer.current)
       const lifeMs = (expiresAt - Date.now() / 1000) * 1000
       refreshTimer.current = setTimeout(() => void sendAuthRef.current(undefined, true), Math.max(5_000, lifeMs * 0.8))
     } catch {
       session.end('expired')
     }
-  }, [admin, module.audience, send, session])
+  }, [admin, module.audience, session])
   useEffect(() => {
     sendAuthRef.current = sendAuth
   }, [sendAuth])
 
-  const onMessage = useCallback((message: ModuleMessage) => {
-    switch (message.type) {
-      case 'ready': {
-        const version = pickVersion(message.payload.supportedVersions)
-        if (version === null) {
-          send(createMessage('error', { code: 'version_unsupported', message: 'Shazlo One does not support this module version.' }, message.id))
-          setState({ kind: 'version', moduleVersion: message.payload.moduleVersion })
-          return
-        }
-        setState({ kind: 'ready' })
-        void sendAuth(message.id)
+  // What the module says. The channel has already checked the sender's origin and window, the size,
+  // the protocol, the version and the payload.
+  const handlers = {
+    ready: (info: ReadyInfo) => {
+      setState({ kind: 'ready' })
+      void sendAuth(info.id)
+    },
+    // The channel has already answered `version_unsupported`.
+    versionUnsupported: (moduleVersion: string) => setState({ kind: 'version', moduleVersion }),
+    title: ({ path, title: name }: TitlePayload) => {
+      // The first title of a load names the page the module opened on. If the admin picked another
+      // page while it loaded (top bar, sidebar, Back), the module is taken there, rather than the
+      // shell URL being moved back to the page the module started on.
+      const wanted = targetRef.current
+      if (modulePath.current === null && wanted !== firstTarget && path !== wanted) {
+        modulePath.current = wanted
+        channel.current?.sendNavigate(wanted)
         return
       }
-      case 'title': {
-        // The first title of a load names the page the module opened on. If the admin picked another
-        // page while it loaded (top bar, sidebar, Back), the module is taken there, rather than the
-        // shell URL being moved back to the page the module started on.
-        const wanted = targetRef.current
-        if (modulePath.current === null && wanted !== firstTarget && message.payload.path !== wanted) {
-          modulePath.current = wanted
-          send(createMessage('navigate', { path: wanted }))
-          return
-        }
-        modulePath.current = message.payload.path
-        setTitle(message.payload.title)
-        document.title = `${message.payload.title} · ${module.title} · Shazlo One`
-        const shellPath = module.basePath + message.payload.path
-        if (window.location.pathname + window.location.search !== shellPath) navigate(shellPath, { replace: true })
-        return
-      }
-      case 'token:request': {
-        const now = Date.now()
-        if (now - lastTokenRequest.current < TOKEN_REQUEST_GAP_MS) return
-        lastTokenRequest.current = now
-        void sendAuth(message.id, true)
-        return
-      }
-      case 'toast':
-        notify(message.payload.message)
-        return
-      case 'logout':
-        void signOut().then(() => navigate(paths.signIn, { replace: true }))
-        return
-      case 'error':
-        if (message.payload.fatal) setState({ kind: 'failed' })
-        return
-    }
-  }, [firstTarget, module.basePath, module.title, navigate, notify, send, sendAuth, signOut])
-
-  // The listener is attached in a layout effect, before the iframe can run any script, so an early
-  // `ready` is never missed (ADR 0001 §3.1).
-  useLayoutEffect(() => listenAsShell({ origin: module.origin, source: () => frame.current?.contentWindow, onMessage }), [module.origin, onMessage])
+      modulePath.current = path
+      setTitle(name)
+      document.title = `${name} · ${module.title} · Shazlo One`
+      const shellPath = module.basePath + path
+      if (window.location.pathname + window.location.search !== shellPath) navigate(shellPath, { replace: true })
+    },
+    tokenRequest: (id: string) => {
+      const now = Date.now()
+      if (now - lastTokenRequest.current < TOKEN_REQUEST_GAP_MS) return
+      lastTokenRequest.current = now
+      void sendAuth(id, true)
+    },
+    toast: (message: string) => notify(message),
+    logout: () => void signOut().then(() => navigate(paths.signIn, { replace: true })),
+    error: (fatal: boolean) => {
+      if (fatal) setState({ kind: 'failed' })
+    },
+  }
+  const handlersRef = useRef(handlers)
+  useLayoutEffect(() => {
+    handlersRef.current = handlers
+  })
 
   const src = useMemo(() => new URL(firstTarget.replace(/^\//, ''), module.url).toString(), [firstTarget, module.url])
+
+  // One channel per load of the frame (ADR 0001 §3.1). It listens from the moment it is created, and
+  // only then does the frame get its address, so an early `ready` is never missed.
+  useLayoutEffect(() => {
+    const iframe = frame.current
+    if (!iframe) return
+    const on = () => handlersRef.current
+    const created = createShellChannel({
+      iframe,
+      origin: module.origin,
+      development: import.meta.env.DEV,
+      onReady: (info) => on().ready(info),
+      onVersionUnsupported: (info) => on().versionUnsupported(info.moduleVersion),
+      onTitle: (payload) => on().title(payload),
+      onTokenRequest: (_payload, message) => on().tokenRequest(message.id),
+      onToast: (payload) => on().toast(payload.message),
+      onLogout: () => on().logout(),
+      onModuleError: (payload) => on().error(payload.fatal),
+    })
+    channel.current = created
+    iframe.src = src
+    return () => {
+      created.dispose()
+      if (channel.current === created) channel.current = null
+    }
+  }, [attempt, module.origin, src])
 
   useEffect(() => {
     const timer = setTimeout(() => setState((s) => (s.kind === 'loading' ? { kind: attempt >= MAX_ATTEMPTS ? 'unavailable' : 'failed' } : s)), READY_TIMEOUT_MS)
@@ -131,8 +143,8 @@ export function ModuleHost({ module }: { module: ResolvedModule }) {
   useEffect(() => {
     if (state.kind !== 'ready' || modulePath.current === null || target === modulePath.current) return
     modulePath.current = target
-    send(createMessage('navigate', { path: target }))
-  }, [target, state.kind, send])
+    channel.current?.sendNavigate(target)
+  }, [target, state.kind])
 
   useEffect(() => () => {
     if (refreshTimer.current) clearTimeout(refreshTimer.current)
@@ -173,7 +185,6 @@ export function ModuleHost({ module }: { module: ResolvedModule }) {
           component="iframe"
           key={attempt}
           ref={frame}
-          src={src}
           title={module.title}
           sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"
           referrerPolicy="no-referrer"

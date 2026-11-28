@@ -46,6 +46,7 @@ function Gate() {
     return <Panel title="Open this in Shazlo One" body="The vendor review module only works inside Shazlo One, which signs you in and keeps your session." action={<Button variant="contained" href={`${shell}/vendors${window.location.pathname}`}>Open Shazlo One</Button>} />
   }
   if (status === 'ended') return <Panel title="Your session ended" body="Shazlo One stopped sending a session to this module. Reload Shazlo One to sign in again." />
+  if (status === 'misconfigured') return <Panel title="This module is not set up correctly" body="It does not know which Shazlo One to trust, so it will not start. Tell the platform team." />
   if (status === 'waiting') {
     return (
       <Box role="status" aria-label="Connecting to Shazlo One" sx={{ minHeight: '100dvh', display: 'grid', placeItems: 'center' }}>

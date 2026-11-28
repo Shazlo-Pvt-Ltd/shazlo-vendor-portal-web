@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest'
 import {
   actorIds,
   badgeOf,
-  createMessage,
   isModulePath,
   manifestUrl,
   parseManifest,
-  parseMessage,
+  parseModuleToShell,
   parseRegistry,
+  parseShellToModule,
   parseSummary,
   registryCsp,
   type RegistryInput,
@@ -58,9 +58,11 @@ describe('module paths', () => {
   })
 
   it('guards navigate and title messages too', () => {
-    expect(parseMessage(createMessage('navigate', { path: '/\\evil.test' }), 'shell')).toBeNull()
-    expect(parseMessage(createMessage('title', { path: '/../admins', title: 'Admins' }), 'module')).toBeNull()
-    expect(parseMessage(createMessage('navigate', { path: '/queue?sort=oldest' }), 'shell')).not.toBeNull()
+    const message = (type: string, payload: unknown) => ({ protocol: 'shazlo-one', v: 1, type, id: '00000000-0000-4000-8000-000000000001', sentAt: 1, payload })
+    const accepted = { acceptedVersions: [1] }
+    expect(parseShellToModule(message('navigate', { path: '/\\evil.test' }), accepted).ok).toBe(false)
+    expect(parseModuleToShell(message('title', { path: '/../admins', title: 'Admins' }), accepted).ok).toBe(false)
+    expect(parseShellToModule(message('navigate', { path: '/queue?sort=oldest' }), accepted).ok).toBe(true)
   })
 })
 

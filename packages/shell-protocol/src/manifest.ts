@@ -1,10 +1,13 @@
 import { z } from 'zod'
-import { modulePath } from './paths'
+import { isModulePath } from './paths'
 
 // ADR 0011: what a module says about itself, served by the module at a fixed path of its own
 // origin. The shell reads it to draw the module's row and pages in the sidebar and top bar, so a
 // module can add or rename a page without a shell release. Nothing here decides trust: the origin,
 // the roles and the token audience come from the shell's registry (registry.ts).
+
+// A module path (paths.ts) as a zod schema, for the manifest and the summary.
+export const modulePath = z.string().refine(isModulePath, 'paths are module-relative ("/queue"), and stay inside the module')
 
 export const MANIFEST_PATH = '/shazlo-module.json'
 

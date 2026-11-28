@@ -191,7 +191,7 @@ describe('A-02 Home: alerts and links into the module', () => {
     await user.click(within(await figure(card, 'Failed')).getByRole('link'))
     await waitFor(() => expect(router.state.location.pathname).toBe('/catalogue/publishing'))
     expect(router.state.location.search).toBe('?status=failed')
-    expect((await screen.findByTitle('Catalogue')).getAttribute('src')).toBe('http://catalogue.test/publishing?status=failed')
+    expect((await screen.findByTitle('Catalogue')).getAttribute('src')).toBe('https://catalogue.test/publishing?status=failed')
   })
 
   it('opens a figure from the keyboard', async () => {
