@@ -55,7 +55,7 @@ const MESSAGE_BY_CODE: Record<string, string> = {
   stale_review: 'This changed since you opened it. Reload to see the latest version.',
   review_already_decided: 'This was already decided by someone else. Reload to see the result.',
   invalid_status_transition: 'This vendor’s status changed. Reload and try again.',
-  commission_changed: 'The brand changed its proposed rate. Reload to review the new one.',
+  commission_changed: 'The brand changed its proposal. Reload to see the new rate.',
   no_proposal: 'There is no proposed rate waiting.',
 }
 
