@@ -219,16 +219,18 @@ A module's token lasts **5 minutes** (identity-api's `EXCHANGED_TOKEN_TTL_SECOND
 - **`title`**: the breadcrumb, the tab title and the shell address (`/m/<id>/<path>`) follow the module. The address
   is **replaced**, not pushed, so a module's own navigation does not fill the history. The shell checks the path
   beyond the protocol (`src/modules/shellPath.ts`): after dot segments and encoded dots it must stay inside
-  `/m/<id>`, so `/../admins` or another site is ignored. At most 20 titles per 10 seconds.
+  `/m/<id>`, so `/../admins` or another site is ignored. At most 20 titles per 10 seconds. The page heading takes
+  focus only when the admin goes to another screen or module, never for a module's own page change.
 - **Deep links**: opening `/m/<id>/<path>` sends `navigate { path }` once the module has its token, again when it
   reloads (`ready`), and when the address changes under it (the browser's back and forward). A path the module
   reported itself is never sent back. A copied shell address reopens the same module page.
 - **`toast`**: shown by the shell's own component (`ToastProvider`), as text, labelled with the module's name.
   Markup is refused by the protocol, at most 280 characters, each level is the alert severity of that name, the
-  region announces politely, at most 3 are visible, at most 5 are taken per 10 seconds per module, and the
-  duration is held to 3 to 15 seconds.
-- **`logout`**: ends the session like the account menu does (the refresh token is revoked), removes the frame and
-  goes to sign in.
+  region announces politely, at most 3 are visible, each keeps at most 3 lines, at most 5 are taken per 10 seconds
+  per module, and the duration is held to 3 to 15 seconds.
+- **`logout`**: ends the session like the account menu does (the refresh token is revoked), removes the frame at
+  once (not when the server answers) and goes to sign in. Only the first counts, and nothing the module sends
+  after it, or after a fatal `error`, is acted on.
 - **`error`**: a non-fatal one is logged in development and shows a notice; `fatal: true` replaces the module with
   the shell's error panel, whose Retry reloads it.
 
