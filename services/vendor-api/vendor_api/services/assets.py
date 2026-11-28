@@ -178,17 +178,20 @@ class AssetService:
                 # A rollback would expire the asset, and reading it then needs another query.
                 await db.commit()
                 return asset
+            # The Cloudinary calls use the name this service issued (the row), never the request's
+            # string: they are equal here, but only the row's is known not to be attacker-chosen
+            # (and CodeQL's partial-SSRF query can see that).
             try:
-                uploaded = await host.describe(public_id)
+                uploaded = await host.describe(asset.public_id)
             except ImageHostError as error:
                 raise IMAGE_HOST_UNAVAILABLE from error
             if uploaded is None:
                 raise UPLOAD_NOT_FOUND
 
-            problem = self._problem(public_id, uploaded)
+            problem = self._problem(asset.public_id, uploaded)
             if problem is not None:
                 # Refuse the file and take it back, so it neither stays stored nor can be used.
-                await host.delete(public_id)
+                await host.delete(asset.public_id)
                 asset.status = AssetStatus.DELETED
                 await db.flush()
                 await db.commit()

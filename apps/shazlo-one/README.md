@@ -111,8 +111,9 @@ on a `401` from anything but `/v1/auth/*`, renews the session once and repeats t
   must change their password has a token with no roles; the guards hold them at `/change-password`.
 - Guards: `RequireAuth` (sends to `/login?return-to=...`, the path checked against `shellPaths`),
   `PublicOnly`, `RequirePasswordChange` and `RequireRole anyOf={[...]}`.
-- `getModuleToken(audience)` exchanges the identity token (`POST /v1/auth/token`) for a module token,
-  shared between callers, never kept past its own or the identity token's expiry. `403
+- `getModuleToken(audience, scope)` exchanges the identity token (`POST /v1/auth/token`) for a module token,
+  kept per `scope` (the module's id), shared only between callers of the same scope, never kept past its
+  own or the identity token's expiry. `dropModuleTokens(scope)` forgets a module's tokens when its page is left. `403
   audience_not_allowed` and `400 unknown_audience` are `AudienceNotAllowedError` and
   `UnknownAudienceError`.
 - Screens: `/login` (one message for every `401`, a countdown for `429`, the password dropped from
@@ -195,6 +196,60 @@ without the admins being asked for at all.
 - **Temporary passwords:** the field is emptied the moment the call is sent (success or not), the mutation keeps
   no copy, nothing is written to web storage, and a half-typed one is emptied when the session ends. Tests check
   the form, the mutation cache, the query cache and the page.
+
+## The module host
+
+`/m/:moduleId` puts the module in a frame and does the handshake of ADR 0001 (`src/components/ModuleHost.tsx`,
+built on `createShellChannel` from `@shazlo/shell-protocol`).
+
+- **The frame:** `title`, `sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"` (no top
+  navigation, popups or modals), `referrerpolicy="no-referrer"`, `allow=""`. Its `src` is exactly the
+  registry's `url`: a token is never in an address. `allow-scripts` with `allow-same-origin` is safe only because
+  a module has an origin of its own, so the host refuses (no frame, no token) a module whose origin is the shell's.
+- **Order:** the channel (and so the `message` listener) is created first, then `src` is set, so an early
+  `ready` is never missed.
+- **On `ready`** (from the module's exact origin **and** its frame window, nothing else is read): the shell
+  picks a version, exchanges a token for the registry's `audience`, and sends `auth` with `replyTo`. A second
+  `ready` (the module reloaded) gets the current `auth` again, from the cache while the token is good. With no
+  common version the shell sends `error` `version_unsupported` and shows a panel naming the module and its version.
+- **Tokens** are kept per module (its id), never shared (two modules on `vendor-api` get a token each), and
+  dropped when the page is left, when Retry builds a new frame, and when the session ends.
+- **Exchange failures:** `403 audience_not_allowed` (the admin lost the role) is the 403 page, with no frame.
+  A network error, a 5xx, an unknown audience or an ended session is an error panel with **Retry**.
+- **No `ready` in 10 seconds** (also what a CSP or framing refusal looks like, because the parent cannot see
+  it): an error panel with Retry, which gives the frame a new load. After 3 failed retries it says "unavailable",
+  offers no more Retry and calls the failure reporter once (`setModuleFailureReporter` in
+  `src/modules/moduleFailure.ts`; nothing is wired up by default). A module that answers resets the count.
+- **While it starts** the page shows a loading state; the shell's navigation and account menu stay usable
+  throughout, and leaving the page removes the frame and its listener. Focus moves to the page heading when the
+  admin opens a module (or another one), not when the path changes inside the same module.
+
+### Keeping the module supplied
+
+A module's token lasts **5 minutes** (identity-api's `EXCHANGED_TOKEN_TTL_SECONDS`), the identity token **15**. The host
+(`ModuleHost.tsx`, with the maths in `src/modules/refreshSchedule.ts`) keeps the module's token fresh:
+
+- **Schedule:** from each token's own life, a new token is exchanged and sent as `auth` at 80% of its life or 30
+  seconds before it ends, whichever is first (never earlier than its half-life). A reload (a second `ready`) gets
+  the token the module was last given, with no exchange, and its schedule and any backoff carry on unchanged.
+- **Identity first:** if the identity token would end before a new module token should, it is renewed before the
+  exchange, so the module token gets its whole life. If that renewal cannot be done now, the exchange goes on with
+  what the shell holds and the module token is cut short.
+- **`token:request`:** answered with a fresh `auth`, at most once per 30 seconds per module, whatever it sends.
+- **A failed refresh** (network, 5xx): the module keeps its token; the shell retries after 5, 15, then every 30
+  seconds, and a retry that works resets the backoff. When the token ends, the frame is removed, the session ends
+  as *expired* (no server call) and the admin goes to login, back to `/m/<id>` afterwards.
+- **A role removed** (`403 audience_not_allowed` on a refresh or request): the module closes and the 403 page shows.
+  A role removed from the admin's own session (read again on renewal) does the same through the page's role check.
+- **A renewal that changes the roles** sends the module a token for the new ones at once; **one that names another
+  admin** (another tab signed out and in, and this one missed it) replaces the frame, so nothing given for the
+  previous admin survives.
+- **The session ending anywhere** (sign-out here or in another tab, a revoked refresh family, a deactivated admin)
+  removes the frame and drops every token at once: the guards unmount the page, which clears its timers, closes the
+  channel and drops the module's tokens.
+
+Not here yet: title and deep-link sync, toasts, and a module's `logout` and `error` messages (#257). Until then the
+reference module's buttons for those send messages the host does not act on.
 
 ## The reference module
 
