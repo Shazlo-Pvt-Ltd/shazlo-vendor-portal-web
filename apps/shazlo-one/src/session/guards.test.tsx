@@ -95,7 +95,7 @@ describe('RequireAuth', () => {
 
   it('holds an admin who must change their password at that screen, and nowhere else', async () => {
     const router = await open('/', mustChange())
-    expect(await screen.findByRole('heading', { level: 1, name: 'Change your password' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Choose your password' })).toBeTruthy()
     expect(router.state.location.pathname).toBe('/change-password')
     await act(async () => {
       await router.navigate('/login')
@@ -131,7 +131,7 @@ describe('PublicOnly', () => {
 
   it('sends an admin who must change their password to that screen, not to login', async () => {
     const router = await open('/login', mustChange())
-    await screen.findByRole('heading', { level: 1, name: 'Change your password' })
+    await screen.findByRole('heading', { level: 1, name: 'Choose your password' })
     expect(router.state.location.pathname).toBe('/change-password')
   })
 })

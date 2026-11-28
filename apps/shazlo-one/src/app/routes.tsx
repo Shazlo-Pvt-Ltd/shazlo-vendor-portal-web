@@ -1,6 +1,7 @@
 import type { RouteObject } from 'react-router'
 import { NotFound } from '../components/NotFound'
 import { RouteError } from '../components/RouteError'
+import { ShellLayout } from '../components/ShellLayout'
 import { ChangePasswordPage } from '../pages/ChangePasswordPage'
 import { HomePage } from '../pages/HomePage'
 import { LoginPage } from '../pages/LoginPage'
@@ -12,7 +13,12 @@ export const routes: RouteObject[] = [
   {
     element: <RequireAuth />,
     errorElement: <RouteError />,
-    children: [{ path: '/', element: <HomePage />, errorElement: <RouteError /> }],
+    children: [
+      {
+        element: <ShellLayout />,
+        children: [{ path: '/', element: <HomePage />, errorElement: <RouteError /> }],
+      },
+    ],
   },
   {
     element: <PublicOnly />,
@@ -22,7 +28,12 @@ export const routes: RouteObject[] = [
   {
     element: <RequirePasswordChange />,
     errorElement: <RouteError />,
-    children: [{ path: CHANGE_PASSWORD_PATH, element: <ChangePasswordPage />, errorElement: <RouteError /> }],
+    children: [
+      {
+        element: <ShellLayout />,
+        children: [{ path: CHANGE_PASSWORD_PATH, element: <ChangePasswordPage />, errorElement: <RouteError /> }],
+      },
+    ],
   },
   { path: '*', element: <NotFound />, errorElement: <RouteError /> },
 ]
