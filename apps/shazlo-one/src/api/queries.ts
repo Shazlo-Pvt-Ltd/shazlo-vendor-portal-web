@@ -61,18 +61,20 @@ export function useResetPassword() {
 
 // Temporary passwords for new or reset admins: 16 characters from an alphabet without look-alikes
 // (no 0, o, 1, l, i), in groups of four to read aloud, about 79 bits. Each character is drawn without
-// bias: a byte that would favour the first few characters of the alphabet is thrown away (CodeQL
-// flagged the plain `byte % length` this replaced).
+// bias: the low five bits of a random byte pick one of 32 places, and the one place past the 31-letter
+// alphabet is thrown away (rejection sampling). No modulo: CodeQL flagged the plain `byte % length`
+// this replaced, and a mask of a power of two minus one is uniform.
 const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789'
-const UNBIASED_LIMIT = 256 - (256 % ALPHABET.length)
+const FIVE_BITS = 0b11111
 export const TEMPORARY_PASSWORD_LENGTH = 16
 
 export function temporaryPassword(random: (bytes: Uint8Array<ArrayBuffer>) => Uint8Array<ArrayBuffer> = (bytes) => crypto.getRandomValues(bytes)): string {
   let raw = ''
   while (raw.length < TEMPORARY_PASSWORD_LENGTH) {
     for (const byte of random(new Uint8Array(32))) {
-      if (byte >= UNBIASED_LIMIT) continue
-      raw += ALPHABET[byte % ALPHABET.length]
+      const index = byte & FIVE_BITS
+      if (index >= ALPHABET.length) continue
+      raw += ALPHABET[index]
       if (raw.length === TEMPORARY_PASSWORD_LENGTH) break
     }
   }

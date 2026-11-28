@@ -46,6 +46,7 @@ Where the code and the design documents use different names, the code is right:
 | - | [Roadmap](ROADMAP.md) | The phases of this repository's rewrite and which are delivered |
 | - | [Runbooks](runbooks/) | Rotating the JWT signing keys and the central-app signing key; running and repairing publishing |
 | - | [Test strategy](testing.md) | What is tested, how to run it, and the evidence recorded when it was written |
+| - | [Security scanning](security-scanning.md) | The security scans in CI, when they fail a pull request, where results appear, how to triage |
 
 ## Decision records
 

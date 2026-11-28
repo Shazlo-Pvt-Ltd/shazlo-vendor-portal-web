@@ -69,5 +69,6 @@ const CODE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
 export function newProductCode(): string {
   const bytes = new Uint8Array(8)
   crypto.getRandomValues(bytes)
-  return `P-${Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('')}`
+  // 32 letters: the low five bits of a byte pick one uniformly (a mask, not a modulo).
+  return `P-${Array.from(bytes, (b) => CODE_ALPHABET[b & 0b11111]).join('')}`
 }

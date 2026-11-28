@@ -44,6 +44,58 @@ async function buildWith(settings: Record<string, string | undefined>): Promise<
   return files
 }
 
+/**
+ * Every `<script>` element of a page: its start tag and the text it holds. A small scan rather than a
+ * regular expression: browsers end a script at `</script` followed by whitespace, `/` or `>`, and accept
+ * anything up to the next `>` (`</script\t\n bar>`), which a pattern for the end tag easily misses. A
+ * script with no end tag holds the rest of the page; a start tag with no `>` is the rest of the page.
+ */
+function scriptElements(html: string): Array<{ tag: string; body: string }> {
+  const lower = html.toLowerCase()
+  const isBoundary = (char: string | undefined) => char === undefined || char === '/' || char === '>' || char.trim() === ''
+  const found: Array<{ tag: string; body: string }> = []
+  let at = 0
+  for (;;) {
+    const start = lower.indexOf('<script', at)
+    if (start === -1) return found
+    if (!isBoundary(lower[start + 7])) {
+      at = start + 7
+      continue
+    }
+    const tagEnd = lower.indexOf('>', start)
+    if (tagEnd === -1) {
+      found.push({ tag: html.slice(start), body: html.slice(start) })
+      return found
+    }
+    let close = lower.indexOf('</script', tagEnd)
+    while (close !== -1 && !isBoundary(lower[close + 8])) close = lower.indexOf('</script', close + 8)
+    if (close === -1) {
+      found.push({ tag: html.slice(start, tagEnd + 1), body: html.slice(tagEnd + 1) })
+      return found
+    }
+    found.push({ tag: html.slice(start, tagEnd + 1), body: html.slice(tagEnd + 1, close) })
+    at = close + 8
+  }
+}
+
+describe('the script scan the build checks use', () => {
+  it('finds external and inline scripts, whatever the end tag looks like', () => {
+    expect(scriptElements('<script type="module" src="/a.js"></script>')).toEqual([{ tag: '<script type="module" src="/a.js">', body: '' }])
+    expect(scriptElements('<SCRIPT>alert(1)</script\t\n bar>')).toEqual([{ tag: '<SCRIPT>', body: 'alert(1)' }])
+    expect(scriptElements('<script>a()</scriptx>b()</script >')).toEqual([{ tag: '<script>', body: 'a()</scriptx>b()' }])
+    expect(scriptElements('<script src="/a.js"></script><script\n>x()</script>')).toEqual([
+      { tag: '<script src="/a.js">', body: '' },
+      { tag: '<script\n>', body: 'x()' },
+    ])
+  })
+
+  it('treats an unclosed script as holding the rest of the page, and skips look-alike tags', () => {
+    expect(scriptElements('<script>x()')).toEqual([{ tag: '<script>', body: 'x()' }])
+    expect(scriptElements('<script src="/a.js"')[0]!.body).not.toBe('')
+    expect(scriptElements('<scripts></scripts>')).toEqual([])
+  })
+})
+
 const PRODUCTION = { VITE_IDENTITY_API_URL: 'https://identity.example.com', VITE_SHELL_REGISTRY: 'registry/example.production.json', VITE_MOCK_API: undefined }
 // What only the browser mock carries: the demo accounts' passwords, MSW and its service worker.
 const MOCK_MARKERS = [/shazlo-one-2026/, /welcome-sneha-01/, /mockServiceWorker/, /setupWorker/, /\bmsw\b/i, /shazloOneResetDemo/]
@@ -63,11 +115,11 @@ describe('a production build', () => {
 
   it('has no inline script, no inline handler and no javascript: URL in its page', () => {
     const html = files.get('index.html')!
-    const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)]
+    const scripts = scriptElements(html)
     expect(scripts.length).toBeGreaterThan(0)
-    for (const [, attributes, body] of scripts) {
-      expect(attributes).toMatch(/\bsrc=/)
-      expect(body!.trim()).toBe('')
+    for (const { tag, body } of scripts) {
+      expect(tag).toMatch(/\ssrc=/i)
+      expect(body.trim()).toBe('')
     }
     expect(html).not.toMatch(/\son[a-z]+\s*=/i)
     expect(html).not.toMatch(/javascript:/i)

@@ -4,6 +4,7 @@ import { useRuntime } from '../runtime/runtime'
 import { ApiError, type Api } from './http'
 import type { ApiPaths } from './client'
 import { afterDecision, neighboursIn, toBrandReview, toDecision, toPolicies, toProductReview } from './adapters/review'
+import { toCommission, withCommission } from './adapters/commission'
 import { joinSlices, nextOffset, QUEUE_MAX_PAGE_SIZE, QUEUE_PAGE_SIZE, toQueueSlice, type QueueSlice } from './adapters/queue'
 import type * as M from './model'
 
@@ -202,28 +203,42 @@ export function useVendorAction(id: string) {
   })
 }
 
-export type CommissionAction = { step: 'approve' } | { step: 'send-back'; body: { note: string } } | { step: 'set'; body: { commission_bps: number; note?: string } }
+export type CommissionAction = { step: 'approve'; proposed_bps: number } | { step: 'send-back'; body: { note: string } } | { step: 'set'; body: { commission_bps: number; note?: string } }
 
-// Approve a brand's proposed rate, send it back with a note, or set the rate directly.
+// Codes that mean the vendor is not what the card shows (another proposal, none waiting, or the
+// application rejected meanwhile): read it again.
+const STALE_COMMISSION = new Set(['commission_changed', 'no_proposal', 'vendor_not_eligible'])
+
+// Approve a brand's proposed rate (the one the card shows), send it back with a note, or set the rate
+// directly. vendor-api answers with the brand's commission, which goes into the vendor the page holds;
+// the vendor is read again too, because its history gained an entry.
 export function useCommissionAction(id: string) {
   const { api } = useRuntime()
   const invalidate = useInvalidateAfterDecision()
   const qc = useQueryClient()
+  const refetchVendor = () => qc.invalidateQueries({ queryKey: keys.vendor(id) })
   return useMutation({
-    mutationFn: (a: CommissionAction) => {
-      const path = { params: { path: { id } } }
+    mutationFn: async (a: CommissionAction) => {
+      const path = { params: { path: { vendor_id: id } } }
       switch (a.step) {
         case 'approve':
-          return api.call((c) => c.POST('/api/v1/admin/vendors/{id}/commission/approve', path))
+          return toCommission(await api.call((c) => c.POST('/v1/admin/vendors/{vendor_id}/commission/approve', { ...path, body: { proposed_bps: a.proposed_bps } })))
         case 'send-back':
-          return api.call((c) => c.POST('/api/v1/admin/vendors/{id}/commission/send-back', { ...path, body: a.body }))
+          return toCommission(await api.call((c) => c.POST('/v1/admin/vendors/{vendor_id}/commission/send-back', { ...path, body: a.body })))
         case 'set':
-          return api.call((c) => c.POST('/api/v1/admin/vendors/{id}/commission/set', { ...path, body: a.body }))
+          return toCommission(await api.call((c) => c.POST('/v1/admin/vendors/{vendor_id}/commission/set', { ...path, body: a.body })))
       }
     },
-    onSuccess: (vendor) => {
-      qc.setQueryData(keys.vendor(id), vendor)
+    onSuccess: (commission) => {
+      qc.setQueryData<M.VendorDetail>(keys.vendor(id), (vendor) => vendor && withCommission(vendor, commission))
+      void refetchVendor()
       invalidate()
+    },
+    onError: (error) => {
+      if (error instanceof ApiError && STALE_COMMISSION.has(error.code)) {
+        void refetchVendor()
+        invalidate()
+      }
     },
   })
 }
