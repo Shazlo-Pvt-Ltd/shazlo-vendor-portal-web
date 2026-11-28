@@ -51,7 +51,20 @@ export const SUPER_ADMIN = 'super_admin'
  *   }
  */
 export const MODULES: ModuleRegistry = {
-  development: [],
+  development: [
+    // The reference module (apps/shazlo-one/dev-module): a tiny module for development and the shell's
+    // tests. It exists only here, so it can never appear in a preview or production build.
+    {
+      id: 'reference',
+      title: 'Reference module',
+      description: 'A small module that speaks the shell protocol and calls vendor-api, for development.',
+      url: 'http://localhost:5175/',
+      origin: 'http://localhost:5175',
+      roles: ['super_admin', 'vendor_reviewer'],
+      audience: 'vendor-api',
+      supportedVersions: [1],
+    },
+  ],
   preview: [],
   production: [],
 }

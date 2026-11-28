@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:module": "vite --config dev-module/vite.config.ts --configLoader runner",
+    "dev:with-module": "node scripts/dev-with-module.mjs",
     "prebuild": "node scripts/write-vercel-headers.mjs",
     "build": "tsc -p tsconfig.json && vite build",
     "preview": "vite preview",
@@ -17,6 +19,7 @@
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/material": "^9.5.0",
+    "@shazlo/shell-protocol": "*",
     "@shazlo/ui": "*",
     "@tanstack/react-query": "^5.107.1",
     "openapi-fetch": "^0.17.0",
