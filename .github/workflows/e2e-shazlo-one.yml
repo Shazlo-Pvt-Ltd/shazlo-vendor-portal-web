@@ -3,8 +3,8 @@ name: e2e-shazlo-one
 # The Shazlo-One shell's browser tests against the real stack: identity-api, vendor-api (with its
 # worker), Postgres, Redis, Mailpit and the image-host stub (docker-compose.e2e.yml), the shell and
 # the reference module (Vite dev servers: the module is development-only). apps/shazlo-one/README.md,
-# "End-to-end tests", has the same steps for a laptop. Not a required check: it runs only when
-# something it exercises changes.
+# "End-to-end tests", has the same steps for a laptop. Not a required check: on a pull request it
+# runs only when something it exercises changes; it runs on every push to main.
 on:
   pull_request:
     paths:
@@ -18,6 +18,8 @@ on:
       - "docker/**"
       - "docker-compose.yml"
       - "docker-compose.e2e.yml"
+      - ".env.example"
+      - "docs/adr/0003-contract/**"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/e2e-shazlo-one.yml"
@@ -78,7 +80,7 @@ jobs:
       - name: Seed the admin
         run: >-
           docker compose run --rm
-          -e SEED_ADMIN_EMAIL -e SEED_ADMIN_PASSWORD=${{ env.E2E_ADMIN_SEED_PASSWORD }}
+          -e SEED_ADMIN_EMAIL -e SEED_ADMIN_PASSWORD="$E2E_ADMIN_SEED_PASSWORD"
           identity-api python -m identity_api.cli seed
       - name: Start the stack
         run: |
