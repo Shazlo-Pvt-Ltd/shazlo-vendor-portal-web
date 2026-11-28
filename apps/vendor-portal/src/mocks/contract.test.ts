@@ -17,6 +17,17 @@ import { createHandlers } from './handlers'
 type Doc = { paths: Record<string, Record<string, { responses?: Record<string, { content?: Record<string, { schema?: unknown }> }> }>> }
 
 const REAL_REF = '../../../services/vendor-api/openapi.json#'
+// The upload routes stand in for Cloudinary, not vendor-api: compared by exact origin, never by a
+// string prefix (which "https://api.cloudinary.com.evil.example" would also pass).
+const UPLOAD_ORIGIN = 'https://api.cloudinary.com'
+function isUploadRoute(path: string): boolean {
+  try {
+    return new URL(path).origin === UPLOAD_ORIGIN
+  } catch {
+    // A relative path ("/v1/...", "*/v1/...") is one of vendor-api's own routes.
+    return false
+  }
+}
 const read = (relative: string) => readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf8')
 const real = JSON.parse(read('../../../../services/vendor-api/openapi.json')) as Doc
 const proposed = parseYaml(read('../../openapi/proposed.yaml').split(REAL_REF).join('openapi.json#')) as Doc
@@ -278,7 +289,7 @@ describe('the mock API against the contract', () => {
     const successes = exchanges.filter((x) => x.status < 300)
     const unexercised = handlers
       .map((h) => (h as unknown as { info: { method: string; path: string } }).info)
-      .filter((info) => !String(info.path).startsWith('https://api.cloudinary.com'))
+      .filter((info) => !isUploadRoute(String(info.path)))
       .filter((info) => {
         const pattern = new RegExp(`^${String(info.path).replace(/^\*/, '').replace(/:[a-z_]+/g, '[^/]+')}$`)
         return !successes.some((x) => x.method.toUpperCase() === String(info.method) && pattern.test(x.path))
