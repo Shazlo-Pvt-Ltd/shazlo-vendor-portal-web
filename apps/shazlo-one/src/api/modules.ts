@@ -85,12 +85,15 @@ export async function fetchSummary(entry: RegistryEntry & { summaryUrl: string }
   return { summary, names: ids.length > 0 ? await names(ids) : {} }
 }
 
-/** The module's manifest, read once per session. Failing is fine: the module keeps its registry title. */
-export function useModuleManifest(entry: RegistryEntry, enabled = true) {
+/**
+ * The module's manifest, read once per session. Failing is fine: the module keeps its registry title.
+ * No entry (outside every module) reads nothing.
+ */
+export function useModuleManifest(entry: RegistryEntry | undefined, enabled = true) {
   return useQuery({
-    queryKey: moduleKeys.manifest(entry.id),
-    queryFn: () => fetchManifest(entry),
-    enabled,
+    queryKey: moduleKeys.manifest(entry?.id ?? ''),
+    queryFn: () => fetchManifest(entry!),
+    enabled: enabled && entry !== undefined,
     staleTime: Infinity,
     retry: false,
   })

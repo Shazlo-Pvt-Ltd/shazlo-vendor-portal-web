@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { dashboardCopy } from './dashboard'
 import { publishingCopy } from './publishing'
 import { queueCopy } from './queue'
 import { reviewCopy } from './review'
@@ -7,14 +8,14 @@ import { commissionCopy, rateErrors, sellsLabel, vendorActionsCopy, vendorDetail
 // The house rule: no full stop at the end of a heading, title, label, button, tab, chip or menu
 // item. Sentences (body text, hints, errors, toasts, banner messages) keep theirs.
 
-const COPY = { queueCopy, publishingCopy, reviewCopy, vendorsCopy, vendorActionsCopy, vendorDetailCopy, commissionCopy, rateErrors, sellsLabel, vendorTabs }
+const COPY = { dashboardCopy, queueCopy, publishingCopy, reviewCopy, vendorsCopy, vendorActionsCopy, vendorDetailCopy, commissionCopy, rateErrors, sellsLabel, vendorTabs }
 
 // The strings that are sentences, by where they sit in the copy.
 const SENTENCES = [
   /\.(body|intro|hint|subtitle|text|message|banner)$/,
   /\.(errors|toast)\./,
   /^rateErrors\./,
-  /\.(empty|none|notFoundBody|nothingToExport|copyFailed|retriedAll|conflict|alreadyBody|noReason|notLive|noProposal|priceRuleText|proposedHint|noProposalHint|noteHint|noteLong|reasonHint|reasonShort|tryOnHint|shows|showsOnly|aboveMrp|forType|forTypePhoto|missingProduct|missingTryOn|blockedCommission|blockedAgreement|blockedFields)$/,
+  /\.(empty|none|notFoundBody|nothingToExport|copyFailed|exportFailed|retriedAll|conflict|alreadyBody|noReason|notLive|noProposal|priceRuleText|proposedHint|noProposalHint|noteHint|noteLong|reasonHint|reasonShort|tryOnHint|shows|showsOnly|aboveMrp|forType|forTypePhoto|missingProduct|missingTryOn|blockedCommission|blockedAgreement|blockedFields)$/,
   /^reviewCopy\.decided\.(approved|sentBack)$/,
   /^vendorDetailCopy\.commission\.(notSet|proposed|now|noneYet|sentBack|theyProposed|approveBanner)$/,
   /^vendorDetailCopy\.brand\.(live|notLive|waiting|nothingWaiting|error)$/,

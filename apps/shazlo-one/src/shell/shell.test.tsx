@@ -13,6 +13,19 @@ function frame() {
   return screen.getByTitle('Catalogue') as HTMLIFrameElement
 }
 
+const sidebar = () => screen.getByRole('navigation', { name: 'Shazlo One sections' })
+const topNav = () => screen.queryByRole('navigation', { name: 'Catalogue pages' })
+// The module's pages come from its manifest, which arrives after the module is framed.
+const manifestIn = () => waitFor(() => expect(topNav()).not.toBeNull())
+const PAGES = ['Review queue', 'All sellers', 'Publishing']
+
+// The --shell-top the layout sets on its root, which the module iframe's height is computed from.
+function shellTop() {
+  let el: HTMLElement | null = screen.getByRole('main')
+  while (el && !getComputedStyle(el).getPropertyValue('--shell-top')) el = el.parentElement
+  return el ? getComputedStyle(el).getPropertyValue('--shell-top').trim() : null
+}
+
 // Sends a message as if it came from the module iframe.
 function fromModule(data: unknown, { origin = MODULE_ORIGIN, source }: { origin?: string; source?: MessageEventSource | null } = {}) {
   act(() => {
@@ -189,8 +202,21 @@ describe('module host (ADR 0001)', () => {
     ready()
     fromModule(createMessage('title', { path: '/queue', title: 'Review queue' }))
     const post = vi.spyOn(frame().contentWindow!, 'postMessage')
-    await user.click(await screen.findByRole('link', { name: 'Publishing' }))
+    await user.click(await within(sidebar()).findByRole('link', { name: 'Publishing' }))
     await waitFor(() => expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'navigate', payload: { path: '/publishing' } }), MODULE_ORIGIN))
+    expect(frame().getAttribute('src')).toBe('http://catalogue.test/queue')
+  })
+
+  it('moves the module back to its home page when its sidebar row is picked', async () => {
+    const { user, router } = await renderShell({ route: '/catalogue/queue' })
+    await screen.findByTitle('Catalogue')
+    await manifestIn()
+    ready()
+    fromModule(createMessage('title', { path: '/queue', title: 'Review queue' }))
+    const post = vi.spyOn(frame().contentWindow!, 'postMessage')
+    await user.click(within(sidebar()).getByRole('link', { name: /^Catalogue/ }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/catalogue/dashboard'))
+    await waitFor(() => expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'navigate', payload: { path: '/dashboard' } }), MODULE_ORIGIN))
     expect(frame().getAttribute('src')).toBe('http://catalogue.test/queue')
   })
 
@@ -316,5 +342,147 @@ describe('a module that is down', () => {
     answer = 'fail'
     await act(() => context.queryClient.refetchQueries({ queryKey: ['module-summary', 'catalogue'] }))
     expect(within(nav).getByRole('link', { name: /^Catalogue/ })).toHaveAccessibleName('Catalogue')
+  })
+})
+
+describe('a module: its home page first, its pages in the top bar too', () => {
+  it.each(['/catalogue/dashboard', '/catalogue'])('makes the module row open its home page, current on %s', async (route) => {
+    await renderShell({ route })
+    await screen.findByTitle('Catalogue')
+    await manifestIn()
+    const row = within(sidebar()).getByRole('link', { name: /^Catalogue/ })
+    expect(row).toHaveAttribute('href', '/catalogue/dashboard')
+    expect(row).toHaveAttribute('aria-current', 'page')
+    for (const name of PAGES) expect(within(sidebar()).getByRole('link', { name })).not.toHaveAttribute('aria-current')
+  })
+
+  it('links the module row to its home page, and the crumb to the bare base path, from a module page', async () => {
+    await renderShell({ route: '/catalogue/queue' })
+    await screen.findByTitle('Catalogue')
+    await manifestIn()
+    const row = within(sidebar()).getByRole('link', { name: /^Catalogue/ })
+    expect(row).toHaveAttribute('href', '/catalogue/dashboard')
+    expect(row).not.toHaveAttribute('aria-current')
+    // The module names its page; "Catalogue" then becomes a crumb link. The bare base path opens the home page.
+    ready()
+    fromModule(createMessage('title', { path: '/queue', title: 'Review queue' }))
+    const crumbs = screen.getByRole('navigation', { name: 'Breadcrumb' })
+    await waitFor(() => expect(within(crumbs).getByRole('link', { name: 'Catalogue' })).toHaveAttribute('href', '/catalogue'))
+  })
+
+  it.each(['/catalogue', '/catalogue/'])('loads the module on its home page from the bare %s once the manifest is in', async (route) => {
+    const { router } = await renderShell({ route: '/' })
+    await within(sidebar()).findByRole('link', { name: 'Review queue' })
+    await act(() => router.navigate(route))
+    expect((await screen.findByTitle('Catalogue')).getAttribute('src')).toBe('http://catalogue.test/dashboard')
+    expect(within(sidebar()).getByRole('link', { name: /^Catalogue/ })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('loads the module root from the bare base path before the manifest is in, and follows the page the module opens on', async () => {
+    const { router } = await renderShell({ route: '/catalogue' })
+    expect((await screen.findByTitle('Catalogue')).getAttribute('src')).toBe('http://catalogue.test/')
+    ready()
+    fromModule(createMessage('title', { path: '/dashboard', title: 'Dashboard' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/catalogue/dashboard'))
+    // The row knows the home page once the manifest names it.
+    await waitFor(() => expect(within(sidebar()).getByRole('link', { name: /^Catalogue/ })).toHaveAttribute('aria-current', 'page'))
+  })
+
+  it('keeps a page picked in the top bar while the module is still loading', async () => {
+    document.title = ''
+    const { user, router } = await renderShell({ route: '/catalogue/dashboard' })
+    await screen.findByTitle('Catalogue')
+    await manifestIn()
+    expect(screen.getByRole('status', { name: 'Loading Catalogue' })).toBeInTheDocument()
+    await user.click(within(topNav()!).getByRole('link', { name: 'Review queue' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/catalogue/queue'))
+    const post = vi.spyOn(frame().contentWindow!, 'postMessage')
+    ready()
+    // The module reports the page it was loaded on, after the admin had moved on.
+    fromModule(createMessage('title', { path: '/dashboard', title: 'Dashboard' }))
+    await waitFor(() => expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'navigate', payload: { path: '/queue' } }), MODULE_ORIGIN))
+    expect(router.state.location.pathname).toBe('/catalogue/queue')
+    expect(document.title).toBe('')
+    expect(within(topNav()!).getByRole('link', { name: 'Review queue' })).toHaveAttribute('aria-current', 'page')
+    // The module arrives and names its page; the shell URL already matches, so nothing else moves.
+    fromModule(createMessage('title', { path: '/queue', title: 'Review queue' }))
+    await waitFor(() => expect(document.title).toBe('Review queue · Catalogue · Shazlo One'))
+    expect(router.state.location.pathname).toBe('/catalogue/queue')
+    expect(post.mock.calls.filter(([m]) => (m as { type: string }).type === 'navigate')).toHaveLength(1)
+  })
+
+  it.each([
+    ['/catalogue/queue', 'Review queue'],
+    ['/catalogue/sellers/s_kalki', 'All sellers'],
+    ['/catalogue/review/listing/l1', 'Review queue'],
+    ['/catalogue/publishing', 'Publishing'],
+    ['/catalogue/dashboard', null],
+  ])('lists the module pages in the top bar on %s, with %s current', async (route, current) => {
+    await renderShell({ route })
+    await screen.findByTitle('Catalogue')
+    await manifestIn()
+    const nav = topNav()!
+    expect(screen.getByRole('banner')).toContainElement(nav)
+    const links = within(nav).getAllByRole('link')
+    expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      ['Review queue', '/catalogue/queue'],
+      ['All sellers', '/catalogue/sellers'],
+      ['Publishing', '/catalogue/publishing'],
+    ])
+    for (const a of links) {
+      const icon = a.querySelector('svg')
+      expect(icon).toHaveAttribute('aria-hidden', 'true')
+      expect(icon).toHaveAttribute('stroke-width', '1.75')
+      const isCurrent = a.textContent === current
+      expect(a.getAttribute('aria-current'), a.textContent!).toBe(isCurrent ? 'page' : null)
+      // The current page has a visible bar under it; the others do not.
+      expect(a.querySelector('[data-indicator]') !== null, a.textContent!).toBe(isCurrent)
+    }
+    // The sidebar marks the same page.
+    for (const name of PAGES) expect(within(sidebar()).getByRole('link', { name }).getAttribute('aria-current'), name).toBe(name === current ? 'page' : null)
+  })
+
+  it('moves the module with navigate when a top bar page is picked, without reloading it', async () => {
+    const { user, router } = await renderShell({ route: '/catalogue/dashboard' })
+    await screen.findByTitle('Catalogue')
+    await manifestIn()
+    ready()
+    fromModule(createMessage('title', { path: '/dashboard', title: 'Dashboard' }))
+    const post = vi.spyOn(frame().contentWindow!, 'postMessage')
+    await user.click(within(topNav()!).getByRole('link', { name: 'All sellers' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/catalogue/sellers'))
+    await waitFor(() => expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'navigate', payload: { path: '/sellers' } }), MODULE_ORIGIN))
+    expect(frame().getAttribute('src')).toBe('http://catalogue.test/dashboard')
+    expect(within(topNav()!).getByRole('link', { name: 'All sellers' })).toHaveAttribute('aria-current', 'page')
+    expect(within(sidebar()).getByRole('link', { name: 'All sellers' })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it.each(['/', '/admins'])('shows no module pages row on %s', async (route) => {
+    await renderShell({ route })
+    await screen.findByRole('heading', { level: 1 })
+    expect(topNav()).toBeNull()
+  })
+
+  it('shows no module pages row, and keeps the header short, in a module the admin may not open', async () => {
+    const { context } = await renderShell({ route: '/catalogue/queue', as: 'priya' })
+    await screen.findByTitle('Catalogue')
+    await manifestIn()
+    expect(topNav()).not.toBeNull()
+    const admin = context.session.get().admin!
+    act(() => context.session.adopt({ access_token: context.session.accessToken()!, expires_in: 900, admin: { ...admin, roles: [] } }))
+    expect(await screen.findByRole('heading', { name: 'You do not have access to Catalogue' })).toBeInTheDocument()
+    expect(topNav()).toBeNull()
+    expect(shellTop()).toBe('56px')
+  })
+
+  it('makes the header taller inside a module, so the iframe still fills the screen exactly', async () => {
+    const { router } = await renderShell({ route: '/catalogue/queue' })
+    await screen.findByTitle('Catalogue')
+    await manifestIn()
+    expect(shellTop()).toBe('104px')
+    await act(() => router.navigate('/'))
+    await screen.findByRole('heading', { level: 1 })
+    expect(topNav()).toBeNull()
+    expect(shellTop()).toBe('56px')
   })
 })

@@ -32,6 +32,11 @@ describe('shazlo-module.json', () => {
     expect(pageFor('/no-such-page')).toHaveLength(0)
   })
 
+  it('opens on the vendor dashboard, which is not one of the listed pages', () => {
+    expect(manifest!.home).toEqual({ label: 'Dashboard', path: '/dashboard', icon: 'layout-dashboard' })
+    expect(manifest!.links.map((l) => l.path)).not.toContain('/dashboard')
+  })
+
   it('lists the pages in sidebar order', () => {
     expect(manifest!.links.map((l) => [l.label, l.path])).toEqual([
       ['Review queue', '/queue'],

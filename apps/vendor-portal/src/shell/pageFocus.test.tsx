@@ -45,7 +45,7 @@ describe('focus after navigation', () => {
     const retry = await screen.findByRole('button', { name: 'Try again' }, SLOW)
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1, name: 'Brand page' })))
     await user.click(retry)
-    await screen.findByRole('textbox', { name: /^Tagline/ }, SLOW)
+    await screen.findByRole('textbox', { name: /^Story/ }, SLOW)
     // The click on Try again put focus on the button, which is gone now; the new heading takes it.
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1, name: 'Brand page' })))
   })

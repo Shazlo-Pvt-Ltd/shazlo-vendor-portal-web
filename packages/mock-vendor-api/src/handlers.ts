@@ -4,9 +4,12 @@ import type { components } from './schema'
 
 type S = components['schemas']
 const API = '*/api/v1/admin'
+const QUEUE_URL = '*/v1/admin/queue'
 const REASON_MIN = 10
 const NOTE_MAX = 600
 const MAX_BPS = 4000
+// The most products one bulk approval takes.
+const BULK_MAX = 50
 
 // Tokens come from the identity mock's token exchange: mock.vendor-api.<adminId>.<name>.<expEpochSeconds>
 export function mockModuleToken(admin: { id: string; name: string }, expiresAt: number) {
@@ -44,6 +47,33 @@ function rateProblem(bps: unknown) {
   const n = Number(bps)
   if (bps === undefined || bps === null || bps === '' || !Number.isInteger(n) || n < 0 || n > MAX_BPS) return fail(422, 'validation_error', 'Check the commission.', { commission_bps: 'Enter a commission between 0% and 40%.' })
   return null
+}
+
+type BulkItem = S['ApproveProductsBody']['products'][number]
+
+// A bulk approval's list: 1 to 50 products, each once, each with its id and the version the
+// reviewer saw. Anything else is a 422 and nothing is approved.
+function bulkProblem(body: unknown): { items: BulkItem[] } | { problem: ReturnType<typeof fail> } {
+  const invalid = (message: string) => ({ problem: fail(422, 'validation_error', message, { products: message }) })
+  const products = (body as { products?: unknown } | null)?.products
+  if (!Array.isArray(products) || products.length === 0) return invalid('Choose at least one product to approve.')
+  if (products.length > BULK_MAX) return invalid(`Approve up to ${BULK_MAX} products at a time.`)
+  const wellFormed = (item: unknown): item is BulkItem => {
+    const { id, submitted_at: at } = (item ?? {}) as Record<string, unknown>
+    return typeof id === 'string' && id !== '' && typeof at === 'string' && !Number.isNaN(Date.parse(at))
+  }
+  if (!products.every(wellFormed)) return invalid('Each product needs its id and the submitted_at you saw.')
+  if (new Set(products.map((p) => p.id)).size !== products.length) return invalid('List each product only once.')
+  return { items: products }
+}
+
+// The product review page's rule (vendor-admin ProductPhotos): front, back, detail and worn photos,
+// and 5 try-on photos. How many of those a version lacks.
+const REQUIRED_SLOTS: S['ProductPhoto']['slot'][] = ['front', 'back', 'detail', 'worn']
+const TRY_ONS = 5
+function photosMissing(version: ProductRecord['submitted']) {
+  const slots = new Set(version.photos.map((photo) => photo.slot))
+  return REQUIRED_SLOTS.filter((slot) => !slots.has(slot)).length + Math.max(0, TRY_ONS - version.try_on_photos.length)
 }
 
 export function createVendorApiHandlers(getDb: () => MockVendorApi) {
@@ -101,13 +131,24 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
   }
 
   function detail(v: VendorRecord, db: MockVendorApi): S['VendorDetail'] {
-    const products = db.products.filter((p) => p.vendorId === v.id).map((p) => ({ id: p.id, title: p.submitted.title, status: p.status, price_paise: p.submitted.price_paise, thumbnail_url: p.submitted.photos[0]?.url ?? null }))
+    const products = db.products.filter((p) => p.vendorId === v.id).map((p) => ({ id: p.id, title: p.submitted.title, status: p.status, price_paise: p.submitted.price_paise, thumbnail_url: p.submitted.photos[0]?.url ?? null, submitted_at: p.submittedAt, photos_missing: photosMissing(p.submitted) }))
     return { ...summaryOf(v), application: v.application, checks: checksFor(v), products, brand_live: db.brands.some((b) => b.vendorId === v.id && b.live !== null) || v.status === 'approved', history: v.history }
   }
 
   function decide(db: MockVendorApi, kind: S['ItemKind'], id: string, title: string, vendorId: string, decision: 'approved' | 'rejected', reviewer: string) {
     db.seq += 1
     db.decisions.unshift({ id: `d${db.seq}`, subjectId: id, kind, title, vendorId, decision, at: iso(), reviewer })
+  }
+
+  // Approving a waiting product, on its own or with others: it goes live, its history says who
+  // approved it, the app is told (one outbox event) and the decision is recorded.
+  function approveProduct(db: MockVendorApi, p: ProductRecord, reviewer: string) {
+    p.status = 'approved'
+    p.history.unshift({ at: iso(), event: 'approved', by: reviewer })
+    const v = vendorOf(p.vendorId)
+    v.live_products += p.change === 'new' ? 1 : 0
+    publish(db, p.change === 'edit' ? 'product.updated' : 'product.published', p.submitted.title, v)
+    decide(db, 'product', p.id, p.submitted.title, p.vendorId, 'approved', reviewer)
   }
 
   function rejectBody(body: Partial<S['RejectBody']>) {
@@ -235,9 +276,16 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       })
     })),
 
-    http.get(`${API}/queue`, guarded(({ request }) => {
+    // `GET /v1/admin/queue` as vendor-api serves it (services/vendor-api/vendor_api/api/admin_queue.py):
+    // filtered, sorted and paged here; `counts` and `vendors` always describe the whole queue.
+    http.get(QUEUE_URL, guarded(({ request }) => {
       const db = getDb()
       const q = new URL(request.url).searchParams
+      const limit = q.has('limit') ? Number(q.get('limit')) : 50
+      const offset = q.has('offset') ? Number(q.get('offset')) : 0
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) return fail(422, 'validation_error', 'Check the filters.', { limit: 'Use a page size from 1 to 100.' })
+      if (!Number.isInteger(offset) || offset < 0 || offset > 100_000) return fail(422, 'validation_error', 'Check the filters.', { offset: 'Use an offset from 0 to 100000.' })
+      if ((q.get('q') ?? '').length > 200) return fail(422, 'validation_error', 'Check the filters.', { q: 'Use at most 200 characters.' })
       const all = queueItems(db)
       let items = all
       if (q.get('kind')) items = items.filter((i) => i.kind === q.get('kind'))
@@ -249,10 +297,13 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       if (q.get('submitted') === '24h') items = items.filter((i) => age(i) >= 24 * 3_600_000 && age(i) < 48 * 3_600_000)
       if (q.get('submitted') === 'older') items = items.filter((i) => age(i) >= 48 * 3_600_000)
       if (q.get('resubmissions') === 'true') items = items.filter((i) => i.resubmission > 0)
-      if (q.get('sort') === 'newest') items = [...items].reverse()
+      // Same time keeps a fixed order (by id), so paging never repeats or skips an item.
+      const order = (a: S['QueueItem'], b: S['QueueItem']) => Date.parse(a.submitted_at) - Date.parse(b.submitted_at) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+      items = [...items].sort(order)
+      if (q.get('sort') === 'newest') items.reverse()
       const count = (k: S['ItemKind']) => all.filter((i) => i.kind === k).length
-      const vendors = [...new Map(all.map((i) => [i.vendor.id, i.vendor])).values()]
-      return HttpResponse.json({ items, counts: { all: all.length, product: count('product'), brand_page: count('brand_page'), application: count('application') }, vendors } satisfies S['QueuePage'])
+      const vendors = [...new Map(all.map((i) => [i.vendor.id, i.vendor])).values()].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
+      return HttpResponse.json({ items: items.slice(offset, offset + limit), total: items.length, limit, offset, counts: { all: all.length, product: count('product'), brand_page: count('brand_page'), application: count('application') }, vendors })
     })),
 
     http.get(`${API}/products/:id/review`, guarded(({ params }) => {
@@ -267,12 +318,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       const p = db.products.find((x) => x.id === params.id) as ProductRecord | undefined
       if (!p) return fail(404, 'not_found', 'We could not find that product.')
       if (p.status !== 'pending_review') return fail(409, 'review_already_decided', `This product was already ${p.status === 'approved' ? 'approved' : 'sent back'}.`)
-      p.status = 'approved'
-      p.history.unshift({ at: iso(), event: 'approved', by: reviewer })
-      const v = vendorOf(p.vendorId)
-      v.live_products += p.change === 'new' ? 1 : 0
-      publish(db, p.change === 'edit' ? 'product.updated' : 'product.published', p.submitted.title, v)
-      decide(db, 'product', p.id, p.submitted.title, p.vendorId, 'approved', reviewer)
+      approveProduct(db, p, reviewer)
       return HttpResponse.json({ id: p.id, decision: 'approved', at: iso(), next_id: nextWaiting(db, p.id) } satisfies S['Decision'])
     })),
 
@@ -406,7 +452,9 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       const db = getDb()
       const v = db.vendors.find((x) => x.id === params.id)
       if (!v) return fail(404, 'not_found', 'We could not find that vendor.')
-      if (v.status !== 'approved' && v.status !== 'suspended') return fail(409, 'invalid_status_transition', v.status === 'rejected' ? 'This application was rejected.' : 'Set the rate when you approve the application.')
+      // vendor-api's own codes: a rejected vendor is `vendor_not_eligible`, which keeps its own wording.
+      if (v.status === 'rejected') return fail(409, 'vendor_not_eligible', 'This application was rejected: there is no rate to agree.')
+      if (v.status !== 'approved' && v.status !== 'suspended') return fail(409, 'invalid_status_transition', 'Set the rate when you approve the application.')
       const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
       const before = v.commission.agreed_bps
       const was = before == null ? '' : ` (was ${percent(before)})`
@@ -437,6 +485,31 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       return HttpResponse.json(detail(v, db))
     })),
 
+    // Several of an approved vendor's waiting products at once. Each is approved exactly as on its own, unless
+    // it is not this vendor's, was already decided or changed since the reviewer looked.
+    http.post(`${API}/vendors/:id/products/approve`, guarded(async ({ params, request }, reviewer) => {
+      const db = getDb()
+      const v = db.vendors.find((x) => x.id === params.id)
+      if (!v) return fail(404, 'not_found', 'We could not find that vendor.')
+      const checked = bulkProblem(await request.json().catch(() => null))
+      if ('problem' in checked) return checked.problem
+      // Approving here publishes; a suspended or rejected brand's products are hidden from the app.
+      if (v.status !== 'approved') return fail(409, 'invalid_status_transition', 'Products can be approved together only for an approved brand.')
+      const result: S['ApproveProductsResult'] = { approved: [], failed: [] }
+      for (const item of checked.items) {
+        // Another vendor's product is not found here, whatever its state: this URL never approves it.
+        const p = db.products.find((x) => x.id === item.id && x.vendorId === v.id)
+        if (!p) result.failed.push({ id: item.id, code: 'not_found', message: 'We could not find this product for this brand.' })
+        else if (p.status !== 'pending_review') result.failed.push({ id: p.id, code: 'not_pending', message: `This product was already ${p.status === 'approved' ? 'approved' : 'sent back'}.` })
+        else if (Date.parse(p.submittedAt) !== Date.parse(item.submitted_at)) result.failed.push({ id: p.id, code: 'changed', message: 'The brand changed this product after you looked. Open it to review the new version.' })
+        else {
+          approveProduct(db, p, reviewer)
+          result.approved.push({ id: p.id, at: iso() })
+        }
+      }
+      return HttpResponse.json(result)
+    })),
+
     http.get(`${API}/outbox`, guarded(({ request }) => {
       const db = getDb()
       const status = new URL(request.url).searchParams.get('status')
@@ -455,7 +528,8 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
     http.post(`${API}/outbox/:id/retry`, guarded(({ params }) => {
       const e = getDb().outbox.find((x) => x.id === params.id)
       if (!e) return fail(404, 'not_found', 'We could not find that event.')
-      if (e.status === 'delivered') return fail(409, 'invalid_status_transition', 'This event was already delivered.')
+      // vendor-api's code for a retry of an event that is not dead; the screens show its message as is.
+      if (e.status === 'delivered') return fail(409, 'invalid_outbox_status', 'This event was already delivered.')
       Object.assign(e, { status: 'delivered', tries: e.tries + 1, last_attempt_at: iso(), next_attempt_at: null, last_error: null })
       return HttpResponse.json(e)
     })),

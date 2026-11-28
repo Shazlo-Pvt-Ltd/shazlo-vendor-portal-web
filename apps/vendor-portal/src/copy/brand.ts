@@ -57,7 +57,6 @@ export const brandCopy = {
     brandName: 'Brand name',
     brandNameHint: 'Contact us to change your brand name.',
     basedIn: 'Based in',
-    tagline: 'Tagline',
     story: 'Story',
   },
   shopping: {
@@ -69,7 +68,6 @@ export const brandCopy = {
     fromStoreLink: 'Change them in Store details',
   },
   errors: {
-    tagline: 'Keep the tagline to 60 characters.',
     story: 'Keep the story to 600 characters.',
     instagram: 'Use your Instagram name, like @kalki.studio, or the address of your profile.',
     website: 'Enter a web address like kalkistudio.in.',

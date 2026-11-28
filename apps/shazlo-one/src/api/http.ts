@@ -74,7 +74,8 @@ export function toApiError(response: Response, body: unknown): ApiError {
 
 export interface Api<Paths extends object> {
   client: Client<Paths>
-  call<T>(send: (client: Client<Paths>) => Promise<Result<T>>): Promise<T>
+  /** `renew: false` skips the 401 renewal (the refresh call itself must, or it would wait on itself). */
+  call<T>(send: (client: Client<Paths>) => Promise<Result<T>>, options?: { renew?: boolean }): Promise<T>
 }
 
 // `getToken` supplies the bearer; on a 401, `renew` gets a fresh one once, shared by parallel calls.
@@ -98,9 +99,9 @@ export function createApi<Paths extends object>({ baseUrl, getToken, renew, with
       throw new ApiError(0, 'network_error', 'You seem to be offline. Check your connection and try again.')
     }
   }
-  async function call<T>(fn: (c: Client<Paths>) => Promise<Result<T>>): Promise<T> {
+  async function call<T>(fn: (c: Client<Paths>) => Promise<Result<T>>, options: { renew?: boolean } = {}): Promise<T> {
     let result = await send(fn)
-    if (result.response.status === 401 && renew && getToken()) {
+    if (result.response.status === 401 && renew && options.renew !== false && getToken()) {
       renewing ??= renew().finally(() => {
         renewing = null
       })

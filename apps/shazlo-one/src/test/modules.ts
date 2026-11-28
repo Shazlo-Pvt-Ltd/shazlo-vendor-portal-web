@@ -63,7 +63,8 @@ export const catalogue = fakeModule(entry('catalogue'), {
   manifest: {
     title: 'Catalogue',
     icon: 'shopping-bag',
-    home: { label: 'Review queue', path: '/queue', icon: 'inbox' },
+    // Like a real module, Catalogue opens on a dashboard that is not one of its listed pages.
+    home: { label: 'Dashboard', path: '/dashboard', icon: 'layout-dashboard' },
     links: [
       { label: 'Review queue', path: '/queue', icon: 'inbox', also: ['/review'] },
       { label: 'All sellers', path: '/sellers', icon: 'building-2' },

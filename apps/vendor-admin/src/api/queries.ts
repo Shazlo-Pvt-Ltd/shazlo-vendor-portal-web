@@ -1,5 +1,8 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRuntime } from '../runtime/runtime'
+import type { Api } from './http'
+import type { ApiPaths } from './client'
+import { joinSlices, nextOffset, QUEUE_MAX_PAGE_SIZE, QUEUE_PAGE_SIZE, toQueueSlice, type QueueSlice } from './adapters/queue'
 import type * as M from './model'
 
 
@@ -11,6 +14,7 @@ export const keys = {
   queue: (f: QueueFilters) => ['queue', f] as const,
   allQueue: ['queue'] as const,
   product: (id: string) => ['product-review', id] as const,
+  allProducts: ['product-review'] as const,
   brand: (vendorId: string) => ['brand-review', vendorId] as const,
   vendors: (f: VendorFilters) => ['vendors', f] as const,
   allVendors: ['vendors'] as const,
@@ -32,9 +36,43 @@ export function useSummary() {
   return useQuery({ queryKey: keys.summary, queryFn: () => api.call((c) => c.GET('/api/v1/admin/summary')) })
 }
 
+async function fetchQueueSlice(api: Api<ApiPaths>, filters: QueueFilters, offset: number, limit: number): Promise<QueueSlice> {
+  const wire = await api.call((c) => c.GET('/v1/admin/queue', { params: { query: { ...filters, limit, offset } } }))
+  return toQueueSlice(wire)
+}
+
+// The queue a page at a time, joined into one list as "Show more" loads the next. `counts`, `vendors`
+// and `total` describe the whole waiting queue as of the newest request.
 export function useQueue(filters: QueueFilters) {
   const { api } = useRuntime()
-  return useQuery({ queryKey: keys.queue(filters), queryFn: () => api.call((c) => c.GET('/api/v1/admin/queue', { params: { query: filters } })), placeholderData: keepPreviousData })
+  return useInfiniteQuery({
+    queryKey: keys.queue(filters),
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => fetchQueueSlice(api, filters, pageParam, QUEUE_PAGE_SIZE),
+    getNextPageParam: nextOffset,
+    select: (data) => joinSlices(data.pages),
+    placeholderData: keepPreviousData,
+  })
+}
+
+// Every item that matches the filters, not just the pages on screen: the CSV export. Pages are
+// fetched one after another at the server's largest size.
+export async function fetchEveryQueueItem(api: Api<ApiPaths>, filters: QueueFilters): Promise<M.QueueItem[]> {
+  const slices: QueueSlice[] = []
+  let offset: number | undefined = 0
+  while (offset !== undefined) {
+    const slice: QueueSlice = await fetchQueueSlice(api, filters, offset, QUEUE_MAX_PAGE_SIZE)
+    slices.push(slice)
+    offset = nextOffset(slice)
+  }
+  return joinSlices(slices).items
+}
+
+// Every item that matches the filters, as one query (the dashboard's brands with products waiting).
+// Its key starts with the queue's, so a decision refreshes it with the queue.
+export function useEveryQueueItem(filters: QueueFilters) {
+  const { api } = useRuntime()
+  return useQuery({ queryKey: [...keys.queue(filters), 'every'] as const, queryFn: () => fetchEveryQueueItem(api, filters) })
 }
 
 export function useProductReview(id: string) {
@@ -165,6 +203,22 @@ export function useCommissionAction(id: string) {
     onSuccess: (vendor) => {
       qc.setQueryData(keys.vendor(id), vendor)
       invalidate()
+    },
+  })
+}
+
+// Approve several of one vendor's waiting products at once, each with the version the reviewer saw.
+// The answer lists what was approved and what was not; both change the vendor and the product pages.
+export function useApproveProducts(vendorId: string) {
+  const { api } = useRuntime()
+  const invalidate = useInvalidateAfterDecision()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: M.ApproveProductsBody) => api.call((c) => c.POST('/api/v1/admin/vendors/{id}/products/approve', { params: { path: { id: vendorId } }, body })),
+    onSuccess: () => {
+      invalidate()
+      void qc.invalidateQueries({ queryKey: keys.vendor(vendorId) })
+      void qc.invalidateQueries({ queryKey: keys.allProducts })
     },
   })
 }

@@ -90,7 +90,9 @@ def add_middleware(
         allow_credentials=credentials,
         allow_methods=methods,
         allow_headers=["Authorization", "Content-Type", REQUEST_ID_HEADER],
-        expose_headers=[REQUEST_ID_HEADER],
+        # Retry-After is not a CORS-safelisted response header: without this, a browser on another
+        # origin cannot read how long a 429 asks it to wait.
+        expose_headers=[REQUEST_ID_HEADER, "Retry-After"],
     )
     app.add_middleware(RequestIdMiddleware)
     register_exception_handlers(app)

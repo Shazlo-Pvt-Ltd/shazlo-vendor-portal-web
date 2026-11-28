@@ -16,6 +16,7 @@ from vendor_api.api import (
     admin_commission,
     admin_module_summary,
     admin_outbox,
+    admin_queue,
     admin_reviews,
     admin_summary,
     admin_vendors,
@@ -24,6 +25,7 @@ from vendor_api.api import (
 from vendor_api.app_common import add_common_state, add_middleware, new_app
 from vendor_api.core.security import refresh_token_config
 from vendor_api.core.settings import Settings, get_settings
+from vendor_api.services.admin_queue import AdminQueueService
 from vendor_api.services.admin_summary import AdminSummaryService
 from vendor_api.services.auth import VendorSessions
 from vendor_api.services.outbox_admin import OutboxAdminService
@@ -66,6 +68,7 @@ def create_admin_app(
     keys = identity_keys or JwksClient.from_url(jwks_url, allow_insecure=settings.env == "dev")
     app.state.token_verifier = TokenVerifier(keys, issuer=issuer, audience=ADMIN_AUDIENCE)
     app.state.review_queue = ReviewQueueService()
+    app.state.admin_queue = AdminQueueService()
     app.state.review_decisions = ReviewDecisionService()
     # An approval writes its central-app event in the same transaction (ADR 0003, section 5).
     app.state.review_decisions.add_hook(app.state.outbox_writer.on_decision)
@@ -90,6 +93,7 @@ def create_admin_app(
     app.include_router(health.router)
     v1 = APIRouter(prefix="/v1")
     v1.include_router(admin.router)
+    v1.include_router(admin_queue.router)
     v1.include_router(admin_reviews.router)
     v1.include_router(admin_vendors.router)
     v1.include_router(admin_commission.router)

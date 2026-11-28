@@ -11,6 +11,8 @@ export const shellCopy = {
   homeLink: 'Shazlo One home',
   skip: 'Skip to content',
   roles: { super_admin: 'Super admin', vendor_reviewer: 'Vendor reviewer' } as Record<string, string>,
+  // The top bar's row of a module's pages ("Catalogue pages").
+  moduleNav: (title: string) => `${title} pages`,
   module: {
     loading: (title: string) => `Loading ${title}`,
     failedTitle: (title: string) => `${title} did not load`,

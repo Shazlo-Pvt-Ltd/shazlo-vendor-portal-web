@@ -171,6 +171,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Queue
+         * @description Everything waiting for a reviewer in one list: products and brand pages under review and
+         *     vendor applications. Filtered, sorted and paged on the server.
+         */
+        get: operations["list_queue_v1_admin_queue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/reviews": {
         parameters: {
             query?: never;
@@ -1033,6 +1054,78 @@ export interface components {
             /** Waiting */
             waiting: number;
         };
+        /** QueueCountsOut */
+        QueueCountsOut: {
+            /** All */
+            all: number;
+            /** Application */
+            application: number;
+            /** Brand Page */
+            brand_page: number;
+            /** Product */
+            product: number;
+        };
+        /** QueueItemOut */
+        QueueItemOut: {
+            /**
+             * Change
+             * @enum {string}
+             */
+            change: "new" | "edit" | "application";
+            /** Detail */
+            detail: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "product" | "brand_page" | "application";
+            /** Resubmission */
+            resubmission: number;
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
+            /** Thumbnail Url */
+            thumbnail_url: string | null;
+            /** Title */
+            title: string;
+            vendor: components["schemas"]["QueueVendorOut"];
+        };
+        /** QueuePageOut */
+        QueuePageOut: {
+            counts: components["schemas"]["QueueCountsOut"];
+            /** Items */
+            items: components["schemas"]["QueueItemOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+            /** Vendors */
+            vendors: components["schemas"]["QueueVendorOut"][];
+        };
+        /** QueueVendorOut */
+        QueueVendorOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
         /**
          * ReasonRequest
          * @description Rejecting and suspending need a reason, which the vendor is told: a missing, empty or
@@ -1630,6 +1723,50 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OutboxEventDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_queue_v1_admin_queue_get: {
+        parameters: {
+            query?: {
+                /** @description Only this kind of item */
+                kind?: ("product" | "brand_page" | "application") | null;
+                /** @description Only this vendor's items */
+                vendor?: string | null;
+                /** @description Text in the title, the detail or the vendor name, ignoring case */
+                q?: string | null;
+                /** @description How long ago: `today` is under 24 hours, `24h` is 24 to 48 hours, `older` is 48 hours or more */
+                submitted?: ("today" | "24h" | "older") | null;
+                /** @description `true`: only what was sent back before */
+                resubmissions?: boolean;
+                /** @description `oldest` (default) or `newest` first */
+                sort?: "oldest" | "newest";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueuePageOut"];
                 };
             };
             /** @description Validation Error */

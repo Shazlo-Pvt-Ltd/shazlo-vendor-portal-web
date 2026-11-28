@@ -200,6 +200,18 @@ describe('A-10 Publishing to the app', { timeout: 40_000 }, () => {
     await waitFor(() => expect(screen.getByRole('tab', { name: 'Failed 0' })).toBeInTheDocument())
   })
 
+  it('says an event was already delivered when someone else retried it first', async () => {
+    const { user, db } = renderModule({ route: '/publishing?event=evt_0001' })
+    await waitForItems(ALL)
+    const details = await screen.findByRole('region', { name: 'Event details' })
+    db.outbox.find((e) => e.id === 'evt_0001')!.status = 'delivered'
+    await user.click(within(details).getByRole('button', { name: 'Retry now' }))
+
+    // vendor-api's `invalid_outbox_status` keeps its own message; it is not a vendor's status.
+    expect(await within(details).findByText('This event was already delivered.')).toBeInTheDocument()
+    expect(within(details).queryByText(/vendor’s status/)).toBeNull()
+  })
+
   it('retries every failed event at once', async () => {
     const { user, shell } = renderModule({ route: '/publishing' })
     const table = await waitForItems(ALL)

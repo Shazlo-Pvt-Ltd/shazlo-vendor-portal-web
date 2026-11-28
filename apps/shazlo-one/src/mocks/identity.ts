@@ -142,7 +142,8 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
     http.post('*/v1/auth/token', authed(async ({ request }, me) => {
       const { audience } = (await request.json()) as { audience: string }
       const allowed = AUDIENCE_ROLES[audience]
-      if (!allowed || !me.roles.some((r) => allowed.includes(r))) return fail(403, 'forbidden', 'Your role does not give access to this module.')
+      if (!allowed) return fail(400, 'unknown_audience', 'No module backend is registered under this audience.')
+      if (!me.roles.some((r) => allowed.includes(r))) return fail(403, 'audience_not_allowed', 'Your role does not give access to this module.')
       const exp = Math.floor(getDb().now().getTime() / 1000) + 300
       return HttpResponse.json({ access_token: mockModuleToken(audience, { id: me.id, name: me.display_name }, exp), token_type: 'Bearer', expires_in: 300, audience } satisfies S['TokenResponse'])
     })),
