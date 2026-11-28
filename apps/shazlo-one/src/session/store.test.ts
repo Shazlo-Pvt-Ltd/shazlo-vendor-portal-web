@@ -761,7 +761,7 @@ describe('module tokens', () => {
     store.signIn(sessionBody({ token: 'next' }))
     const first = store.getModuleToken('m')
     await vi.waitFor(() => expect(exchange).toHaveBeenCalledTimes(2))
-    releases[0]()
+    releases[0]?.()
     expect(await old).toBeInstanceOf(NotSignedInError)
     const second = store.getModuleToken('m')
     // Before the fix the old exchange's clean-up removed the new one, so this started a third.
