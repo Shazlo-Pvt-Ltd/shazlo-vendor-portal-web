@@ -148,7 +148,7 @@ The iframe element:
 | The module's `logout` message | The shell ends the session, revokes the refresh token and removes the iframe |
 | The shell navigates away or unmounts | The module notices no `auth` refresh for more than twice the refresh interval and shows "session ended" |
 | Unknown type, wrong origin, oversize or malformed message | Dropped silently. A development build logs a warning |
-| Clock difference between the shell and the module | `expiresAt` is set by the shell. The module allows 30 seconds of slack |
+| Clock difference between the shell and the module | `expiresAt` is set by the shell, and both frames read the same browser clock. The 30 seconds of slack is the module's early warning: `needsToken()` is true from 30 seconds before `expiresAt`, while `getAccessToken()` returns the token until `expiresAt` itself. The shell replaces a token at least 30 seconds before it ends (60 seconds before, for a 5-minute token), except a token that lives under a minute, which it replaces at half its life |
 
 ### 8. Security notes
 
