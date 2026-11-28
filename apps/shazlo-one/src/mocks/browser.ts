@@ -1,3 +1,6 @@
+/* eslint-disable no-restricted-globals -- The one exception to "no web storage": the browser mock's own
+   state on the dev server (PERSIST is false in every build, and src/security/build.test.ts proves a
+   demo build holds no storage key). It never holds a real token. */
 import { setupWorker } from 'msw/browser'
 import { createIdentityDb, createIdentityHandlers, type IdentityDb } from './identity'
 
