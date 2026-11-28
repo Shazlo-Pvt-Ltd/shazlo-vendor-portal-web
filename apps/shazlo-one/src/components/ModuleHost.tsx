@@ -19,6 +19,10 @@ export const MAX_RETRIES = 3
  * The frame's `sandbox` (ADR 0001, section 5). Scripts and its own origin (it is a React app that
  * calls its own backend), forms and downloads. No top navigation, popups or modals: a module cannot
  * move the shell, open windows or block with dialogs; it sends a `toast` instead.
+ *
+ * `allow-scripts` with `allow-same-origin` is only safe because a module is on an origin of its own: a
+ * page on the shell's origin could remove its own sandbox and reach the shell's memory, token included.
+ * So the host never frames a module whose origin is the shell's.
  */
 export const IFRAME_SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-downloads'
 
@@ -182,6 +186,20 @@ export function ModuleHost({ entry }: { entry: ModuleEntry }) {
 
   // The admin lost the role: the same page as typing a module they may not open. No frame.
   if (status.kind === 'forbidden') return <NoAccess what="module" />
+
+  // Never framed with this sandbox (see IFRAME_SANDBOX); the registry entry is wrong.
+  if (entry.origin === window.location.origin) {
+    return (
+      <Box>
+        <Typography component="h1" variant="h4" gutterBottom tabIndex={-1}>
+          {entry.title}
+        </Typography>
+        <Panel title={`${entry.title} cannot be opened`}>
+          It is set up to load from Shazlo-One's own address, which is not allowed. Tell the platform team.
+        </Panel>
+      </Box>
+    )
+  }
 
   const framed = status.kind === 'loading' || status.kind === 'ready'
   return (

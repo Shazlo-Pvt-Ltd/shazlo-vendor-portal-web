@@ -41,13 +41,13 @@ function exchange(fail?: (call: number) => unknown) {
   })
 }
 
-async function open(path = '/m/vendor-admin', exchangeFn = exchange()) {
+async function open(path = '/m/vendor-admin', exchangeFn = exchange(), modules = MODULES) {
   // Only the timers and the clock: the 10-second wait is deterministic, and a token can age.
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
   setViewport(1280)
   const body = sessionBody({ roles: ['vendor_reviewer'] })
   const store = makeStore({ refresh: async () => body, fetchMe: async () => body.admin, exchange: exchangeFn }).store
-  const router = renderRoute(path, { store, modules: MODULES })
+  const router = renderRoute(path, { store, modules })
   await settle()
   await settle()
   return { router, store, exchange: exchangeFn }
@@ -81,6 +81,17 @@ describe('the frame', () => {
     for (const forbidden of ['allow-top-navigation', 'allow-top-navigation-by-user-activation', 'allow-popups', 'allow-modals', 'allow-popups-to-escape-sandbox']) {
       expect(sandbox).not.toContain(forbidden)
     }
+  })
+
+  it('is never made for a module on the shellâ€™s own origin, which could lift its own sandbox', async () => {
+    // With allow-scripts and allow-same-origin, a same-origin page can remove the sandbox and reach the shell.
+    const own = window.location.origin
+    const inside = entry({ id: 'inside', title: 'Inside', origin: own, url: `${own}/inside/` })
+    const { exchange: exchangeFn } = await open('/m/inside', exchange(), [...MODULES, inside])
+    expect(frames()).toBe(0)
+    expect(screen.getByRole('alert').textContent).toMatch(/Inside cannot be opened/)
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+    expect(exchangeFn).not.toHaveBeenCalled()
   })
 
   it('is loaded from exactly the registry url, which holds nothing else', async () => {
