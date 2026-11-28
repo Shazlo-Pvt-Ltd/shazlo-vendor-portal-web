@@ -231,6 +231,13 @@ describe('deep links', () => {
     expect(module.navigations).toEqual([])
   })
 
+  it('does not pass on a shell address whose module part is not a module path (a crafted link)', async () => {
+    await open('/m/vendor-admin//evil.example/x')
+    const module = await moduleReady()
+    expect(module.auths).toHaveLength(1)
+    expect(module.navigations).toEqual([])
+  })
+
   it('sends nothing before the module is ready, and nothing at all if it never gets a token', async () => {
     await open('/m/vendor-admin/orders')
     const module = attachModule({ moduleOrigin: ORIGIN })
