@@ -1,0 +1,14 @@
+{
+  "name": "@shazlo/shell-protocol",
+  "private": true,
+  "version": "0.1.0",
+  "description": "The postMessage protocol between the Shazlo-One shell and its framed modules (ADR 0001): types, validators and both ends of the channel",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  }
+}
