@@ -32,5 +32,10 @@
     "preregistration"
   ],
   "author": "Shazlo Team",
-  "license": "MIT"
+  "license": "MIT",
+  "overrides": {
+    "nodemon": {
+      "minimatch": "^11.0.1"
+    }
+  }
 }
