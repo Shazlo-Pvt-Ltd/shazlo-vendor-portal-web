@@ -59,6 +59,30 @@ def plural(n: int, one: str, many: str) -> str:
     return one if n == 1 else many
 
 
+# The shell's limits for an activity item's lines (summary.ts). A vendor's name may be 200
+# characters, so "Commission: <name>" or "<name> · Application" can pass them; the shell refuses
+# the whole summary for one line too long, so a long line is cut here instead.
+MAX_ACTIVITY_TEXT = 200
+
+
+def js_length(value: str) -> int:
+    """The length JavaScript (and so the shell's schema) counts: UTF-16 code units, so an emoji
+    counts two."""
+    return len(value.encode("utf-16-le")) // 2
+
+
+def clip(value: str, limit: int = MAX_ACTIVITY_TEXT) -> str:
+    """`value`, cut to `limit` characters as JavaScript counts them, with an ellipsis when it is
+    longer."""
+    value = value.strip()
+    if js_length(value) <= limit:
+        return value
+    cut = value[: limit - 1]
+    while js_length(cut) > limit - 1:
+        cut = cut[:-1]
+    return cut.rstrip() + "…"
+
+
 class SummaryLinkOut(BaseModel):
     label: str
     # A path inside the module ("/queue"); the shell adds the module's base path.
@@ -304,8 +328,8 @@ def _activity_item(decision: RecentDecision) -> ActivityItemOut:
     approved = decision.decision == "approved"
     return ActivityItemOut(
         id=decision.id,
-        title=decision.title,
-        subtitle=f"{decision.vendor_name} · {KIND_LABELS[decision.kind]}",
+        title=clip(decision.title),
+        subtitle=clip(f"{decision.vendor_name} · {KIND_LABELS[decision.kind]}"),
         status=ActivityStatusOut(
             tone="positive" if approved else "attention",
             label="Approved" if approved else "Sent back",

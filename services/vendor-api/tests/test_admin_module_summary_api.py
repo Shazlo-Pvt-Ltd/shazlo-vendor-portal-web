@@ -237,6 +237,39 @@ def test_each_decision_opens_where_the_old_home_opened_it() -> None:
     assert items[0]["at"] == "2026-11-12T04:30:00Z"
 
 
+def test_a_long_vendor_name_is_cut_to_the_shells_limits() -> None:
+    # A vendor's name may be 200 characters; the shell refuses a summary with a line over 200
+    # (summary.ts), which would leave the Vendors card in error and drop the badge.
+    name = "N" * 200
+    found = replace(
+        EMPTY,
+        recent=[
+            replace(decision("commission"), title=f"Commission: {name}", vendor_name=name),
+            replace(decision("application"), title=name, vendor_name=name),
+        ],
+    )
+    activity = out(found)["activity"]
+    assert isinstance(activity, dict)
+    for item in activity["items"]:
+        for line in (item["title"], item["subtitle"]):
+            assert len(line) <= 200
+        assert item["subtitle"].endswith("…")
+    assert activity["items"][0]["title"].endswith("…")
+    assert activity["items"][1]["title"] == name
+
+
+def test_the_limit_counts_as_javascript_does() -> None:
+    # The shell's schema counts UTF-16 code units: an emoji is two, so 200 of them are 400.
+    name = "🌺" * 200
+    found = replace(EMPTY, recent=[replace(decision("application"), title=name, vendor_name=name)])
+    activity = out(found)["activity"]
+    assert isinstance(activity, dict)
+    (item,) = activity["items"]
+    for line in (item["title"], item["subtitle"]):
+        assert len(line.encode("utf-16-le")) // 2 <= 200
+        assert line.endswith("…")
+
+
 # --- Over HTTP -------------------------------------------------------------------------------
 
 
