@@ -67,7 +67,7 @@ src/
   session/            the admin session: store, AuthProvider, guards, return-to check
   modules/            registry.ts (the module list and its checks), loadRegistry, ModuleRegistryProvider
   security/           headers.ts (every header, defined once), sensitiveState.ts, PasswordField.tsx, and the tests
-  components/         ErrorBoundary, ErrorScreen, RouteError, NotFound, Misconfigured
+  components/         ShellLayout, NavList, AccountMenu, NoAccess (403), NotFound, ErrorBoundary, ErrorScreen, RouteError, Misconfigured, CountdownNotice
   hooks/              usePageTitle
   pages/              one file per route
   test/               test setup
@@ -145,7 +145,7 @@ the Content-Security-Policy `frame-src` all follow:
 
 The registry is checked when the shell builds (the Vite config and the Vercel prebuild step) and
 when it starts (a bad one shows the misconfiguration screen). It refuses a wildcard or pattern
-origin, a non-https origin outside development, a `url` that is not on its `origin`, duplicate ids
+origin, a host with anything but letters, digits, dots and hyphens, a non-https origin outside development, a `url` that is not on its `origin`, duplicate ids
 or origins, and an empty role list; the message names the module and what to change. Which list a
 build uses: `development` for `npm run dev`, `preview` when `VITE_DEPLOY_ENV` (or Vercel's
 `VERCEL_ENV`) is `preview`, `production` otherwise. The file has no imports, so Node and Vite read
