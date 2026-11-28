@@ -168,6 +168,10 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
     }
   }
 
+  // A vendor's delivery as vendor-api's store details answer it (services/vendor_api/services/store_details.py).
+  const deliveryOut = (d: S['Delivery']) =>
+    d.by === 'shazlo' ? { mode: 'shazlo', pickup_address: d.pickup_address } : { mode: 'own', areas: { all_india: d.all_india, places: d.places }, delivery_days: d.days }
+
   const findProduct = (db: MockVendorApi, reviewId: string) => db.products.find((p) => productReviewId(p) === reviewId)
   const findBrand = (db: MockVendorApi, reviewId: string) => db.brands.find((b) => brandReviewId(b) === reviewId)
 
@@ -317,7 +321,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
     http.get(STORE_DETAILS_URL, guarded(({ params }) => {
       const v = getDb().vendors.find((x) => x.id === params.id)
       if (!v) return fail(404, 'vendor_not_found', 'Vendor not found')
-      return HttpResponse.json({ brand_name: v.brand_name, business: {}, city: v.city, complete: true, contact: null, delivery: v.application.delivery, instagram_or_website: v.application.instagram_or_website, missing: [], pay_on_delivery: v.application.pay_on_delivery, payout: null, returns: v.application.returns, sells: v.sells, updated_at: null })
+      return HttpResponse.json({ brand_name: v.brand_name, business: {}, city: v.city, complete: true, contact: null, delivery: deliveryOut(v.application.delivery), instagram_or_website: v.application.instagram_or_website, missing: [], pay_on_delivery: v.application.pay_on_delivery, payout: null, returns: v.application.returns, sells: v.sells, updated_at: null })
     })),
 
     http.get(`${API}/vendors`, guarded(({ request }) => {

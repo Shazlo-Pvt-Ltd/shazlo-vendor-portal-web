@@ -108,7 +108,7 @@ describe('mock vendor-api: store details', () => {
   it('has the fields the admin reads, and 404s for an unknown vendor', async () => {
     const { status, body } = await call('GET', '/v1/admin/vendors/v_nila/store-details')
     expect(status).toBe(200)
-    expect(body).toMatchObject({ brand_name: 'Nila Handloom', complete: true, returns: { window_days: 14 }, delivery: { by: 'own', days: '2_3' } })
+    expect(body).toMatchObject({ brand_name: 'Nila Handloom', complete: true, returns: { window_days: 14 }, delivery: { mode: 'own', delivery_days: '2_3' } })
     expect((await call('GET', '/v1/admin/vendors/v_nope/store-details')).status).toBe(404)
   })
 })

@@ -211,14 +211,16 @@ describe('toPolicies', () => {
   const details = (returns: unknown, delivery: unknown) => ({ returns, delivery }) as components['schemas']['StoreDetailsOut']
 
   it('turns the returns window and the delivery time into the brand page’s labels', () => {
-    expect(toPolicies(details({ window_days: 7 }, { by: 'own', days: '2_3' }))).toEqual({ return_policy: '7_day', dispatch_time: '2_3_days' })
-    expect(toPolicies(details({ window_days: 0 }, { by: 'own', days: '5_7' }))).toEqual({ return_policy: 'no_returns', dispatch_time: '5_7_days' })
+    expect(toPolicies(details({ window_days: 7 }, { mode: 'own', areas: { all_india: true, places: [] }, delivery_days: '2_3' }))).toEqual({ return_policy: '7_day', dispatch_time: '2_3_days' })
+    expect(toPolicies(details({ window_days: 0 }, { mode: 'own', areas: { all_india: false, places: ['Pune'] }, delivery_days: '5_7' }))).toEqual({ return_policy: 'no_returns', dispatch_time: '5_7_days' })
     expect(toPolicies(details({ window_days: 30 }, null)).return_policy).toBe('30_day')
   })
 
   it('has nothing to say when the details are missing or empty', () => {
     expect(toPolicies(undefined)).toEqual({ return_policy: '', dispatch_time: '' })
-    expect(toPolicies(details(null, { by: 'shazlo' }))).toEqual({ return_policy: '', dispatch_time: '' })
+    expect(toPolicies(details(null, { mode: 'shazlo', pickup_address: {} }))).toEqual({ return_policy: '', dispatch_time: '' })
+    // The mock's old application shape (`days`) is not vendor-api's: it must not be read as a delivery time.
+    expect(toPolicies(details(null, { by: 'own', days: '2_3' })).dispatch_time).toBe('')
   })
 })
 

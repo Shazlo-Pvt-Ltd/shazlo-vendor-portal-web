@@ -129,7 +129,8 @@ export function toPolicies(details: components['schemas']['StoreDetailsOut'] | u
   const returns = rec(details?.returns)
   const delivery = rec(details?.delivery)
   const window = num(returns.window_days)
-  const days = text(delivery.days)
+  // vendor-api's own delivery is {mode: "own", areas, delivery_days: "2_3"}; Shazlo's has no time of its own.
+  const days = text(delivery.delivery_days)
   return {
     return_policy: window === null ? '' : window === 0 ? 'no_returns' : `${window}_day`,
     dispatch_time: days ? `${days}_days` : '',
