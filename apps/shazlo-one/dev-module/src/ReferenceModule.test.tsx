@@ -13,7 +13,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { ModuleConfig } from '../config'
-import { MODULE_ORIGIN, SHELL_ORIGIN, createFrames, flush } from '../test/frames'
+import { MODULE_ORIGIN, SHELL_ORIGIN, createFrames, deliver, flush } from '../test/frames'
 import { ReferenceModule } from './ReferenceModule'
 
 const API = 'https://vendor.test'
@@ -41,6 +41,8 @@ interface Options {
   accept?: string[]
   /** What the shell answers a `token:request` with; undefined answers nothing. */
   refresh?: () => AuthPayload | undefined
+  /** The module's clock (milliseconds); defaults to a fixed NOW. */
+  now?: () => number
 }
 
 /** The real shell channel and the real module in a real iframe, with vendor-api faked by MSW. */
@@ -103,7 +105,7 @@ function setup(options: Options = {}) {
   }
 
   const container = frames.frameDocument.body.appendChild(frames.frameDocument.createElement('div'))
-  const view = render(<ReferenceModule config={config} frameWindow={frames.moduleWindow} now={() => NOW} />, { container })
+  const view = render(<ReferenceModule config={config} frameWindow={frames.moduleWindow} now={options.now ?? (() => NOW)} />, { container })
   const page = within(frames.frameDocument.body)
   return { ...frames, shell, seen, apiCalls, page, view, settle }
 }
@@ -250,6 +252,110 @@ describe('a refused token', () => {
     fireEvent.click(t.page.getByRole('button', { name: 'Call GET /v1/admin/me' }))
     await t.settle()
     expect(text(t.frameDocument)).toMatch(/Could not reach vendor-api/)
+  })
+})
+
+describe('an expired token', () => {
+  it('is never sent to vendor-api: the module asks the shell for a new one and calls with that', async () => {
+    const t = setup({ autoAuth: false, accept: ['old', 'tok-2'], refresh: () => auth('tok-2') })
+    await t.settle()
+    t.shell.sendAuth(auth('old', { expiresAt: NOW / 1000 - 60 }))
+    await t.settle()
+    expect(t.seen.tokenRequests).toEqual([{ reason: 'expired' }])
+    expect(t.apiCalls).toEqual(['Bearer tok-2'])
+    expect(text(t.frameDocument)).toMatch(/vendor-api answered 200/)
+  })
+
+  it('that runs out while the module is open makes the button ask for a new one instead of calling', async () => {
+    let clock = NOW
+    const t = setup({ accept: ['tok-1', 'tok-2'], now: () => clock })
+    await t.settle()
+    expect(t.apiCalls).toEqual(['Bearer tok-1'])
+    clock = NOW + 901_000
+    fireEvent.click(t.page.getByRole('button', { name: 'Call GET /v1/admin/me' }))
+    await t.settle()
+    expect(t.apiCalls).toEqual(['Bearer tok-1'])
+    expect(t.seen.tokenRequests).toEqual([{ reason: 'expired' }])
+    expect(text(t.frameDocument)).toMatch(/The token has expired/)
+    t.shell.sendAuth(auth('tok-2', { expiresAt: clock / 1000 + 900 }))
+    await t.settle()
+    expect(t.apiCalls).toEqual(['Bearer tok-1', 'Bearer tok-2'])
+  })
+})
+
+describe('messages the module must ignore', () => {
+  const envelope = (type: string, payload: unknown, extra: Record<string, unknown> = {}) => ({
+    protocol: 'shazlo-one',
+    v: 1,
+    type,
+    id: crypto.randomUUID(),
+    sentAt: NOW,
+    payload,
+    ...extra,
+  })
+
+  /** The module is still waiting: nothing it was sent was taken as a session. */
+  const expectUntouched = (t: ReturnType<typeof setup>) => {
+    expect(text(t.frameDocument)).toMatch(/Waiting for the shell to send the session/)
+    expect(text(t.frameDocument)).not.toContain('asha@shazlo.test')
+    expect(t.apiCalls).toEqual([])
+    expect(t.posts.filter((post) => post.from === 'module').map((post) => (post.data as { type: string }).type)).toEqual(['ready'])
+  }
+
+  it('takes a well-formed auth from the shell’s origin and window (the forged messages below differ only as named)', async () => {
+    const t = setup({ autoAuth: false })
+    await t.settle()
+    deliver(t.moduleWindow, envelope('auth', auth('tok-1')), SHELL_ORIGIN, t.shellWindow)
+    await t.settle()
+    expect(t.apiCalls).toEqual(['Bearer tok-1'])
+  })
+
+  it('drops an auth from another origin, even one sent by the shell’s window', async () => {
+    const t = setup({ autoAuth: false })
+    await t.settle()
+    for (const origin of ['https://evil.example', 'http://localhost:5174', MODULE_ORIGIN, 'null', '']) {
+      deliver(t.moduleWindow, envelope('auth', auth('tok-1')), origin, t.shellWindow)
+    }
+    await t.settle()
+    expectUntouched(t)
+  })
+
+  it('drops an auth with the shell’s origin from any window but the parent', async () => {
+    const t = setup({ autoAuth: false })
+    await t.settle()
+    const sibling = t.shellWindow.document.body.appendChild(t.shellWindow.document.createElement('iframe'))
+    deliver(t.moduleWindow, envelope('auth', auth('tok-1')), SHELL_ORIGIN, sibling.contentWindow!)
+    deliver(t.moduleWindow, envelope('auth', auth('tok-1')), SHELL_ORIGIN, t.moduleWindow)
+    await t.settle()
+    sibling.remove()
+    expectUntouched(t)
+  })
+
+  it('drops an oversized or malformed message, and an auth whose expiresAt is in milliseconds', async () => {
+    const t = setup({ autoAuth: false })
+    await t.settle()
+    const forged: unknown[] = [
+      envelope('auth', auth('tok-1', { user: { id: 'a1', email: `${'a'.repeat(70 * 1024)}@shazlo.test`, roles: [] } })),
+      envelope('auth', auth('tok-1'), { padding: 'x'.repeat(70 * 1024) }),
+      envelope('auth', auth('tok-1', { expiresAt: NOW + 900_000 })),
+      envelope('auth', auth('tok-1'), { protocol: 'someone-else' }),
+      envelope('auth', auth('tok-1'), { v: 99 }),
+      envelope('auth', { accessToken: 'tok-1', expiresAt: NOW / 1000 + 900 }),
+      envelope('auth', auth('')),
+      envelope('auth', 'tok-1'),
+      envelope('auth', auth('tok-1'), { id: 'not-a-uuid' }),
+      envelope('unknown', {}),
+      JSON.stringify(envelope('auth', auth('tok-1'))),
+      'tok-1',
+      null,
+      undefined,
+      42,
+      [envelope('auth', auth('tok-1'))],
+      new Map([['auth', auth('tok-1')]]),
+    ]
+    for (const data of forged) deliver(t.moduleWindow, data, SHELL_ORIGIN, t.shellWindow)
+    await t.settle()
+    expectUntouched(t)
   })
 })
 

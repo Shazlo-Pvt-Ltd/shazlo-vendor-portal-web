@@ -178,6 +178,7 @@ npm run dev:with-module -w @shazlo/shazlo-one   # shell on 5173, module on 5175
   when the token expires (never the token).
 - It calls vendor-api's `GET /v1/admin/me` with that token (`aud=vendor-api`) and shows the answer. A `401`
   makes it send `token:request` (at most once every 30 seconds) and repeat the call when the shell answers.
+  An expired token is never sent: the module sends `token:request` with `expired` instead, then calls.
 - Buttons send every module-to-shell message: `title` (in-module pages), a `toast` of each level, `logout`,
   and a non-fatal and a fatal `error`. The shell's `navigate` and `error` are shown.
 - Its responses carry `Content-Security-Policy: frame-ancestors <shell origin>` (plus `http://localhost:5173`

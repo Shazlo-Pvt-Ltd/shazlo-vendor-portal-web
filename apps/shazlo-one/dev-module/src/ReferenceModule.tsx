@@ -74,7 +74,15 @@ function FramedModule({ config, frameWindow, now }: { config: ModuleConfig; fram
       // The token stays inside the client; it is read here, used once and never shown or kept.
       const token = module.getAccessToken()
       if (token === undefined) {
-        setApiNote('There is no valid token yet.')
+        // There is a session (the call runs only after an auth), so the token has expired. An expired
+        // token is never sent: ask the shell for a new one (at most once every 30 seconds) and call with it.
+        const asked = module.requestToken('expired')
+        if (asked) state.retryAfterAuth = true
+        setApiNote(
+          asked
+            ? 'The token has expired. Asked the shell for a new one; the call is repeated when it arrives.'
+            : 'The token has expired, and a new one was requested less than 30 seconds ago.',
+        )
         return
       }
       setApiNote('Calling vendor-api…')
@@ -84,7 +92,8 @@ function FramedModule({ config, frameWindow, now }: { config: ModuleConfig; fram
         if (result.kind === 'unauthorized') {
           // At most once every 30 seconds: the client enforces it.
           const asked = module.requestToken('unauthorized')
-          state.retryAfterAuth = asked
+          // A request already on its way keeps its pending retry.
+          if (asked) state.retryAfterAuth = true
           setApiNote(
             asked
               ? 'Asked the shell for a new token. The call is repeated when it arrives.'
