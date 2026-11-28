@@ -2,6 +2,7 @@ import type { MockVendorApi } from '@shazlo/mock-vendor-api'
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { delay, http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { HomeSummary } from '../api/summary'
 import { renderShell } from '../test/render'
 import * as mocks from '../test/server'
 
@@ -286,6 +287,42 @@ describe('#299 Home: names behind the decisions', () => {
     expect(rows[0]).toHaveTextContent('by a former admin')
     expect(rows[2]).toHaveTextContent('by Naman Sinha')
     expect(rows[3]).toHaveTextContent('by Rahul Desai')
+  })
+
+  it('keeps the names it had when a later lookup fails, rather than calling everyone "a former admin"', async () => {
+    const { context } = await renderShell()
+    const list = await region('Recent decisions')
+    await waitFor(() => expect(within(list).getAllByRole('listitem')[0]).toHaveTextContent('by Priya Mehta'))
+    let asked = 0
+    server.use(
+      http.get('*/v1/admins/names', () => {
+        asked += 1
+        return HttpResponse.json({ error: { code: 'unavailable', message: 'down', request_id: 'r' } }, { status: 503 })
+      }),
+    )
+    vi.setSystemTime(new Date(NOW.getTime() + 6 * 60_000))
+    await act(() => context.queryClient.refetchQueries({ queryKey: ['vendor-summary'] }))
+    expect(asked).toBe(1)
+    expect(context.queryClient.getQueryData<HomeSummary>(['vendor-summary'])!.recent[0]!.reviewer).toBe('Priya Mehta')
+    await waitFor(() => expect(within(list).getAllByRole('listitem')[0]).toHaveTextContent('by Priya Mehta'))
+  })
+
+  it('looks the names up once for the refreshes of the next five minutes', async () => {
+    let asked = 0
+    server.use(
+      http.get('*/v1/admins/names', () => {
+        asked += 1
+      }),
+    )
+    const { context } = await renderShell()
+    await within(await region('Recent decisions')).findAllByRole('listitem')
+    await waitFor(() => expect(asked).toBe(1))
+    vi.setSystemTime(new Date(NOW.getTime() + 60_000))
+    await act(() => context.queryClient.refetchQueries({ queryKey: ['vendor-summary'] }))
+    expect(asked).toBe(1)
+    vi.setSystemTime(new Date(NOW.getTime() + 6 * 60_000))
+    await act(() => context.queryClient.refetchQueries({ queryKey: ['vendor-summary'] }))
+    expect(asked).toBe(2)
   })
 
   it('asks for each reviewer once, however many decisions they made', async () => {
