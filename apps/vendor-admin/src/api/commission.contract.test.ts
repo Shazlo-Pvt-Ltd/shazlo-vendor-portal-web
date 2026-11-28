@@ -33,8 +33,10 @@ describe('mock vendor-api: POST /v1/admin/vendors/{id}/commission/*', () => {
     expect([none.status, code(none)]).toEqual([409, 'no_proposal'])
   })
 
-  it('approve needs proposed_bps: a body without it is a 422', async () => {
-    expect((await post('v_indigo', 'approve', {})).status).toBe(422)
+  it('approve needs proposed_bps as whole basis points: without it, or as a string or a fraction, it is a 422', async () => {
+    for (const body of [{}, { proposed_bps: '1000' }, { proposed_bps: 1000.5 }, { proposed_bps: null }]) expect((await post('v_indigo', 'approve', body)).status, JSON.stringify(body)).toBe(422)
+    // Nothing was agreed by the refused attempts.
+    expect(code(await post('v_indigo', 'approve', { proposed_bps: 900 }))).toBe('commission_changed')
   })
 
   it('send-back needs a note of 10 to 600 characters, and a waiting proposal', async () => {
