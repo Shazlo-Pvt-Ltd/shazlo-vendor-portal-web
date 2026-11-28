@@ -3,13 +3,13 @@ import { Banner, brand, emphasis, EmptyState, neutral, SectionCard, StatFigure, 
 import { ChevronRight, ClipboardCheck, Send, Store } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link as RouterLink } from 'react-router'
-import type { components } from '../../api/vendor-admin'
+import type { HomeDecision, HomeSummary } from '../../api/summary'
 import { homeCopy } from '../../copy/home'
 import { formatCount, formatRelative } from '../../lib/format'
 import { formatMinutes } from './time'
 
-type Summary = components['schemas']['Summary']
-type Decision = Summary['recent'][number]
+type Summary = HomeSummary
+type Decision = HomeDecision
 // The statuses the module's publishing page filters by (its `status` query parameter).
 type PublishingStatus = 'delivered' | 'waiting' | 'retrying' | 'failed'
 
@@ -109,11 +109,12 @@ export function PublishingCard({ summary }: { summary: Summary | undefined }) {
   )
 }
 
-// The summary gives decision ids, not the reviewed item's id. Brand pages and applications are keyed
-// by vendor, so they open directly; a product decision opens the queue until the summary carries it.
+// Brand pages are keyed by vendor, and applications and commission decisions open the vendor, so they
+// link directly. A product decision still opens the queue: the summary now carries the review id, but
+// the module's review URLs are settled in #295, and the link follows them then.
 function decisionHref(d: Decision): string {
   if (d.kind === 'brand_page') return vendorLinks.brandReview(d.vendor.id)
-  if (d.kind === 'application') return vendorLinks.vendor(d.vendor.id)
+  if (d.kind === 'application' || d.kind === 'commission') return vendorLinks.vendor(d.vendor.id)
   return vendorLinks.queue
 }
 
