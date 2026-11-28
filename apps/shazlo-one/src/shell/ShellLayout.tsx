@@ -94,7 +94,7 @@ function NavLink({ to, label, icon: Icon, active, parent = false, count, countLa
 
 function SectionLabel({ children }: { children: string }) {
   return (
-    <Typography component="p" variant="caption" sx={{ color: 'rgba(255, 252, 227, 0.55)', px: 1.5, pt: 2.5, pb: 0.75 }}>
+    <Typography component="p" variant="caption" sx={{ color: 'rgba(255, 252, 227, 0.58)', px: 1.5, pt: 2.5, pb: 0.75 }}>
       {children}
     </Typography>
   )
