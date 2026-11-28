@@ -1,0 +1,125 @@
+name: e2e-shazlo-one
+
+# The Shazlo One shell's browser tests (apps/shazlo-one/e2e) against the real stack from
+# docker-compose.yml: identity-api, vendor-api's admin app (vendor-admin-api) and seller app,
+# vendor-worker, Postgres, Redis and Mailpit. The shell and the Vendors module run as Vite dev servers
+# that Playwright starts. apps/shazlo-one/README.md, "End-to-end tests", has the same steps for a
+# laptop. Not a required check: on a pull request it runs only when something it exercises changes;
+# it runs on every push to main.
+on:
+  pull_request:
+    paths:
+      - "apps/shazlo-one/**"
+      - "apps/vendor-admin/**"
+      - "packages/shell-protocol/**"
+      - "packages/ui/**"
+      - "packages/py-auth/**"
+      - "packages/py-security/**"
+      - "services/identity-api/**"
+      - "services/vendor-api/**"
+      - "docs/adr/0003-contract/**"
+      - "docker/**"
+      - "docker-compose*.yml"
+      - ".env.example"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/e2e-shazlo-one.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-shazlo-one-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Every `docker compose` call below sees identity-api and the vendor apps.
+  COMPOSE_PROFILES: identity,vendor
+  # Test-only credentials for this job's throwaway stack. The steps read them as shell variables, and
+  # the tests read E2E_* from the environment (apps/shazlo-one/e2e/support/env.ts).
+  SEED_ADMIN_EMAIL: admin@shazlo.test
+  E2E_ADMIN_EMAIL: admin@shazlo.test
+  E2E_ADMIN_SEED_PASSWORD: e2e-admin-password-1
+  E2E_ADMIN_PASSWORD: e2e-admin-password-2
+  SEED_VENDOR_PASSWORD: e2e-vendor-password-1
+
+jobs:
+  shazlo-one:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Prepare .env
+        run: |
+          cp .env.example .env
+          sed -i 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=e2e-ci/' .env
+      - name: Build the images
+        run: docker compose build identity-api vendor-api vendor-admin-api vendor-worker
+      # identity-api and vendor-api each sign with their own key (never each other's).
+      - name: Generate both signing keys into .env
+        run: |
+          gen='import json; from shazlo_security.keys import generate_private_key, new_kid, private_key_pem; print(json.dumps({new_kid(): private_key_pem(generate_private_key()).decode()}, separators=(",", ":")))'
+          identity=$(docker compose run --rm --no-deps -T identity-api python -c "$gen")
+          vendor=$(docker compose run --rm --no-deps -T vendor-api python -c "$gen")
+          grep -v -e '^IDENTITY_JWT_KEYS=' -e '^VENDOR_JWT_KEYS=' .env > .env.new
+          printf 'IDENTITY_JWT_KEYS=%s\nVENDOR_JWT_KEYS=%s\n' "$identity" "$vendor" >> .env.new
+          mv .env.new .env
+      # Migrations run as the owner of the tables (vendor-cli); then each vendor app gets its own
+      # login with only its table rights (ADR 0011).
+      - name: Start the databases and run the migrations
+        run: |
+          docker compose up -d --wait postgres redis mailpit
+          docker compose run --rm identity-api alembic upgrade head
+          docker compose run --rm vendor-cli alembic upgrade head
+          docker compose run --rm vendor-cli python -m vendor_api.cli db-logins
+      # The seeded admin only creates the tests' own admins (e2e/support/identity.ts). The demo vendor's
+      # waiting products give the Vendors module's review queue rows, so it can export and send a toast.
+      - name: Seed the admin and the demo vendor
+        run: |
+          SEED_ADMIN_PASSWORD="$E2E_ADMIN_SEED_PASSWORD" docker compose run --rm \
+            -e SEED_ADMIN_EMAIL -e SEED_ADMIN_PASSWORD identity-api python -m identity_api.cli seed
+          docker compose run --rm -e SEED_VENDOR_PASSWORD vendor-cli python -m vendor_api.cli seed-dev
+      - name: Start the stack
+        run: |
+          docker compose up -d --wait
+          curl -fsS localhost:8001/ready
+          curl -fsS localhost:8004/ready
+
+      - name: Install the browser
+        run: npx playwright install --with-deps chromium
+        working-directory: apps/shazlo-one
+      - name: Browser tests (Playwright starts the shell and the Vendors module)
+        run: npm run e2e
+        working-directory: apps/shazlo-one
+        env:
+          CI: "true"
+
+      - name: Keep the traces, screenshots and report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: shazlo-one-e2e-${{ github.sha }}
+          path: |
+            apps/shazlo-one/test-results/
+            apps/shazlo-one/playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore
+      - name: Service logs
+        if: failure()
+        run: docker compose logs --no-color --timestamps
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v

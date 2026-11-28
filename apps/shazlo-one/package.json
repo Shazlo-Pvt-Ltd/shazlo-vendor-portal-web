@@ -12,7 +12,9 @@
     "api:check": "openapi-typescript ../../services/identity-api/openapi.json -o src/api/identity.d.ts --check",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "headers:placeholder": "node scripts/write-vercel-headers.mjs --placeholder"
+    "headers:placeholder": "node scripts/write-vercel-headers.mjs --placeholder",
+    "e2e": "playwright test",
+    "e2e:install": "playwright install --with-deps chromium"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
