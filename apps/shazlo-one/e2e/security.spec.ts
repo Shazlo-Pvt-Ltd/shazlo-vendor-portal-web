@@ -1,4 +1,4 @@
-import { expect, test, type Request } from '@playwright/test'
+import { expect, test, type Page, type Request } from '@playwright/test'
 import { E2E } from './support/env'
 import { createAdmin } from './support/identity'
 import { openReferenceModule, signInFirstTime } from './support/shell'
@@ -18,6 +18,16 @@ const FORGED = [
 
 const EVIL = 'http://evil.e2e.test'
 
+/**
+ * Has the real module send a toast and waits for the shell to show it. Messages are handled in the order they
+ * arrive, so once this toast is on screen the forged messages posted before it have been handled too: a check
+ * that they did nothing is then not just a check made before they arrived.
+ */
+async function waitForTheModulesOwnToast(shell: Page): Promise<void> {
+  await shell.frameLocator('iframe[title="Reference module"]').getByRole('button', { name: 'Send a success toast' }).click()
+  await expect(shell.getByText('A success message from the reference module.')).toBeVisible()
+}
+
 test.describe('security, in the browser', () => {
   test('the shell ignores messages from another origin and from a window that is not the module', async ({ page, context, request }) => {
     const admin = await createAdmin(request, 'forged', ['super_admin'])
@@ -27,6 +37,7 @@ test.describe('security, in the browser', () => {
 
     // 1. From the shell's own window: the right shape, but the wrong origin and the wrong window.
     await page.evaluate((messages) => messages.forEach((message) => window.postMessage(message, '*')), FORGED)
+    await waitForTheModulesOwnToast(page)
     await expect(page.getByText('A forged toast.')).toHaveCount(0)
     expect(await page.title()).toBe(titleBefore)
     await expect(page.locator('iframe[title="Reference module"]')).toHaveCount(1)
@@ -48,6 +59,7 @@ test.describe('security, in the browser', () => {
       const victim = (window as unknown as { victim: Window }).victim
       messages.forEach((message) => victim.postMessage(message, '*'))
     }, FORGED)
+    await waitForTheModulesOwnToast(popup)
 
     // The forged `logout` would have signed the admin out, the forged `toast` would show, the forged `title` would stick.
     await expect(popup.getByText('A forged toast.')).toHaveCount(0)
@@ -61,30 +73,35 @@ test.describe('security, in the browser', () => {
   test('the module refuses to be framed by another origin', async ({ page, context, request }) => {
     // The header the browser enforces.
     const answer = await request.get(E2E.moduleUrl)
+    expect(answer.ok(), 'the module server is up').toBeTruthy()
     const policy = answer.headers()['content-security-policy'] ?? ''
     expect(policy).toContain('frame-ancestors')
     expect(policy).toContain(E2E.shellUrl)
     expect(policy).not.toMatch(/\*/)
     expect(answer.headers()['referrer-policy']).toBe('no-referrer')
 
-    // And the browser doing it: another origin frames the module and gets nothing.
+    // And the browser doing it: another origin frames the module and gets nothing. The frame's `load` (fired for a
+    // blocked frame too) retitles the page, so the checks run after the browser decided, not before the frame
+    // started. The module server is up (it answered above), so a refusal here is the header's doing.
     await context.route(`${EVIL}/**`, (route) =>
-      route.fulfill({ contentType: 'text/html', body: `<!doctype html><title>evil</title><iframe id="victim" src="${E2E.moduleUrl}/"></iframe>` }),
+      route.fulfill({
+        contentType: 'text/html',
+        body: `<!doctype html><title>evil</title><iframe id="victim" src="${E2E.moduleUrl}/" onload="document.title='framed'"></iframe>`,
+      }),
     )
     await page.goto(`${EVIL}/`)
-    await expect
-      .poll(() => page.frames().find((frame) => frame !== page.mainFrame())?.url() ?? '', { message: 'the framed page was blocked' })
-      .toMatch(/^chrome-error:|^about:blank$/)
-    expect(await page.frames().find((frame) => frame !== page.mainFrame())?.locator('h1').count()).toBe(0)
+    await expect(page).toHaveTitle('framed')
+    const framed = page.frames().find((frame) => frame !== page.mainFrame())
+    expect(framed?.url() ?? '', 'the frame never showed the module').not.toContain(E2E.moduleUrl.replace(/^https?:\/\//, ''))
+    expect(await framed?.locator('h1').count()).toBe(0)
   })
 
-  test('the shell is never framed and frames only the registered module', async ({ page, request }) => {
+  test('the shell is never framed and frames only the registered module', async ({ request }) => {
     const answer = await request.get(E2E.shellUrl)
     const policy = answer.headers()['content-security-policy'] ?? ''
     expect(policy).toContain("frame-ancestors 'none'")
     expect(policy).toContain(`frame-src ${E2E.moduleUrl}`)
     expect(policy).toContain(`connect-src ${E2E.identityUrl}`)
-    await page.goto('/login')
   })
 
   test('no token appears in a URL, a request header that names a page, web storage or a readable cookie', async ({ page, request }) => {
