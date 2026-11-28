@@ -7,7 +7,7 @@ FastAPI service for vendors, brand profiles, products, assets, reviews and publi
 - **Vendor accounts:** signup with email verification, login, refresh (rotating tokens with reuse detection), logout, change-password, forgot and set password.
 - **A team per vendor:** the owner invites staff, lists, disables and enables them; invites and resets go by email.
 - **Vendor-scoped data isolation**, with helpers and tests that fail when a route or table skips the rule.
-- **Admin API** (`/v1/admin/*`, the admin app on port 8004): accepts only identity-api tokens, verified through its JWKS. It serves the review queue and decisions, vendor accounts and the outbox.
+- **Admin API** (`/v1/admin/*`, the admin app on port 8004): accepts only identity-api tokens, verified through its JWKS. It serves the review queue and decisions, vendor accounts, the outbox, the admins' home summary (`GET /v1/admin/summary`) and Shazlo One's module summary (`GET /v1/admin/module-summary`).
 - **Its own tokens and keys:** vendor-api signs vendor tokens with its own key and serves its own JWKS.
 - **The schema** for vendors, users, tokens, brand profiles, products (identity and revisions), assets, reviews and the outbox.
 - **A brand page per vendor:** edit a draft, submit it for review, read the published version.
