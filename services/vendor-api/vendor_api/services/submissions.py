@@ -34,6 +34,7 @@ class Submission:
     version: int
     status: str
     reason: str | None
+    reason_code: str | None
     submitted_at: datetime
     decided_at: datetime | None
 
@@ -103,6 +104,7 @@ class SubmissionService:
                     version=version,
                     status=review.status,
                     reason=review.reason,
+                    reason_code=review.reason_code,
                     submitted_at=review.submitted_at,
                     decided_at=review.decided_at,
                 )

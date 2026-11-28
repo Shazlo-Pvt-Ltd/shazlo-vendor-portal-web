@@ -98,7 +98,7 @@ describe('productFromApi', () => {
   })
 
   it('shows a change to a live product as "changes in review" while the live version stays', () => {
-    const live = revision({ id: 'rev-1', state: 'live', title: 'Old title', submitted_at: T0, review: { status: 'approved', reason: null, decided_at: T1 } })
+    const live = revision({ id: 'rev-1', state: 'live', title: 'Old title', submitted_at: T0, review: { status: 'approved', reason: null, reason_code: null, decided_at: T1 } })
     const working = revision({ id: 'rev-2', version: 2, state: 'in_review', title: 'New title', submitted_at: T2 })
     const p = productFromApi(product({ status: 'approved', live, working }))
     expect(p.status).toBe('approved')
@@ -108,7 +108,7 @@ describe('productFromApi', () => {
   })
 
   it('carries the reviewer\'s reason when the product was sent back', () => {
-    const working = revision({ state: 'rejected', submitted_at: T1, review: { status: 'rejected', reason: 'Back photo is missing.', decided_at: T2 } })
+    const working = revision({ state: 'rejected', submitted_at: T1, review: { status: 'rejected', reason: 'Back photo is missing.', reason_code: 'photos', decided_at: T2 } })
     const p = productFromApi(product({ status: 'rejected', working }))
     expect(p.review).toEqual({ state: 'rejected', reason: 'Back photo is missing.', at: T2 })
     expect(p.history[0]).toEqual({ at: T2, event: 'rejected', note: 'Back photo is missing.' })
@@ -116,7 +116,7 @@ describe('productFromApi', () => {
   })
 
   it('reads an approved product from its live revision', () => {
-    const live = revision({ state: 'live', submitted_at: T1, review: { status: 'approved', reason: null, decided_at: T2 } })
+    const live = revision({ state: 'live', submitted_at: T1, review: { status: 'approved', reason: null, reason_code: null, decided_at: T2 } })
     const p = productFromApi(product({ status: 'approved', live, working: null }))
     expect(p.review).toEqual({ state: 'approved', at: T2 })
     expect(p.edit_in_review).toBe(false)
@@ -173,7 +173,7 @@ describe('productFromApi', () => {
   })
 
   it('keeps what is live beside the version being changed (the revision card)', () => {
-    const live = revision({ id: 'rev-1', state: 'live', title: 'Old title', submitted_at: T0, review: { status: 'approved', reason: null, decided_at: T1 } })
+    const live = revision({ id: 'rev-1', state: 'live', title: 'Old title', submitted_at: T0, review: { status: 'approved', reason: null, reason_code: null, decided_at: T1 } })
     const working = revision({
       id: 'rev-2',
       version: 2,
@@ -195,7 +195,7 @@ describe('productFromApi', () => {
 
   it('says which version is being changed and whether it was ever sent (the delete rules need it)', () => {
     expect(productFromApi(product()).working).toEqual({ version: 1, state: 'editing', submitted_at: null })
-    const rejected = revision({ state: 'rejected', submitted_at: T1, review: { status: 'rejected', reason: 'x', decided_at: T2 } })
+    const rejected = revision({ state: 'rejected', submitted_at: T1, review: { status: 'rejected', reason: 'x', reason_code: null, decided_at: T2 } })
     expect(productFromApi(product({ status: 'rejected', working: rejected })).working).toEqual({ version: 1, state: 'rejected', submitted_at: T1 })
     expect(productFromApi(product({ working: revision({ state: 'mystery' }) })).working?.state).toBe('editing')
     expect(productFromApi(product({ working: revision({ version: 0 as never }) })).working?.version).toBe(1)

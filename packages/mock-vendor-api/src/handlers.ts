@@ -5,6 +5,9 @@ import type { components } from './schema'
 type S = components['schemas']
 const API = '*/api/v1/admin'
 const QUEUE_URL = '*/v1/admin/queue'
+const REVIEWS_URL = '*/v1/admin/reviews/:id'
+const STORE_DETAILS_URL = '*/v1/admin/vendors/:id/store-details'
+const REASON_CODES = ['photos', 'try_on_photos', 'price', 'category', 'prohibited', 'description', 'brand_images', 'contact_details', 'other']
 const COMMISSION_URL = '*/v1/admin/vendors/:id/commission/:step'
 const REASON_MIN = 10
 const NOTE_MAX = 600
@@ -96,11 +99,11 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
     const items: S['QueueItem'][] = []
     for (const p of db.products.filter((x) => x.status === 'pending_review')) {
       const v = vendorOf(p.vendorId)
-      items.push({ id: `q_${p.id}`, kind: 'product', subject_id: p.id, title: p.submitted.title, detail: p.sku, vendor: ref(v), submitted_at: p.submittedAt, change: p.change, resubmission: p.resubmission, thumbnail_url: p.submitted.photos[0]?.url ?? null })
+      items.push({ id: productReviewId(p), kind: 'product', subject_id: p.id, title: p.submitted.title, detail: p.sku, vendor: ref(v), submitted_at: p.submittedAt, change: p.change, resubmission: p.resubmission, thumbnail_url: p.submitted.photos[0]?.url ?? null })
     }
     for (const b of db.brands.filter((x) => x.status === 'pending_review')) {
       const v = vendorOf(b.vendorId)
-      items.push({ id: `q_brand_${b.vendorId}`, kind: 'brand_page', subject_id: b.vendorId, title: `${v.brand_name} brand page`, detail: b.live ? 'Edit to a live page' : 'First brand page', vendor: ref(v), submitted_at: b.submittedAt, change: b.live ? 'edit' : 'new', resubmission: 0, thumbnail_url: b.draft.cover_url })
+      items.push({ id: brandReviewId(b), kind: 'brand_page', subject_id: b.vendorId, title: `${v.brand_name} brand page`, detail: b.live ? 'Edit to a live page' : 'First brand page', vendor: ref(v), submitted_at: b.submittedAt, change: b.live ? 'edit' : 'new', resubmission: 0, thumbnail_url: b.draft.cover_url })
     }
     for (const v of db.vendors.filter((x) => x.status === 'applied' || x.status === 'under_review')) {
       items.push({ id: `q_app_${v.id}`, kind: 'application', subject_id: v.id, title: v.brand_name, detail: `Vendor application · ${v.city}`, vendor: ref(v), submitted_at: v.application.applied_at, change: 'application', resubmission: 0, thumbnail_url: null })
@@ -108,19 +111,108 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
     return items.sort((a, b) => Date.parse(a.submitted_at) - Date.parse(b.submitted_at))
   }
 
-  // Prev/next walk the queue in the order reviewers see it (oldest first).
-  function neighbours(db: MockVendorApi, subjectId: string) {
-    const ids = queueItems(db).filter((i) => i.kind !== 'application').map((i) => `${i.kind}:${i.subject_id}`)
-    const key = ids.find((k) => k.endsWith(`:${subjectId}`))
-    const i = key ? ids.indexOf(key) : -1
-    const id = (k: string | undefined) => (k ? k.split(':')[1]! : null)
-    return { prev_id: i > 0 ? id(ids[i - 1]) : null, next_id: i >= 0 ? id(ids[i + 1]) : id(ids[0]) }
+  // vendor-api reviews are keyed by the review's id. The mock has one review per waiting product or
+  // brand page, so its id comes from the record (and a decided record keeps its id).
+  const productReviewId = (p: ProductRecord) => `rev_${p.id}`
+  const brandReviewId = (b: BrandRecord) => `rev_brand_${b.vendorId}`
+  // A submission's version: one more than the times it was sent back.
+  const productVersion = (p: ProductRecord) => p.resubmission + 1
+  const brandVersion = (b: BrandRecord) => (b.live ? 2 : 1)
+
+  const wireStatus = (status: ProductRecord['status']) => (status === 'pending_review' ? 'pending' : status)
+
+  // What each history entry was, as vendor-api's audit trail names it (actors are ids there, not names).
+  const eventsOf = (history: S['History'], vendorId: string) =>
+    [...history].reverse().map((e) => ({ action: e.event, actor_type: e.event === 'submitted' ? 'vendor' : 'admin', actor_id: e.event === 'submitted' ? null : 'a_priya', reason: e.note ?? null, detail: null, created_at: e.at, _vendor: vendorId }))
+
+  const vendorOut = (v: VendorRecord) => ({ id: v.id, name: v.brand_name, slug: v.brand_name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), status: v.status === 'suspended' ? 'suspended' : 'approved' })
+
+  // A product version as vendor-api's `content`: the fields it stores, the variants (one per size and
+  // colour) and the images in order. Named photo slots, try-on photos, stock and the size chart are not
+  // stored yet (#288), so they are not here.
+  function productContent(v: S['ProductVersion']) {
+    const colours = [v.main_colour, ...v.other_colours]
+    return {
+      title: v.title,
+      description: v.description,
+      category: 'Clothing',
+      subcategory: v.product_type,
+      gender: v.gender,
+      fabric: v.material,
+      weight_grams: 400,
+      returnable: true,
+      return_window_days: 7,
+      variants: colours.flatMap((c, i) => v.variants.map((x) => ({ sku: i === 0 ? x.sku : `${x.sku}-${c.name.slice(0, 3).toUpperCase()}`, size: x.size, color: c.name, price_paise: v.price_paise, mrp_paise: v.mrp_paise, is_active: true }))),
+      images: v.photos.map((photo, n) => ({ position: n + 1, asset_id: photo.id, url: photo.url, alt_text: null })),
+    }
   }
 
-  function nextWaiting(db: MockVendorApi, after: string): string | null {
-    const items = queueItems(db).filter((i) => i.kind !== 'application' && i.subject_id !== after)
-    return items[0]?.subject_id ?? null
+  function reviewShell(vendor: VendorRecord, id: string, status: ProductRecord['status'], submittedAt: string, version: number, title: string, history: S['History']) {
+    const decision = history.find((e) => e.event === 'approved' || e.event === 'rejected')
+    return {
+      id,
+      status: wireStatus(status),
+      vendor: vendorOut(vendor),
+      submitted_by: `u_${vendor.id}`,
+      submitted_by_email: vendor.email,
+      submitted_at: submittedAt,
+      version,
+      title,
+      reviewer_id: status === 'pending_review' ? null : 'a_priya',
+      decided_at: status === 'pending_review' ? null : (decision?.at ?? null),
+      reason: status === 'rejected' ? (decision?.note ?? null) : null,
+      reason_code: null,
+      events: eventsOf(history, vendor.id).map(({ _vendor, ...e }) => e),
+    }
   }
+
+  // The fields that differ between two versions (the service also names variants and images one by one).
+  const productChanges = (before: Record<string, unknown>, after: Record<string, unknown>) => Object.keys(after).filter((k) => JSON.stringify(before[k]) !== JSON.stringify(after[k])).map((field) => ({ field, before: before[field] ?? null, after: after[field] }))
+
+  function productDetail(p: ProductRecord) {
+    const version = productVersion(p)
+    return {
+      ...reviewShell(vendorOf(p.vendorId), productReviewId(p), p.status, p.submittedAt, version, p.submitted.title, p.history),
+      subject: 'product',
+      product_id: p.id,
+      sku: p.sku,
+      content: { version, published_at: null, content: productContent(p.submitted) },
+      // vendor-api compares with the version that went live only; the version sent back last time is not offered.
+      base: p.compareTo && p.compareLabel === 'live' ? { version: Math.max(1, version - 1), published_at: p.submittedAt, content: productContent(p.compareTo) } : null,
+      changes: p.compareTo && p.compareLabel === 'live' ? productChanges(productContent(p.compareTo), productContent(p.submitted)) : Object.entries(productContent(p.submitted)).filter(([, v]) => v !== null && !(Array.isArray(v) && v.length === 0)).map(([field, after]) => ({ field, before: null, after })),
+      resubmission: p.resubmission,
+    }
+  }
+
+  // The brand page's fields under vendor-api's names, and which of them differ from the live page.
+  const BRAND_WIRE = { tagline: 'tagline', story: 'about', cover_url: 'banner', logo_url: 'logo', instagram: 'instagram_handle', website: 'website_url' } as const
+  function brandContent(profile: S['BrandProfile'], vendor: VendorRecord) {
+    const asset = (url: string | null, id: string) => (url ? { asset_id: id, url } : null)
+    return { brand_name: vendor.brand_name, tagline: profile.tagline, about: profile.story, logo: asset(profile.logo_url, `${vendor.id}-logo`), banner: asset(profile.cover_url, `${vendor.id}-banner`), website_url: profile.website, instagram_handle: profile.instagram.replace(/^@/, ''), categories: [], price_min_paise: null, price_max_paise: null }
+  }
+
+  function brandDetail(b: BrandRecord) {
+    const vendor = vendorOf(b.vendorId)
+    const version = brandVersion(b)
+    const changes = (Object.keys(BRAND_WIRE) as (keyof typeof BRAND_WIRE)[]).filter((k) => !b.live || b.live[k] !== b.draft[k]).map((k) => ({ field: BRAND_WIRE[k], before: b.live ? b.live[k] : null, after: b.draft[k] }))
+    return {
+      ...reviewShell(vendor, brandReviewId(b), b.status, b.submittedAt, version, `${vendor.brand_name} brand page`, b.history),
+      subject: 'brand_profile',
+      product_id: null,
+      sku: null,
+      content: { version, published_at: null, content: brandContent(b.draft, vendor) },
+      base: b.live ? { version: 1, published_at: b.submittedAt, content: brandContent(b.live, vendor) } : null,
+      changes,
+      resubmission: 0,
+    }
+  }
+
+  // A vendor's delivery as vendor-api's store details answer it (services/vendor_api/services/store_details.py).
+  const deliveryOut = (d: S['Delivery']) =>
+    d.by === 'shazlo' ? { mode: 'shazlo', pickup_address: d.pickup_address } : { mode: 'own', areas: { all_india: d.all_india, places: d.places }, delivery_days: d.days }
+
+  const findProduct = (db: MockVendorApi, reviewId: string) => db.products.find((p) => productReviewId(p) === reviewId)
+  const findBrand = (db: MockVendorApi, reviewId: string) => db.brands.find((b) => brandReviewId(b) === reviewId)
 
   function publish(db: MockVendorApi, event: S['OutboxEvent']['event'], subject: string, vendor: VendorRecord, extra: Record<string, unknown> = {}) {
     db.seq += 1
@@ -152,12 +244,6 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
     v.live_products += p.change === 'new' ? 1 : 0
     publish(db, p.change === 'edit' ? 'product.updated' : 'product.published', p.submitted.title, v)
     decide(db, 'product', p.id, p.submitted.title, p.vendorId, 'approved', reviewer)
-  }
-
-  function rejectBody(body: Partial<S['RejectBody']>) {
-    if (!body.reason_code) return fail(422, 'validation_error', 'Choose a reason.', { reason_code: 'Choose a reason.' })
-    if ((body.reason ?? '').trim().length < REASON_MIN) return fail(422, 'validation_error', 'Tell the seller what to change.', { reason: `Write at least ${REASON_MIN} characters so the seller knows what to fix.` })
-    return null
   }
 
   return [
@@ -309,70 +395,76 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       return HttpResponse.json({ items: items.slice(offset, offset + limit), total: items.length, limit, offset, counts: { all: all.length, product: count('product'), brand_page: count('brand_page'), application: count('application') }, vendors })
     })),
 
-    http.get(`${API}/products/:id/review`, guarded(({ params }) => {
+    // `GET /v1/admin/reviews/{review_id}` and the two decisions (services/vendor-api/vendor_api/api/admin_reviews.py).
+    http.get(REVIEWS_URL, guarded(({ params }) => {
       const db = getDb()
-      const p = db.products.find((x) => x.id === params.id)
-      if (!p) return fail(404, 'review_not_found', 'We could not find that product.')
-      return HttpResponse.json({ id: p.id, sku: p.sku, status: p.status, vendor: ref(vendorOf(p.vendorId)), submitted_at: p.submittedAt, resubmission: p.resubmission, submitted: p.submitted, compare_to: p.compareTo, compare_label: p.compareLabel, history: p.history, ...neighbours(db, p.id) } satisfies S['ProductReview'])
+      const id = String(params.id)
+      const p = findProduct(db, id)
+      if (p) return HttpResponse.json(productDetail(p))
+      const b = findBrand(db, id)
+      if (b) return HttpResponse.json(brandDetail(b))
+      return fail(404, 'review_not_found', 'Review not found')
     })),
 
-    http.post(`${API}/products/:id/approve`, guarded(({ params }, reviewer) => {
+    http.post(`${REVIEWS_URL}/approve`, guarded(async ({ params, request }, reviewer) => {
       const db = getDb()
-      const p = db.products.find((x) => x.id === params.id) as ProductRecord | undefined
-      if (!p) return fail(404, 'review_not_found', 'We could not find that product.')
-      if (p.status !== 'pending_review') return fail(409, 'review_already_decided', `This product was already ${p.status === 'approved' ? 'approved' : 'sent back'}.`)
-      approveProduct(db, p, reviewer)
-      return HttpResponse.json({ id: p.id, decision: 'approved', at: iso(), next_id: nextWaiting(db, p.id) } satisfies S['Decision'])
-    })),
-
-    http.post(`${API}/products/:id/reject`, guarded(async ({ params, request }, reviewer) => {
-      const db = getDb()
-      const p = db.products.find((x) => x.id === params.id)
-      if (!p) return fail(404, 'review_not_found', 'We could not find that product.')
-      if (p.status !== 'pending_review') return fail(409, 'review_already_decided', 'This product was already decided.')
-      const body = (await request.json()) as Partial<S['RejectBody']>
-      const problem = rejectBody(body)
-      if (problem) return problem
-      p.status = 'rejected'
-      p.history.unshift({ at: iso(), event: 'rejected', by: reviewer, note: body.reason!.trim() })
-      decide(db, 'product', p.id, p.submitted.title, p.vendorId, 'rejected', reviewer)
-      return HttpResponse.json({ id: p.id, decision: 'rejected', at: iso(), next_id: nextWaiting(db, p.id) } satisfies S['Decision'])
-    })),
-
-    http.get(`${API}/brand-pages/:vendorId/review`, guarded(({ params }) => {
-      const db = getDb()
-      const b = db.brands.find((x) => x.vendorId === params.vendorId) as BrandRecord | undefined
-      if (!b) return fail(404, 'review_not_found', 'We could not find that brand page.')
-      const changed = (Object.keys(b.draft) as (keyof S['BrandProfile'])[]).filter((k) => !b.live || b.live[k] !== b.draft[k])
-      return HttpResponse.json({ vendor: ref(vendorOf(b.vendorId)), submitted_at: b.submittedAt, live: b.live, draft: b.draft, changed_fields: changed, history: b.history, ...neighbours(db, b.vendorId) } satisfies S['BrandReview'])
-    })),
-
-    http.post(`${API}/brand-pages/:vendorId/approve`, guarded(({ params }, reviewer) => {
-      const db = getDb()
-      const b = db.brands.find((x) => x.vendorId === params.vendorId)
-      if (!b) return fail(404, 'review_not_found', 'We could not find that brand page.')
-      if (b.status !== 'pending_review') return fail(409, 'review_already_decided', 'This brand page was already decided.')
-      b.status = 'approved'
-      b.live = b.draft
-      b.history.unshift({ at: iso(), event: 'approved', by: reviewer })
-      const v = vendorOf(b.vendorId)
+      const id = String(params.id)
+      const body = (await request.json().catch(() => ({}))) as { version?: unknown; reason_code?: unknown }
+      if (!Number.isInteger(body.version) || (body.version as number) < 1 || 'reason_code' in body) return fail(422, 'validation_error', 'Check the decision.', { version: 'Send the version you reviewed.' })
+      const p = findProduct(db, id)
+      const b = p ? undefined : findBrand(db, id)
+      if (!p && !b) return fail(404, 'review_not_found', 'Review not found')
+      const record = (p ?? b)!
+      if (record.status !== 'pending_review') return fail(409, 'review_already_decided', `This review is already ${record.status === 'approved' ? 'approved' : 'rejected'}`)
+      if (body.version !== (p ? productVersion(p) : brandVersion(b!))) return fail(409, 'stale_review', 'This submission changed after you opened it.')
+      if (p) {
+        approveProduct(db, p, reviewer)
+        return HttpResponse.json(productDetail(p))
+      }
+      const page = b!
+      page.status = 'approved'
+      page.live = page.draft
+      page.history.unshift({ at: iso(), event: 'approved', by: reviewer })
+      const v = vendorOf(page.vendorId)
       publish(db, 'brand_profile.published', v.brand_name, v)
-      decide(db, 'brand_page', b.vendorId, `${v.brand_name} brand page`, b.vendorId, 'approved', reviewer)
-      return HttpResponse.json({ id: b.vendorId, decision: 'approved', at: iso(), next_id: nextWaiting(db, b.vendorId) } satisfies S['Decision'])
+      decide(db, 'brand_page', page.vendorId, `${v.brand_name} brand page`, page.vendorId, 'approved', reviewer)
+      return HttpResponse.json(brandDetail(page))
     })),
 
-    http.post(`${API}/brand-pages/:vendorId/reject`, guarded(async ({ params, request }, reviewer) => {
+    http.post(`${REVIEWS_URL}/reject`, guarded(async ({ params, request }, reviewer) => {
       const db = getDb()
-      const b = db.brands.find((x) => x.vendorId === params.vendorId)
-      if (!b) return fail(404, 'review_not_found', 'We could not find that brand page.')
-      const body = (await request.json()) as Partial<S['RejectBody']>
-      const problem = rejectBody(body)
-      if (problem) return problem
-      b.status = 'rejected'
-      b.history.unshift({ at: iso(), event: 'rejected', by: reviewer, note: body.reason!.trim() })
-      const v = vendorOf(b.vendorId)
-      decide(db, 'brand_page', b.vendorId, `${v.brand_name} brand page`, b.vendorId, 'rejected', reviewer)
-      return HttpResponse.json({ id: b.vendorId, decision: 'rejected', at: iso(), next_id: nextWaiting(db, b.vendorId) } satisfies S['Decision'])
+      const id = String(params.id)
+      const body = (await request.json().catch(() => ({}))) as { version?: unknown; reason?: unknown; reason_code?: unknown }
+      const reason = typeof body.reason === 'string' ? body.reason.trim() : ''
+      if (!Number.isInteger(body.version) || (body.version as number) < 1) return fail(422, 'validation_error', 'Check the decision.', { version: 'Send the version you reviewed.' })
+      if (!reason || reason.length > 2000) return fail(422, 'validation_error', 'Tell the seller what to change.', { reason: 'Write a reason of up to 2000 characters.' })
+      if (body.reason_code != null && !REASON_CODES.includes(String(body.reason_code))) return fail(422, 'validation_error', 'Choose a reason from the list.', { reason_code: 'Choose a reason from the list.' })
+      const p = findProduct(db, id)
+      const b = p ? undefined : findBrand(db, id)
+      if (!p && !b) return fail(404, 'review_not_found', 'Review not found')
+      const record = (p ?? b)!
+      if (record.status !== 'pending_review') return fail(409, 'review_already_decided', `This review is already ${record.status === 'approved' ? 'approved' : 'rejected'}`)
+      if (body.version !== (p ? productVersion(p) : brandVersion(b!))) return fail(409, 'stale_review', 'This submission changed after you opened it.')
+      const withCode = (detail: Record<string, unknown>) => ({ ...detail, reason_code: body.reason_code ?? null })
+      if (p) {
+        p.status = 'rejected'
+        p.history.unshift({ at: iso(), event: 'rejected', by: reviewer, note: reason })
+        decide(db, 'product', p.id, p.submitted.title, p.vendorId, 'rejected', reviewer)
+        return HttpResponse.json(withCode(productDetail(p)))
+      }
+      const page = b!
+      page.status = 'rejected'
+      page.history.unshift({ at: iso(), event: 'rejected', by: reviewer, note: reason })
+      const v = vendorOf(page.vendorId)
+      decide(db, 'brand_page', page.vendorId, `${v.brand_name} brand page`, page.vendorId, 'rejected', reviewer)
+      return HttpResponse.json(withCode(brandDetail(page)))
+    })),
+
+    // A vendor's store details as the admin reads them: here, only what the brand page needs (returns and delivery).
+    http.get(STORE_DETAILS_URL, guarded(({ params }) => {
+      const v = getDb().vendors.find((x) => x.id === params.id)
+      if (!v) return fail(404, 'vendor_not_found', 'Vendor not found')
+      return HttpResponse.json({ brand_name: v.brand_name, business: {}, city: v.city, complete: true, contact: null, delivery: deliveryOut(v.application.delivery), instagram_or_website: v.application.instagram_or_website, missing: [], pay_on_delivery: v.application.pay_on_delivery, payout: null, returns: v.application.returns, sells: v.sells, updated_at: null })
     })),
 
     http.get(`${API}/vendors`, guarded(({ request }) => {

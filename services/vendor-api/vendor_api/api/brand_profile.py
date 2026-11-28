@@ -130,6 +130,7 @@ class BrandReviewOut(BaseModel):
 
     status: str
     reason: str | None
+    reason_code: str | None
     decided_at: datetime | None
     submitted_at: datetime
 
@@ -186,6 +187,7 @@ def _out(view: ProfileView) -> dict[str, object]:
             BrandReviewOut(
                 status=view.review.status,
                 reason=view.review.reason,
+                reason_code=view.review.reason_code,
                 decided_at=view.review.decided_at,
                 submitted_at=view.review.submitted_at,
             )

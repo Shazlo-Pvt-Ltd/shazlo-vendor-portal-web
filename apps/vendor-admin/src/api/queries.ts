@@ -1,7 +1,9 @@
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo } from 'react'
 import { useRuntime } from '../runtime/runtime'
 import { ApiError, type Api } from './http'
 import type { ApiPaths } from './client'
+import { afterDecision, neighboursIn, toBrandReview, toDecision, toPolicies, toProductReview } from './adapters/review'
 import { toCommission, withCommission } from './adapters/commission'
 import { joinSlices, nextOffset, QUEUE_MAX_PAGE_SIZE, QUEUE_PAGE_SIZE, toQueueSlice, type QueueSlice } from './adapters/queue'
 import type * as M from './model'
@@ -14,9 +16,10 @@ export const keys = {
   summary: ['summary'] as const,
   queue: (f: QueueFilters) => ['queue', f] as const,
   allQueue: ['queue'] as const,
-  product: (id: string) => ['product-review', id] as const,
-  allProducts: ['product-review'] as const,
-  brand: (vendorId: string) => ['brand-review', vendorId] as const,
+  queueOrder: ['queue', 'order'] as const,
+  review: (reviewId: string) => ['review', reviewId] as const,
+  allReviews: ['review'] as const,
+  storeDetails: (vendorId: string) => ['store-details', vendorId] as const,
   vendors: (f: VendorFilters) => ['vendors', f] as const,
   allVendors: ['vendors'] as const,
   vendor: (id: string) => ['vendor', id] as const,
@@ -76,67 +79,85 @@ export function useEveryQueueItem(filters: QueueFilters) {
   return useQuery({ queryKey: [...keys.queue(filters), 'every'] as const, queryFn: () => fetchEveryQueueItem(api, filters) })
 }
 
-export function useProductReview(id: string) {
+// The queue's own order (oldest first, one page of the most the server returns), kept for the review
+// pages: the item before and after the one on screen are its neighbours. Past the first page of a very
+// long queue a page simply has no neighbours.
+export function useQueueOrder() {
   const { api } = useRuntime()
-  return useQuery({ queryKey: keys.product(id), queryFn: () => api.call((c) => c.GET('/api/v1/admin/products/{id}/review', { params: { path: { id } } })) })
+  return useQuery({ queryKey: keys.queueOrder, queryFn: () => fetchQueueSlice(api, {}, 0, QUEUE_MAX_PAGE_SIZE) })
 }
 
-export function useApproveProduct(id: string) {
+// One review as vendor-api has it; the two screens read it as a product or as a brand page.
+export function useReviewDetail(reviewId: string) {
+  const { api } = useRuntime()
+  return useQuery({
+    queryKey: keys.review(reviewId),
+    queryFn: () => api.call((c) => c.GET('/v1/admin/reviews/{review_id}', { params: { path: { review_id: reviewId } } })),
+  })
+}
+
+// What the page needs of a query: its data (once adapted), whether it is loading or failed, and a retry.
+type ReviewQuery<T> = { data: T | undefined; isPending: boolean; isError: boolean; error: Error | null; refetch: () => Promise<unknown> }
+
+// A review of the wrong kind for the page (a brand page opened as a product) is "not found", like an unknown id.
+const wrongKind = () => new ApiError(404, 'review_not_found', 'Review not found')
+
+function adapted<T>(detail: ReturnType<typeof useReviewDetail>, data: T | null | undefined): ReviewQuery<T> {
+  const mismatch = detail.data !== undefined && data === null
+  return { data: data ?? undefined, isPending: detail.isPending, isError: detail.isError || mismatch, error: detail.error ?? (mismatch ? wrongKind() : null), refetch: detail.refetch }
+}
+
+export function useProductReview(reviewId: string): ReviewQuery<M.ProductReview> {
+  const detail = useReviewDetail(reviewId)
+  const order = useQueueOrder()
+  const items = order.data?.items
+  const data = useMemo(() => (detail.data ? toProductReview(detail.data, neighboursIn(items ?? [], reviewId)) : undefined), [detail.data, items, reviewId])
+  return adapted(detail, data)
+}
+
+export function useBrandReview(reviewId: string): ReviewQuery<M.BrandReview> {
+  const { api } = useRuntime()
+  const detail = useReviewDetail(reviewId)
+  const order = useQueueOrder()
+  const items = order.data?.items
+  // Returns and delivery are the vendor's store details; the page still opens if they cannot be read.
+  const vendorId = detail.data?.vendor.id
+  const store = useQuery({
+    queryKey: keys.storeDetails(vendorId ?? ''),
+    queryFn: () => api.call((c) => c.GET('/v1/admin/vendors/{vendor_id}/store-details', { params: { path: { vendor_id: vendorId! } } })),
+    enabled: vendorId !== undefined,
+    retry: false,
+  })
+  const policies = useMemo(() => toPolicies(store.data), [store.data])
+  const data = useMemo(() => (detail.data ? toBrandReview(detail.data, neighboursIn(items ?? [], reviewId), policies) : undefined), [detail.data, items, reviewId, policies])
+  return adapted(detail, data)
+}
+
+// Approve and send back run against the version the reviewer looked at: if the seller changed the
+// submission since, vendor-api refuses with 409 `stale_review` instead of approving what nobody saw.
+function useDecide<Body>(reviewId: string, action: 'approve' | 'reject', version: number | undefined) {
   const { api } = useRuntime()
   const invalidate = useInvalidateAfterDecision()
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () => api.call((c) => c.POST('/api/v1/admin/products/{id}/approve', { params: { path: { id } } })),
+    mutationFn: async (body: Body) => {
+      if (version === undefined) throw new Error('The review has not loaded.')
+      const path = { params: { path: { review_id: reviewId } } }
+      const detail = await (action === 'approve'
+        ? api.call((c) => c.POST('/v1/admin/reviews/{review_id}/approve', { ...path, body: { version } }))
+        : api.call((c) => c.POST('/v1/admin/reviews/{review_id}/reject', { ...path, body: { version, ...(body as M.RejectBody) } })))
+      // The item leaves the queue with this decision, so the page it offers next is worked out from the queue as it was.
+      return toDecision(detail, afterDecision(qc.getQueryData<QueueSlice>(keys.queueOrder)?.items ?? [], reviewId))
+    },
     onSuccess: () => {
       invalidate()
-      void qc.invalidateQueries({ queryKey: keys.product(id) })
+      void qc.invalidateQueries({ queryKey: keys.review(reviewId) })
     },
   })
 }
 
-export function useRejectProduct(id: string) {
-  const { api } = useRuntime()
-  const invalidate = useInvalidateAfterDecision()
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (body: M.RejectBody) => api.call((c) => c.POST('/api/v1/admin/products/{id}/reject', { params: { path: { id } }, body })),
-    onSuccess: () => {
-      invalidate()
-      void qc.invalidateQueries({ queryKey: keys.product(id) })
-    },
-  })
-}
-
-export function useBrandReview(vendorId: string) {
-  const { api } = useRuntime()
-  return useQuery({ queryKey: keys.brand(vendorId), queryFn: () => api.call((c) => c.GET('/api/v1/admin/brand-pages/{vendor_id}/review', { params: { path: { vendor_id: vendorId } } })) })
-}
-
-export function useApproveBrand(vendorId: string) {
-  const { api } = useRuntime()
-  const invalidate = useInvalidateAfterDecision()
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: () => api.call((c) => c.POST('/api/v1/admin/brand-pages/{vendor_id}/approve', { params: { path: { vendor_id: vendorId } } })),
-    onSuccess: () => {
-      invalidate()
-      void qc.invalidateQueries({ queryKey: keys.brand(vendorId) })
-    },
-  })
-}
-
-export function useRejectBrand(vendorId: string) {
-  const { api } = useRuntime()
-  const invalidate = useInvalidateAfterDecision()
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (body: M.RejectBody) => api.call((c) => c.POST('/api/v1/admin/brand-pages/{vendor_id}/reject', { params: { path: { vendor_id: vendorId } }, body })),
-    onSuccess: () => {
-      invalidate()
-      void qc.invalidateQueries({ queryKey: keys.brand(vendorId) })
-    },
-  })
-}
+export const useApproveReview = (reviewId: string, version: number | undefined) => useDecide<void>(reviewId, 'approve', version)
+export const useRejectReview = (reviewId: string, version: number | undefined) => useDecide<M.RejectBody>(reviewId, 'reject', version)
 
 export function useVendors(filters: VendorFilters) {
   const { api } = useRuntime()
@@ -233,7 +254,8 @@ export function useApproveProducts(vendorId: string) {
     onSuccess: () => {
       invalidate()
       void qc.invalidateQueries({ queryKey: keys.vendor(vendorId) })
-      void qc.invalidateQueries({ queryKey: keys.allProducts })
+      // Any review page that is open shows the new state.
+      void qc.invalidateQueries({ queryKey: keys.allReviews })
     },
   })
 }

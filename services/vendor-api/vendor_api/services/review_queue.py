@@ -91,6 +91,9 @@ class ReviewDetail:
     # What it is compared with; None for a first submission.
     base: Version | None
     changes: list[Change] = field(default_factory=list)
+    # How many reviews of the same product (or the vendor's brand page) were rejected before
+    # this one was submitted: 0 for a first submission. The same number the admin queue shows.
+    resubmission: int = 0
 
 
 class ReviewQueueService:
@@ -150,7 +153,28 @@ class ReviewQueueService:
             content, base, changes = await self._brand_profile(db, row.review)
         else:
             content, base, changes = await self._product(db, row.review)
-        return ReviewDetail(row, events, content, base, changes)
+        return ReviewDetail(
+            row, events, content, base, changes, await self._sent_back_before(db, row)
+        )
+
+    async def _sent_back_before(self, db: AsyncSession, row: ReviewRow) -> int:
+        review = row.review
+        earlier = (
+            select(func.count())
+            .select_from(Review)
+            .where(
+                Review.status == ReviewStatus.REJECTED, Review.submitted_at < review.submitted_at
+            )
+        )
+        if review.subject == ReviewSubject.BRAND_PROFILE:
+            earlier = earlier.where(
+                Review.vendor_id == review.vendor_id, Review.subject == ReviewSubject.BRAND_PROFILE
+            )
+        else:
+            earlier = earlier.join(
+                ProductRevision, ProductRevision.id == Review.product_revision_id
+            ).where(ProductRevision.product_id == row.product_id)
+        return await db.scalar(earlier) or 0
 
     # --- The queue's query -------------------------------------------------------------------
 

@@ -8,15 +8,19 @@ import { reviewCopy as copy } from '../../copy/review'
 export type Checklist = ReturnType<typeof useChecklist>
 
 // The reviewer's ticks, shared by the checklist card and (on phones) the decision bar.
-export function useChecklist(checks: readonly string[]) {
-  const [ticked, setTicked] = useState<boolean[]>(() => checks.map(() => false))
+// `version` is the submission being checked: a new version is a new submission, so the ticks start again.
+export function useChecklist(checks: readonly string[], version?: number) {
+  const blank = () => checks.map(() => false)
+  const [state, setState] = useState({ version, ticked: blank() })
+  const current = state.version === version
+  const ticked = current ? state.ticked : blank()
   const id = useId()
   return {
     checks,
     ticked,
     id,
     ready: ticked.every(Boolean),
-    toggle: (index: number, on: boolean) => setTicked((t) => t.map((v, j) => (j === index ? on : v))),
+    toggle: (index: number, on: boolean) => setState({ version, ticked: ticked.map((v, j) => (j === index ? on : v)) }),
   }
 }
 

@@ -342,6 +342,49 @@ async def test_a_rejected_version_in_between_is_never_the_base(
     assert changes(response) == [("tagline", "Live", "Third try")]
 
 
+async def test_a_review_counts_the_times_the_same_page_was_sent_back_before_it(
+    tenants: Tenants, session: AsyncSession
+) -> None:
+    first = await profile(session, tenants.a, 1, "rejected")
+    second = await profile(session, tenants.a, 2, "rejected")
+    third = await profile(session, tenants.a, 3, "pending_review")
+    other = await profile(session, tenants.b, 1, "rejected")
+    await profile_review(session, tenants.a, first, 1, **decision("rejected", 2))
+    await profile_review(session, tenants.a, second, 3, **decision("rejected", 4))
+    # Another vendor's rejection, and a later one, are not this page's history.
+    await profile_review(session, tenants.b, other, 2, **decision("rejected", 3))
+    pending = await profile_review(session, tenants.a, third, 5)
+    response = await get(tenants, f"/{pending.id}")
+    assert response.json()["resubmission"] == 2
+    earlier = await get(tenants, f"?vendor_id={tenants.a.vendor.id}&status=rejected")
+    assert earlier.status_code == 200
+    first_review = (
+        await session.scalars(select(Review).where(Review.brand_profile_id == first.id))
+    ).one()
+    assert (await get(tenants, f"/{first_review.id}")).json()["resubmission"] == 0
+
+
+async def test_a_product_counts_its_own_earlier_rejections_only(
+    tenants: Tenants, session: AsyncSession
+) -> None:
+    product, first, second = await two_revisions(session, tenants.a, "RS-1")
+    _, other_revision = await submitted_product(session, tenants.a, "RS-2", 1)
+    await product_review(session, tenants.a, other_revision, 1, **decision("rejected", 2))
+    await product_review(session, tenants.a, first, 1, **decision("rejected", 2))
+    review = await product_review(session, tenants.a, second, 3)
+    assert product.id is not None
+    response = await get(tenants, f"/{review.id}")
+    assert response.json()["resubmission"] == 1
+
+
+async def test_a_first_submission_has_no_resubmissions(
+    tenants: Tenants, session: AsyncSession
+) -> None:
+    _, revision = await submitted_product(session, tenants.a, "RS-3", 1)
+    review = await product_review(session, tenants.a, revision, 2)
+    assert (await get(tenants, f"/{review.id}")).json()["resubmission"] == 0
+
+
 async def test_a_decided_review_is_still_shown_against_what_it_replaced(
     tenants: Tenants, session: AsyncSession
 ) -> None:

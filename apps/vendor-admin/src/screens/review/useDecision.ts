@@ -4,7 +4,7 @@ import { ApiError } from '../../api/http'
 import type * as M from '../../api/model'
 import { useRuntime } from '../../runtime/runtime'
 
-export type Outcome = { decision: M.Decision['decision']; nextId: string | null }
+export type Outcome = { decision: M.Decision['decision']; next: M.ReviewRef | null }
 
 const messageOf = (error: unknown) => (error instanceof ApiError ? error.message : 'Something went wrong on our side. Try again in a moment.')
 
@@ -35,7 +35,7 @@ export function useDecision({
     setFailure(null)
     approve.mutate(undefined, {
       onSuccess: (d) => {
-        setOutcome({ decision: 'approved', nextId: d.next_id })
+        setOutcome({ decision: 'approved', next: d.next })
         toast('success', toasts.approved)
       },
       onError: (error) => {
@@ -50,7 +50,7 @@ export function useDecision({
     setFailure(null)
     try {
       const d = await reject.mutateAsync(body)
-      setOutcome({ decision: 'rejected', nextId: d.next_id })
+      setOutcome({ decision: 'rejected', next: d.next })
       toast('success', toasts.sentBack)
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) return onConflict()

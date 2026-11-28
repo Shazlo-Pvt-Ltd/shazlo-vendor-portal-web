@@ -276,7 +276,7 @@ function brandOut(db: MockDb, vendorId: string, v: BrandVersion): BrandProfileOu
     banner_url: assetUrl(db, v.content.banner_asset_id),
     submitted_at: v.submitted_at,
     published_at: v.published_at,
-    review: review ? { status: review.status, reason: review.reason, decided_at: review.decided_at, submitted_at: review.submitted_at } : null,
+    review: review ? { status: review.status, reason: review.reason, reason_code: review.reason_code ?? null, decided_at: review.decided_at, submitted_at: review.submitted_at } : null,
     updated_at: v.updated_at,
   }
 }
@@ -981,7 +981,7 @@ export function createHandlers(getDb: GetDb, { base = '*' }: { base?: string } =
       draft.state = 'pending_review'
       draft.submitted_at = now
       draft.updated_at = now
-      db.submissions.push({ id: nextId(db), vendor_id: vendor.id, subject: 'brand_profile', product_id: null, was_live: false, sku: null, title: null, version: draft.version, status: 'pending', reason: null, submitted_at: now, decided_at: null })
+      db.submissions.push({ id: nextId(db), vendor_id: vendor.id, subject: 'brand_profile', product_id: null, was_live: false, sku: null, title: null, version: draft.version, status: 'pending', reason: null, reason_code: null, submitted_at: now, decided_at: null })
       return json(db, brandOut(db, vendor.id, draft))
     })),
 
@@ -1183,12 +1183,12 @@ export function createHandlers(getDb: GetDb, { base = '*' }: { base?: string } =
       const now = iso()
       revision.state = 'in_review'
       revision.submitted_at = now
-      revision.review = { status: 'pending', reason: null, decided_at: null }
+      revision.review = { status: 'pending', reason: null, reason_code: null, decided_at: null }
       product.ever_submitted = true
       product.version += 1
       if (!product.live) product.status = 'pending_review'
       product.updated_at = now
-      db.submissions.push({ id: nextId(db), vendor_id: vendor.id, subject: 'product', product_id: product.id, was_live: Boolean(product.live), sku: product.sku, title: revision.content.title, version: revision.version, status: 'pending', reason: null, submitted_at: now, decided_at: null })
+      db.submissions.push({ id: nextId(db), vendor_id: vendor.id, subject: 'product', product_id: product.id, was_live: Boolean(product.live), sku: product.sku, title: revision.content.title, version: revision.version, status: 'pending', reason: null, reason_code: null, submitted_at: now, decided_at: null })
       return json(db, productOut(db, product))
     })),
 
@@ -1298,7 +1298,10 @@ export function createHandlers(getDb: GetDb, { base = '*' }: { base?: string } =
         .sort((a, b) => Date.parse(b.submitted_at) - Date.parse(a.submitted_at))
       const items = matching
         .slice(offset, offset + limit)
-        .map(({ vendor_id: _v, product_id, was_live, ...s }) => (db.proposals.submissionProductIds ? { ...s, product_id, was_live } : s))
+        .map(({ vendor_id: _v, product_id, was_live, reason_code, ...rest }) => {
+          const s = { ...rest, reason_code: reason_code ?? null }
+          return db.proposals.submissionProductIds ? { ...s, product_id, was_live } : s
+        })
       return json(db, { items, total: matching.length, limit, offset } satisfies SubmissionPageOut)
     })),
 
@@ -1352,15 +1355,15 @@ export function createHandlers(getDb: GetDb, { base = '*' }: { base?: string } =
 // ---- helpers for tests and the demo --------------------------------------------------------------
 
 /** Decides the newest pending review of a product or the brand page, as an admin would. */
-export function decide(db: MockDb, target: { productId?: string; brandOf?: string }, decision: { approve: boolean; reason?: string }): void {
+export function decide(db: MockDb, target: { productId?: string; brandOf?: string }, decision: { approve: boolean; reason?: string; reason_code?: string }): void {
   const now = db.now().toISOString()
   if (target.productId) {
     const product = db.products.find((p) => p.id === target.productId)
     if (!product?.working || product.working.state !== 'in_review') return
     const submission = db.submissions.find((s) => s.product_id === product.id && s.status === 'pending')
-    if (submission) Object.assign(submission, { status: decision.approve ? 'approved' : 'rejected', reason: decision.reason ?? null, decided_at: now })
+    if (submission) Object.assign(submission, { status: decision.approve ? 'approved' : 'rejected', reason: decision.reason ?? null, reason_code: decision.approve ? null : (decision.reason_code ?? null), decided_at: now })
     const revision = product.working
-    revision.review = { status: decision.approve ? 'approved' : 'rejected', reason: decision.reason ?? null, decided_at: now }
+    revision.review = { status: decision.approve ? 'approved' : 'rejected', reason: decision.reason ?? null, reason_code: decision.approve ? null : (decision.reason_code ?? null), decided_at: now }
     if (decision.approve) {
       revision.state = 'live'
       product.live = revision
@@ -1378,7 +1381,7 @@ export function decide(db: MockDb, target: { productId?: string; brandOf?: strin
     const pending = versions.find((v) => v.state === 'pending_review')
     if (!pending) return
     const submission = db.submissions.find((s) => s.vendor_id === target.brandOf && s.subject === 'brand_profile' && s.status === 'pending')
-    if (submission) Object.assign(submission, { status: decision.approve ? 'approved' : 'rejected', reason: decision.reason ?? null, decided_at: now })
+    if (submission) Object.assign(submission, { status: decision.approve ? 'approved' : 'rejected', reason: decision.reason ?? null, reason_code: decision.approve ? null : (decision.reason_code ?? null), decided_at: now })
     if (decision.approve) {
       for (const v of versions) if (v.state === 'published') v.state = 'superseded'
       pending.state = 'published'

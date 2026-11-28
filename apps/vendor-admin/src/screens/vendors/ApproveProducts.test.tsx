@@ -105,8 +105,9 @@ describe('A-09 Approving several products at once', { timeout: 40_000 }, () => {
     })
     expect(screen.queryByRole('group', { name: 'Approve waiting products' })).not.toBeInTheDocument()
     expect(within(list()).queryAllByRole('checkbox')).toHaveLength(0)
-    expect(within(list()).getAllByRole('link')).toHaveLength(4)
-    expect(within(list()).getByRole('link', { name: new RegExp(AJRAKH) })).toHaveAttribute('href', '/review/product/p_ajrakh')
+    // Each opens its review, by the review's id, once the queue has said which review that is.
+    await waitFor(() => expect(within(list()).getAllByRole('link')).toHaveLength(4))
+    expect(within(list()).getByRole('link', { name: new RegExp(AJRAKH) })).toHaveAttribute('href', '/review/product/rev_p_ajrakh')
   })
 
   it('ticks two of Kalki Studio’s four and approves them, each as its own decision', async () => {
@@ -118,12 +119,13 @@ describe('A-09 Approving several products at once', { timeout: 40_000 }, () => {
     expect(within(toolbar()).getByRole('button', { name: 'Approve selected' })).toBeDisabled()
 
     // A tick per waiting product, beside its link and never inside it; the rest of the row opens it.
+    await waitFor(() => expect(within(list()).getAllByRole('link')).toHaveLength(4))
     for (const title of [AJRAKH, DABU, SHIRT, POCHAMPALLY]) {
       const box = tickFor(title)
       expect(box.closest('a')).toBeNull()
       expect(box.closest('li')!.querySelector('a')).toHaveAttribute('href', expect.stringMatching(/^\/review\/product\//))
     }
-    expect(within(list()).getByRole('link', { name: new RegExp(AJRAKH) })).toHaveAttribute('href', '/review/product/p_ajrakh')
+    expect(within(list()).getByRole('link', { name: new RegExp(AJRAKH) })).toHaveAttribute('href', '/review/product/rev_p_ajrakh')
 
     await user.click(tickFor(AJRAKH))
     await user.click(tickFor(POCHAMPALLY))
@@ -281,7 +283,7 @@ describe('A-09 Approving several products at once', { timeout: 40_000 }, () => {
     expect(within(alert).getByText('Not approved:')).toBeInTheDocument()
     const [item] = within(alert).getAllByRole('listitem')
     expect(item).toHaveTextContent(`${DABU}: Someone already decided it.`)
-    expect(within(item!).getByRole('link', { name: DABU })).toHaveAttribute('href', '/review/product/p_dabu_skirt')
+    expect(within(item!).getByRole('link', { name: DABU })).toHaveAttribute('href', '/review/product/rev_p_dabu_skirt')
     expect(shell.toasts()).toContainEqual({ level: 'warning', message: 'Approved 2 of 3 products from Kalki Studio' })
     expect(product(db, 'p_ajrakh').status).toBe('approved')
     expect(product(db, 'p_pochampally').status).toBe('approved')
@@ -303,7 +305,7 @@ describe('A-09 Approving several products at once', { timeout: 40_000 }, () => {
     const alert = await screen.findByRole('alert')
     expect(within(alert).getByText('Approved 1 of 2 products from Kalki Studio.')).toBeInTheDocument()
     expect(within(alert).getByRole('listitem')).toHaveTextContent(`${SHIRT}: The brand changed it since you looked. Open it to review the new version.`)
-    expect(within(alert).getByRole('link', { name: SHIRT })).toHaveAttribute('href', '/review/product/p_handloom')
+    expect(within(alert).getByRole('link', { name: SHIRT })).toHaveAttribute('href', '/review/product/rev_p_handloom')
     expect(shirt.status).toBe('pending_review')
     expect(product(db, 'p_ajrakh').status).toBe('approved')
 
