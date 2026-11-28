@@ -41,10 +41,11 @@ jobs:
           files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename')
           printf '%s\n' "$files"
           # Unlisted paths run the web jobs. The contract tests read docs/adr/0003-contract, and the
-          # portal's generated API types are checked against services/vendor-api/openapi.json
-          # (the seller app) and the admin module's against openapi.admin.json (the admin app).
+          # apps' generated API types are checked against the services' OpenAPI files: the portal's
+          # against services/vendor-api/openapi.json (the seller app), the admin module's against
+          # openapi.admin.json (the admin app) and Shazlo One's against identity-api's openapi.json.
           web=$( {
-            printf '%s\n' "$files" | grep -E '^docs/adr/0003-contract/|^services/vendor-api/openapi(\.admin)?\.json$'
+            printf '%s\n' "$files" | grep -E '^docs/adr/0003-contract/|^services/vendor-api/openapi(\.admin)?\.json$|^services/identity-api/openapi\.json$'
             printf '%s\n' "$files" | grep -Ev '^(services/|packages/py-|docker/|docs/)|^docker-compose\.yml$|^\.env\.example$|^\.github/workflows/(services-ci|codeql|footer_removal)\.yml$'
           } || true)
           deps=$(printf '%s\n' "$files" | grep -E '(^|/)package(-lock)?\.json$' || true)
@@ -96,6 +97,8 @@ jobs:
       # The same for the admin module, and for its proposed routes.
       - run: npm run api:check --workspace @shazlo/vendor-admin
       - run: npm run api:proposed:check --workspace @shazlo/vendor-admin
+      # And for Shazlo One, against identity-api's openapi.json (it has no vendor-api types; ADR 0011).
+      - run: npm run api:check --workspace @shazlo/shazlo-one
       - run: npm run typecheck
       - name: Record tested source and environment
         run: |
