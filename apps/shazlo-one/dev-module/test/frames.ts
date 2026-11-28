@@ -13,7 +13,7 @@ export interface RecordedPost {
 type WindowWithEvents = Window & { MessageEvent: typeof MessageEvent }
 
 /** Delivers a message the way a browser does: with the sender's origin and window (jsdom sets neither). */
-function deliver(target: Window, data: unknown, origin: string, source: Window): void {
+export function deliver(target: Window, data: unknown, origin: string, source: Window): void {
   const event = new (target as WindowWithEvents).MessageEvent('message', { data })
   Object.defineProperty(event, 'origin', { value: origin })
   Object.defineProperty(event, 'source', { value: source })

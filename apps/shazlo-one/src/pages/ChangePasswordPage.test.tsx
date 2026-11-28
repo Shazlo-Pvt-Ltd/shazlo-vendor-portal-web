@@ -1,10 +1,10 @@
 import { QueryClient } from '@tanstack/react-query'
-import { act, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { clearSensitiveState } from '../security/sensitiveState'
-import { makeStore, sessionBody } from '../session/testing'
+import { apiError, makeStore, sessionBody } from '../session/testing'
 import { countdownClock } from '../test/countdown'
 import { BASE, apiErrorResponse, useApiServer } from '../test/msw'
 import { renderRoute } from '../test/renderRoute'
@@ -238,5 +238,67 @@ describe('changing the password later, from the account menu', () => {
     await user.click(save('Change password'))
     await screen.findByText(/signed out everywhere else/)
     expect(post).toHaveBeenCalledWith({ type: 'login' })
+  })
+})
+
+describe('changing the password, under pressure', () => {
+  it('sends one request when the form is submitted twice before the first answer', async () => {
+    let calls = 0
+    server.use(http.post(`${BASE}/v1/auth/change-password`, async () => { calls += 1; await new Promise((r) => setTimeout(r, 50)); return apiErrorResponse(400, 'invalid_current_password') }))
+    const { user } = await open('/change-password', true, 'Choose your password')
+    await fill(user)
+    const form = screen.getByRole('form', { name: 'Choose your password' })
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+    await screen.findByText('This is not your current password.')
+    expect(calls).toBe(1)
+    expect(screen.queryByText('Choose a new password.')).toBeNull()
+  })
+
+  it('says "our side" for a server error, without its details', async () => {
+    server.use(http.post(`${BASE}/v1/auth/change-password`, () => apiErrorResponse(500, 'internal_error', 'stack at db.py:12')))
+    const { user } = await open('/change-password', true, 'Choose your password')
+    await fill(user)
+    await user.click(save('Save and continue'))
+    const text = (await screen.findByRole('alert')).textContent
+    expect(text).toMatch(/Something went wrong on our side/)
+    expect(text).not.toMatch(/db\.py/)
+  })
+
+  it.each(['invalid_credentials', 'unauthorized'])(
+    'on a 401 (%s) checks the session again and, when it is gone, ends it instead of blaming the email',
+    async (code) => {
+      let revoked = false
+      const store = makeStore({
+        refresh: async () => {
+          if (revoked) throw apiError(401, 'invalid_refresh_token')
+          return sessionBody({ must_change_password: true })
+        },
+      }).store
+      server.use(http.post(`${BASE}/v1/auth/change-password`, () => { revoked = true; return apiErrorResponse(401, code, 'Invalid email or password') }))
+      const router = renderRoute('/change-password', { store })
+      await screen.findByRole('heading', { level: 1, name: 'Choose your password' })
+      await fill(userEvent.setup())
+      await userEvent.setup().click(save('Save and continue'))
+      await screen.findByRole('heading', { level: 1, name: 'Sign in' })
+      expect(router.state.location.pathname).toBe('/login')
+      expect(store.getSnapshot().status).toBe('signedOut')
+      expect(document.body.textContent).not.toMatch(/Invalid email or password/)
+    },
+  )
+
+  it('on a 401 for a token that merely expired, renews it and stays on the step', async () => {
+    server.use(http.post(`${BASE}/v1/auth/change-password`, () => apiErrorResponse(401, 'unauthorized', 'Missing or invalid access token')))
+    let refreshes = 0
+    const store = makeStore({ refresh: async () => { refreshes += 1; return sessionBody({ must_change_password: true, token: `t${refreshes}` }) } }).store
+    renderRoute('/change-password', { store })
+    await screen.findByRole('heading', { level: 1, name: 'Choose your password' })
+    const user = userEvent.setup()
+    await fill(user)
+    await user.click(save('Save and continue'))
+    await waitFor(() => expect(store.getAccessToken()).toBe('t2'))
+    await screen.findByRole('heading', { level: 1, name: 'Choose your password' })
+    expect(store.getSnapshot().status).toBe('passwordChangeRequired')
+    expect(document.body.textContent).not.toMatch(/access token/)
   })
 })

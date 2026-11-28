@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query'
-import { cleanup, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
@@ -227,5 +227,56 @@ describe('login', () => {
     await typeFast(user, screen.getByLabelText(/^Password/), 'half typed')
     clearSensitiveState()
     await waitFor(() => expect((screen.getByLabelText(/^Password/) as HTMLInputElement).value).toBe(''))
+  })
+})
+
+describe('login, under pressure', () => {
+  it('sends one request when the form is submitted twice before the first answer', async () => {
+    let calls = 0
+    server.use(http.post(`${BASE}/v1/auth/login`, async () => { calls += 1; await new Promise((r) => setTimeout(r, 50)); return apiErrorResponse(401, 'invalid_credentials') }))
+    const { user } = await open()
+    await typeFast(user, screen.getByLabelText(/^Email address/), 'asha@shazlo.test')
+    await typeFast(user, screen.getByLabelText(/^Password/), 'correct horse battery')
+    const form = screen.getByRole('form', { name: 'Sign in' })
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+    expect((await screen.findByRole('alert')).textContent).toBe(BAD_LOGIN_MESSAGE)
+    expect(calls).toBe(1)
+    expect(screen.queryByText('Enter your password.')).toBeNull()
+  })
+
+  it.each(['jörg@shazlo.test', 'admin@localhost', 'ops@shazlo_internal.test'])(
+    'lets the server judge an address it may have accepted for an admin (%s)',
+    async (email) => {
+      let body: unknown
+      server.use(http.post(`${BASE}/v1/auth/login`, async ({ request }) => { body = await request.json(); return apiErrorResponse(401, 'invalid_credentials') }))
+      const { user } = await open()
+      await signIn(user, email)
+      await screen.findByText(BAD_LOGIN_MESSAGE)
+      expect(body).toEqual({ email, password: 'correct horse battery' })
+    },
+  )
+
+  it('announces the wait once, shows one notice, and lets the admin try again when it ends', async () => {
+    server.use(http.post(`${BASE}/v1/auth/login`, () => apiErrorResponse(429, 'rate_limited', 'slow', { 'Retry-After': '2' })))
+    const { user } = await open()
+    await signIn(user)
+    const notice = await screen.findByText(/Try again in \d+ s\./)
+    const alerts = screen.getAllByRole('alert')
+    expect(alerts).toHaveLength(1)
+    const spoken = alerts[0]!.querySelector('span:not([aria-hidden])')!.textContent
+    await waitFor(() => expect(notice.textContent).toBe('Too many attempts. Try again in 1 s.'), { timeout: 2500 })
+    expect(alerts[0]!.querySelector('span:not([aria-hidden])')!.textContent).toBe(spoken)
+    await waitFor(() => expect(screen.queryByText(/Too many attempts/)).toBeNull(), { timeout: 2500 })
+    expect((screen.getByRole('button', { name: 'Sign in' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('accepts the longest password the server takes and cuts nothing short', async () => {
+    let body: { password?: string } = {}
+    server.use(http.post(`${BASE}/v1/auth/login`, async ({ request }) => { body = (await request.json()) as typeof body; return HttpResponse.json(sessionBody()) }))
+    const { user } = await open()
+    await signIn(user, 'asha@shazlo.test', 'x'.repeat(128))
+    await screen.findByRole('heading', { level: 1, name: 'Shazlo-One' })
+    expect(body.password).toHaveLength(128)
   })
 })
