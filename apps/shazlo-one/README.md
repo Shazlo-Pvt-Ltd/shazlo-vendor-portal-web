@@ -141,7 +141,64 @@ What a module sends (a title, a toast, a fatal error's message) is shown as plai
 | Iframe host | `src/shell/ModuleHost.tsx`, one `HostedFrame` per load: the channel listens before the frame has an address; the frame loads the module path of the URL, kept on the module's origin (`frameSrc`); `auth` after `ready`, refreshed at 80% of the token's life or 30 s before its end with backoff (5, 15, 30 s) when that fails; title/URL sync and `navigate` (a page picked while the module is still loading is kept); toasts; one sign-out however often a module sends `logout`; `token:request` answered once per 30 s and only once it holds a token; a replayed `ready` gets the held token; the 10 s / three-attempt failure panels, the version check, the 403 page for `audience_not_allowed`, and no frame for a module on the shell's own origin (`src/shell/refreshSchedule.ts`, `src/shell/moduleText.ts`) |
 | Admin management | `src/screens/Admins.tsx` and `src/screens/admins/*`: paged (50 a page, the page in the address; one past the end moves to the last), refusals in words next to their control (`refusals.ts`: `cannot_deactivate_self`, `last_super_admin`, `admin_not_found`), unbiased temporary passwords that leave the mutation cache as soon as the request ends |
 | Protocol | `packages/shell-protocol`: `createShellChannel` (exact origin and frame window, 64 KB, strict envelope, hand-written validators) and the registry, manifest and summary schemas |
-| Tests | Against two stand-in modules (`src/test/registry.json`, `src/test/modules.ts`), never a real one; module messages are delivered with the module's origin and window (`src/test/frames.ts`). `src/shell/host.test.tsx` holds the host's hostile cases, `src/session/store.test.ts` the session's, `src/security/*.test.ts` the headers, lint rules and real builds; `src/app/noVendorCode.test.ts` fails if vendor code comes back |
+| Tests | Against two stand-in modules (`src/test/registry.json`, `src/test/modules.ts`), never a real one; module messages are delivered with the module's origin and window (`src/test/frames.ts`). `src/shell/host.test.tsx` holds the host's hostile cases, `src/session/store.test.ts` the session's, `src/security/*.test.ts` the headers, lint rules and real builds; `src/app/noVendorCode.test.ts` fails if vendor code comes back. The browser tests (`e2e/`, below) frame the real Vendors module against the real APIs |
 | Screens | A-01 sign in, change password, A-02 home, A-11 admins & roles |
 
-Not covered yet: browser (Playwright) tests of the shell.
+## End-to-end tests
+
+`e2e/` holds Playwright tests (Chromium, with axe) of the shell against the real stack: identity-api,
+vendor-api's admin app (`vendor-admin-api`), Postgres, Redis and Mailpit from the repository's
+`docker-compose.yml`. Playwright starts the shell (5192, `VITE_MOCK_API=off`, so it uses
+`registry/development.json` and reaches identity-api through its own origin) and the Vendors module
+(`apps/vendor-admin` on 5193, calling vendor-admin-api on 8004) as Vite dev servers. Each test makes its
+own admin through identity-api with a temporary password, using the seeded super admin only for that.
+
+| File | What it checks |
+|---|---|
+| `journey.spec.ts` | Sign-in, the forced first-login password change (every page holds a new admin there), Home with the module's summary, opening the module (its frame address and sandbox, a vendor-admin-api `200` with the token the shell sent), the title, address and crumbs following the module, a deep link after a reload, a refused password |
+| `session.spec.ts` | With the browser clock moved 4 min 30 s, a fresh module token is exchanged and the module's next call uses it; sign-out in one tab ends the other tab's session and removes its frame; Back after sign-out brings nothing back |
+| `security.spec.ts` | Forged `title`, `toast` and `logout` from the shell's own window and from another origin's window are ignored (checked after a real toast from the module, with a watcher for a forged toast the real one replaced); the shell refuses to be framed (`frame-ancestors 'none'`, `X-Frame-Options`, and a real frame checked after its `load`); the module refuses any framer but the shell; no token in an address, a `Referer`, web storage or a readable cookie |
+| `roles.spec.ts` | A vendor reviewer gets the 403 page for Admins & roles (and no admin route is called), opens the Vendors module, and loses the session when deactivated; a super admin sees the list |
+| `accessibility.spec.ts` | axe, WCAG 2.1 A and AA (serious and critical fail): sign-in, the password change, Home, a module page (the shell around the frame), Admins & roles, the invite dialog, the 403 page |
+
+CI runs them in `.github/workflows/e2e-shazlo-one.yml` on changes to the shell, the module, the protocol,
+the APIs or the compose files. On a laptop with Docker, from the repository root (bash):
+
+```bash
+cp .env.example .env                       # then set POSTGRES_PASSWORD in it
+docker compose --profile identity --profile vendor build
+# Both signing keys into .env, each from its own image (the root README, "Local development", explains them):
+gen='import json; from shazlo_security.keys import generate_private_key, new_kid, private_key_pem; print(json.dumps({new_kid(): private_key_pem(generate_private_key()).decode()}, separators=(",", ":")))'
+identity=$(docker compose --profile identity run --rm --no-deps -T identity-api python -c "$gen")
+vendor=$(docker compose --profile vendor run --rm --no-deps -T vendor-api python -c "$gen")
+grep -v -e '^IDENTITY_JWT_KEYS=' -e '^VENDOR_JWT_KEYS=' .env > .env.new
+printf 'IDENTITY_JWT_KEYS=%s\nVENDOR_JWT_KEYS=%s\n' "$identity" "$vendor" >> .env.new && mv .env.new .env
+docker compose up -d --wait postgres redis mailpit
+docker compose --profile identity run --rm identity-api alembic upgrade head
+docker compose run --rm vendor-cli alembic upgrade head
+docker compose run --rm vendor-cli python -m vendor_api.cli db-logins
+# The admin the tests create their admins with, and the demo vendor whose waiting products fill the review queue:
+docker compose --profile identity run --rm -e SEED_ADMIN_EMAIL=admin@shazlo.test \
+  -e SEED_ADMIN_PASSWORD=e2e-admin-password-1 identity-api python -m identity_api.cli seed
+docker compose run --rm -e SEED_VENDOR_PASSWORD=e2e-vendor-password-1 vendor-cli python -m vendor_api.cli seed-dev
+docker compose --profile identity --profile vendor up -d --wait
+
+cd apps/shazlo-one
+npm run e2e:install                        # Chromium, once
+npm run e2e                                # or: npx playwright test journey.spec.ts --headed
+```
+
+The first run changes the seeded admin's password from `E2E_ADMIN_SEED_PASSWORD` to
+`E2E_ADMIN_PASSWORD` (defaults in `e2e/support/env.ts`, with the other `E2E_*` settings). Stop the dev
+servers on 5192 and 5193 first, or Playwright reuses them as they are (their settings must match the
+above). `docker compose --profile identity --profile vendor down -v` removes the stack and its data.
+
+The attacker's pages in `security.spec.ts` are served for real on 127.0.0.1 (`e2e/support/evil.ts`), not
+faked with `page.route`: Chromium treats a routed page on a made-up host as a public site, and its local
+network access rules then block it from framing localhost at all, which would hide whether the shell
+refused. A control frame from a second attacker origin shows that framing works there.
+
+Two limits. The clock test moves the browser's clock only, so it proves the shell's refresh schedule and
+the module's use of the new token, not server-side expiry. Most Vendors module screens still call the
+mock-only `/api/v1/admin/*` routes (until #294 to #298), so the tests use its review queue and
+dashboard, which read vendor-admin-api's real `/v1/admin/queue`.
