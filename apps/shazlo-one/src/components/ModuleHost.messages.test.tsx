@@ -178,6 +178,30 @@ describe('title: where the module says it is', () => {
     expect(where(router)).toBe('/m/vendor-admin/after')
   })
 
+  it('leaves focus where the admin is: a page change inside the module does not pull it to the heading', async () => {
+    await open('/m/vendor-admin', { from: '/' })
+    const module = await moduleReady()
+    const iframe = document.querySelector('iframe')!
+    iframe.focus()
+    expect(document.activeElement).toBe(iframe)
+    module.client.sendTitle('/orders', 'Orders')
+    await settle()
+    module.client.sendTitle('/orders/42', 'Order 42')
+    await settle()
+    expect(document.activeElement).toBe(iframe)
+  })
+
+  it('still moves focus to the heading when the admin goes to another screen', async () => {
+    const { router } = await open('/m/vendor-admin', { from: '/' })
+    await moduleReady()
+    document.querySelector('iframe')!.focus()
+    await act(async () => {
+      await router.navigate('/')
+    })
+    await settle()
+    expect(document.activeElement?.tagName).toBe('H1')
+  })
+
   it('goes back to the module’s name when the module is reloaded with Retry', async () => {
     await open()
     const module = await moduleReady()

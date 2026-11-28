@@ -9,6 +9,16 @@ export const DRAWER_WIDTH = 240
 export const MAIN_ID = 'main-content'
 
 /**
+ * What a move has to change for the page heading to take focus. A module's own pages change the
+ * address too (its `title` replaces `/m/<id>/<path>`), and taking focus then would pull it out of the
+ * module's frame on every click inside it, so inside a module only another module counts.
+ */
+export function focusScope(pathname: string): string {
+  const match = /^\/m\/([^/]+)/.exec(pathname)
+  return match ? `/m/${match[1]}` : pathname
+}
+
+/**
  * The frame of every signed-in screen. A skip link first; an app bar with Shazlo-One and the
  * account menu; the navigation (always visible from `md` up, in a drawer behind a menu button on a
  * phone); and the page in the one `<main>`. After each navigation the page heading takes focus, so a
@@ -21,7 +31,7 @@ export function ShellLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const navId = useId()
   const main = useRef<HTMLElement>(null)
-  const lastPath = useRef(location.pathname)
+  const lastScope = useRef(focusScope(location.pathname))
 
   // The drawer is only for phones: close it when the screen grows past that.
   useEffect(() => {
@@ -29,12 +39,13 @@ export function ShellLayout() {
   }, [wide])
 
   // Not on the first page (that would hide the skip link behind a focused heading), only after
-  // the admin moves to another one.
+  // the admin moves to another one (for a module, another module: see focusScope).
+  const scope = focusScope(location.pathname)
   useEffect(() => {
-    if (lastPath.current === location.pathname) return
-    lastPath.current = location.pathname
+    if (lastScope.current === scope) return
+    lastScope.current = scope
     main.current?.querySelector<HTMLElement>('h1')?.focus()
-  }, [location.pathname])
+  }, [scope])
 
   return (
     <ToastProvider>
