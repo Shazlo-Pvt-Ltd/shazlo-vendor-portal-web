@@ -36,12 +36,14 @@ afterEach(() => server.events.removeAllListeners())
 
 describe('temporary passwords', () => {
   // Each draw is one random byte. `byte % 31` over all 256 values gives the first 8 characters 9 bytes
-  // each and the rest 8: a bias. The unbiased draw uses only bytes 0 to 247, 8 per character.
+  // each and the rest 8: a bias. The unbiased draw reads the byte's low five bits and throws away the
+  // 8 bytes whose low bits are 31 (past the alphabet), so every character gets 8 bytes.
   const drawn = (byte: number) => temporaryPassword((bytes) => (bytes[0] === undefined ? bytes : bytes.fill(byte === -1 ? 0 : byte)))
 
   it('maps the bytes it uses to every character equally often', () => {
     const counts = new Map<string, number>()
-    for (let byte = 0; byte < 248; byte++) {
+    for (let byte = 0; byte < 256; byte++) {
+      if ((byte & 31) === 31) continue
       const char = drawn(byte)[0]!
       counts.set(char, (counts.get(char) ?? 0) + 1)
     }
@@ -49,7 +51,7 @@ describe('temporary passwords', () => {
     expect(new Set(counts.values())).toEqual(new Set([8]))
   })
 
-  it.each([248, 249, 250, 255])('never uses byte %i, which only `% 31` could map', (byte) => {
+  it.each([31, 63, 127, 255])('never uses byte %i, whose low five bits are past the alphabet', (byte) => {
     let calls = 0
     const password = temporaryPassword((bytes) => bytes.fill((calls += 1) === 1 ? byte : 0))
     // The first batch is thrown away whole; the second (all zeros) fills the password with "a".
@@ -60,8 +62,8 @@ describe('temporary passwords', () => {
     let calls = 0
     const source = (bytes: Uint8Array<ArrayBuffer>) => {
       calls += 1
-      // The first batch is all 248 or above: none of it may be used.
-      bytes.fill(calls === 1 ? 250 : 5)
+      // The first batch is all 255 (low five bits past the alphabet): none of it may be used.
+      bytes.fill(calls === 1 ? 255 : 5)
       return bytes
     }
     expect(temporaryPassword(source)).toBe('ffff-ffff-ffff-ffff')
