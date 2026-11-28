@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/write-vercel-headers.mjs",
     "build": "tsc -p tsconfig.json && vite build",
     "preview": "vite preview --strictPort",
     "api:generate": "openapi-typescript ../../services/vendor-api/openapi.admin.json -o src/api/schema.d.ts",
@@ -13,7 +14,8 @@
     "api:proposed:check": "openapi-typescript openapi/proposed.yaml -o src/api/proposed.d.ts --check",
     "api:legacy": "openapi-typescript openapi/vendor-admin.yaml -o src/api/legacy.d.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "headers:placeholder": "node scripts/write-vercel-headers.mjs --placeholder"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

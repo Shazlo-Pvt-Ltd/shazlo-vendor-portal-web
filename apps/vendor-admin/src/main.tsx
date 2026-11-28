@@ -6,11 +6,12 @@ import { App } from './app/App'
 import { routes } from './app/routes'
 import { shellOrigin, windowHost } from './runtime/runtime'
 
-// vendor-api's admin routes: the shared mock server in development (npm run serve -w @shazlo/mock-vendor-api).
-const apiUrl = ((import.meta.env.VITE_VENDOR_API_URL as string | undefined) ?? 'http://localhost:5194').replace(/\/+$/, '')
+// vendor-api's admin app, checked by vite.config.ts (src/config/env.ts): in development the shared mock
+// server (npm run serve -w @shazlo/mock-vendor-api), in production VITE_VENDOR_API_URL.
+declare const __VENDOR_API_ORIGIN__: string
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App host={windowHost(shellOrigin())} apiUrl={apiUrl} router={createBrowserRouter(routes)} />
+    <App host={windowHost(shellOrigin())} apiUrl={__VENDOR_API_ORIGIN__} router={createBrowserRouter(routes)} />
   </StrictMode>,
 )
