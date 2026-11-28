@@ -45,14 +45,22 @@ export class SessionStore {
   }
 
   async refresh(): Promise<boolean> {
-    try {
-      const session = await this.identity.call((c) => c.POST('/v1/auth/refresh'))
-      this.adopt(session)
-      return true
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 0) return false
-      this.end(this.state.status === 'signed_in' ? 'expired' : undefined)
-      return false
+    for (let attempt = 0; ; attempt++) {
+      try {
+        // Not through the 401 renewal: that calls refresh() again, which would wait on itself.
+        const session = await this.identity.call((c) => c.POST('/v1/auth/refresh'), { renew: false })
+        this.adopt(session)
+        return true
+      } catch (error) {
+        // 409 refresh_conflict: another tab used the cookie a moment ago; the browser now holds the new one.
+        if (error instanceof ApiError && error.code === 'refresh_conflict' && attempt === 0) continue
+        // Offline, rate limited, or identity-api down (the Vite proxy then answers 5xx): the cookie may
+        // still be good, so a signed-in session stays. On load there is no session to keep.
+        const transient = error instanceof ApiError && (error.status === 0 || error.status === 429 || error.status >= 500)
+        if (transient && this.state.status === 'signed_in') return false
+        this.end(this.state.status === 'signed_in' ? 'expired' : undefined)
+        return false
+      }
     }
   }
 
@@ -101,9 +109,9 @@ export function createAppContext({ identityUrl, vendorApiUrl }: { identityUrl: s
   }
   // Every vendor-api call first makes sure a module token is in hand.
   const call = vendorApi.call
-  vendorApi.call = (async (fn: Parameters<typeof call>[0]) => {
+  vendorApi.call = (async (fn: Parameters<typeof call>[0], options?: Parameters<typeof call>[1]) => {
     await ensureVendorToken()
-    return call(fn)
+    return call(fn, options)
   }) as typeof call
   const queryClient = new QueryClient({
     defaultOptions: {

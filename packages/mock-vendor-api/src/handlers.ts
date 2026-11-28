@@ -343,7 +343,9 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       const db = getDb()
       const v = db.vendors.find((x) => x.id === params.id)
       if (!v) return fail(404, 'not_found', 'We could not find that vendor.')
-      if (v.status !== 'approved' && v.status !== 'suspended') return fail(409, 'invalid_status_transition', v.status === 'rejected' ? 'This application was rejected.' : 'Set the rate when you approve the application.')
+      // vendor-api's own codes: a rejected vendor is `vendor_not_eligible`, which keeps its own wording.
+      if (v.status === 'rejected') return fail(409, 'vendor_not_eligible', 'This application was rejected: there is no rate to agree.')
+      if (v.status !== 'approved' && v.status !== 'suspended') return fail(409, 'invalid_status_transition', 'Set the rate when you approve the application.')
       const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
       const before = v.commission.agreed_bps
       const was = before == null ? '' : ` (was ${percent(before)})`
@@ -392,7 +394,8 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
     http.post(`${API}/outbox/:id/retry`, guarded(({ params }) => {
       const e = getDb().outbox.find((x) => x.id === params.id)
       if (!e) return fail(404, 'not_found', 'We could not find that event.')
-      if (e.status === 'delivered') return fail(409, 'invalid_status_transition', 'This event was already delivered.')
+      // vendor-api's code for a retry of an event that is not dead; the screens show its message as is.
+      if (e.status === 'delivered') return fail(409, 'invalid_outbox_status', 'This event was already delivered.')
       Object.assign(e, { status: 'delivered', tries: e.tries + 1, last_attempt_at: iso(), next_attempt_at: null, last_error: null })
       return HttpResponse.json(e)
     })),
