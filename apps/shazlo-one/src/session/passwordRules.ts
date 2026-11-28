@@ -3,8 +3,12 @@ export const LIMITS = { email: 320, passwordMax: 128 } as const
 /** identity-api's `PASSWORD_MIN_LENGTH` setting (default 12; not in the OpenAPI file). The server has the last word. */
 export const PASSWORD_MIN_LENGTH = 12
 
-export const EMAIL_PATTERN =
-  /^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/
+/**
+ * Only "something@something": identity-api's login checks the length alone, admins are created with
+ * a loose pattern (`^[^@\s]+@[^@\s]+\.[^@\s]+$`) and the seed command needs just an "@". A stricter
+ * check here would lock out an admin the server accepts; a wrong address gets the usual `401`.
+ */
+export const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+$/
 
 export type Field = 'current' | 'next' | 'confirm'
 export type Errors = Partial<Record<Field, string>>

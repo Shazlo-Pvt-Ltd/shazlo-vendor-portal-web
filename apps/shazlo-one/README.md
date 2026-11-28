@@ -117,7 +117,8 @@ on a `401` from anything but `/v1/auth/*`, renews the session once and repeats t
   state as soon as it is sent and from the query cache when the call ends) and `/change-password`.
   An admin who must change their password sees "Choose your password", can reach nothing else, and
   then continues to `return-to`; any other admin reaches "Change your password" from the account
-  menu. The API ends every other session and returns a new one, which the shell adopts. The account
+  menu. The API ends every other session and returns a new one, which the shell adopts; a `401`
+  from it makes the shell check the session again (login if it has ended). The account
   menu shows the admin's name, email and roles, and signs out (every tab follows). Password inputs
   go through `PasswordField` only (a test enforces it).
 - Ending the session clears the query cache, the sensitive forms (`registerSensitiveReset`) and every
