@@ -297,7 +297,8 @@ function Panel({ title, children, retry }: { title: string; children: string; re
       <Typography component="h2" variant="h6" gutterBottom>
         {title}
       </Typography>
-      <Typography>{children}</Typography>
+      {/* What a module said can be one long word: wrap it rather than widen the page. */}
+      <Typography sx={{ overflowWrap: 'anywhere' }}>{children}</Typography>
     </Alert>
   )
 }

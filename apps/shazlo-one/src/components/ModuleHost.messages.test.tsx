@@ -359,6 +359,16 @@ describe('toast', () => {
     expect(document.body.innerHTML).not.toContain('evil.example')
   })
 
+  it('shows a toast of many lines in a few, so it cannot cover the shell', async () => {
+    await open()
+    const module = await moduleReady()
+    expect(module.client.sendToast({ level: 'info', message: `${'line\n'.repeat(50)}end` })).toBe(true)
+    await settle()
+    const message = shown()[0]!
+    expect(message.split('\n').length).toBeLessThanOrEqual(3)
+    expect(message).toContain('end')
+  })
+
   it('cannot pass as the shell: every toast says which module it is from', async () => {
     await open()
     const module = await moduleReady()
@@ -519,6 +529,15 @@ describe('error', () => {
     await settle(20 * 60_000)
     expect(exchange.mock.calls.length).toBe(calls)
     expect(module.auths).toHaveLength(1)
+  })
+
+  it('wraps a fatal message that is one long word instead of widening the page', async () => {
+    await open()
+    const module = await moduleReady()
+    module.client.sendError('boom', 'x'.repeat(500), true)
+    await settle()
+    const text = screen.getByText(/x{500}/)
+    expect(getComputedStyle(text).overflowWrap).toBe('anywhere')
   })
 
   it('after a fatal one, nothing else the module sends in the same breath counts', async () => {
