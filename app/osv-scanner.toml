@@ -1,0 +1,18 @@
+# OSV-Scanner config for app/package-lock.json (picked up by `scan source --recursive`).
+#
+# xlsx (SheetJS) stopped publishing to the npm registry at 0.18.5 and ships fixes on its own CDN.
+# app/package.json installs xlsx 0.20.3 from https://cdn.sheetjs.com (pinned by sha512 in the
+# lockfile). The OSV records below list every npm `xlsx` version as affected because the registry
+# never got a fixed release, so they still match 0.20.3. The GitHub advisories give the real fixed
+# versions: 0.19.3 (GHSA-4r6h-8v6p-xvw6) and 0.20.2 (GHSA-5pgg-2g8v-p4x9).
+# Only these two IDs are ignored, so any new xlsx advisory still reports. Re-check on expiry.
+
+[[IgnoredVulns]]
+id = "GHSA-4r6h-8v6p-xvw6"
+effectiveUntil = 2027-05-31
+reason = "CVE-2023-30533 prototype pollution, fixed in SheetJS 0.19.3; app uses xlsx 0.20.3 from cdn.sheetjs.com"
+
+[[IgnoredVulns]]
+id = "GHSA-5pgg-2g8v-p4x9"
+effectiveUntil = 2027-05-31
+reason = "CVE-2024-22363 ReDoS, fixed in SheetJS 0.20.2; app uses xlsx 0.20.3 from cdn.sheetjs.com"
