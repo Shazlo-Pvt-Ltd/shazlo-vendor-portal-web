@@ -1,23 +1,17 @@
-import { http, HttpResponse, delay } from 'msw'
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getApiClient, resetApiClient } from '../api/instance'
+import { http, HttpResponse, delay, type RequestHandler } from 'msw'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { getApiClient } from '../api/instance'
 import { registerSessionHooks } from '../api/session'
 import { createVendorSessionStore } from './vendorSession'
+import { stubApi, TEST_API as BASE } from './testApi'
 import { sessionBody } from './testing'
 
-const BASE = 'https://api.test'
-const server = setupServer()
-beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
-beforeEach(() => {
-  vi.stubEnv('VITE_VENDOR_API_URL', BASE)
-  resetApiClient()
-})
+// The API answers through MSW handlers resolved in a stubbed fetch (see renderPortal.tsx), so no
+// other mock server in the test run can see or answer these calls.
+const server = { use: (...handlers: RequestHandler[]) => stubApi(handlers) }
 afterEach(() => {
-  server.resetHandlers()
   registerSessionHooks(undefined)
 })
-afterAll(() => server.close())
 
 function wire(onCleared = () => {}) {
   const store = createVendorSessionStore(onCleared)

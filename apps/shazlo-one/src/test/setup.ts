@@ -1,16 +1,48 @@
+import '@testing-library/jest-dom/vitest'
 import { cleanup, configure } from '@testing-library/react'
-import { afterEach } from 'vitest'
+import { afterAll, afterEach, beforeAll } from 'vitest'
+import { server } from './server'
 
-// Screens are lazy chunks: the first one a test file opens can take a few seconds to load on a cold,
-// busy machine, far longer than findBy's 1 s default. Waiting longer costs nothing when it is fast.
-configure({ asyncUtilTimeout: 5000 })
-
-// Testing Library only cleans up by itself when the test globals are on; they are not.
-afterEach(() => cleanup())
-
-// jsdom has no object URLs; previews of a chosen file use them.
-if (typeof URL.createObjectURL !== 'function') {
-  let counter = 0
-  URL.createObjectURL = () => `blob:test/${(counter += 1)}`
-  URL.revokeObjectURL = () => {}
+// Node 25+ defines its own localStorage/sessionStorage globals (empty without --localstorage-file),
+// which hide jsdom's. Point both back at jsdom's storage.
+const dom = (globalThis as { jsdom?: { window: Window } }).jsdom
+for (const name of ['localStorage', 'sessionStorage'] as const) {
+  if (dom && !globalThis[name]) Object.defineProperty(globalThis, name, { configurable: true, value: dom.window[name] })
 }
+
+// Lazily loaded screens compile on first use in jsdom; give the first find* calls room.
+configure({ asyncUtilTimeout: 4000 })
+
+// jsdom lacks these browser APIs; MUI and the shell read them. (A test that runs in Node, such as the
+// build checks, has no window at all.)
+const browser = typeof window !== 'undefined'
+if (browser && !window.matchMedia) {
+  window.matchMedia = (query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  })
+}
+if (browser) window.scrollTo = () => {}
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+if (!URL.createObjectURL) URL.createObjectURL = () => 'blob:mock'
+if (!URL.revokeObjectURL) URL.revokeObjectURL = () => {}
+
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
+afterEach(() => {
+  server.resetHandlers()
+  if (!browser) return
+  cleanup()
+  localStorage.clear()
+  sessionStorage.clear()
+})
+afterAll(() => server.close())

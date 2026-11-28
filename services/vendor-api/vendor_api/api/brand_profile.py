@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from vendor_api.api.auth import no_store
+from vendor_api.api.common import no_store
 from vendor_api.api.deps import CurrentVendorUser, current_vendor_user
 from vendor_api.core.validation import DatabaseText
 from vendor_api.db.session import get_session
@@ -130,6 +130,7 @@ class BrandReviewOut(BaseModel):
 
     status: str
     reason: str | None
+    reason_code: str | None
     decided_at: datetime | None
     submitted_at: datetime
 
@@ -186,6 +187,7 @@ def _out(view: ProfileView) -> dict[str, object]:
             BrandReviewOut(
                 status=view.review.status,
                 reason=view.review.reason,
+                reason_code=view.review.reason_code,
                 decided_at=view.review.decided_at,
                 submitted_at=view.review.submitted_at,
             )

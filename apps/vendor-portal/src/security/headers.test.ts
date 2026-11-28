@@ -62,6 +62,35 @@ describe('the production Content-Security-Policy', () => {
   })
 })
 
+describe('the web app and the demo service worker', () => {
+  const policy = directives(contentSecurityPolicy({ apiOrigin: API, mode: 'production' }))
+
+  it('needs no directive of its own for the manifest, its icons or a worker', () => {
+    // manifest-src falls back to default-src, worker-src to script-src: both are the app itself.
+    expect(policy.has('manifest-src')).toBe(false)
+    expect(policy.has('worker-src')).toBe(false)
+    expect(policy.get('default-src')).toEqual(["'self'"])
+    expect(policy.get('script-src')).toEqual(["'self'"])
+  })
+
+  it('lets the demo worker fetch the app\'s own files, and changes nothing else', () => {
+    // The mock service worker passes every request it does not answer on with fetch(), which its
+    // own policy (these headers) checks against connect-src.
+    const preview = directives(contentSecurityPolicy({ apiOrigin: API, mode: 'preview' }))
+    const demo = directives(contentSecurityPolicy({ apiOrigin: API, mode: 'preview', demo: true }))
+    expect(demo.get('connect-src')).toEqual(["'self'", API, CLOUDINARY_UPLOAD_ORIGIN])
+    for (const [name, values] of preview) {
+      if (name !== 'connect-src') expect(demo.get(name), name).toEqual(values)
+    }
+    expect(preview.get('connect-src')).not.toContain("'self'")
+  })
+
+  it('never relaxes production or the committed vercel.json for the demo', () => {
+    expect(contentSecurityPolicy({ apiOrigin: API, mode: 'production', demo: true })).toBe(contentSecurityPolicy({ apiOrigin: API, mode: 'production' }))
+    expect(JSON.stringify(vercelHeaders(PLACEHOLDER_API_ORIGIN))).not.toContain("connect-src 'self'")
+  })
+})
+
 describe('the other headers', () => {
   const headers = securityHeaders({ apiOrigin: API, mode: 'production' })
 

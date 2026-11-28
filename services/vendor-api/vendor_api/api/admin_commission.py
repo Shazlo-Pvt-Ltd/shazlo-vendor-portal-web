@@ -10,8 +10,8 @@ from fastapi import APIRouter, Depends, Response
 from pydantic import ConfigDict, Field, StrictInt
 
 from vendor_api.api.admin import AdminRequest, Reviewer, reviewer_dependency
-from vendor_api.api.auth import no_store
-from vendor_api.api.commission import CommissionOut, Commissions, Db, commission_out
+from vendor_api.api.common import Db, no_store
+from vendor_api.api.views import CommissionOut, Commissions, commission_out
 from vendor_api.core.validation import MultilineText
 from vendor_api.db.models import COMMISSION_MAX_BPS, COMMISSION_NOTE_MAX
 from vendor_api.services.commission import approve, send_back, set_rate

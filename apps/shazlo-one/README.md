@@ -1,314 +1,147 @@
 # shazlo-one
 
-React + TypeScript (Vite) admin shell: the front door of the admins. It signs them in against
-[identity-api](../../services/identity-api/README.md), lists the modules their roles allow and hosts
-each module's admin UI in an iframe ([ADR 0001](../../docs/adr/0001-iframe-postmessage-protocol.md)).
-Phase 6 of the [roadmap](../../docs/ROADMAP.md) builds it.
+The Shazlo One admin shell (roadmap Phase 6): admin sign-in against identity-api, the module registry, the
+iframe host for each service's admin UI, and admin management. Built in the same design language as the
+seller portal ([docs/ui-plan](../../docs/ui-plan/README.md)), with Shazlo One's navy chrome. It is the shell
+from Build 2 (#301), which replaced the first Phase 6 shell; that shell's audited hardening was ported into it
+([ADR 0001](../../docs/adr/0001-iframe-postmessage-protocol.md), "Which shell implements this").
 
-Status: the scaffold. It serves an empty shell with the typed identity-api client, the security
-headers and the security checks in place. Sign-in, the session, the module registry and the iframe
-host are the next Phase 6 issues.
+The shell knows no module's code ([ADR 0011](../../docs/adr/0011-vendor-portal-and-vendors-module-as-microservices.md)).
+It learns about each module from the registry it was built with, the module's manifest and the module
+backend's summary, so a module (the Vendors module today) ships without a shell release.
 
-Stack: React 19, TypeScript (strict), Vite, MUI through the shared [`@shazlo/ui`](../../packages/ui)
-theme, React Router, TanStack Query. It starts from the foundations of the
-[vendor portal](../vendor-portal/README.md) (typed client, error model, headers from one definition,
-safe rendering), copied rather than shared: when a third app needs them, extract a package.
+## Run it (with the Vendors module)
 
-## Running it
-
-```sh
-npm ci                                   # at the repository root
-cp apps/shazlo-one/.env.example apps/shazlo-one/.env.local
-npm run dev -w @shazlo/shazlo-one        # http://localhost:5173
+```bash
+npm ci
+npm run serve -w @shazlo/mock-vendor-api      # vendor-api admin routes on :5194 (shared by shell and module)
+npm run dev -w @shazlo/vendor-admin           # the Vendors module on :5193
+npm run dev -w @shazlo/shazlo-one             # the shell on :5192
 ```
 
-It needs a running identity-api for anything beyond the empty page (compose: `docker compose
---profile identity up -d`). identity-api's `CORS_ALLOWED_ORIGINS` must contain the shell's exact
-origin; compose already sets `http://localhost:5173`, which is why the dev server insists on that
-port (`strictPort`). The refresh cookie is `SameSite=Strict`, so the shell and the API must be the
-same site (both on `localhost`).
+On the dev server identity-api is mocked in the browser (MSW), using the same routes, envelopes and error
+codes as `services/identity-api` (`src/mocks/contract.test.ts` checks them against its `openapi.json`).
+Demo accounts, mock data only:
 
-## Settings
+| Account | Password | Notes |
+|---|---|---|
+| `naman@shazlo.store` | `shazlo-one-2026` | super admin |
+| `priya@shazlo.store` | `shazlo-one-2026` | vendor reviewer |
+| `sneha@shazlo.store` | `welcome-sneha-01` | invited; must choose a password first |
 
-| Variable | Meaning |
-| --- | --- |
-| `VITE_IDENTITY_API_URL` | Required. The identity-api origin, for example `http://localhost:8001`: no path, no credentials, `https` outside development. It is compiled into the build, so it is public: never put a secret in it. |
+`shazloOneResetDemo()` in the console resets the identity mock; `POST http://localhost:5194/__reset` resets vendor-api.
+With the identity mock on, the shell is built with `registry/mock.json`, so Home and the Vendors badge read
+the mock vendor-api's summary on :5194. On the dev server the mock keeps its state in `localStorage` so a reload
+keeps you signed in; no build does (`src/mocks/browser.ts`).
 
-A missing or invalid value shows a "The shell is misconfigured" screen that says what is wrong (and
-never prints the value), instead of a blank page. `src/config/env.ts` has the rules.
+## Settings (they fail closed)
 
-## Commands (from the repository root)
+`src/config/env.ts` checks every setting when the shell is built or served (`vite.config.ts` fails with every
+problem listed) and again when the page starts (a bad one shows "Shazlo One is not set up correctly" instead of a
+half-working shell). `.env.example` lists them.
 
-| Command | What it does |
-| --- | --- |
-| `npm run dev -w @shazlo/shazlo-one` | Dev server on port 5173 |
-| `npm run dev:with-module -w @shazlo/shazlo-one` | The shell (5173) and the reference module (5175) together |
-| `npm run dev:module -w @shazlo/shazlo-one` | Only the reference module, on port 5175 |
-| `npm run build -w @shazlo/shazlo-one` | Typecheck, then a production build in `apps/shazlo-one/dist` |
-| `npm run typecheck -w @shazlo/shazlo-one` | `tsc` only |
-| `npx vitest run --project shazlo-one` | The shell's tests (jsdom, Testing Library) |
-| `npm run lint` | ESLint for the whole repository |
-| `npm run api:generate -w @shazlo/shazlo-one` | Rewrites `src/api/schema.d.ts` from `services/identity-api/openapi.json` |
-| `npm run api:check -w @shazlo/shazlo-one` | Fails when `schema.d.ts` is stale |
+| Setting | Development (`npm run dev`) | Production build |
+|---|---|---|
+| `VITE_MOCK_API` | unset or `on`: the browser mock; `off`: the real identity-api | unset or `off`: no mock. Only `on`, by name, builds a demo with the mock and its demo passwords. Any other value fails |
+| `VITE_IDENTITY_API_URL` | optional: without it the shell calls its own origin and Vite forwards `/v1` (below) | required (unless a demo): identity-api's https origin with a plain host (letters, digits, dots, hyphens), no path, query or credentials |
+| `VITE_SHELL_REGISTRY` | optional: `registry/mock.json` with the mock, `registry/development.json` without | required: a registry of exact https URLs (`registry/example.production.json` is the one CI builds with) |
 
-CI runs lint, `api:check`, typecheck, the tests and the build (`apps-ci.yml`), and `npm audit` covers
-the shell's dependencies.
+The mock sits behind a build-time constant (`__MOCK_API__`), so a production build without it contains none of
+its code, its handlers, the demo passwords or `mockServiceWorker.js`. `src/security/build.test.ts` builds the
+shell and checks that, and CI greps the build for the demo passwords.
 
-When identity-api's API changes, regenerate its document (`python -m identity_api.cli
-export-openapi` in `services/identity-api`), then `api:generate` here, and commit both.
+## Run it on the real identity-api
 
-## Layout
-
-```
-src/
-  main.tsx            entry: fonts, then <App />
-  App.tsx             checks the environment and the module registry, then renders the router (or the misconfigured screen)
-  app/                Providers (theme, error boundary, query cache), routes, router, query defaults
-  api/                the typed client: client.ts, errors.ts, instance.ts, schema.d.ts (generated)
-  config/env.ts       VITE_IDENTITY_API_URL, checked once at start
-  session/            the admin session: store, AuthProvider, guards, return-to check
-  modules/            registry.ts (the module list and its checks), loadRegistry, ModuleRegistryProvider
-  security/           headers.ts (every header, defined once), sensitiveState.ts, PasswordField.tsx, and the tests
-  components/         ShellLayout, NavList, AccountMenu, NoAccess (403), NotFound, ErrorBoundary, ErrorScreen, RouteError, Misconfigured, CountdownNotice
-  hooks/              usePageTitle
-  pages/              one file per route
-  test/               test setup
+```bash
+# in the repository's .env (docker compose passes it to identity-api as CORS_ALLOWED_ORIGINS; it is also the default):
+#   IDENTITY_CORS_ALLOWED_ORIGINS=http://localhost:5192,http://localhost:4192
+#   IDENTITY_JWT_KEYS=...                     # see services/identity-api/README.md
+docker compose up -d identity-api            # identity-api on :8001
+echo "VITE_MOCK_API=off" > apps/shazlo-one/.env.local
+npm run dev -w @shazlo/shazlo-one            # the shell on :5192
 ```
 
-## Calling identity-api
+The refresh cookie is `Secure` by default, which Chrome and Firefox accept on `http://localhost`. For Safari, run
+identity-api outside compose with `COOKIE_SECURE=false` (local http only; `ENV=prod` refuses it).
 
-`src/api` is the only way the shell talks to identity-api. Paths, parameters and bodies are typed
-from `services/identity-api/openapi.json`; a screen passes a path, never a URL:
+**Same origin, not CORS.** Without `VITE_IDENTITY_API_URL` the shell calls `/v1/...` on its own origin, and Vite
+(dev on :5192, preview on :4192) forwards `/v1` to `VITE_IDENTITY_PROXY_TARGET` (default `http://localhost:8001`).
+The `identity_refresh` cookie is then first-party, so identity-api's `SameSite=Strict` default works and no
+cross-origin cookie setup is needed. identity-api still checks the `Origin` header on the cookie routes
+(login, refresh, logout), which is why the two origins above go in `CORS_ALLOWED_ORIGINS`. To call identity-api
+cross-origin instead, set `VITE_IDENTITY_API_URL` and add the shell's origin to `CORS_ALLOWED_ORIGINS`
+(identity-api exposes `X-Request-ID` and `Retry-After` to it); only if the two are on different sites (ports do not
+count) does the cookie also need `COOKIE_SAMESITE=none` and HTTPS.
 
-```ts
-const { data } = api.useQuery('get', '/v1/me')
+**First admin.** identity-api creates its roles and one `super_admin` with its CLI; that admin must change the
+password at the first sign-in:
+
+```bash
+docker compose exec -e SEED_ADMIN_EMAIL=admin@example.com -e SEED_ADMIN_PASSWORD='<at least 12 characters>' \
+  identity-api python -m identity_api.cli seed
+# or, with identity-api running from services/identity-api in its venv:
+#   SEED_ADMIN_EMAIL=... SEED_ADMIN_PASSWORD=... python -m identity_api.cli seed
 ```
 
-Every call sends the cookie (the refresh cookie must reach `/v1/auth/*`) and throws instead of
-returning an error object:
+Sign in with it, then invite a `vendor_reviewer` from **Admins**. With `VITE_MOCK_API=off` the shell is built
+with `registry/development.json`, which reads the Vendors summary from vendor-api's **admin app**
+(ADR 0011): `docker compose --profile vendor up -d` serves it as `vendor-admin-api` on `http://localhost:8004`
+(not 8002, the seller app, which has no `/v1/admin` routes). Its `ADMIN_CORS_ALLOWED_ORIGINS` default already
+lists the shell (:5192) and the module (:5193), without credentials.
 
-- `ApiError` for any non-2xx answer: `status`, `code` (`invalid_credentials`, ...), `message`,
-  `fieldErrors` (a `422`, keyed by field), `retryAfter` (a `429`) and `requestId` (the
-  `X-Request-ID`, to quote to support).
-- `NetworkError` (`kind` is `network` or `timeout`) when nothing answers.
-- The browser's own `AbortError` when the caller cancels.
+## The module registry
 
-Queries retry only network errors and `5xx` answers, twice. The client adds the access token and,
-on a `401` from anything but `/v1/auth/*`, renews the session once and repeats the call.
+A module is an entry in a registry file, built into the shell. `VITE_SHELL_REGISTRY` names the file (above).
 
-## The admin session
-
-`src/session` holds the session (ADR 0009). Read it with `useSession()`.
-
-- The 15-minute access token lives in memory only, never in web storage, a URL or a log. After a
-  reload the session comes back from `POST /v1/auth/refresh` (the `identity_refresh` cookie), then
-  `GET /v1/me` gives the profile and roles.
-- It renews at 80% of the token's life and once on a `401`. Concurrent calls share one refresh. A
-  `409 refresh_conflict` is retried once. A `401` on refresh ends the session; a network or `5xx`
-  failure does not (`unavailable` before the first sign-in, a retry in 15 seconds after).
-- Tabs tell each other only the words `login` and `logout` on a `BroadcastChannel`, never a token.
-- States: `loading`, `signedIn`, `passwordChangeRequired`, `signedOut`, `unavailable`. An admin who
-  must change their password has a token with no roles; the guards hold them at `/change-password`.
-- Guards: `RequireAuth` (sends to `/login?return-to=...`, the path checked against `shellPaths`),
-  `PublicOnly`, `RequirePasswordChange` and `RequireRole anyOf={[...]}`.
-- `getModuleToken(audience, scope)` exchanges the identity token (`POST /v1/auth/token`) for a module token,
-  kept per `scope` (the module's id), shared only between callers of the same scope, never kept past its
-  own or the identity token's expiry. `dropModuleTokens(scope)` forgets a module's tokens when its page is left. `403
-  audience_not_allowed` and `400 unknown_audience` are `AudienceNotAllowedError` and
-  `UnknownAudienceError`.
-- Screens: `/login` (one message for every `401`, a countdown for `429`, the password dropped from
-  state as soon as it is sent and from the query cache when the call ends) and `/change-password`.
-  An admin who must change their password sees "Choose your password", can reach nothing else, and
-  then continues to `return-to`; any other admin reaches "Change your password" from the account
-  menu. The API ends every other session and returns a new one, which the shell adopts; a `401`
-  from it makes the shell check the session again (login if it has ended). The account
-  menu shows the admin's name, email and roles, and signs out (every tab follows). Password inputs
-  go through `PasswordField` only (a test enforces it).
-- Ending the session clears the query cache, the sensitive forms (`registerSensitiveReset`) and every
-  module token.
-  A renewal that comes back with another admin does the same; one that comes back with new roles
-  drops the cached module tokens. A sign-out (in any tab) while a renewal is under way wins: the
-  renewal's answer is thrown away.
-- Session and token-exchange answers are checked: a non-empty token and a lifetime between 0 and a
-  day, or the answer is refused.
-
-## Modules and the layout
-
-The module registry is `src/modules/registry.ts`: one list per environment (`development`,
-`preview`, `production`). **Adding a module is one entry** there, and the navigation, the routes and
-the Content-Security-Policy `frame-src` all follow:
-
-```ts
-{
-  id: 'vendor-admin',            // the address, /m/vendor-admin; lower case, digits, hyphens
-  title: 'Vendor admin',
-  description: 'Review vendor applications, products and brand pages.',
-  url: 'https://vendor-admin.shazlo.com/',
-  origin: 'https://vendor-admin.shazlo.com',   // exact; never a wildcard or a pattern
-  roles: ['vendor_reviewer'],    // an admin needs one of these; super_admin opens every module
-  audience: 'vendor-api',        // the token audience identity-api issues for it
-  supportedVersions: [1],
-}
+```json
+[{ "id": "vendor-admin", "fallbackTitle": "Vendors", "basePath": "/vendors", "url": "https://vendors.shazlo.store/",
+   "roles": ["vendor_reviewer", "super_admin"], "audience": "vendor-api",
+   "summaryUrl": "https://vendor-admin-api.shazlo.store/v1/admin/module-summary" }]
 ```
 
-The registry is checked when the shell builds (the Vite config and the Vercel prebuild step) and
-when it starts (a bad one shows the misconfiguration screen). It refuses a wildcard or pattern
-origin, a host with anything but letters, digits, dots and hyphens, a non-https origin outside development, a `url` that is not on its `origin`, duplicate ids
-or origins, and an empty role list; the message names the module and what to change. Which list a
-build uses: `development` for `npm run dev`, `preview` when `VITE_DEPLOY_ENV` (or Vercel's
-`VERCEL_ENV`) is `preview`, `production` otherwise. The file has no imports, so Node and Vite read
-it without loading the app.
+- The registry holds only what decides trust: the module's origin (its `url`, with no path: the only origin the
+  shell frames and talks to for that module), the roles that may open it and the audience of the token it gets.
+  The build fails on a wildcard or pattern, http outside development (plain http only for localhost in
+  development), a host with anything but letters, digits, dots and hyphens, credentials, a query, a duplicate id,
+  origin or base path, a base path the shell uses (`/admins`, `/sign-in`, `/change-password`, `/m`) or the
+  `identity-api` audience.
+- The **manifest** (`<module url>/shazlo-module.json`, no token) gives the module's title, icon and pages. The
+  module serves it with CORS for the shell. Without it the module shows under `fallbackTitle` with no pages.
+- The **summary** (`summaryUrl`, with a token of its own) gives the sidebar badge and the module's Home cards.
+  One that fails or takes over 5 seconds shows an error on that module's card and no badge, never a 0.
 
-- **Layout:** a skip link, an app bar (Shazlo-One, account menu), a navigation drawer (permanent from
-  900 px, behind a menu button below), and one `<main>`. After each navigation the page heading
-  takes focus (not on the first page).
-- **Role filtering:** a module shows only if the admin holds one of its roles (`super_admin` sees
-  all). "Admins" is for `super_admin` only. The session reads `GET /v1/me` again on every renewal, so
-  a changed role shows without a new sign-in.
-- **Routes:** `/m/:moduleId/*` (the rest of the path belongs to the module). An unknown id is "Page
-  not found"; a module the roles do not allow is the 403 page. Neither renders a frame.
-- **Home:** a card for each module the admin may open, or an explanation when there is none.
+## Security headers
 
-## Admin management
-
-`/admins` (the "Admins" section, `src/pages/AdminsPage.tsx` and `src/features/admins/`) is for `super_admin` only:
-the route guard, the navigation and identity-api (on every call) each check it, and everyone else gets the 403 page
-without the admins being asked for at all.
-
-- **List:** name, email, roles, active or deactivated, and whether they must still change their password. The
-  search (name or email), the role and status filters and the page are in the address (`?q=&role=&status=&page=`):
-  shareable, they survive a reload and the back button steps through them. Typing replaces the address entry
-  rather than adding one; choosing a filter or a page adds one; a filter goes back to page 1.
-- **Create:** email, name, roles (from `GET /v1/roles`, each with its description) and a temporary password. The
-  dialog says they must change it at their first sign-in and that it must be handed over in person or through a
-  secure channel: it is never emailed. "Generate a password" makes a random 20-character one (no look-alike
-  characters) and shows it, because it has to be read once.
-- **Edit:** the name and the roles; deactivate and reactivate (a confirmation says their sessions end at once);
-  reset the password (a confirmation says the sessions end and they must choose a new password). You cannot
-  deactivate yourself, and the button says why.
-- **Refusals** are plain words next to the control they are about: `email_taken` by the email, `weak_password` by
-  the password, `unknown_role` by the roles, `cannot_deactivate_self` and `last_super_admin` by the control that
-  asked for it (the last super admin cannot be deactivated or lose the role, and the screen says why),
-  `admin_not_found` above the form (the list reloads), and a `403` means your own super admin role was removed
-  (your session is read again and the page becomes the 403 page).
-- **Roles take effect** at the admin's next token, within 15 minutes, and the dialog says so. A super admin who
-  edits their **own** roles has their session refreshed at once, so they see them.
-- **Temporary passwords:** the field is emptied the moment the call is sent (success or not), the mutation keeps
-  no copy, nothing is written to web storage, and a half-typed one is emptied when the session ends. Tests check
-  the form, the mutation cache, the query cache and the page.
-
-## The module host
-
-`/m/:moduleId` puts the module in a frame and does the handshake of ADR 0001 (`src/components/ModuleHost.tsx`,
-built on `createShellChannel` from `@shazlo/shell-protocol`).
-
-- **The frame:** `title`, `sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"` (no top
-  navigation, popups or modals), `referrerpolicy="no-referrer"`, `allow=""`. Its `src` is exactly the
-  registry's `url`: a token is never in an address. `allow-scripts` with `allow-same-origin` is safe only because
-  a module has an origin of its own, so the host refuses (no frame, no token) a module whose origin is the shell's.
-- **Order:** the channel (and so the `message` listener) is created first, then `src` is set, so an early
-  `ready` is never missed.
-- **On `ready`** (from the module's exact origin **and** its frame window, nothing else is read): the shell
-  picks a version, exchanges a token for the registry's `audience`, and sends `auth` with `replyTo`. A second
-  `ready` (the module reloaded) gets the current `auth` again, from the cache while the token is good. With no
-  common version the shell sends `error` `version_unsupported` and shows a panel naming the module and its version.
-- **Tokens** are kept per module (its id), never shared (two modules on `vendor-api` get a token each), and
-  dropped when the page is left, when Retry builds a new frame, and when the session ends.
-- **Exchange failures:** `403 audience_not_allowed` (the admin lost the role) is the 403 page, with no frame.
-  A network error, a 5xx, an unknown audience or an ended session is an error panel with **Retry**.
-- **No `ready` in 10 seconds** (also what a CSP or framing refusal looks like, because the parent cannot see
-  it): an error panel with Retry, which gives the frame a new load. After 3 failed retries it says "unavailable",
-  offers no more Retry and calls the failure reporter once (`setModuleFailureReporter` in
-  `src/modules/moduleFailure.ts`; nothing is wired up by default). A module that answers resets the count.
-- **While it starts** the page shows a loading state; the shell's navigation and account menu stay usable
-  throughout, and leaving the page removes the frame and its listener. Focus moves to the page heading when the
-  admin opens a module (or another one), not when the path changes inside the same module.
-
-### Keeping the module supplied
-
-A module's token lasts **5 minutes** (identity-api's `EXCHANGED_TOKEN_TTL_SECONDS`), the identity token **15**. The host
-(`ModuleHost.tsx`, with the maths in `src/modules/refreshSchedule.ts`) keeps the module's token fresh:
-
-- **Schedule:** from each token's own life, a new token is exchanged and sent as `auth` at 80% of its life or 30
-  seconds before it ends, whichever is first (never earlier than its half-life). A reload (a second `ready`) gets
-  the token the module was last given, with no exchange, and its schedule and any backoff carry on unchanged.
-- **Identity first:** if the identity token would end before a new module token should, it is renewed before the
-  exchange, so the module token gets its whole life. If that renewal cannot be done now, the exchange goes on with
-  what the shell holds and the module token is cut short.
-- **`token:request`:** answered with a fresh `auth`, at most once per 30 seconds per module, whatever it sends.
-- **A failed refresh** (network, 5xx): the module keeps its token; the shell retries after 5, 15, then every 30
-  seconds, and a retry that works resets the backoff. When the token ends, the frame is removed, the session ends
-  as *expired* (no server call) and the admin goes to login, back to `/m/<id>` afterwards.
-- **A role removed** (`403 audience_not_allowed` on a refresh or request): the module closes and the 403 page shows.
-  A role removed from the admin's own session (read again on renewal) does the same through the page's role check.
-- **A renewal that changes the roles** sends the module a token for the new ones at once; **one that names another
-  admin** (another tab signed out and in, and this one missed it) replaces the frame, so nothing given for the
-  previous admin survives.
-- **The session ending anywhere** (sign-out here or in another tab, a revoked refresh family, a deactivated admin)
-  removes the frame and drops every token at once: the guards unmount the page, which clears its timers, closes the
-  channel and drops the module's tokens.
-
-Not here yet: title and deep-link sync, toasts, and a module's `logout` and `error` messages (#257). Until then the
-reference module's buttons for those send messages the host does not act on.
-
-## The reference module
-
-`dev-module/` is a tiny module for development and the shell's tests, and a model for module authors
-(Phase 7 and later). It is built on `createModuleClient` from `@shazlo/shell-protocol`, runs on its own
-origin (`http://localhost:5175`) and is **never built or deployed** (`vite build` on its config fails).
-It is in the **development** registry only, for `super_admin` and `vendor_reviewer`, so it can never be
-framed by a preview or production shell (a test checks it).
-
-```sh
-npm run dev:with-module -w @shazlo/shazlo-one   # shell on 5173, module on 5175
-```
-
-- It sends `ready`, keeps the token from `auth` **in memory only**, and shows the admin's email, roles and
-  when the token expires (never the token).
-- It calls vendor-api's `GET /v1/admin/me` with that token (`aud=vendor-api`) and shows the answer. A `401`
-  makes it send `token:request` (at most once every 30 seconds) and repeat the call when the shell answers.
-  An expired token is never sent: the module sends `token:request` with `expired` instead, then calls.
-- Buttons send every module-to-shell message: `title` (in-module pages), a `toast` of each level, `logout`,
-  and a non-fatal and a fatal `error`. The shell's `navigate` and `error` are shown.
-- Its responses carry `Content-Security-Policy: frame-ancestors <shell origin>` (plus `http://localhost:5173`
-  in development) and `Referrer-Policy: no-referrer`, so any other origin that tries to frame it is refused.
-- Opened directly, outside the shell, it says so and does nothing else: no listener, no message, no request.
-- Settings: `VITE_SHELL_ORIGIN` (default `http://localhost:5173`) and `VITE_VENDOR_API_URL` (default
-  `http://localhost:8002`), both exact origins, checked by the protocol package. Put them in
-  `dev-module/.env.local` to change them.
-- vendor-api must allow the module's origin: compose and `.env.example` set `VENDOR_CORS_ALLOWED_ORIGINS` to
-  `http://localhost:5174,http://localhost:5175`. If you made your `.env` before this, add the second origin.
-- The module's config reads the protocol package, which is TypeScript source, so its dev server runs with
-  `--configLoader runner` (the scripts above do that).
+`src/security/headers.ts` is the one policy, used by the dev server, `vite preview` and production:
+`frame-ancestors 'none'` (and `X-Frame-Options: DENY`), scripts, images and fonts only from the shell (inline
+script only on the dev server, for React's refresh), `connect-src` only identity-api and the modules' manifest and
+summary origins (`'self'` only when identity-api is reached through the shell's own origin), `frame-src` only the
+registry's origins (`'none'` without any), no workers except the demo's mock, and HSTS with
+`upgrade-insecure-requests` in production. `npm run build` first runs `scripts/write-vercel-headers.mjs`: on
+Vercel it writes `vercel.json`'s headers for that build's identity-api origin and registry (and fails on a bad
+one); elsewhere it leaves the committed file, which holds the policy for the placeholder origin and no modules
+(`npm run headers:placeholder` rewrites it, and a test keeps it in step).
 
 ## Security rules
 
-The shell is where admins sign in, so a script running on it could act as an admin. These rules are
-enforced by tests and lint, not by review alone.
+The same lint rules as the vendor portal and the Vendors module (`eslint.config.js`): no web storage, no HTML
+built from a string, no `eval`, and no console call but `console.error`. `src/security/rules.test.ts` checks that
+the rules reach the shell, and checks the sources directly (the one storage exception is the dev-server mock).
+What a module sends (a title, a toast, a fatal error's message) is shown as plain text, cut to a few lines.
 
-- **Headers from one definition.** `src/security/headers.ts` produces the headers for the dev server,
-  the preview server and `vercel.json` (committed with a placeholder API origin; the Vercel build
-  rewrites it from `VITE_IDENTITY_API_URL`, and fails if that is not a plain https origin).
-  The Content-Security-Policy has `script-src 'self'` (no inline script, no `eval`; development adds
-  `'unsafe-inline'` for the React refresh preamble only), `connect-src` the identity API only,
-  `frame-src` only the registered module origins (from the module registry, `src/modules/registry.ts`; `'none'` while
-  there are none), `frame-ancestors 'none'` (the shell is never framed), `object-src 'none'` and
-  `base-uri 'self'`. Also `Referrer-Policy`, `X-Content-Type-Options`, `Permissions-Policy`, and
-  HSTS in production. A module's own backend calls run inside its frame, under its own policy, so
-  they never widen the shell's `connect-src`.
-- **No web storage.** `localStorage`, `sessionStorage` and `indexedDB` are forbidden (lint and a
-  source test). The access token lives in memory and the refresh token is an `HttpOnly` cookie.
-- **No raw HTML.** `dangerouslySetInnerHTML`, `innerHTML`, `outerHTML` and `insertAdjacentHTML` are
-  forbidden, and so are `eval` and `new Function`. Text from the API is rendered as text.
-- **No logging of secrets.** `console.log` is forbidden (only `console.error`), and a source test
-  fails any log call that mentions a token or a password.
-- **The shared theme.** No hard-coded colour or font family in the source (`noHardcodedStyle.test.ts`).
-- **Plain failures.** A root error boundary and a route error element show a message and a way out,
-  never a stack trace. Every page has one `h1` and sets its title (`usePageTitle`).
-- **A clean production build.** `src/security/build.test.ts` builds the app and fails on an inline
-  script, an inline event handler, a `javascript:` URL or a `data:` asset.
+## How it works
 
-## Deployment
+| Area | Where |
+|---|---|
+| Session | `src/session/store.ts` (from the first Phase 6 shell): the identity-api access token in memory only, restored from the `identity_refresh` cookie and renewed at 80% of its life by one shared refresh (a `409 refresh_conflict` from another tab is retried once; offline, `408`, `429` or `5xx` keeps a signed-in session, and on load shows "cannot reach its sign-in service" with Try again). Sign-out in one tab ends every tab (`BroadcastChannel`, only the words `login` and `logout`); a refresh that answers after a sign-out is thrown away; another admin or new roles clear the caches and module tokens; session and token answers are checked (a token, a lifetime above 0 and at most a day). Module tokens (`POST /v1/auth/token`, ADR 0009) are kept per module and dropped with its page. `src/api/context.tsx` wires it to the identity-api client and reads the session again on any `403` (at most every 10 s) |
+| Sign-in links | `src/session/returnTo.ts`: `?next=` must be Home, Admins & roles or a registered module's page; anything else (another site, `//host`, `/\host`, a control character) goes to Home |
+| Module registry | `registry/*.json`, checked by `vite.config.ts` and again in `src/app/registry.ts`, which merges each entry with its manifest: the page a module opens on (`home`; Vendors opens on its dashboard) and its pages (`links`, with `also` prefixes such as `/review` for a queue). `moduleTarget()` turns a shell URL into the module page it shows (the bare base path is the home page), and `currentLink()` / `isModuleHome()` decide which page is current, so the iframe, the sidebar and the top bar always agree |
+| Manifests and summaries | `src/api/modules.ts` (5 s limit, one new token on a 401), drawn by `src/shell/ShellLayout.tsx` (sidebar), `src/shell/ModuleNav.tsx` (top bar) and `src/screens/home/ModuleCards.tsx` (Home) |
+| Navigation | `src/shell/ShellLayout.tsx`: the navy sidebar (a phone drawer below 900 px) lists each module with its pages nested under it; the module row opens its home page and is current there. Inside a module the top bar also lists its pages (`src/shell/ModuleNav.tsx`, "<title> pages") in a 48 px row under the crumbs, scrolling sideways on phones, once the manifest has named them. `src/shell/metrics.ts` holds the header heights behind `--shell-top`, which sizes the module iframe. Focus moves to the page heading when the admin goes to another page or module, never while a module moves between its own pages |
+| Iframe host | `src/shell/ModuleHost.tsx`, one `HostedFrame` per load: the channel listens before the frame has an address; the frame loads the module path of the URL, kept on the module's origin (`frameSrc`); `auth` after `ready`, refreshed at 80% of the token's life or 30 s before its end with backoff (5, 15, 30 s) when that fails; title/URL sync and `navigate` (a page picked while the module is still loading is kept); toasts; one sign-out however often a module sends `logout`; `token:request` answered once per 30 s and only once it holds a token; a replayed `ready` gets the held token; the 10 s / three-attempt failure panels, the version check, the 403 page for `audience_not_allowed`, and no frame for a module on the shell's own origin (`src/shell/refreshSchedule.ts`, `src/shell/moduleText.ts`) |
+| Admin management | `src/screens/Admins.tsx` and `src/screens/admins/*`: paged (50 a page, the page in the address; one past the end moves to the last), refusals in words next to their control (`refusals.ts`: `cannot_deactivate_self`, `last_super_admin`, `admin_not_found`), unbiased temporary passwords that leave the mutation cache as soon as the request ends |
+| Protocol | `packages/shell-protocol`: `createShellChannel` (exact origin and frame window, 64 KB, strict envelope, hand-written validators) and the registry, manifest and summary schemas |
+| Tests | Against two stand-in modules (`src/test/registry.json`, `src/test/modules.ts`), never a real one; module messages are delivered with the module's origin and window (`src/test/frames.ts`). `src/shell/host.test.tsx` holds the host's hostile cases, `src/session/store.test.ts` the session's, `src/security/*.test.ts` the headers, lint rules and real builds; `src/app/noVendorCode.test.ts` fails if vendor code comes back |
+| Screens | A-01 sign in, change password, A-02 home, A-11 admins & roles |
 
-`vercel.json` rewrites every path to the single page and carries the security headers. The
-per-environment URLs and domains are Phase 8.
+Not covered yet: browser (Playwright) tests of the shell.

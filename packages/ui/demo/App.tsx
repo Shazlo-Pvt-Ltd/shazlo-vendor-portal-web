@@ -12,13 +12,13 @@ import {
   Typography,
 } from '@mui/material'
 import { useId, type ReactNode } from 'react'
-import { annotation, brand, contrastRatio, link, neutral, radius, reviewStatus, space, status, typeScale } from '../src'
+import { annotation, Banner, brand, contrastRatio, EmptyState, link, neutral, PageHeader, radius, reviewStatus, SectionCard, space, StatFigure, status, StatusPill, typeScale, type PillStatus } from '../src'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   const id = useId()
   return (
     <Box component="section" aria-labelledby={id} sx={{ py: 5 }}>
-      <Typography id={id} variant="overline" color="text.secondary">
+      <Typography id={id} variant="overline" color="textSecondary">
         {title}
       </Typography>
       <Box sx={{ mt: 2 }}>{children}</Box>
@@ -35,10 +35,10 @@ function Swatch({ name, hex }: { name: string; hex: string }) {
       <Box sx={{ height: 72, bgcolor: hex, borderBottom: 1, borderColor: 'divider' }} />
       <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
         <Typography variant="subtitle2">{name}</Typography>
-        <Typography variant="mono" color="text.secondary">
+        <Typography variant="mono" color="textSecondary">
           {hex}
         </Typography>
-        <Typography variant="caption" color="text.secondary" component="p">
+        <Typography variant="caption" color="textSecondary" component="p">
           {text} text · {Math.max(onBlack, onWhite).toFixed(1)}:1
         </Typography>
       </CardContent>
@@ -74,11 +74,11 @@ const variants = [
 export function App() {
   return (
     <Box sx={{ maxWidth: 1120, mx: 'auto', px: { xs: 2, md: 5 }, py: 6 }}>
-      <Typography variant="overline" color="text.secondary">
+      <Typography variant="overline" color="textSecondary">
         @shazlo/ui · tokens and theme
       </Typography>
       <Typography variant="display1">Swipe to style</Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 640, mt: 1 }}>
+      <Typography variant="body1" color="textSecondary" sx={{ maxWidth: 640, mt: 1 }}>
         Shazlo’s warm palette and expressive type, aligned with the Penpot Design language board inspected on 29 October 2026.
       </Typography>
       <Link href="https://design.penpot.app/?screen=workspace&team-id=685eebd9-2ce2-80a4-8008-d702ad7258d4&file-id=685eebd9-2ce2-80a4-8008-d702c75c4edc&page-id=685eebd9-2ce2-80a4-8008-d702c75c4edd" sx={{ display: 'inline-block', mt: 2 }}>
@@ -110,7 +110,7 @@ export function App() {
             const t = typeScale[token]
             return (
               <Box key={variant} sx={{ display: 'grid', gridTemplateColumns: { md: '220px 1fr' }, gap: 2, alignItems: 'baseline' }}>
-                <Typography variant="mono" color="text.secondary">
+                <Typography variant="mono" color="textSecondary">
                   {variant} · {t.size}/{t.lineHeight} · {t.weight}
                 </Typography>
                 <Typography variant={variant}>
@@ -127,7 +127,7 @@ export function App() {
         <Stack spacing={1}>
           {space.slice(1).map((s) => (
             <Stack key={s} direction="row" spacing={2} sx={{ alignItems: 'center' }}>
-              <Typography variant="mono" color="text.secondary" sx={{ width: 48 }}>
+              <Typography variant="mono" color="textSecondary" sx={{ width: 48 }}>
                 {s}
               </Typography>
               <Box sx={{ width: s, height: 12, bgcolor: 'primary.main' }} />
@@ -138,7 +138,7 @@ export function App() {
           {Object.entries(radius).map(([name, r]) => (
             <Box key={name} sx={{ textAlign: 'center' }}>
               <Box sx={{ width: 96, height: 56, borderRadius: `${Math.min(r, 28)}px`, border: 1, borderColor: 'grey.300', bgcolor: 'background.paper' }} />
-              <Typography variant="mono" color="text.secondary">
+              <Typography variant="mono" color="textSecondary">
                 {name} {r}
               </Typography>
             </Box>
@@ -180,15 +180,35 @@ export function App() {
           </Alert>
           <Card>
             <CardContent>
-              <Typography variant="overline" color="text.secondary">
+              <Typography variant="overline" color="textSecondary">
                 Live on Shazlo
               </Typography>
               <Typography variant="stat">18</Typography>
-              <Typography variant="caption" color="text.secondary" component="p">
+              <Typography variant="caption" color="textSecondary" component="p">
                 Visible in the app feed
               </Typography>
             </CardContent>
           </Card>
+        </Stack>
+      </Section>
+      <Section title="Seller components">
+        <Stack spacing={3}>
+          <PageHeader title="Products" subtitle="27 products · 18 live in the app" actions={<Button variant="contained">Add product</Button>} />
+          <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 1 }}>
+            {(['live', 'pending', 'sentBack', 'draft', 'editInReview', 'publishing', 'archived', 'suspended'] as PillStatus[]).map((s) => (
+              <StatusPill key={s} status={s} />
+            ))}
+          </Stack>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <StatFigure label="Live on Shazlo" value={18} baseline="Visible in the app feed" />
+            <StatFigure label="Pending review" value={4} baseline="Usually reviewed within 24 h" />
+          </Stack>
+          <Banner tone="warning" title="2 products were sent back by the review team">
+            Fix the notes on each product and resubmit.
+          </Banner>
+          <SectionCard title="Recent review decisions">
+            <EmptyState illustration="kurta" tip="Start with your best seller" title="No products yet" body="Add your first product to start selling." action={<Button variant="contained">Add product</Button>} />
+          </SectionCard>
         </Stack>
       </Section>
       <Section title="Shazlo-One shell">

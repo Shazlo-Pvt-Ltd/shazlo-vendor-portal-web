@@ -31,7 +31,7 @@ def refresh_token_config(settings: Settings) -> RefreshTokenConfig:
 
 def rate_limit_config(settings: Settings) -> RateLimitConfig:
     key = settings.rate_limit_hmac_key
-    if key is None:  # Settings fills it in, so this is a programming error
+    if key is None:  # outside prod Settings fills it in; in prod the seller app checks it first
         raise ValueError("rate_limit_hmac_key is not set")
     return RateLimitConfig(
         hmac_key=key.get_secret_value().encode(),

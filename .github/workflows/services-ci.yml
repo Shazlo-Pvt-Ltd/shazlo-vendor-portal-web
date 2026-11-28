@@ -154,7 +154,10 @@ jobs:
           grep -v '^VENDOR_JWT_KEYS=' .env > .env.new
           printf '%s\n' "$line" >> .env.new
           mv .env.new .env
-      - run: docker compose --profile vendor run --rm vendor-api alembic upgrade head
+      # Migrations run as the owner of the tables (vendor-cli); then each vendor app gets its own
+      # login with only its table rights (ADR 0011, migration 0012).
+      - run: docker compose run --rm vendor-cli alembic upgrade head
+      - run: docker compose run --rm vendor-cli python -m vendor_api.cli db-logins
       - run: docker compose --profile vendor up -d --wait
       - name: vendor-api ready, and its key is not identity-api's
         run: |
@@ -171,10 +174,10 @@ jobs:
           curl -fsS localhost:8025/api/v1/messages | grep -q 'Reset your Shazlo password'
       - name: Seed the demo vendor, sign in, and compare the OpenAPI document
         run: |
-          docker compose --profile vendor run --rm -e SEED_VENDOR_PASSWORD=compose-ci-password-1 \
-            vendor-api python -m vendor_api.cli seed-dev
-          docker compose --profile vendor run --rm -e SEED_VENDOR_PASSWORD=compose-ci-password-1 \
-            vendor-api python -m vendor_api.cli seed-dev | grep -q 'already exists'
+          docker compose run --rm -e SEED_VENDOR_PASSWORD=compose-ci-password-1 \
+            vendor-cli python -m vendor_api.cli seed-dev
+          docker compose run --rm -e SEED_VENDOR_PASSWORD=compose-ci-password-1 \
+            vendor-cli python -m vendor_api.cli seed-dev | grep -q 'already exists'
           login=$(curl -fsS localhost:8002/v1/auth/login -H 'content-type: application/json' \
             -d '{"email": "owner@demo-brand.test", "password": "compose-ci-password-1"}')
           token=$(echo "$login" | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
@@ -186,6 +189,108 @@ jobs:
           committed = json.load(open('services/vendor-api/openapi.json'))
           assert served == committed, 'openapi.json is stale: python -m vendor_api.cli export-openapi'
           "
+      # vendor-api runs as two apps (ADR 0011): the seller app on 8002 (the Vendor Portal's backend)
+      # and the admin app on 8004 (the backend of Shazlo One's Vendors module), over one database.
+      - name: Each vendor app serves only its own routes
+        run: |
+          curl -fsS localhost:8004/ready
+          curl -fsS localhost:8004/openapi.json | python3 -c "
+          import json, sys
+          served = json.load(sys.stdin)
+          committed = json.load(open('services/vendor-api/openapi.admin.json'))
+          assert served == committed, 'openapi.admin.json is stale: python -m vendor_api.cli export-openapi'
+          "
+          for url in localhost:8002/v1/admin/me localhost:8004/v1/vendor/me localhost:8004/.well-known/jwks.json; do
+            status=$(curl -s -o /dev/null -w '%{http_code}' "$url")
+            test "$status" = 404 || { echo "$url answered $status, not 404"; exit 1; }
+          done
+      # The seeded admin must change the seed password before identity-api exchanges its token.
+      - name: The seeded admin sets a new password
+        run: |
+          first=$(curl -fsS localhost:8001/v1/auth/login -H 'content-type: application/json' \
+            -d '{"email": "admin@shazlo.test", "password": "compose-ci-password-1"}' \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
+          curl -fsS localhost:8001/v1/auth/change-password -H 'content-type: application/json' \
+            -H "Authorization: Bearer $first" \
+            -d '{"current_password": "compose-ci-password-1", "new_password": "compose-ci-password-2"}' > /dev/null
+      - name: An admin approves in the admin app, and the seller app shows the decision
+        run: |
+          admin=$(curl -fsS localhost:8001/v1/auth/login -H 'content-type: application/json' \
+            -d '{"email": "admin@shazlo.test", "password": "compose-ci-password-2"}' \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
+          token=$(curl -fsS localhost:8001/v1/auth/token -H 'content-type: application/json' \
+            -H "Authorization: Bearer $admin" -d '{"audience": "vendor-api"}' \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
+          read -r review_id version product_id < <(
+            curl -fsS 'localhost:8004/v1/admin/reviews?subject=product&limit=100' \
+              -H "Authorization: Bearer $token" | python3 -c "
+          import json, sys
+          mine = [r for r in json.load(sys.stdin)['items'] if r['vendor']['slug'] == 'demo-brand']
+          print(mine[0]['id'], mine[0]['version'], mine[0]['product_id'])
+          ")
+          curl -fsS -X POST "localhost:8004/v1/admin/reviews/$review_id/approve" \
+            -H "Authorization: Bearer $token" -H 'content-type: application/json' \
+            -d "{\"version\": $version}" > /dev/null
+          seller=$(curl -fsS localhost:8002/v1/auth/login -H 'content-type: application/json' \
+            -d '{"email": "owner@demo-brand.test", "password": "compose-ci-password-1"}' \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
+          curl -fsS 'localhost:8002/v1/vendor/submissions?limit=100' -H "Authorization: Bearer $seller" \
+            | python3 -c "
+          import json, sys
+          items = json.load(sys.stdin)['items']
+          assert any(
+              i['id'] == '$product_id' and i['version'] == $version and i['status'] == 'approved'
+              for i in items
+          ), 'the seller app does not show the approval'
+          "
+          # Shazlo One's Home and badge read the module summary (ADR 0011), cross-origin from the shell.
+          curl -fsS localhost:8004/v1/admin/module-summary -H "Authorization: Bearer $token"             -H 'Origin: http://localhost:5192' -D /tmp/summary-headers | python3 -c "
+          import json, sys
+          body = json.load(sys.stdin)
+          assert body['v'] == 1, body
+          assert [s['title'] for s in body['sections']] == ['Vendors', 'Publishing to the app'], body
+          assert any(i['status']['label'] == 'Approved' for i in body['activity']['items']), 'no approval in the activity'
+          "
+          grep -qi '^access-control-allow-origin: http://localhost:5192' /tmp/summary-headers
+      - name: Each vendor app is connected as its own login, with only its rights
+        run: |
+          owner=$(grep '^POSTGRES_USER=' .env | cut -d= -f2-)
+          # The apps' pooled connections, after the requests above: never the owner of the tables.
+          users=$(docker compose exec -T postgres psql -U "$owner" -d vendor -tAc \
+            "SELECT string_agg(DISTINCT usename, ',' ORDER BY usename) FROM pg_stat_activity
+             WHERE datname = 'vendor' AND backend_type = 'client backend' AND pid <> pg_backend_pid()")
+          echo "connected: $users"
+          test "$users" = "vendor_admin_app,vendor_seller_app"
+          as() { docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -tA -U "$1" -d vendor -c "$2"; }
+          refused() {
+            if as "$1" "$2" 2> /tmp/refused; then echo "$1 may: $2"; exit 1; fi
+            grep -q 'permission denied' /tmp/refused
+          }
+          refused vendor_admin_app "SELECT count(*) FROM auth_tokens"
+          refused vendor_admin_app "UPDATE vendor_users SET password_hash = 'x'"
+          refused vendor_seller_app "UPDATE outbox_events SET status = 'sent'"
+          refused vendor_worker_app "UPDATE products SET status = 'approved'"
+          refused vendor_seller_app "TRUNCATE review_events"
+          as vendor_admin_app "SELECT count(*) FROM reviews" > /dev/null
+      - name: Either vendor app keeps working while the other is stopped
+        run: |
+          docker compose --profile vendor stop vendor-admin-api
+          curl -fsS localhost:8002/ready
+          curl -fsS localhost:8002/v1/auth/login -H 'content-type: application/json' \
+            -d '{"email": "owner@demo-brand.test", "password": "compose-ci-password-1"}' | grep -q '"access_token"'
+          docker compose --profile vendor start vendor-admin-api
+          docker compose --profile vendor stop vendor-api
+          docker compose --profile vendor up -d --wait --no-deps vendor-admin-api
+          curl -fsS localhost:8004/ready
+          admin=$(curl -fsS localhost:8001/v1/auth/login -H 'content-type: application/json' \
+            -d '{"email": "admin@shazlo.test", "password": "compose-ci-password-2"}' \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
+          token=$(curl -fsS localhost:8001/v1/auth/token -H 'content-type: application/json' \
+            -H "Authorization: Bearer $admin" -d '{"audience": "vendor-api"}' \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
+          curl -fsS 'localhost:8004/v1/admin/reviews' -H "Authorization: Bearer $token" | grep -q '"items"'
+          curl -fsS 'localhost:8004/v1/admin/module-summary' -H "Authorization: Bearer $token" | grep -q '"badge"'
+          docker compose --profile vendor start vendor-api
       # The stub central app (ADR 0003): the image builds from the repository root, finds the
       # contract schemas, and rejects an unsigned request.
       - run: docker compose --profile central build central-stub

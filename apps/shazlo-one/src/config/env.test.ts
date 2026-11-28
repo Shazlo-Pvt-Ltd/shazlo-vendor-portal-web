@@ -1,73 +1,63 @@
 import { describe, expect, it } from 'vitest'
 import { readEnv } from './env'
 
-const dev = { dev: true }
 const prod = { dev: false }
+const dev = { dev: true }
 
-function problems(value: string | undefined, options = dev): string[] {
-  const result = readEnv({ VITE_IDENTITY_API_URL: value }, options)
-  return result.ok ? [] : result.problems
-}
-
-describe('readEnv', () => {
-  it('accepts an https origin and strips a trailing slash', () => {
-    expect(readEnv({ VITE_IDENTITY_API_URL: 'https://api.shazlo.store/' }, prod)).toEqual({
-      ok: true,
-      env: { apiUrl: 'https://api.shazlo.store' },
-    })
+describe('the mock (fails closed)', () => {
+  it('runs in development unless switched off', () => {
+    expect(readEnv({}, dev)).toEqual({ ok: true, env: { identityOrigin: null, mock: true } })
+    expect(readEnv({ VITE_MOCK_API: 'off' }, dev)).toEqual({ ok: true, env: { identityOrigin: null, mock: false } })
   })
 
-  it('accepts http only in development', () => {
-    expect(readEnv({ VITE_IDENTITY_API_URL: 'http://localhost:8001' }, dev)).toEqual({
-      ok: true,
-      env: { apiUrl: 'http://localhost:8001' },
-    })
-    expect(problems('http://localhost:8001', prod)).toEqual([
-      'VITE_IDENTITY_API_URL must use https outside development.',
-    ])
+  it('never runs in a production build unless asked for by name', () => {
+    expect(readEnv({ VITE_IDENTITY_API_URL: 'https://identity.shazlo.store' }, prod)).toEqual({ ok: true, env: { identityOrigin: 'https://identity.shazlo.store', mock: false } })
+    expect(readEnv({ VITE_MOCK_API: 'on' }, prod)).toEqual({ ok: true, env: { identityOrigin: null, mock: true } })
   })
 
-  it('refuses a missing or empty value', () => {
-    expect(problems(undefined)).toEqual(['VITE_IDENTITY_API_URL is not set.'])
-    expect(problems('')).toEqual(['VITE_IDENTITY_API_URL is not set.'])
-    expect(problems('   ')).toEqual(['VITE_IDENTITY_API_URL is not set.'])
+  it.each(['yes', 'true', '1', 'ON', 'of'])('refuses VITE_MOCK_API=%s rather than guess', (value) => {
+    expect(readEnv({ VITE_MOCK_API: value, VITE_IDENTITY_API_URL: 'https://identity.shazlo.store' }, prod)).toEqual({ ok: false, problems: ['VITE_MOCK_API must be "on", "off" or not set.'] })
+  })
+})
+
+describe('VITE_IDENTITY_API_URL', () => {
+  it('is required for a production build that is not a demo', () => {
+    const result = readEnv({}, prod)
+    expect(result.ok).toBe(false)
+    expect(!result.ok && result.problems[0]).toMatch(/VITE_IDENTITY_API_URL is not set/)
+    expect(readEnv({ VITE_MOCK_API: 'off' }, prod).ok).toBe(false)
   })
 
-  it('refuses what is not a URL', () => {
-    expect(problems('not a url')).toEqual(['VITE_IDENTITY_API_URL is not a valid URL.'])
-    // "localhost:8001" parses as the scheme "localhost:", so it is refused as a scheme.
-    expect(problems('localhost:8001')).toContain('VITE_IDENTITY_API_URL must start with http:// or https://.')
+  it('may be left out in development, where Vite forwards /v1 to identity-api', () => {
+    expect(readEnv({ VITE_MOCK_API: 'off' }, dev)).toEqual({ ok: true, env: { identityOrigin: null, mock: false } })
   })
 
-  it('refuses other schemes', () => {
-    expect(problems('ftp://api.example.com')).toEqual(['VITE_IDENTITY_API_URL must start with http:// or https://.'])
-    expect(problems('javascript:alert(1)')).toContain('VITE_IDENTITY_API_URL must start with http:// or https://.')
+  it('keeps only the origin of a good value', () => {
+    expect(readEnv({ VITE_IDENTITY_API_URL: 'https://identity.shazlo.store/' }, prod)).toMatchObject({ ok: true, env: { identityOrigin: 'https://identity.shazlo.store' } })
+    expect(readEnv({ VITE_IDENTITY_API_URL: 'http://localhost:8001', VITE_MOCK_API: 'off' }, dev)).toMatchObject({ ok: true, env: { identityOrigin: 'http://localhost:8001' } })
   })
 
-  it('refuses credentials, a path, a query or a fragment', () => {
-    expect(problems('https://user:secret@api.example.com')).toEqual([
-      'VITE_IDENTITY_API_URL must not contain a user name or password.',
-    ])
-    expect(problems('https://api.example.com/v1')).toHaveLength(1)
-    expect(problems('https://api.example.com/?a=1')).toHaveLength(1)
-    expect(problems('https://api.example.com/#x')).toHaveLength(1)
+  it.each([
+    ['plain http in production', 'http://identity.shazlo.store', /must use https/],
+    ['plain http to another machine in development', 'http://identity.lan:8001', /must use https/],
+    ['a path', 'https://identity.shazlo.store/v1', /without a path/],
+    ['a query', 'https://identity.shazlo.store/?x=1', /query or a fragment/],
+    ['credentials', 'https://user:secret@identity.shazlo.store', /user name or password/],
+    ['another scheme', 'ftp://identity.shazlo.store', /must start with https/],
+    ['not a URL', 'identity.shazlo.store', /not a valid URL/],
+    // Each would end the CSP directive the origin is written into, or start a new one.
+    ['a semicolon in the host', 'https://identity.shazlo.store;script-src', /letters, digits, dots and hyphens/],
+    ['a comma in the host', 'https://a,b.shazlo.store', /letters, digits, dots and hyphens/],
+    ['a quote in the host', "https://a'b.shazlo.store", /letters, digits, dots and hyphens/],
+    ['an IPv6 host', 'https://[::1]', /letters, digits, dots and hyphens/],
+  ])('refuses %s', (_name, value, problem) => {
+    const result = readEnv({ VITE_IDENTITY_API_URL: value, VITE_MOCK_API: 'off' }, value.includes('lan') ? dev : prod)
+    expect(result.ok).toBe(false)
+    expect(!result.ok && result.problems.join(' ')).toMatch(problem)
   })
 
-  it('refuses a host that could change the Content-Security-Policy it is written into', () => {
-    // The URL parser accepts ";" and "," in a host name; in the policy ";" starts a new directive.
-    expect(problems('https://api.example.com;sandbox', prod)).toEqual([
-      'VITE_IDENTITY_API_URL has a host name with characters a host name cannot have.',
-    ])
-    expect(problems('https://a.example.com,b.example.com', prod)).toHaveLength(1)
-    expect(problems('https://xn--bcher-kva.example', prod)).toEqual([])
-    expect(problems('http://[::1]:8001', dev)).toEqual([])
-  })
-
-  it('never repeats the value in a problem', () => {
-    const all = [
-      ...problems('https://user:topsecret@api.example.com/v1?key=abc#frag'),
-      ...problems('http://hidden.example.com', prod),
-    ].join(' ')
-    expect(all).not.toMatch(/topsecret|hidden\.example|key=abc/)
+  it('never repeats the value in a problem (it could hold a pasted password)', () => {
+    const result = readEnv({ VITE_IDENTITY_API_URL: 'https://admin:hunter2-secret@identity.shazlo.store/x' }, prod)
+    expect(JSON.stringify(result)).not.toContain('hunter2')
   })
 })

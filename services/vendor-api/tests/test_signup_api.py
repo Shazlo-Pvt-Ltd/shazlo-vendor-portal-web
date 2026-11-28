@@ -15,7 +15,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from support import RecordingSender
 
-from vendor_api.app import create_app
+from vendor_api.app import create_seller_app
 from vendor_api.core.settings import Settings
 from vendor_api.db.models import (
     AuthToken,
@@ -75,7 +75,7 @@ def api_settings(settings: Settings, override: Any) -> Settings:
 async def api(api_settings: Settings, session: AsyncSession) -> AsyncIterator[Api]:
     # A private Redis per test: the rate limits count in it, and tests must not share counters.
     redis = FakeAsyncRedis()
-    app = create_app(api_settings, readiness_checks={}, redis=redis)
+    app = create_seller_app(api_settings, readiness_checks={}, redis=redis)
     sender = RecordingSender(ConsoleEmailSender("https://vendors.test", show_links=False))
     app.state.emails = EmailService(sender, retry_delay_seconds=0)
 
@@ -536,7 +536,7 @@ async def test_the_lifetime_is_a_setting(
     api_settings: Settings, session: AsyncSession, override: Any
 ) -> None:
     short = override(api_settings, email_verification_ttl_minutes=10)
-    app = create_app(short, readiness_checks={}, redis=FakeAsyncRedis())
+    app = create_seller_app(short, readiness_checks={}, redis=FakeAsyncRedis())
     sender = RecordingSender(ConsoleEmailSender("https://v.test", show_links=False))
     app.state.emails = EmailService(sender, retry_delay_seconds=0)
 

@@ -1,0 +1,47 @@
+import type { PillStatus } from '@shazlo/ui'
+import type * as M from '../api/model'
+
+export type Pill = { status: PillStatus; label: string }
+
+// One mapping from API states to the shared StatusPill looks, so every admin list reads the same.
+export const vendorPill: Record<M.VendorStatus, Pill> = {
+  applied: { status: 'pending', label: 'Applied' },
+  under_review: { status: 'editInReview', label: 'More info asked' },
+  approved: { status: 'live', label: 'Approved' },
+  rejected: { status: 'sentBack', label: 'Rejected' },
+  suspended: { status: 'suspended', label: 'Suspended' },
+}
+
+export const outboxPill: Record<M.OutboxStatus, Pill> = {
+  waiting: { status: 'pending', label: 'Waiting' },
+  retrying: { status: 'publishing', label: 'Retrying' },
+  failed: { status: 'suspended', label: 'Failed' },
+  delivered: { status: 'live', label: 'Delivered' },
+}
+
+// The publishing page's filter in its link (?status=…), in tab order. Shazlo One's home links to
+// /vendors/publishing?status=<one of these>; anything else shows every event.
+export const OUTBOX_STATUSES: readonly M.OutboxStatus[] = ['waiting', 'retrying', 'failed', 'delivered']
+export const isOutboxStatus = (value: string | null): value is M.OutboxStatus => (OUTBOX_STATUSES as readonly (string | null)[]).includes(value)
+
+export function queuePill(item: Pick<M.QueueItem, 'kind' | 'change' | 'resubmission'>): Pill {
+  if (item.kind === 'application') return { status: 'pending', label: 'Application' }
+  if (item.resubmission > 0) return { status: 'sentBack', label: `Resubmission #${item.resubmission}` }
+  if (item.change === 'edit') return { status: 'editInReview', label: item.kind === 'brand_page' ? 'Edit to live page' : 'Edit to live product' }
+  return { status: 'pending', label: item.kind === 'brand_page' ? 'First brand page' : 'New product' }
+}
+
+export const decisionPill: Record<'approved' | 'rejected' | 'withdrawn', Pill> = {
+  approved: { status: 'live', label: 'Approved' },
+  rejected: { status: 'sentBack', label: 'Sent back' },
+  withdrawn: { status: 'archived', label: 'Withdrawn' },
+}
+
+// "5 h 20 m", "34 h", "2 d 3 h": how long something has waited.
+export function formatWait(ms: number): string {
+  const minutes = Math.max(0, Math.floor(ms / 60_000))
+  if (minutes < 60) return `${minutes} m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 48) return minutes % 60 && hours < 10 ? `${hours} h ${minutes % 60} m` : `${hours} h`
+  return `${Math.floor(hours / 24)} d ${hours % 24} h`
+}

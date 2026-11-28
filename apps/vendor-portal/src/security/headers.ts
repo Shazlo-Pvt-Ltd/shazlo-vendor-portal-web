@@ -18,6 +18,12 @@ export interface HeaderOptions {
   mode: HeaderMode
   /** The dev server's origin, for its hot-reload socket. */
   devOrigin?: string
+  /**
+   * Demo mode (`VITE_MOCK_API=on`, dev and preview only): the mock service worker passes every
+   * request it does not answer on with fetch(), which its own policy checks against connect-src,
+   * so connect-src also allows the app itself. Ignored in production.
+   */
+  demo?: boolean
 }
 
 /**
@@ -34,6 +40,7 @@ export interface HeaderOptions {
  */
 export function contentSecurityPolicy(options: HeaderOptions): string {
   const dev = options.mode === 'development'
+  const demo = options.demo === true && options.mode !== 'production'
   const devOrigin = options.devOrigin ?? 'http://localhost:5174'
   const directives: Array<[string, string[]]> = [
     ['default-src', ["'self'"]],
@@ -44,7 +51,7 @@ export function contentSecurityPolicy(options: HeaderOptions): string {
     ['font-src', ["'self'"]],
     [
       'connect-src',
-      [options.apiOrigin, CLOUDINARY_UPLOAD_ORIGIN, ...(dev ? [devOrigin.replace(/^http/, 'ws'), devOrigin] : [])],
+      [...(demo ? ["'self'"] : []), options.apiOrigin, CLOUDINARY_UPLOAD_ORIGIN, ...(dev ? [devOrigin.replace(/^http/, 'ws'), devOrigin] : [])],
     ],
     ['frame-src', ["'none'"]],
     ['object-src', ["'none'"]],

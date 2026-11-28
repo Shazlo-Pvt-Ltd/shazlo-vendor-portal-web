@@ -148,7 +148,7 @@ describe('auth (shell to module)', () => {
 })
 
 describe('navigate (shell to module)', () => {
-  it.each(['/', '/orders', '/orders/42?tab=2#top', '/a b'])('accepts %s', (path) => {
+  it.each(['/', '/orders', '/orders/42?tab=2#top'])('accepts %s', (path) => {
     expect(toModule(envelope('navigate', { path })).ok).toBe(true)
   })
 
@@ -161,7 +161,12 @@ describe('navigate (shell to module)', () => {
     ['a backslash', '/\\evil.example'],
     ['a control character', '/a\nb'],
     ['a number', 42],
-    ['an oversize path', `/${'a'.repeat(2000)}`],
+    ['an oversize path', `/${'a'.repeat(512)}`],
+    // The shell joins the path to the module's base path, so it may not climb out of it.
+    ['a dot-dot segment', '/../admins'],
+    ['an encoded dot-dot segment', '/%2e%2e/admins'],
+    ['a dot segment', '/./queue'],
+    ['whitespace', '/a b'],
   ])('drops a path that is %s', (_name, path) => {
     expect(dropped(toModule(envelope('navigate', { path })))).toBe('invalid_payload')
   })

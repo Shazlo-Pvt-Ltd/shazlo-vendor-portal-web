@@ -19,7 +19,7 @@ describe('token demo page', () => {
   afterAll(cleanup)
 
   it('has a section for each token group', () => {
-    for (const title of ['Brand', 'Neutrals', 'Status', 'Links and annotations', 'Type scale', 'Spacing (4 px grid) and radius', 'Components', 'Shazlo-One shell']) {
+    for (const title of ['Brand', 'Neutrals', 'Status', 'Links and annotations', 'Type scale', 'Spacing (4 px grid) and radius', 'Components', 'Seller components', 'Shazlo-One shell']) {
       expect(screen.getByRole('region', { name: title })).toBeTruthy()
     }
   })
@@ -56,6 +56,17 @@ describe('token demo page', () => {
       const chip = section.getByText(label).closest('.MuiChip-root')!
       expect(chip.querySelector('[aria-hidden="true"]')).toBeTruthy()
     }
+  })
+
+  it('previews the shared seller components with every status', () => {
+    const section = within(screen.getByRole('region', { name: 'Seller components' }))
+    for (const label of ['Live', 'Pending review', 'Sent back', 'Draft', 'Edit in review', 'Publishing', 'Archived', 'Suspended']) {
+      expect(section.getAllByText(label).some((el) => el.closest('[data-status]'))).toBe(true)
+    }
+    expect(section.getByRole('heading', { level: 1, name: 'Products' })).toBeTruthy()
+    expect(section.getByRole('group', { name: 'Pending review' })).toBeTruthy()
+    expect(section.getByRole('alert')).toBeTruthy()
+    expect(section.getByRole('heading', { name: 'No products yet' })).toBeTruthy()
   })
 
   it('links to the inspected source and labels the theme scope without claiming screen parity', () => {

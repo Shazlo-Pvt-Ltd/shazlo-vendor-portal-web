@@ -26,4 +26,7 @@ USER app
 EXPOSE 8002
 HEALTHCHECK --interval=10s --timeout=3s --retries=5 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health')"
+# The seller app by default. The same image runs the admin app (ADR 0011) with
+#   uvicorn vendor_api.admin_main:app --host 0.0.0.0 --port 8004
+# (override the healthcheck to port 8004 too) and the worker with python -m vendor_api.worker.
 CMD ["uvicorn", "vendor_api.main:app", "--host", "0.0.0.0", "--port", "8002"]

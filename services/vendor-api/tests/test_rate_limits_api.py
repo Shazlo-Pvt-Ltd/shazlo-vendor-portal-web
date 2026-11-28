@@ -126,7 +126,7 @@ async def login(api: Api, password: str = PASSWORD, ip: str = IP_A, email: str =
 
 
 def listen(caplog: pytest.LogCaptureFixture) -> None:
-    """`create_app` replaces the root logger's handlers (its JSON log format), which removes
+    """`create_seller_app` replaces the root logger's handlers (its JSON log format), which removes
     pytest's capture handler when the app is built inside the test; put it back."""
     root = logging.getLogger()
     if caplog.handler not in root.handlers:

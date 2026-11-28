@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from vendor_api.api.auth import no_store
+from vendor_api.api.common import no_store
 from vendor_api.api.deps import Scope
 from vendor_api.db.models import ReviewStatus, ReviewSubject
 from vendor_api.db.session import get_session
@@ -37,6 +37,8 @@ class SubmissionOut(BaseModel):
     version: int
     status: Literal["pending", "approved", "rejected", "withdrawn"]
     reason: str | None
+    # The kind of problem the reviewer picked, if any.
+    reason_code: str | None
     submitted_at: datetime
     decided_at: datetime | None
 
@@ -55,6 +57,7 @@ class SubmissionPageOut(BaseModel):
                             "version": 2,
                             "status": "rejected",
                             "reason": "The photos are too dark to see the print.",
+                            "reason_code": "photos",
                             "submitted_at": "2026-11-10T09:30:00Z",
                             "decided_at": "2026-11-11T12:00:00Z",
                         },
@@ -66,6 +69,7 @@ class SubmissionPageOut(BaseModel):
                             "version": 3,
                             "status": "pending",
                             "reason": None,
+                            "reason_code": None,
                             "submitted_at": "2026-11-09T08:00:00Z",
                             "decided_at": None,
                         },
@@ -123,6 +127,7 @@ async def list_submissions(
                     "version": item.version,
                     "status": item.status,
                     "reason": item.reason,
+                    "reason_code": item.reason_code,
                     "submitted_at": item.submitted_at,
                     "decided_at": item.decided_at,
                 }

@@ -2,13 +2,28 @@
   "name": "@shazlo/shell-protocol",
   "private": true,
   "version": "0.1.0",
-  "description": "The postMessage protocol between the Shazlo-One shell and its framed modules (ADR 0001): types, validators and both ends of the channel",
+  "description": "The Shazlo One shell protocol: the postMessage channel between the shell and its module iframes (ADR 0001), and the module registry, manifest and summary (ADR 0011)",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "peerDependencies": {
+    "msw": "^3.0.5"
+  },
+  "peerDependenciesMeta": {
+    "msw": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "msw": "^3.0.5"
   }
 }

@@ -5,17 +5,15 @@ owner changes where the money goes (`payout`) and the business details (`busines
 numbers never come back: only the bank's name, the last four digits and a masked UPI ID.
 """
 
-import uuid
-from datetime import datetime
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, Request, Response
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from vendor_api.api.auth import no_store
+from vendor_api.api.common import no_store
 from vendor_api.api.deps import FORBIDDEN, CurrentVendorUser, current_vendor_user
-from vendor_api.db.models import Vendor, VendorUserRole
+from vendor_api.api.views import StoreDetailsOut, store_details_out
+from vendor_api.db.models import VendorUserRole
 from vendor_api.db.session import get_session
 from vendor_api.services.store_details import (
     OWNER_ONLY_SECTIONS,
@@ -29,7 +27,6 @@ from vendor_api.services.store_details import (
     Section,
     SectionBody,
     StoreDetailsService,
-    StoreDetailsView,
 )
 
 router = APIRouter(prefix="/vendor/store-details", tags=["store-details"])
@@ -43,48 +40,6 @@ def get_store_details(request: Request) -> StoreDetailsService:
 
 
 Service = Annotated[StoreDetailsService, Depends(get_store_details)]
-
-
-class StoreDetailsOut(BaseModel):
-    brand_name: str
-    sells: Literal["women", "men", "both"] | None
-    city: str | None
-    instagram_or_website: str | None
-    contact: dict[str, str] | None
-    # {"mode": "shazlo", "pickup_address": {...}} or {"mode": "own", "areas": {...},
-    # "delivery_days": "2_3"}
-    delivery: dict[str, Any] | None
-    # {"window_days": 14, "condition": "unworn_with_tags", "refund_days": 5}; with window 0 the
-    # other two are null.
-    returns: dict[str, Any] | None
-    pay_on_delivery: dict[str, bool] | None
-    # Masked: {"method": "bank", "holder_name", "bank_name" (null for an unlisted bank),
-    # "account_last4", "ifsc"} or {"method": "upi", "upi_id": "ka•••@okhdfcbank"}.
-    payout: dict[str, Any] | None
-    business: dict[str, str | None]
-    # Required topics not saved yet, in page order: brand, contact, delivery, returns,
-    # pay_on_delivery, payout.
-    missing: list[str]
-    complete: bool
-    updated_at: datetime | None
-
-
-def store_details_out(view: StoreDetailsView) -> StoreDetailsOut:
-    return StoreDetailsOut(
-        brand_name=view.brand_name,
-        sells=cast(Literal["women", "men", "both"] | None, view.sells),
-        city=view.city,
-        instagram_or_website=view.instagram_or_website,
-        contact=view.contact,
-        delivery=view.delivery,
-        returns=view.returns,
-        pay_on_delivery=view.pay_on_delivery,
-        payout=view.payout,
-        business=view.business,
-        missing=view.missing,
-        complete=view.complete,
-        updated_at=view.updated_at,
-    )
 
 
 @router.get("")
@@ -174,13 +129,3 @@ async def save_business(
     """Owner only. Optional legal name and GST number (checked, check character included);
     empty values are stored as null."""
     return await _save("business", body, response, db, service, current)
-
-
-async def store_details_of_vendor(
-    db: AsyncSession, service: StoreDetailsService, vendor_id: uuid.UUID
-) -> StoreDetailsOut | None:
-    """For the admin view: None when there is no such vendor."""
-    vendor = await db.get(Vendor, vendor_id)
-    if vendor is None:
-        return None
-    return store_details_out(await service.get(db, vendor))

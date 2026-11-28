@@ -1,0 +1,236 @@
+import { http, HttpResponse, type HttpResponseResolver } from 'msw'
+import type { components } from '../api/identity'
+
+// Stand-in for identity-api (services/identity-api) in the browser and in tests. Same routes and
+// envelopes; the HttpOnly identity_refresh cookie is modelled as `db.cookie`.
+type S = components['schemas']
+
+export const DEMO_ADMIN = { email: 'naman@shazlo.store', password: 'shazlo-one-2026' }
+export const INVITED_ADMIN = { email: 'sneha@shazlo.store', password: 'welcome-sneha-01' }
+
+// identity-api's ids are UUIDs; the seed ones are fixed so tests can name them.
+const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
+export const ADMIN_ID = { naman: uuid(1), priya: uuid(2), rahul: uuid(3), sneha: uuid(4), kabir: uuid(5) } as const
+
+export const ROLES: S['RoleOut'][] = [
+  { name: 'super_admin', description: 'Manages admins and roles, and passes every role check in every module.' },
+  { name: 'vendor_reviewer', description: 'Reviews vendor applications, brand pages and products in the Vendors module.' },
+]
+// ADR 0009: which roles may get a token for which service.
+const AUDIENCE_ROLES: Record<string, string[]> = { 'vendor-api': ['super_admin', 'vendor_reviewer'] }
+const ACCESS_SECONDS = 15 * 60
+
+// A module token from the token exchange: mock.<audience>.<adminId>.<name>.<expEpochSeconds>. A module's
+// mock backend reads the admin from it (the mock vendor-api does, for the browser demo).
+export function mockModuleToken(audience: string, admin: { id: string; name: string }, expiresAt: number) {
+  return `mock.${audience}.${admin.id}.${encodeURIComponent(admin.name)}.${expiresAt}`
+}
+const MAX_FAILURES = 5
+
+type AdminRecord = S['AdminOut'] & { password: string }
+
+export interface IdentityDb {
+  now: () => Date
+  admins: AdminRecord[]
+  access: Map<string, { adminId: string; exp: number }>
+  cookie: string | null
+  refresh: Map<string, string>
+  failures: Map<string, number>
+  seq: number
+}
+
+export function createIdentityDb({ now = () => new Date() }: { now?: () => Date } = {}): IdentityDb {
+  const t = now().getTime()
+  const at = (h: number) => new Date(t - h * 3_600_000).toISOString()
+  const admin = (id: string, display_name: string, email: string, roles: string[], extra: Partial<AdminRecord> = {}): AdminRecord => ({
+    id, display_name, email, roles, is_active: true, must_change_password: false, created_at: at(24 * 60), last_login_at: at(3), password: DEMO_ADMIN.password, ...extra,
+  })
+  return {
+    now,
+    admins: [
+      admin(ADMIN_ID.naman, 'Naman Sinha', 'naman@shazlo.store', ['super_admin'], { last_login_at: at(0.2), created_at: at(24 * 120) }),
+      admin(ADMIN_ID.priya, 'Priya Mehta', 'priya@shazlo.store', ['vendor_reviewer'], { last_login_at: at(1.5) }),
+      admin(ADMIN_ID.rahul, 'Rahul Desai', 'rahul@shazlo.store', ['vendor_reviewer'], { last_login_at: at(26) }),
+      admin(ADMIN_ID.sneha, 'Sneha Iyer', 'sneha@shazlo.store', ['vendor_reviewer'], { must_change_password: true, last_login_at: null, created_at: at(20), password: INVITED_ADMIN.password }),
+      admin(ADMIN_ID.kabir, 'Kabir Shah', 'kabir@shazlo.store', ['vendor_reviewer'], { is_active: false, last_login_at: at(24 * 38) }),
+    ],
+    access: new Map(),
+    cookie: null,
+    refresh: new Map(),
+    failures: new Map(),
+    seq: 100,
+  }
+}
+
+// The real identity-api envelope: {error: {code, message, request_id, details?}}. A 422 `validation_error`
+// lists pydantic-style problems in `details`; other codes carry only a message.
+function fail(status: number, code: string, message: string, fields?: Record<string, string>, headers?: Record<string, string>) {
+  const details = fields ? Object.entries(fields).map(([field, msg]) => ({ loc: ['body', field], msg, type: 'value_error' })) : undefined
+  return HttpResponse.json({ error: { code, message, request_id: crypto.randomUUID(), ...(details ? { details } : {}) } }, { status, headers })
+}
+
+const profile = (a: AdminRecord): S['AdminProfile'] => ({ id: a.id, email: a.email, display_name: a.display_name, roles: a.roles, must_change_password: a.must_change_password })
+const out = ({ password: _p, ...a }: AdminRecord): S['AdminOut'] => a
+
+function issue(db: IdentityDb, a: AdminRecord): S['SessionResponse'] {
+  db.seq += 1
+  const token = `mock.identity.${a.id}.${db.seq}`
+  db.access.set(token, { adminId: a.id, exp: Math.floor(db.now().getTime() / 1000) + ACCESS_SECONDS })
+  const refresh = `refresh.${a.id}.${db.seq}`
+  db.refresh.set(refresh, a.id)
+  db.cookie = refresh
+  return { access_token: token, token_type: 'Bearer', expires_in: ACCESS_SECONDS, must_change_password: a.must_change_password, admin: profile(a) }
+}
+
+export function createIdentityHandlers(getDb: () => IdentityDb) {
+  const caller = (request: Request): AdminRecord | null => {
+    const db = getDb()
+    const entry = db.access.get(request.headers.get('authorization')?.replace(/^Bearer /, '') ?? '')
+    if (!entry || entry.exp * 1000 < db.now().getTime()) return null
+    const a = db.admins.find((x) => x.id === entry.adminId)
+    return a?.is_active ? a : null
+  }
+  // As identity-api: a token for an admin who must change the temporary password opens nothing but
+  // change-password (403 password_change_required), and a role check reads the database's roles.
+  const authed = (fn: (info: Parameters<HttpResponseResolver>[0], me: AdminRecord) => ReturnType<HttpResponseResolver>, role?: string, { mustChangeOk = false } = {}): HttpResponseResolver => (info) => {
+    const me = caller(info.request)
+    if (!me) return fail(401, 'unauthorized', 'Your session has ended. Sign in again.')
+    if (me.must_change_password && !mustChangeOk) return fail(403, 'password_change_required', 'Choose your own password first.')
+    if (role && !me.roles.includes(role)) return fail(403, 'forbidden', 'Only super admins can manage admins.')
+    return fn(info, me)
+  }
+  const unknownRole = (roles: string[] | null | undefined) => (roles ?? []).some((r) => !ROLES.some((known) => known.name === r))
+
+  return [
+    http.post('*/v1/auth/login', async ({ request }) => {
+      const db = getDb()
+      const { email, password } = (await request.json()) as { email: string; password: string }
+      const key = email.trim().toLowerCase()
+      if ((db.failures.get(key) ?? 0) >= MAX_FAILURES) return fail(429, 'rate_limited', 'Too many attempts. Wait 15 minutes, or ask a super admin to reset your password.', undefined, { 'Retry-After': '900' })
+      const a = db.admins.find((x) => x.email === key)
+      if (!a || !a.is_active || a.password !== password) {
+        db.failures.set(key, (db.failures.get(key) ?? 0) + 1)
+        return fail(401, 'invalid_credentials', 'That email and password do not match. Check both and try again.')
+      }
+      db.failures.delete(key)
+      a.last_login_at = db.now().toISOString()
+      return HttpResponse.json(issue(db, a))
+    }),
+
+    http.post('*/v1/auth/refresh', () => {
+      const db = getDb()
+      const adminId = db.cookie ? db.refresh.get(db.cookie) : undefined
+      const a = db.admins.find((x) => x.id === adminId)
+      if (!a || !a.is_active) return fail(401, 'invalid_refresh_token', 'Your session has ended. Sign in again.')
+      db.refresh.delete(db.cookie!)
+      return HttpResponse.json(issue(db, a))
+    }),
+
+    http.post('*/v1/auth/logout', () => {
+      const db = getDb()
+      if (db.cookie) db.refresh.delete(db.cookie)
+      db.cookie = null
+      return new HttpResponse(null, { status: 204 })
+    }),
+
+    http.post('*/v1/auth/change-password', authed(async ({ request }, me) => {
+      const { current_password, new_password } = (await request.json()) as { current_password: string; new_password: string }
+      if (current_password !== me.password) return fail(400, 'invalid_current_password', 'This is not your current password.')
+      if (new_password.length < 12) return fail(422, 'weak_password', 'Use at least 12 characters.')
+      if (new_password === current_password) return fail(422, 'weak_password', 'Use a different password from the temporary one.')
+      me.password = new_password
+      me.must_change_password = false
+      return HttpResponse.json(issue(getDb(), me))
+    }, undefined, { mustChangeOk: true })),
+
+    http.post('*/v1/auth/token', authed(async ({ request }, me) => {
+      const { audience } = (await request.json()) as { audience: string }
+      if (audience === 'identity-api') return fail(400, 'audience_not_exchangeable', 'identity-api tokens come from sign-in and refresh only.')
+      const allowed = AUDIENCE_ROLES[audience]
+      if (!allowed) return fail(400, 'unknown_audience', 'No module backend is registered under this audience.')
+      if (!me.roles.some((r) => allowed.includes(r))) return fail(403, 'audience_not_allowed', 'Your role does not give access to this module.')
+      const exp = Math.floor(getDb().now().getTime() / 1000) + 300
+      return HttpResponse.json({ access_token: mockModuleToken(audience, { id: me.id, name: me.display_name }, exp), token_type: 'Bearer', expires_in: 300, audience } satisfies S['TokenResponse'])
+    })),
+
+    http.get('*/v1/me', authed((_, me) => HttpResponse.json(profile(me)))),
+
+    http.get('*/v1/roles', authed(() => HttpResponse.json(ROLES))),
+
+    http.get('*/v1/admins', authed(({ request }) => {
+      const q = new URL(request.url).searchParams
+      let items = getDb().admins
+      const text = q.get('q')?.toLowerCase()
+      if (text) items = items.filter((a) => `${a.display_name} ${a.email}`.toLowerCase().includes(text))
+      if (q.get('role')) items = items.filter((a) => a.roles.includes(q.get('role')!))
+      if (q.get('is_active')) items = items.filter((a) => String(a.is_active) === q.get('is_active'))
+      // identity-api's paging: limit 1 to 100 (25 by default), offset from 0.
+      const limit = Number(q.get('limit') ?? 25)
+      const offset = Number(q.get('offset') ?? 0)
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0) return fail(422, 'validation_error', 'Check the paging values.')
+      return HttpResponse.json({ items: items.slice(offset, offset + limit).map(out), total: items.length, limit, offset } satisfies S['AdminList'])
+    }, 'super_admin')),
+
+    http.post('*/v1/admins', authed(async ({ request }) => {
+      const db = getDb()
+      const body = (await request.json()) as S['CreateAdminRequest']
+      const fields: Record<string, string> = {}
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.email ?? '')) fields.email = 'Enter an email like name@shazlo.store.'
+      if (!body.display_name?.trim()) fields.display_name = 'Add their name.'
+      if (!body.roles?.length) fields.roles = 'Choose at least one role.'
+      if ((body.password ?? '').length < 12) fields.password = 'Temporary passwords need at least 12 characters.'
+      if (Object.keys(fields).length) return fail(422, 'validation_error', 'Check the highlighted fields.', fields)
+      if (unknownRole(body.roles)) return fail(422, 'unknown_role', 'A role in the request does not exist.')
+      if (db.admins.some((a) => a.email === body.email.toLowerCase())) return fail(409, 'email_taken', 'This email already has an admin account.')
+      db.seq += 1
+      const a: AdminRecord = { id: uuid(1000 + db.seq), email: body.email.toLowerCase(), display_name: body.display_name.trim(), roles: body.roles, is_active: true, must_change_password: true, created_at: db.now().toISOString(), last_login_at: null, password: body.password }
+      db.admins.push(a)
+      return HttpResponse.json(out(a), { status: 201 })
+    }, 'super_admin')),
+
+    // Any signed-in admin: the display name behind an id, and nothing else. Unknown ids are left out.
+    http.get('*/v1/admins/names', authed(({ request }) => {
+      const ids = new Set(new URL(request.url).searchParams.getAll('ids'))
+      if (ids.size > 100) return fail(422, 'validation_error', 'Ask for at most 100 admins at a time.')
+      return HttpResponse.json({ items: getDb().admins.filter((a) => ids.has(a.id)).map((a) => ({ id: a.id, display_name: a.display_name })) })
+    })),
+
+    http.get('*/v1/admins/:id', authed(({ params }) => {
+      const a = getDb().admins.find((x) => x.id === params.id)
+      return a ? HttpResponse.json(out(a)) : fail(404, 'admin_not_found', 'We could not find that admin.')
+    }, 'super_admin')),
+
+    http.patch('*/v1/admins/:id', authed(async ({ params, request }, me) => {
+      const db = getDb()
+      const a = db.admins.find((x) => x.id === params.id)
+      if (!a) return fail(404, 'admin_not_found', 'We could not find that admin.')
+      const body = (await request.json()) as S['UpdateAdminRequest']
+      // identity-api's rules (services/admins.py): nobody deactivates themself, and the last active
+      // super admin can be neither deactivated nor lose the role.
+      const deactivating = body.is_active === false && a.is_active
+      if (deactivating && a.id === me.id) return fail(409, 'cannot_deactivate_self', 'You cannot deactivate yourself.')
+      const losesSuper = body.roles !== undefined && body.roles !== null && a.roles.includes('super_admin') && !body.roles.includes('super_admin')
+      const activeSupers = db.admins.filter((x) => x.is_active && x.roles.includes('super_admin')).length
+      if (a.is_active && a.roles.includes('super_admin') && (deactivating || losesSuper) && activeSupers <= 1) {
+        return fail(409, 'last_super_admin', 'The last active super_admin cannot be deactivated or lose the role.')
+      }
+      if (body.roles && !body.roles.length) return fail(422, 'validation_error', 'Choose at least one role.', { roles: 'Choose at least one role.' })
+      if (unknownRole(body.roles)) return fail(422, 'unknown_role', 'A role in the request does not exist.')
+      Object.assign(a, Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)))
+      if (body.is_active === false) for (const [token, owner] of db.refresh) if (owner === a.id) db.refresh.delete(token)
+      return HttpResponse.json(out(a))
+    }, 'super_admin')),
+
+    http.post('*/v1/admins/:id/reset-password', authed(async ({ params, request }) => {
+      const db = getDb()
+      const a = db.admins.find((x) => x.id === params.id)
+      if (!a) return fail(404, 'admin_not_found', 'We could not find that admin.')
+      const { new_password } = (await request.json()) as { new_password: string }
+      if (new_password.length < 12) return fail(422, 'weak_password', 'Temporary passwords need at least 12 characters.')
+      a.password = new_password
+      a.must_change_password = true
+      for (const [token, owner] of db.refresh) if (owner === a.id) db.refresh.delete(token)
+      return new HttpResponse(null, { status: 204 })
+    }, 'super_admin')),
+  ]
+}

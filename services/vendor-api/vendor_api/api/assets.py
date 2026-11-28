@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from shazlo_security.rate_limit import Check
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from vendor_api.api.auth import no_store
+from vendor_api.api.common import no_store
 from vendor_api.api.deps import CurrentVendorUser, Limits, current_vendor_user
 from vendor_api.core.settings import Settings
 from vendor_api.core.validation import DatabaseText

@@ -36,6 +36,7 @@ SHELL_OPERATIONS = [
     ("get", "/v1/me"),
     ("get", "/v1/roles"),
     ("get", "/v1/admins"),
+    ("get", "/v1/admins/names"),
     ("post", "/v1/admins"),
     ("get", "/v1/admins/{admin_id}"),
     ("patch", "/v1/admins/{admin_id}"),
@@ -79,6 +80,7 @@ DOCUMENTED_ERRORS: dict[tuple[str, str], dict[str, set[str]]] = {
     ("get", "/v1/me"): SIGNED_IN,
     ("get", "/v1/roles"): ADMIN_ONLY,
     ("get", "/v1/admins"): {**ADMIN_ONLY, "422": {"validation_error"}},
+    ("get", "/v1/admins/names"): {**SIGNED_IN, "422": {"validation_error"}},
     ("post", "/v1/admins"): {
         **ADMIN_ONLY,
         "409": {"email_taken"},

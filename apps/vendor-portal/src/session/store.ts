@@ -130,8 +130,14 @@ export class SessionStore {
     return this.started
   }
 
-  /** Takes a session a login call returned. */
+  /**
+   * Takes a session a login call returned. It also starts the store when nothing has yet (the app
+   * starts it through AuthProvider), so renewal, sign-out and the other tabs always work; a later
+   * `start()` then keeps this session instead of refreshing it.
+   */
   signIn(session: SessionResponse): void {
+    this.open()
+    this.started ??= Promise.resolve()
     this.adopt(session)
     this.channel?.postMessage({ type: 'login' })
   }

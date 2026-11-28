@@ -16,7 +16,6 @@ from vendor_api.core.settings import Settings
 from vendor_api.db.models import Vendor, VendorUser, VendorUserRole
 from vendor_api.db.session import get_session
 from vendor_api.services.auth import AuthService, user_may_sign_in, vendor_may_sign_in
-from vendor_api.services.email import EmailService
 from vendor_api.services.tokens import VendorClaims, VendorTokens
 
 _bearer = HTTPBearer(auto_error=False)
@@ -28,14 +27,6 @@ FORBIDDEN = ApiError(403, "forbidden", "Your role does not allow this")
 VENDOR_NOT_ALLOWED = ApiError(
     403, "vendor_not_allowed", "This vendor account cannot use the API. Contact support"
 )
-
-
-def get_emails(request: Request) -> EmailService:
-    return cast(EmailService, request.app.state.emails)
-
-
-# An endpoint sends email with `emails.send_in_background(background_tasks, to, template, context)`.
-Emails = Annotated[EmailService, Depends(get_emails)]
 
 
 def get_rate_limits(request: Request) -> RateLimitGuard:

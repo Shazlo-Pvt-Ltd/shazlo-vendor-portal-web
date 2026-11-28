@@ -1,0 +1,360 @@
+// Copy for A-08 Vendors and A-09 Vendor detail. One module per screen family, so Hindi can follow.
+import type * as M from '../api/model'
+
+type HistoryEvent = M.History[number]['event']
+
+const plural = (n: number, one: string, many: string) => `${n.toLocaleString('en-IN')} ${n === 1 ? one : many}`
+const productCount = (n: number) => plural(n, 'product', 'products')
+
+export const SORTS = ['name', 'newest', 'products'] as const
+export type VendorSort = (typeof SORTS)[number]
+
+// The list's tabs: every status, and the brands whose proposed rate waits for Shazlo.
+export const RATE_TAB = 'rate_to_review'
+export type VendorTabKey = 'all' | M.VendorStatus | typeof RATE_TAB
+export const vendorTabs: { key: VendorTabKey; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'applied', label: 'Applied' },
+  { key: 'under_review', label: 'More info asked' },
+  { key: RATE_TAB, label: 'Rate to review' },
+  { key: 'approved', label: 'Approved' },
+  { key: 'rejected', label: 'Rejected' },
+  { key: 'suspended', label: 'Suspended' },
+]
+
+export const sellsLabel: Record<M.Sells, string> = { women: 'Women', men: 'Men', both: 'Women and men' }
+
+export const REASON_MIN = 10
+
+export const commissionCopy = {
+  proposed: (rate: string) => `${rate} proposed`,
+  notSet: 'Not set',
+  // The CSV keeps both numbers when a proposal waits.
+  agreedAndProposed: (agreed: string, proposed: string) => `${agreed} · ${proposed} proposed`,
+}
+
+export const vendorsCopy = {
+  title: 'Vendors',
+  subtitle: (brands: number, waiting: number) => `${plural(brands, 'brand', 'brands')} · ${plural(waiting, 'application', 'applications')} waiting`,
+  exportCsv: 'Export CSV',
+  exported: (n: number) => `Exported ${plural(n, 'vendor', 'vendors')}`,
+  nothingToExport: 'There are no vendors in this list to export.',
+  tabsLabel: 'Vendor status',
+  updating: 'Updating the list',
+  search: { label: 'Search brand, owner, email or phone', clear: 'Clear search' },
+  filters: { city: 'City', allCities: 'All cities', sort: 'Sort', sortPrefix: 'Sort:' },
+  sortOptions: [
+    { value: 'name', label: 'Name A–Z' },
+    { value: 'newest', label: 'Newest' },
+    { value: 'products', label: 'Most live products' },
+  ] satisfies { value: VendorSort; label: string }[],
+  table: {
+    label: 'Vendors',
+    brand: 'Brand',
+    owner: 'Owner',
+    sells: 'Sells',
+    liveProducts: 'Live products',
+    status: 'Status',
+    since: 'Since',
+    commission: 'Commission',
+    actionsHeader: 'Actions',
+    actions: (brand: string) => `Actions for ${brand}`,
+  },
+  menu: { open: 'Open', suspend: 'Suspend', reactivate: 'Reactivate' },
+  noResults: { title: 'No vendors match', body: 'Try a different name, phone number or city.', clear: 'Clear filters' },
+  emptyTab: {
+    all: { title: 'No vendors yet', body: 'Applications from new brands show up here.' },
+    applied: { title: 'No new applications', body: 'New applications from brands show up here.' },
+    under_review: { title: 'No one is waiting on a reply', body: 'Applications you asked more information about show up here.' },
+    rate_to_review: { title: 'No rates to review', body: 'When a brand proposes a commission rate, it shows up here.' },
+    approved: { title: 'No approved vendors', body: 'Brands you approve show up here.' },
+    rejected: { title: 'No rejected applications', body: 'Applications you reject show up here, with your reason.' },
+    suspended: { title: 'No suspended vendors', body: 'Vendors you suspend show up here until you reactivate them.' },
+    showAll: 'Show all vendors',
+  } as Record<VendorTabKey, { title: string; body: string }> & { showAll: string },
+  error: { title: 'We could not load vendors', retry: 'Try again' },
+  csv: {
+    headers: ['Brand', 'Owner', 'Email', 'Phone', 'City', 'Sells', 'Status', 'Live products', 'Since', 'Commission'],
+    filename: (day: string) => `shazlo-vendors-${day}.csv`,
+  },
+} as const
+
+export const vendorActionsCopy = {
+  cancel: 'Cancel',
+  reasonHint: `At least ${REASON_MIN} characters.`,
+  reasonShort: `Write at least ${REASON_MIN} characters.`,
+  suspend: {
+    title: (brand: string) => `Suspend ${brand}?`,
+    body: 'Suspending hides all of their products from the app at once and pauses new orders.',
+    label: 'Reason for suspending',
+    confirm: 'Suspend vendor',
+    pending: 'Suspending…',
+    done: (brand: string) => `Suspended ${brand}`,
+    banner: (brand: string) => `Suspended ${brand}. Their products are hidden from the app and new orders are paused.`,
+  },
+  reactivate: {
+    title: (brand: string) => `Reactivate ${brand}?`,
+    body: 'Their approved products show in the app again and new orders open at once.',
+    confirm: 'Reactivate vendor',
+    pending: 'Reactivating…',
+    done: (brand: string) => `Reactivated ${brand}`,
+    banner: (brand: string) => `Reactivated ${brand}. Their approved products are back in the app and new orders are open.`,
+  },
+  requestInfo: {
+    button: 'Ask for more info',
+    title: (brand: string) => `Ask ${brand} for more information`,
+    body: 'The applicant gets this by email and their application stays open.',
+    label: 'What do you need to know?',
+    confirm: 'Send question',
+    pending: 'Sending…',
+    done: (brand: string) => `Asked ${brand} for more information`,
+    banner: (brand: string, owner: string) => `Asked ${brand} for more information. ${owner} gets your question by email.`,
+  },
+  reject: {
+    button: 'Reject',
+    title: (brand: string) => `Reject ${brand}?`,
+    body: 'The applicant sees this reason.',
+    label: 'Reason for rejecting',
+    confirm: 'Reject application',
+    pending: 'Rejecting…',
+    done: (brand: string) => `Rejected ${brand}`,
+    banner: (brand: string, owner: string) => `Rejected ${brand}. ${owner} has been emailed your reason.`,
+  },
+  approve: {
+    button: 'Approve and invite',
+    pending: 'Approving…',
+    done: (brand: string) => `Approved ${brand}`,
+    banner: (brand: string, owner: string) => `Approved ${brand}. ${owner} has been sent an invite to set a password.`,
+    blockedCommission: 'Enter the commission below to approve.',
+    blockedAgreement: 'Tick “Vendor agreement signed” below to approve.',
+    blockedFields: 'Fix the approval settings below to approve.',
+  },
+  failed: 'That did not go through',
+} as const
+
+// Commission as a percentage the reviewer types: "12" or "12.5", never basis points.
+export const rateErrors = {
+  required: 'Enter the commission, like 12.',
+  number: 'Enter a number, like 12 or 12.5.',
+  range: 'Enter a commission between 0% and 40%.',
+} as const
+
+export const vendorDetailCopy = {
+  back: 'Vendors',
+  applied: (days: number, date: string) => (days <= 0 ? 'Applied today' : days === 1 ? 'Applied yesterday' : days < 30 ? `Applied ${days} days ago` : `Applied ${date}`),
+  opensInNewTab: '(opens in a new tab)',
+  tabsLabel: 'Vendor details',
+  tabs: { application: 'Application', products: 'Products', brand: 'Brand page', activity: 'Activity' },
+  notGiven: 'Not given',
+  application: {
+    title: 'Application',
+    sections: {
+      brand: 'Brand',
+      contact: 'Contact',
+      delivery: 'Delivery',
+      returns: 'Returns',
+      payment: 'Payment on delivery',
+      payouts: 'Payouts',
+      business: 'Business details and commission',
+    },
+    sells: 'Sells',
+    shipsFrom: 'Ships from',
+    link: 'Instagram or website',
+    name: 'Name',
+    mobile: 'Mobile',
+    email: 'Email',
+    whoDelivers: 'Who delivers',
+    shazloDelivery: 'Shazlo delivery service, picked up from them',
+    ownDelivery: 'They deliver themselves',
+    pickup: 'Pickup address',
+    areas: 'Areas they deliver to',
+    allIndia: 'All of India',
+    deliveryTime: 'Delivery time',
+    days: { '1_2': '1–2 days', '2_3': '2–3 days', '3_5': '3–5 days', '5_7': '5–7 days' } satisfies Record<Extract<M.Delivery, { by: 'own' }>['days'], string>,
+    returnWindow: 'Return window',
+    noReturns: 'No returns',
+    windowDays: (n: number) => `${n} days`,
+    condition: 'Conditions',
+    conditions: { unworn_with_tags: 'Unworn with tags', any_reason: 'Any reason', damaged_or_wrong: 'Only damaged or wrong items' } satisfies Record<NonNullable<M.Returns['condition']>, string>,
+    refund: 'Refund time',
+    refundDays: (n: number) => `${n} working days after pickup`,
+    takes: 'Takes',
+    cashAndUpi: 'Cash and UPI',
+    cashOnly: 'Cash only',
+    upiOnly: 'UPI only',
+    neither: 'Neither',
+    payoutTo: 'Paid to',
+    bankAccount: 'Bank account',
+    upiId: 'UPI ID',
+    accountHolder: 'Account holder',
+    account: 'Account',
+    masked: (last4: string) => `•••• ${last4}`,
+    ifsc: 'IFSC',
+    legalName: 'Legal business name',
+    gst: 'GST number',
+    proposed: 'Proposed commission',
+    noProposal: 'None. They will agree a rate with our team.',
+    terms: 'Seller terms',
+    priceRule: 'Price rule',
+    priceRuleText: 'Their price on Shazlo will never be higher than anywhere else.',
+    agreed: 'Agreed',
+    notAgreed: 'Not agreed',
+  },
+  checks: {
+    title: 'Automatic checks',
+    allPassed: 'All passed',
+    needLook: (n: number) => `${n} ${n === 1 ? 'needs' : 'need'} a look`,
+    passed: 'Passed:',
+    failed: 'Needs a look:',
+  },
+  approval: {
+    title: 'Approval settings',
+    commission: 'Commission',
+    proposedHint: (rate: string) => `The brand proposed ${rate}. Change it if you agreed a different rate.`,
+    noProposalHint: 'The brand did not propose a rate. Enter the one you agreed with them.',
+    email: 'Owner login email',
+    agreement: 'Vendor agreement signed (offline)',
+    hint: 'Approving creates the owner’s login and emails them a link to set a password.',
+    errors: {
+      emailRequired: 'Enter the owner’s email address.',
+      emailFormat: 'Enter an email address, like name@brand.in.',
+      agreement: 'Tick this once the vendor agreement is signed.',
+    },
+  },
+  commission: {
+    title: 'Commission',
+    actionsLabel: 'Commission actions',
+    ofEachSale: 'of each sale',
+    since: (date: string) => `Agreed on ${date}`,
+    agreedNote: 'Note to the brand',
+    change: 'Change rate',
+    set: 'Set rate',
+    notSet: 'Not agreed yet. The brand has not proposed a rate.',
+    proposedPill: 'Rate to review',
+    proposed: (brand: string, rate: string) => `${brand} proposed ${rate}.`,
+    proposedOn: (date: string) => `Proposed on ${date}`,
+    now: (rate: string) => `Now ${rate} of each sale.`,
+    noneYet: 'No rate agreed yet.',
+    approve: (rate: string) => `Approve ${rate}`,
+    approving: 'Approving…',
+    sendBack: 'Send back',
+    setDifferent: 'Set a different rate',
+    sentBackPill: 'Sent back',
+    sentBack: 'Sent back: waiting for the brand.',
+    theyProposed: (rate: string) => `They proposed ${rate}.`,
+    yourNote: (date: string) => `Your note, ${date}`,
+    approveDone: (brand: string, rate: string) => `Agreed ${rate} with ${brand}`,
+    approveBanner: (brand: string, rate: string) => `Agreed ${rate} with ${brand}. They see it in their store details.`,
+    sendBackDialog: {
+      title: (brand: string) => `Send back ${brand}’s proposed rate`,
+      body: (current: string | null) => (current ? `The brand sees your note and can propose again. Their rate stays ${current} until you agree a new one.` : 'The brand sees your note and can propose again.'),
+      label: 'Note to the brand',
+      confirm: 'Send back',
+      pending: 'Sending back…',
+      done: (brand: string) => `Sent back ${brand}’s proposed rate`,
+      banner: (brand: string, owner: string) => `Sent back ${brand}’s proposed rate. ${owner} sees your note in their store details.`,
+    },
+    setDialog: {
+      titleSet: (brand: string) => `Set the commission for ${brand}`,
+      titleChange: (brand: string) => `Change the commission for ${brand}`,
+      body: 'The brand sees the rate in their store details. It applies to orders from now on.',
+      rate: 'Commission',
+      rateHint: 'Shazlo’s share of each sale, like 12 or 12.5',
+      note: 'Note to the brand (optional)',
+      noteHint: 'For example, what you agreed on the call.',
+      noteLong: 'Keep the note to 600 characters.',
+      confirm: 'Save rate',
+      pending: 'Saving…',
+      done: (brand: string, rate: string) => `Set ${brand}’s commission to ${rate}`,
+      banner: (brand: string, rate: string) => `${brand}’s commission is now ${rate} of each sale.`,
+    },
+  },
+  products: {
+    title: 'Products',
+    label: 'Products from this vendor',
+    empty: { title: 'No products yet', body: 'Products show up here once the brand adds them.' },
+    status: { pending_review: 'Pending review', approved: 'Live', rejected: 'Sent back' } as Record<string, string>,
+    // Approving several waiting products at once, from the vendor's Products tab.
+    bulk: {
+      toolbar: 'Approve waiting products',
+      selectAll: (n: number) => (n === 1 ? 'Select the 1 waiting product' : `Select all ${n.toLocaleString('en-IN')} waiting products`),
+      selected: (k: number) => `${k.toLocaleString('en-IN')} selected`,
+      select: (title: string) => `Select ${title}`,
+      approve: (k: number) => (k === 0 ? 'Approve selected' : `Approve ${productCount(k)}`),
+      // One approval takes up to 50 (the API's limit).
+      limit: { hint: (max: number) => `Approve up to ${max} products at a time. Untick some to go on.` },
+      dialog: {
+        title: (k: number, brand: string) => `Approve ${productCount(k)} from ${brand}?`,
+        body: (k: number) =>
+          k === 1
+            ? 'It will be published to the Shazlo app. To check it first, cancel and open it from the list.'
+            : 'They will be published to the Shazlo app. To check any of them first, cancel and open it from the list.',
+        label: 'Products to approve',
+        // The review page's photo rule: front, back, detail and worn, and 5 try-on photos.
+        photosMissing: (n: number) => `Missing ${plural(n, 'required photo', 'required photos')}`,
+        confirm: (k: number) => `Approve ${productCount(k)}`,
+        pending: 'Approving…',
+      },
+      done: {
+        banner: (k: number, brand: string) => `Approved ${productCount(k)} from ${brand}. ${k === 1 ? 'It is' : 'They are'} being published to the Shazlo app.`,
+        toast: (k: number, brand: string) => `Approved ${productCount(k)} from ${brand}`,
+      },
+      // Some were not approved: the count that were, then each one that was not, and why.
+      partial: {
+        banner: (approved: number, total: number, brand: string) =>
+          approved > 0 ? `Approved ${approved.toLocaleString('en-IN')} of ${productCount(total)} from ${brand}.` : total === 1 ? 'The product was not approved.' : `None of the ${productCount(total)} were approved.`,
+        intro: (n: number) => (n === 1 ? 'Not approved:' : `${n.toLocaleString('en-IN')} not approved:`),
+        toast: (approved: number, total: number, brand: string) => (approved > 0 ? `Approved ${approved.toLocaleString('en-IN')} of ${productCount(total)} from ${brand}` : `No products from ${brand} were approved`),
+      },
+      errors: {
+        not_pending: 'Someone already decided it.',
+        changed: 'The brand changed it since you looked. Open it to review the new version.',
+        not_found: 'We could not find it for this brand. It may have been removed.',
+      } satisfies Record<M.ApproveProductsResult['failed'][number]['code'], string>,
+    },
+  },
+  brand: {
+    title: 'Brand page',
+    live: 'Their brand page is live in the app.',
+    notLive: 'No brand page is live in the app yet.',
+    waiting: (date: string) => `A brand page was submitted on ${date} and is waiting for review.`,
+    review: 'Review the submitted brand page',
+    nothingWaiting: 'No brand page changes are waiting for review.',
+    error: 'We could not check for a waiting brand page.',
+  },
+  activity: {
+    title: 'Activity',
+    label: 'Activity, newest first',
+    events: {
+      applied: 'Applied',
+      info_requested: 'Asked for more information',
+      invited: 'Approved and invited',
+      rejected: 'Rejected',
+      suspended: 'Suspended',
+      reactivated: 'Reactivated',
+      submitted: 'Submitted',
+      approved: 'Approved',
+      published: 'Published',
+      commission_proposed: 'Proposed a commission rate',
+      commission_approved: 'Approved the proposed commission',
+      commission_sent_back: 'Sent the proposed commission back',
+      commission_set: 'Set the commission',
+      withdrawn: 'Took the submission back',
+    } satisfies Record<HistoryEvent, string>,
+    by: (name: string) => `by ${name}`,
+    empty: 'Nothing has happened yet.',
+  },
+  actions: { suspend: 'Suspend', reactivate: 'Reactivate' },
+  rejected: {
+    label: 'Why this application was rejected',
+    title: (date: string, by: string) => `Rejected on ${date} by ${by}`,
+    noReason: 'No reason was recorded.',
+  },
+  suspended: {
+    label: 'Why this vendor is suspended',
+    title: (date: string, by: string) => `Suspended on ${date} by ${by}`,
+  },
+  notFound: { title: 'We could not find that vendor', body: 'The link may be old, or the vendor was removed.', back: 'Back to Vendors' },
+  error: { title: 'We could not load this vendor', retry: 'Try again' },
+  notFoundTitle: 'Vendor not found',
+} as const
