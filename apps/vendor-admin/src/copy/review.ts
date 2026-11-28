@@ -1,7 +1,7 @@
 import type * as M from '../api/model'
 
 export type ReasonCode = M.RejectBody['reason_code']
-export type Slot = M.ProductPhoto['slot']
+export type Slot = NonNullable<M.ProductPhoto['slot']>
 export type Gender = M.ProductVersion['gender']
 type Event = M.History[number]['event']
 
@@ -39,6 +39,7 @@ export const reviewCopy = {
       submitted: 'Submitted by',
       approved: 'Approved by',
       rejected: 'Sent back by',
+      withdrawn: 'Withdrawn by',
       published: 'Published by',
       applied: 'Applied by',
       info_requested: 'More information asked by',
@@ -59,6 +60,9 @@ export const reviewCopy = {
     alreadySentBack: (by: string, when: string) => `Already sent back by ${by} · ${when}`,
     alreadyBody: 'Nothing more to decide here.',
     conflict: 'Someone else decided this while you were reviewing.',
+    changed: 'The seller changed this while you were reviewing. Check what is new, then decide again.',
+    withdrawn: (by: string, when: string) => `Withdrawn by ${by} · ${when}`,
+    withdrawnBody: 'The seller took this back, so there is nothing to decide.',
   },
 
   sendBack: {
@@ -114,10 +118,14 @@ export const reviewCopy = {
       tryOnHint: 'Real people wearing it, so shoppers see the true fit.',
       slot: { front: 'Front', back: 'Back', detail: 'Detail', worn: 'Worn', extra: 'Extra' } satisfies Record<Slot, string>,
       tryOnName: (n: number) => `Try-on ${n}`,
+      // Photos kept in order only (no named slots yet): "Photo 1", "Photo 2".
+      plain: (n: number) => `Photo ${n}`,
+      plainCount: (n: number) => (n === 1 ? '1 photo' : `${n} photos`),
       count: (have: number, need: number) => `${have} of ${need}`,
       extras: (n: number) => ` · ${n} extra`,
-      show: (name: string) => `Show ${lowerFirst(name)} photo`,
-      alt: (name: string, title: string) => `${name} photo of ${title}`,
+      // A named slot reads "Show front photo"; an unnamed one is already "Photo 1", so "Show photo 1".
+      show: (name: string) => (/^Photo \d+$/.test(name) ? `Show ${lowerFirst(name)}` : `Show ${lowerFirst(name)} photo`),
+      alt: (name: string, title: string) => (/^Photo \d+$/.test(name) ? `${name} of ${title}` : `${name} photo of ${title}`),
       newTag: 'New',
       newDescription: 'New in this submission',
       missing: (name: string) => `${name} photo missing`,
@@ -232,7 +240,7 @@ export const reviewCopy = {
       instagram: 'Instagram',
       website: 'Website',
     } satisfies Record<keyof M.BrandProfile, string>,
-    returnPolicies: { no_returns: 'No returns', '7_day': '7-day returns', '14_day': '14-day returns' } as Record<string, string>,
+    returnPolicies: { no_returns: 'No returns', '7_day': '7-day returns', '14_day': '14-day returns', '30_day': '30-day returns' } as Record<string, string>,
     dispatchTimes: { '1_2_days': 'Ships in 1–2 days', '2_3_days': 'Ships in 2–3 days', '3_5_days': 'Ships in 3–5 days', '5_7_days': 'Ships in 5–7 days' } as Record<string, string>,
   },
 } as const

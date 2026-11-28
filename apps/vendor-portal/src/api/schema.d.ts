@@ -1017,6 +1017,8 @@ export interface components {
             decided_at: string | null;
             /** Reason */
             reason: string | null;
+            /** Reason Code */
+            reason_code: string | null;
             /** Status */
             status: string;
             /**
@@ -1470,6 +1472,8 @@ export interface components {
             decided_at: string | null;
             /** Reason */
             reason: string | null;
+            /** Reason Code */
+            reason_code: string | null;
             /** Status */
             status: string;
         };
@@ -1779,6 +1783,8 @@ export interface components {
             id: string;
             /** Reason */
             reason: string | null;
+            /** Reason Code */
+            reason_code: string | null;
             /** Sku */
             sku: string | null;
             /**
@@ -1809,6 +1815,7 @@ export interface components {
          *           "decided_at": "2026-11-11T12:00:00Z",
          *           "id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
          *           "reason": "The photos are too dark to see the print.",
+         *           "reason_code": "photos",
          *           "sku": "KRT-001",
          *           "status": "rejected",
          *           "subject": "product",

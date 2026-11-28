@@ -40,7 +40,7 @@ function photosLine(v: Version): string {
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
-export const sizesLine = (v: Version) => v.variants.map((x) => `${x.size} ${formatCount(x.stock)}`).join(' · ')
+export const sizesLine = (v: Version) => v.variants.map((x) => (x.stock === null ? x.size : `${x.size} ${formatCount(x.stock)}`)).join(' · ')
 const priceLine = (v: Version) => `${formatINR(v.price_paise)} / ${v.mrp_paise == null ? copy.compare.noMrp : formatINR(v.mrp_paise)}`
 const coloursLine = (v: Version) =>
   copy.compare.colours(
@@ -60,7 +60,7 @@ type Row = { key: keyof typeof copy.compare.rows; before: string; after: string 
 function rowsOf(before: Version, after: Version): Row[] {
   const line = (v: Version): Record<Row['key'], string> => ({
     photos: photosLine(v),
-    tryOn: copy.compare.tryOnCount(v.try_on_photos.length),
+    tryOn: copy.compare.tryOnCount(v.try_on_photos?.length ?? 0),
     title: v.title,
     price: priceLine(v),
     type: `${copy.about.genders[v.gender]} · ${v.product_type}`,
@@ -71,7 +71,9 @@ function rowsOf(before: Version, after: Version): Row[] {
   })
   const a = line(before)
   const b = line(after)
-  return (Object.keys(a) as Row['key'][]).map((key) => ({ key, before: a[key], after: b[key] }))
+  // The try-on row only means something when the server keeps try-on photos.
+  const known = before.try_on_photos !== null || after.try_on_photos !== null
+  return (Object.keys(a) as Row['key'][]).filter((key) => key !== 'tryOn' || known).map((key) => ({ key, before: a[key], after: b[key] }))
 }
 
 const cellSx = { verticalAlign: 'top', overflowWrap: 'anywhere', whiteSpace: 'pre-line' } as const
@@ -306,7 +308,9 @@ export function PriceCard({ version }: { version: Version }) {
 
 export function SizesCard({ version }: { version: Version }) {
   const { variants } = version
-  const total = variants.reduce((sum, v) => sum + v.stock, 0)
+  // Stock only shows when the server keeps it.
+  const hasStock = variants.some((v) => v.stock !== null)
+  const total = variants.reduce((sum, v) => sum + (v.stock ?? 0), 0)
   // One-size pieces (dupattas, sarees, bags) need no size chart, so none is missed for them.
   const noChart = version.size_chart === null && variants.length > 1
   return (
@@ -321,9 +325,11 @@ export function SizesCard({ version }: { version: Version }) {
               <TableCell component="th" scope="col">
                 {copy.sizes.code}
               </TableCell>
-              <TableCell component="th" scope="col" sx={num}>
-                {copy.sizes.stock}
-              </TableCell>
+              {hasStock && (
+                <TableCell component="th" scope="col" sx={num}>
+                  {copy.sizes.stock}
+                </TableCell>
+              )}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -333,16 +339,18 @@ export function SizesCard({ version }: { version: Version }) {
                   {v.size}
                 </TableCell>
                 <TableCell sx={{ fontFamily: fontFamily.mono, fontSize: 12, color: neutral.inkSecondary, overflowWrap: 'anywhere' }}>{v.sku}</TableCell>
-                <TableCell sx={num}>{formatCount(v.stock)}</TableCell>
+                {hasStock && <TableCell sx={num}>{v.stock === null ? '—' : formatCount(v.stock)}</TableCell>}
               </TableRow>
             ))}
-            <TableRow data-total="">
-              <TableCell component="th" scope="row">
-                {copy.sizes.total}
-              </TableCell>
-              <TableCell />
-              <TableCell sx={num}>{formatCount(total)}</TableCell>
-            </TableRow>
+            {hasStock && (
+              <TableRow data-total="">
+                <TableCell component="th" scope="row">
+                  {copy.sizes.total}
+                </TableCell>
+                <TableCell />
+                <TableCell sx={num}>{formatCount(total)}</TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </Box>

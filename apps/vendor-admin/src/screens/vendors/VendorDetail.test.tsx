@@ -27,7 +27,7 @@ describe('A-09 Vendor detail', { timeout: 40_000 }, () => {
     await heading('Rann Weaves')
     expect(within(header()).getByText('Applied')).toBeInTheDocument()
     const subtitle = screen.getByText(/Applied 2 days ago · Bhuj, Gujarat ·/)
-    const site = within(subtitle).getByRole('link', { name: /instagram\.com\/rannweaves/ })
+    const site = within(subtitle).getByRole('link', { name: 'instagram.com/rannweaves (opens in a new tab)' })
     expect(site).toHaveAttribute('href', 'https://instagram.com/rannweaves')
     expect(site).toHaveAttribute('target', '_blank')
     expect(screen.getByRole('link', { name: 'Vendors' })).toHaveAttribute('href', '/vendors')
@@ -61,7 +61,7 @@ describe('A-09 Vendor detail', { timeout: 40_000 }, () => {
     }
     expect(value('Sells')).toHaveTextContent('Women')
     expect(value('Ships from')).toHaveTextContent('Ahmedabad, Gujarat')
-    expect(within(value('Instagram or website')).getByRole('link', { name: /instagram\.com\/kalkistudio/ })).toHaveAttribute('href', 'https://instagram.com/kalkistudio')
+    expect(within(value('Instagram or website')).getByRole('link', { name: 'instagram.com/kalkistudio (opens in a new tab)' })).toHaveAttribute('href', 'https://instagram.com/kalkistudio')
     expect(value('Name')).toHaveTextContent('Kiran Shah')
     expect(value('Mobile')).toHaveTextContent(/^\+91 /)
     expect(value('Email')).toHaveTextContent('kiran@kalkistudio.in')
@@ -305,8 +305,9 @@ describe('A-09 Vendor detail', { timeout: 40_000 }, () => {
     expect(new URLSearchParams(router.state.location.search).get('tab')).toBe('products')
     const list = screen.getByRole('list', { name: 'Products from this vendor' })
     expect(within(list).getAllByRole('listitem')).toHaveLength(4)
-    const ajrakh = within(list).getByRole('link', { name: /Ajrakh Block-Print Kurta/ })
-    expect(ajrakh).toHaveAttribute('href', '/review/product/p_ajrakh')
+    // Its review page is keyed by the review's id, found in the queue.
+    const ajrakh = await within(list).findByRole('link', { name: /Ajrakh Block-Print Kurta/ })
+    expect(ajrakh).toHaveAttribute('href', '/review/product/rev_p_ajrakh')
     expect(within(ajrakh).getByText('Pending review')).toBeInTheDocument()
     expect(within(ajrakh).getByText('₹2,499')).toBeInTheDocument()
     // Only a product waiting for review opens; it says so with a chevron. Names in semibold.
@@ -370,7 +371,7 @@ describe('A-09 Vendor detail', { timeout: 40_000 }, () => {
     const { user } = renderModule({ route: '/vendors/v_nila' })
     await heading('Nila Handloom')
     await openTab(user, /^Brand page/)
-    expect(await screen.findByRole('link', { name: 'Review the submitted brand page' })).toHaveAttribute('href', '/review/brand/v_nila')
+    expect(await screen.findByRole('link', { name: 'Review the submitted brand page' })).toHaveAttribute('href', '/review/brand/rev_brand_v_nila')
     expect(screen.getByText('Their brand page is live in the app.')).toBeInTheDocument()
   })
 

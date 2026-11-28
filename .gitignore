@@ -20,6 +20,9 @@ credentials*.json
 serviceAccount*.json
 service-account*.json
 
+# MSW's service worker: served from the installed msw package in demo mode only (demoOnlyWorker.ts)
+**/public/mockServiceWorker.js
+
 # Build output
 dist/
 *.tsbuildinfo

@@ -345,6 +345,69 @@ async def test_rejecting_records_the_reason_and_turns_the_version_down(
     }
 
 
+REASON_CODES = [
+    "photos", "try_on_photos", "price", "category", "prohibited",
+    "description", "brand_images", "contact_details", "other",
+]  # fmt: skip
+
+
+@pytest.mark.parametrize("code", REASON_CODES)
+async def test_rejecting_records_the_reason_code_beside_the_reason(
+    tenants: Tenants, session: AsyncSession, code: str
+) -> None:
+    _, review_id = await pending_profile(session, tenants.a)
+    response = await decide(
+        tenants, review_id, "reject", {"version": 1, "reason": "Fix it", "reason_code": code}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["reason_code"] == code
+    review = await reload(session, Review, review_id)
+    assert (review.status, review.reason, review.reason_code) == ("rejected", "Fix it", code)
+
+
+async def test_the_reason_code_is_optional_and_never_set_without_a_rejection(
+    tenants: Tenants, session: AsyncSession
+) -> None:
+    _, rejected_id = await pending_profile(session, tenants.a)
+    response = await decide(tenants, rejected_id, "reject", {"version": 1, "reason": "No"})
+    assert response.status_code == 200
+    assert response.json()["reason_code"] is None
+    # A pending review shows none, and an approval cannot carry one.
+    _, pending_id = await pending_profile(session, tenants.b)
+    shown = await tenants.api.http.get(f"{QUEUE}/{pending_id}", headers=bearer(tenants.admin_token))
+    assert shown.json()["reason_code"] is None
+    refused = await decide(tenants, pending_id, "approve", {"version": 1, "reason_code": "price"})
+    assert refused.status_code == 422
+    assert (await reload(session, Review, pending_id)).status == "pending"
+
+
+@pytest.mark.parametrize("code", ["", "Photos", "photo", "unknown", None, 5, ["photos"]])
+async def test_an_unknown_reason_code_is_refused_and_nothing_changes(
+    tenants: Tenants, session: AsyncSession, code: object
+) -> None:
+    _, review_id = await pending_profile(session, tenants.a)
+    body = {"version": 1, "reason": "No", "reason_code": code}
+    response = await decide(tenants, review_id, "reject", body)
+    # `null` means "no code", which is allowed; everything else is not a code.
+    assert response.status_code == (200 if code is None else 422), body
+    if code is not None:
+        assert (await reload(session, Review, review_id)).status == "pending"
+
+
+async def test_a_product_can_be_sent_back_with_a_reason_code(
+    tenants: Tenants, session: AsyncSession
+) -> None:
+    _, _, review_id = await pending_first_product(session, tenants.a, "RC-1")
+    response = await decide(
+        tenants,
+        review_id,
+        "reject",
+        {"version": 1, "reason": "Dark photos", "reason_code": "photos"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["reason_code"] == "photos"
+
+
 # --- Stale and repeated decisions --------------------------------------------------------
 
 

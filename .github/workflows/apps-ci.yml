@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
-      pull-requests: read
+      pull-requests: read # lists the files the PR changes
     outputs:
       web: ${{ steps.diff.outputs.web }}
       deps: ${{ steps.diff.outputs.deps }}
@@ -46,7 +46,7 @@ jobs:
           # openapi.admin.json (the admin app) and Shazlo One's against identity-api's openapi.json.
           web=$( {
             printf '%s\n' "$files" | grep -E '^docs/adr/0003-contract/|^services/vendor-api/openapi(\.admin)?\.json$|^services/identity-api/openapi\.json$'
-            printf '%s\n' "$files" | grep -Ev '^(services/|packages/py-|docker/|docs/)|^docker-compose\.yml$|^\.env\.example$|^\.github/workflows/(services-ci|codeql|footer_removal)\.yml$'
+            printf '%s\n' "$files" | grep -Ev '^(services/|packages/py-|docker/|docs/)|^docker-compose\.yml$|^\.env\.example$|^\.gitleaks\.toml$|^\.github/scripts/check-gitleaks-allowlist\.sh$|^\.github/workflows/(services-ci|codeql|footer_removal|dependency-review|osv-scanner|pip-audit|scorecard|secret-scan|workflow-lint)\.yml$'
           } || true)
           deps=$(printf '%s\n' "$files" | grep -E '(^|/)package(-lock)?\.json$' || true)
           echo "web=$([ -n "$web" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"

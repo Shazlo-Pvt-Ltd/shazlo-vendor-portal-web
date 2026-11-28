@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { readdirSync, readFileSync, type Dirent } from 'node:fs'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -7,15 +7,30 @@ import { describe, expect, it } from 'vitest'
 const packageRoot = fileURLToPath(new URL('../', import.meta.url))
 const repoRoot = join(packageRoot, '../..')
 
+/**
+ * The entries of a folder, or none when it does not exist. The folder is read once, with each entry's
+ * type, rather than checked first and read after (a check-then-use race).
+ */
+function entries(dir: string): Dirent[] {
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT' || (error as NodeJS.ErrnoException).code === 'ENOTDIR') return []
+    throw error
+  }
+}
+
 /** Every non-test TypeScript source file under `dir`, with its text. */
 function sources(dir: string): Array<[string, string]> {
   const found: Array<[string, string]> = []
   const walk = (current: string) => {
-    for (const name of readdirSync(current)) {
+    for (const entry of entries(current)) {
+      const name = entry.name
       if (name === 'node_modules' || name === 'dist') continue
       const path = join(current, name)
-      if (statSync(path).isDirectory()) walk(path)
+      if (entry.isDirectory()) walk(path)
       else if (
+        entry.isFile() &&
         /\.(ts|tsx)$/.test(name) &&
         !/\.test\.(ts|tsx)$/.test(name) &&
         // Test harnesses replace postMessage on purpose, like this package's own.
@@ -95,9 +110,10 @@ describe('the package', () => {
 
 describe('the apps', () => {
   // Each app's `src`: the shell and every module must go through the package.
-  const apps = readdirSync(join(repoRoot, 'apps')).flatMap((name) =>
-    existsSync(join(repoRoot, 'apps', name, 'src')) ? sources(join(repoRoot, 'apps', name, 'src')) : [],
-  )
+  // An app folder with no `src` gives no entries.
+  const apps = entries(join(repoRoot, 'apps'))
+    .filter((entry) => entry.isDirectory())
+    .flatMap((entry) => sources(join(repoRoot, 'apps', entry.name, 'src')))
 
   it('finds the apps’ source files', () => {
     expect(apps.length).toBeGreaterThan(20)

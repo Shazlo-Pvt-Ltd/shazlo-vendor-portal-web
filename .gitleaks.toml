@@ -1,0 +1,122 @@
+# gitleaks configuration (CI: .github/workflows/secret-scan.yml; triage: docs/security-scanning.md).
+#
+# The default rules stay on. One rule is added (connection strings with an inline password, which
+# the defaults do not cover), and the allowlists below cover ONLY values that are deliberately
+# committed test or demo data. Each allowlist names the file and the exact value, so the same
+# value anywhere else, or any other value in these files, is still reported.
+#
+# Never allowlist a real credential here. Rotate it at the provider first; after that, a finding
+# that only remains in history can be silenced by its fingerprint in a .gitleaksignore file at the
+# repository root (there is none yet; docs/security-scanning.md explains the format).
+
+title = "shazlo-vendor-portal-web"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "connection-uri-with-password"
+description = "Database, cache or broker connection URI with an inline password"
+regex = '''(?i)\b(?:mongodb(?:\+srv)?|postgres(?:ql)?(?:\+[a-z0-9]+)?|mysql|mariadb|rediss?|amqps?)://[^\s:@/'"<>${}]+:([^\s:@/'"<>${}]{3,})@([a-z0-9.-]+)'''
+secretGroup = 1
+keywords = ["mongodb", "postgres", "mysql", "mariadb", "redis", "amqp"]
+
+  # Each entry names one file and the exact match (scheme, user, password and host), so the same
+  # URI in another file, or another password in the same file, is reported, whatever the host.
+  # .github/scripts/check-gitleaks-allowlist.sh tests this; secret-scan.yml runs it.
+
+  # The Postgres service container of services-ci: a throwaway database on the CI runner.
+  [[rules.allowlists]]
+  description = "services-ci Postgres service container"
+  condition = "AND"
+  paths = ['''^\.github/workflows/services-ci\.yml$''']
+  regexTarget = "match"
+  regexes = ['''^postgresql://shazlo:shazlo@localhost$''']
+
+  # The services' example environment files: a placeholder password for a local database.
+  [[rules.allowlists]]
+  description = "identity-api and vendor-api .env.example placeholder"
+  condition = "AND"
+  paths = ['''^services/(?:identity|vendor)-api/\.env\.example$''']
+  regexTarget = "match"
+  regexes = ['''^postgresql\+asyncpg://shazlo:change-me@localhost$''']
+
+  # services/vendor-api/tests/test_settings.py checks that a database URL's password is never
+  # echoed in an error; the host and password are invented.
+  [[rules.allowlists]]
+  description = "vendor-api settings test: invented production-shaped URL"
+  condition = "AND"
+  paths = ['''^services/vendor-api/tests/test_settings\.py$''']
+  regexTarget = "match"
+  regexes = ['''^postgresql://shazlo:DbPassw0rd@db\.internal$''']
+
+  # An early backend/README.md showed the URI shape with a placeholder password.
+  [[rules.allowlists]]
+  description = "Legacy backend README placeholder password"
+  condition = "AND"
+  paths = ['''^backend/README\.md$''']
+  regexes = ['''^YOUR_PASSWORD$''']
+
+# Values that gitleaks' default generic-api-key rule reports. Every global entry below has
+# targetRules = ["generic-api-key"], which makes gitleaks check it as part of that rule, so the
+# path AND the value must match. Without targetRules, gitleaks 8.30 skips a global entry's paths
+# entirely, for every rule and whatever its condition, so any other secret in those files would go
+# unreported.
+
+# Fake Cloudinary credentials for the portal's upload tests.
+[[allowlists]]
+description = "vendor-portal upload test fixture key"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^apps/vendor-portal/src/api/uploads/testing\.ts$''']
+regexes = ['''^key-123456789012345$''']
+
+# The signing secret the publishing end-to-end test shares between vendor-api and central-stub.
+[[allowlists]]
+description = "vendor-api publishing e2e test signing secret"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^services/vendor-api/tests/test_e2e_publishing\.py$''']
+regexes = ['''^e2e-publishing-secret-0123456789-abcdef$''']
+
+# Tests that assert these values never appear in logs or error messages.
+[[allowlists]]
+description = "vendor-api redaction tests: invented password and signing secret"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^services/vendor-api/tests/test_(?:publisher|settings)\.py$''']
+regexes = ['''^(?:Sup3rSecretPassw0rd|Hunter2-central-secret-0123456789abcdef)$''']
+
+# Invented email-link tokens rendered into the email templates under test.
+[[allowlists]]
+description = "vendor-api email tests: invented link tokens"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^services/vendor-api/tests/test_email_(?:senders|service|templates)\.py$''']
+regexes = ['''^(?:tok_Secret-9f8e7d|tok_AbC-123_xyz)$''']
+
+# An example request header in the contract document (a UUID event id, not a key).
+[[allowlists]]
+description = "ADR 0003 example Idempotency-Key header"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^docs/adr/0003-contract/README\.md$''']
+regexes = ['''^d2c8a7b1-3e5f-4092-8b4c-6f9e1d8b2c35$''']
+
+# Demo passwords of the in-browser mock APIs (MSW) and their Playwright tests. These files are not
+# on main: they are on the UI branches (naman/build2-on-main and the fix/ branches cut from it, and
+# naman/penpot-ui-*), which the weekly scan of every branch reads and whose PRs will add them.
+# They sign in to the mocks only; no real service accepts them.
+[[allowlists]]
+description = "Shazlo-One mock identity-api demo admin password"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^apps/(?:shazlo-one/src/(?:mocks/identity|api/mock)|vendor-admin/e2e/support)\.ts$''']
+regexes = ['''^shazlo-one-2026$''']
+
+[[allowlists]]
+description = "vendor-portal mock vendor-api demo seller password"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^apps/vendor-portal/(?:src/mocks/db\.ts|e2e/support\.ts|src/screens/auth/SignIn\.test\.tsx)$''']
+regexes = ['''^ajrakh-indigo-26$''']
