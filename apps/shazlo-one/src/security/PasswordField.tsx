@@ -7,6 +7,8 @@ type Props = Omit<TextFieldProps, 'type' | 'autoComplete'> & {
    * and change password). The browser's password manager relies on the right value.
    */
   purpose: 'current' | 'new'
+  /** Start with the characters shown (a generated password the admin has to read once to hand over). */
+  initiallyVisible?: boolean
 }
 
 /**
@@ -14,8 +16,8 @@ type Props = Omit<TextFieldProps, 'type' | 'autoComplete'> & {
  * autocapitalisation and spell-checking, lets the user show what they typed (a toggle that is
  * announced as pressed) and never blocks pasting, which password managers rely on.
  */
-export function PasswordField({ purpose, slotProps, ...rest }: Props) {
-  const [visible, setVisible] = useState(false)
+export function PasswordField({ purpose, initiallyVisible = false, slotProps, ...rest }: Props) {
+  const [visible, setVisible] = useState(initiallyVisible)
   return (
     <TextField
       {...rest}
