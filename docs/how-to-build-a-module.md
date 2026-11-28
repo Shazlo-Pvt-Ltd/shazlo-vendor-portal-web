@@ -25,23 +25,26 @@ Add `@shazlo/shell-protocol` to the module's `package.json` (`"@shazlo/shell-pro
 import { createModuleClient } from '@shazlo/shell-protocol'
 
 const shell = createModuleClient({
-  shellOrigin: import.meta.env.VITE_SHELL_ORIGIN,   // pass it through: a missing, wildcard or non-https value throws
+  shellOrigin: import.meta.env.VITE_SHELL_ORIGIN,   // pass it through unchanged (see below)
   module: 'vendor-admin',                           // the id in the shell's registry
   moduleVersion: __APP_VERSION__,
   development: import.meta.env.DEV,
-  onAuth: (auth) => { /* a new token arrived: auth.user.email, auth.user.roles, auth.expiresAt */ },
+  onAuth: (auth) => { /* a new token arrived: auth.user.email, auth.user.roles, auth.expiresAt (epoch seconds) */ },
   onNavigate: (path) => router.navigate(path),      // the shell opened a deep link
   onShellError: ({ code }) => showError(code),      // for example version_unsupported
 })
 shell.sendReady()                                   // on every page load, first
 ```
 
+`createModuleClient` throws a `ProtocolConfigError` at start when it is set up wrongly, so a bad build fails loudly instead of running unprotected: a missing shell origin, a wildcard or pattern, a path, `http` (allowed only for `localhost` in a development build), a bad module id or version (at most 64 characters each), or an empty version list.
+
 What to do with each message:
 
 | You want to | Call | Notes |
 | --- | --- | --- |
 | Say you are alive | `shell.sendReady()` | On every load, after creating the client. The shell answers with `auth` |
-| Call your API | `shell.getAccessToken()` | In memory only; `undefined` once expired. Send it as `Authorization: Bearer`, with `credentials: 'omit'` |
+| Call your API | `shell.getAccessToken()` | In memory only. Send it as `Authorization: Bearer`, with `credentials: 'omit'` |
+| Handle an expired token | `shell.requestToken('expired')` | `getAccessToken()` is `undefined` once the token has expired (`needsToken()` is true from 30 seconds before). Never call with an expired token: ask for one and make the call when `onAuth` fires |
 | Handle a `401` | `shell.requestToken('unauthorized')` | At most once every 30 seconds (the client enforces it); repeat the call when `onAuth` fires |
 | Keep the shell's tab title and address in step | `shell.sendTitle(path, title)` | On each in-module navigation. The shell **replaces** its address with `/m/<id><path>` and shows the title; `title` is plain text |
 | Show a message | `shell.sendToast({ level, message })` | `info`, `success`, `warning` or `error`; plain text, at most 280 characters. Never use `alert()` or a dialog: the sandbox has no `allow-modals` |
@@ -64,7 +67,7 @@ identity-api only issues a module token for a service it knows. In its settings,
 {"vendor-api": ["super_admin", "vendor_reviewer"], "orders-api": ["super_admin", "orders_clerk"]}
 ```
 
-Adding a service is a settings change; it must not list `identity-api`. New roles are created by the admin seed or the admin screens and are named `<area>_<role>`. The token carries only the roles listed for that service, and roles are read at exchange time.
+Adding a service is a settings change; it must not list `identity-api`, and every service needs at least one role. A new role is named `<area>_<role>` and is added by an identity-api migration or the seed ([ADR 0009](adr/0009-auth-model.md)): the admin screens only give admins the roles that exist. The token carries only the roles listed for that service, and roles are read at exchange time.
 
 ## 3. The backend
 
@@ -100,7 +103,7 @@ Adding a module is one entry in the shell's registry, `apps/shazlo-one/src/modul
 }
 ```
 
-The navigation, the routes and the shell's `frame-src` all follow from it, and the registry is checked when the shell builds and starts (no wildcard, https outside development, `url` on its `origin`, no duplicates). The shell's `roles` decide who sees the module; the backend's roles decide what they may do. Keep both.
+The navigation, the routes and the shell's `frame-src` all follow from it, and the registry is checked when the shell builds and starts: an `id` of lower-case letters, digits and hyphens; an exact `origin` (no wildcard or pattern, a host of letters, digits, dots and hyphens only, https outside development); the `url` on its `origin`; no duplicate ids or origins; at least one role. The shell's `roles` decide who sees the module; the backend's roles decide what they may do. Keep both.
 
 ## Try it
 
@@ -108,7 +111,7 @@ Run the whole thing as described in the [shell README](../apps/shazlo-one/README
 
 ## Test it
 
-- **Unit tests**: render the module with a fake shell. `@shazlo/shell-protocol` has a test harness (`test/harness.ts`) with two jsdom windows and a browser-faithful `postMessage`; the reference module's tests show how to use it.
+- **Unit tests**: render the module with a fake shell. The protocol package's contract tests use `packages/shell-protocol/test/harness.ts`: two jsdom windows and a `postMessage` that sets `origin` and `source` the way a browser does (jsdom's own sets neither). It is not exported from the package; the reference module has its own version in `apps/shazlo-one/dev-module/test/frames.ts`, and its tests show how to use it.
 - **Checks to copy from the shell**: no web storage, no raw HTML, no `console.log`, no hard-coded colours or fonts, no inline script in the production build.
 - **In a browser** (when the end-to-end setup lands, [#259](https://github.com/Shazlo-Pvt-Ltd/shazlo-vendor-portal-web/issues/259)): the module ignores messages from another origin, refuses to be framed by another origin, and no token appears in a URL, request log or web storage.
 
@@ -117,7 +120,7 @@ Run the whole thing as described in the [shell README](../apps/shazlo-one/README
 - [ ] Uses `@shazlo/shell-protocol`; no hand-written `postMessage` or `message` listener
 - [ ] `VITE_SHELL_ORIGIN` is one exact origin, passed through unchanged
 - [ ] Token only in memory; sent as a bearer header with `credentials: 'omit'`
-- [ ] `401` handled with `requestToken`, once per 30 seconds
+- [ ] An expired token is never sent (`requestToken('expired')`); a `401` is handled with `requestToken('unauthorized')`; at most once per 30 seconds
 - [ ] `sendReady` on every load; `sendTitle` on every in-module navigation; `navigate` handled
 - [ ] A plain page when opened outside the shell
 - [ ] `frame-ancestors` is the shell's origin only; `Referrer-Policy: no-referrer`
