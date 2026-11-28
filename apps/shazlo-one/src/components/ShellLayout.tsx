@@ -9,20 +9,20 @@ export const DRAWER_WIDTH = 240
 export const MAIN_ID = 'main-content'
 
 /**
- * What a move has to change for the page heading to take focus. A module's own pages change the
- * address too (its `title` replaces `/m/<id>/<path>`), and taking focus then would pull it out of the
- * module's frame on every click inside it, so inside a module only another module counts.
+ * Which page an address is, for moving focus: every path of one module (`/m/<id>/...`) is that
+ * module's one page, so navigation inside a module never pulls focus out of its frame.
  */
-export function focusScope(pathname: string): string {
-  const match = /^\/m\/([^/]+)/.exec(pathname)
-  return match ? `/m/${match[1]}` : pathname
+export function pageOf(pathname: string): string {
+  const module = /^\/m\/([^/]+)/.exec(pathname)
+  return module ? `/m/${module[1]}` : pathname
 }
 
 /**
  * The frame of every signed-in screen. A skip link first; an app bar with Shazlo-One and the
  * account menu; the navigation (always visible from `md` up, in a drawer behind a menu button on a
- * phone); and the page in the one `<main>`. After each navigation the page heading takes focus, so a
- * screen reader announces where the admin went.
+ * phone); and the page in the one `<main>`. After each move to another page (another module counts,
+ * a path inside the same module does not) the page heading takes focus, so a screen reader
+ * announces where the admin went.
  */
 export function ShellLayout() {
   const theme = useTheme()
@@ -31,7 +31,7 @@ export function ShellLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const navId = useId()
   const main = useRef<HTMLElement>(null)
-  const lastScope = useRef(focusScope(location.pathname))
+  const lastPage = useRef(pageOf(location.pathname))
 
   // The drawer is only for phones: close it when the screen grows past that.
   useEffect(() => {
@@ -39,13 +39,13 @@ export function ShellLayout() {
   }, [wide])
 
   // Not on the first page (that would hide the skip link behind a focused heading), only after
-  // the admin moves to another one (for a module, another module: see focusScope).
-  const scope = focusScope(location.pathname)
+  // the admin moves to another one. A move inside one module is not a new page.
   useEffect(() => {
-    if (lastScope.current === scope) return
-    lastScope.current = scope
+    const page = pageOf(location.pathname)
+    if (lastPage.current === page) return
+    lastPage.current = page
     main.current?.querySelector<HTMLElement>('h1')?.focus()
-  }, [scope])
+  }, [location.pathname])
 
   return (
     <ToastProvider>

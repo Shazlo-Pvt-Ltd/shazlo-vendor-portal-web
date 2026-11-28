@@ -6,6 +6,7 @@ import { makeStore, sessionBody } from '../session/testing'
 import { useApiServer } from '../test/msw'
 import { renderRoute } from '../test/renderRoute'
 import { setViewport } from '../test/viewport'
+import { pageOf } from './ShellLayout'
 
 useApiServer()
 
@@ -240,12 +241,44 @@ describe('accessibility', () => {
     await waitFor(() => expect(document.activeElement).toBe(heading))
   })
 
+  it('moves focus to the heading when the admin goes from one module to another', async () => {
+    const { router } = await openAs(['super_admin'], '/m/vendor-admin')
+    await act(() => router.navigate('/m/catalog'))
+    const heading = await screen.findByRole('heading', { level: 1, name: 'Catalog' })
+    await waitFor(() => expect(document.activeElement).toBe(heading))
+  })
+
+  it('leaves focus alone when the path changes inside one module (focus may be in its frame)', async () => {
+    const { router } = await openAs(['super_admin'], '/m/vendor-admin')
+    // Stands in for the module's frame, which has focus while the admin works in the module.
+    const inModule = document.createElement('button')
+    screen.getByRole('main').append(inModule)
+    inModule.focus()
+    await act(() => router.navigate('/m/vendor-admin/vendors/42'))
+    await act(() => router.navigate('/m/vendor-admin/vendors'))
+    expect(screen.getByRole('heading', { level: 1, name: 'Vendor admin' })).toBeTruthy()
+    expect(document.activeElement).toBe(inModule)
+  })
+
+  it.each([
+    ['/m/vendor-admin', '/m/vendor-admin'],
+    ['/m/vendor-admin/', '/m/vendor-admin'],
+    ['/m/vendor-admin/vendors/42', '/m/vendor-admin'],
+    ['/m/catalog', '/m/catalog'],
+    ['/admins', '/admins'],
+    ['/mod/x', '/mod/x'],
+    ['/', '/'],
+  ])('treats %j as the page %j when deciding whether to move focus', (path, page) => {
+    expect(pageOf(path)).toBe(page)
+  })
+
   it.each([
     ['/', 'Shazlo-One', 'Home · Shazlo-One'],
     ['/m/vendor-admin', 'Vendor admin', 'Vendor admin · Shazlo-One'],
     ['/m/vendor-admin/deep/path', 'Vendor admin', 'Vendor admin · Shazlo-One'],
     ['/admins', 'Admins', 'Admins · Shazlo-One'],
     ['/change-password', 'Change your password', 'Change password · Shazlo-One'],
+    ['/m/nope', 'Page not found', 'Page not found · Shazlo-One'],
   ])('%s has exactly one h1 and sets the page title', async (path, heading, title) => {
     await openAs(['super_admin'], path)
     expect(screen.getByRole('heading', { level: 1, name: heading })).toBeTruthy()

@@ -2,9 +2,9 @@ import { act, fireEvent, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NetworkError } from '../api/errors'
 import { entry } from '../modules/testing'
-import { apiError, fakeChannels, makeStore, sessionBody } from '../session/testing'
+import { adminProfile, apiError, fakeChannels, makeStore, sessionBody } from '../session/testing'
 import type { SessionStore } from '../session/store'
-import { attachModule, deliver, tokenRequestMessage } from '../test/frameBridge'
+import { attachModule, deliver, readyMessage, tokenRequestMessage } from '../test/frameBridge'
 import { renderRoute } from '../test/renderRoute'
 import { setViewport } from '../test/viewport'
 
@@ -29,6 +29,8 @@ interface Options {
   refreshFails?: (call: number) => unknown
   identityLifetime?: number
   roles?: () => string[]
+  /** Who identity-api says the admin is, on each refresh and `/v1/me`. */
+  adminId?: () => string
   channel?: Parameters<typeof makeStore>[0] extends infer D ? (D extends { channel?: infer C } ? C : never) : never
 }
 
@@ -50,12 +52,13 @@ async function open(options: Options = {}) {
     refreshes += 1
     const failure = options.refreshFails?.(refreshes)
     if (failure) throw failure
-    return sessionBody({ token: `id-${refreshes}`, expires_in: options.identityLifetime ?? 900, roles: options.roles?.() ?? ['vendor_reviewer'] })
+    const body = sessionBody({ token: `id-${refreshes}`, expires_in: options.identityLifetime ?? 900, roles: options.roles?.() ?? ['vendor_reviewer'] })
+    return { ...body, admin: { ...body.admin, id: options.adminId?.() ?? body.admin.id } }
   })
   const logout = vi.fn(async () => {})
   const store: SessionStore = makeStore({
     refresh,
-    fetchMe: async () => sessionBody({ roles: options.roles?.() ?? ['vendor_reviewer'] }).admin,
+    fetchMe: async () => adminProfile({ id: options.adminId?.() ?? 'a1', roles: options.roles?.() ?? ['vendor_reviewer'] }),
     exchange,
     logout,
     channel: options.channel,
@@ -285,6 +288,23 @@ describe('when a refresh fails', () => {
     expect(frames()).toBe(1)
   })
 
+  it('keeps trying when the identity token is too old to exchange with and cannot be renewed yet, and recovers when it can', async () => {
+    // identity-api cannot be reached from 700 to 893 s: the identity token (900 s) cannot be renewed, so the
+    // module tokens are cut short to its end, until it is too old to exchange with at all.
+    let first: number | undefined
+    const t = await open({
+      refreshFails: () => {
+        first ??= Date.now()
+        const at = (Date.now() - first) / 1000
+        return at >= 700 && at < 893 ? new NetworkError('network') : undefined
+      },
+    })
+    await settle(905_000)
+    expect(t.store.getSnapshot().status).toBe('signedIn')
+    expect(frames()).toBe(1)
+    expect(t.module.auths.at(-1)!.expiresAt * 1000).toBeGreaterThan(Date.now())
+  })
+
   it('does not end the session when a retry works in the last seconds before expiry', async () => {
     // Calls at 240, 245 and 260 fail; the one at 290 works, ten seconds before the token ends.
     const t = await open({ exchangeFails: (call) => (call >= 2 && call <= 4 ? new NetworkError('network') : undefined) })
@@ -399,6 +419,66 @@ describe('when a role is removed', () => {
     expect(frames()).toBe(0)
     expect(screen.getByRole('heading', { level: 1, name: "You don't have access to this module" })).toBeTruthy()
     expect(t.store.getSnapshot().roles).toEqual([])
+  })
+})
+
+describe('a module that sends `ready` again and again', () => {
+  const down = (call: number) => (call >= 2 ? new NetworkError('network') : undefined)
+  const readies = (t: Awaited<ReturnType<typeof open>>, count: number) => {
+    for (let i = 0; i < count; i += 1) deliver(t.module.shellWindow, readyMessage(), ORIGIN, t.module.frameWindow)
+  }
+
+  it('gets the token it holds again, without resetting the backoff or causing an exchange', async () => {
+    const t = await open({ exchangeFails: down })
+    await settle(241_000)
+    readies(t, 20)
+    await settle()
+    await settle(58_000)
+    // The same retries as with no `ready` at all: one each at 245, 260 and 290 s.
+    expect(times(t.exchangeCalls, t.startedAt)).toEqual([0, 240, 245, 260, 290])
+    // Each `ready` was answered, with the token the module already had.
+    expect(new Set(t.module.auths.map((auth) => auth.accessToken))).toEqual(new Set(['mod-1']))
+  })
+
+  it('causes no exchange in the last seconds of a token that cannot be refreshed', async () => {
+    const t = await open({ exchangeFails: down })
+    await settle(292_000)
+    const before = t.exchange.mock.calls.length
+    readies(t, 20)
+    await settle()
+    expect(t.exchange.mock.calls.length).toBe(before)
+  })
+})
+
+describe('when a renewal changes who the admin is or what they may do', () => {
+  it('another admin: the frame is replaced, so the module keeps nothing of the previous admin', async () => {
+    let adminId = 'a1'
+    const t = await open({ adminId: () => adminId })
+    const first = document.querySelector('iframe')
+    adminId = 'a2'
+    await act(async () => {
+      await t.store.renew()
+    })
+    await settle()
+    expect(t.store.getSnapshot().admin?.id).toBe('a2')
+    expect(document.querySelector('iframe')).not.toBe(first)
+    // The old frame was told nothing more, and the new admin's session is not ended by the old token's expiry.
+    expect(t.module.auths).toHaveLength(1)
+    await settle(400_000)
+    expect(t.store.getSnapshot().status).toBe('signedIn')
+  })
+
+  it('new roles: the module gets a token for them at once, not at the next scheduled refresh', async () => {
+    let roles = ['vendor_reviewer']
+    const t = await open({ roles: () => roles })
+    await settle(60_000)
+    roles = ['vendor_reviewer', 'super_admin']
+    await act(async () => {
+      await t.store.renew()
+    })
+    await settle()
+    expect(t.exchange).toHaveBeenCalledTimes(2)
+    expect(t.module.auths.at(-1)).toMatchObject({ accessToken: 'mod-2', user: { roles: ['vendor_reviewer', 'super_admin'] } })
   })
 })
 

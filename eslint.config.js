@@ -8,7 +8,7 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     // The security rules of the browser apps (see "Security rules" in their READMEs).
-    files: ['apps/vendor-portal/src/**/*.{ts,tsx}', 'apps/shazlo-one/src/**/*.{ts,tsx}'],
+    files: ['apps/vendor-portal/src/**/*.{ts,tsx}', 'apps/shazlo-one/src/**/*.{ts,tsx}', 'apps/shazlo-one/dev-module/**/*.{ts,tsx}'],
     ignores: ['**/*.test.{ts,tsx}', '**/test/**'],
     rules: {
       // A token, password or e-mail in web storage can be read by any script on the page. The

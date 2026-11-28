@@ -41,13 +41,13 @@ function exchange(fail?: (call: number) => unknown) {
   })
 }
 
-async function open(path = '/m/vendor-admin', exchangeFn = exchange()) {
+async function open(path = '/m/vendor-admin', exchangeFn = exchange(), modules = MODULES) {
   // Only the timers and the clock: the 10-second wait is deterministic, and a token can age.
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
   setViewport(1280)
   const body = sessionBody({ roles: ['vendor_reviewer'] })
   const store = makeStore({ refresh: async () => body, fetchMe: async () => body.admin, exchange: exchangeFn }).store
-  const router = renderRoute(path, { store, modules: MODULES })
+  const router = renderRoute(path, { store, modules })
   await settle()
   await settle()
   return { router, store, exchange: exchangeFn }
@@ -81,6 +81,17 @@ describe('the frame', () => {
     for (const forbidden of ['allow-top-navigation', 'allow-top-navigation-by-user-activation', 'allow-popups', 'allow-modals', 'allow-popups-to-escape-sandbox']) {
       expect(sandbox).not.toContain(forbidden)
     }
+  })
+
+  it('is never made for a module on the shellâ€™s own origin, which could lift its own sandbox', async () => {
+    // With allow-scripts and allow-same-origin, a same-origin page can remove the sandbox and reach the shell.
+    const own = window.location.origin
+    const inside = entry({ id: 'inside', title: 'Inside', origin: own, url: `${own}/inside/` })
+    const { exchange: exchangeFn } = await open('/m/inside', exchange(), [...MODULES, inside])
+    expect(frames()).toBe(0)
+    expect(screen.getByRole('alert').textContent).toMatch(/Inside cannot be opened/)
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+    expect(exchangeFn).not.toHaveBeenCalled()
   })
 
   it('is loaded from exactly the registry url, which holds nothing else', async () => {
@@ -469,19 +480,21 @@ describe('when the token cannot be got', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
-  it('an exchange failure on a reload replaces the frame with the panel rather than leave a half-working module', async () => {
-    // The server goes away after the first token: the shell's refreshes fail, so the cached token ages out.
-    await open('/m/vendor-admin', exchange((call) => (call >= 2 ? new NetworkError('network') : undefined)))
+  it('a reload while the refreshes fail gets the token it holds, and ends with the session at its expiry like any other', async () => {
+    // The server goes away after the first token: the shell's refreshes fail, so the token ages out.
+    const t = await open('/m/vendor-admin', exchange((call) => (call >= 2 ? new NetworkError('network') : undefined)))
     const module = await moduleSaysReady()
-    expect(screen.queryByRole('alert')).toBeNull()
-    // Just before the token ends (it is under the 10-second cache margin), the module reloads and needs a new one.
     await settle(292_000)
-    expect(screen.queryByRole('alert')).toBeNull()
+    const calls = t.exchange.mock.calls.length
+    // Just before the token ends the module reloads: it gets the same token again, with no exchange.
     expect(module.client.sendReady()).toBe(true)
     await settle()
-    expect(screen.getByRole('alert').textContent).toMatch(/Vendor admin could not be opened/)
+    expect(module.auths.map((auth) => auth.accessToken)).toEqual([module.auths[0]!.accessToken, module.auths[0]!.accessToken])
+    expect(t.exchange.mock.calls.length).toBe(calls)
+    expect(screen.queryByRole('alert')).toBeNull()
+    await settle(8_000)
     expect(frames()).toBe(0)
-    expect(module.auths).toHaveLength(1)
+    expect(t.store.getSnapshot()).toMatchObject({ status: 'signedOut', expired: true })
   })
 })
 

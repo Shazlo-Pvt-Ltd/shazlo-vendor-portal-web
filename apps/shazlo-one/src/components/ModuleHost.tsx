@@ -36,6 +36,10 @@ export const TOAST_WINDOW_MS = 10_000
  * The frame's `sandbox` (ADR 0001, section 5). Scripts and its own origin (it is a React app that
  * calls its own backend), forms and downloads. No top navigation, popups or modals: a module cannot
  * move the shell, open windows or block with dialogs; it sends a `toast` instead.
+ *
+ * `allow-scripts` with `allow-same-origin` is only safe because a module is on an origin of its own: a
+ * page on the shell's origin could remove its own sandbox and reach the shell's memory, token included.
+ * So the host never frames a module whose origin is the shell's.
  */
 export const IFRAME_SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-downloads'
 
@@ -100,18 +104,23 @@ function HostedFrame({ entry, visible, onStatus, deepLink, onTitle, onToast, onM
   // and the shell agreed on, so a path the module itself reported is never sent back to it.
   const authSent = useRef(false)
   const lastSynced = useRef('')
+  // Told when the admin's roles change, so the module gets a token for the new ones at once.
+  const onRolesChanged = useRef<(roles: string) => void>(undefined)
 
   useEffect(() => {
     const iframe = frame.current
     if (iframe === null) return
     let disposed = false
     let newest = 0
-    // The token the module holds now (the last one sent), the timers that keep it fresh, and how many
-    // refreshes in a row have failed.
+    // The token the module holds now (the last one sent), the roles it was sent with, the timers that
+    // keep it fresh, and how many refreshes in a row have failed.
     let held: ModuleToken | undefined
+    let heldRoles = ''
     let refreshTimer: ReturnType<typeof setTimeout> | undefined
     let expiryTimer: ReturnType<typeof setTimeout> | undefined
     let refreshing = false
+    // The roles changed while a refresh was under way (its token may be for the old ones): refresh again after it.
+    let refreshAgain = false
     let failures = 0
     let lastTokenRequest = Number.NEGATIVE_INFINITY
     const report = (status: Status) => {
@@ -133,6 +142,10 @@ function HostedFrame({ entry, visible, onStatus, deepLink, onTitle, onToast, onM
         replyTo === undefined ? {} : { replyTo },
       )
       if (!sent) return false
+      heldRoles = roles.join(' ')
+      // The token it already holds (a `ready` replayed): its timers and the backoff carry on as they were,
+      // so `ready` cannot be used to cut a backoff short or force an exchange.
+      if (token === held) return true
       held = token
       failures = 0
       // Replace it at 80% of its own life, or 30 seconds before it ends, whichever is first...
@@ -166,13 +179,17 @@ function HostedFrame({ entry, visible, onStatus, deepLink, onTitle, onToast, onM
         const status = statusForExchangeError(error)
         // The admin lost the role: this module closes, with the 403 page.
         if (status.kind === 'forbidden') return report(status)
-        // The session ended meanwhile: the guards are already removing the page.
-        if (error instanceof NotSignedInError) return
-        // Anything else (network, a server error): keep what we hold until it ends, and try again soon.
+        // Anything else (network, a server error, an identity token too old to exchange with that cannot be
+        // renewed yet): keep what we hold until it ends, and try again soon. If the session has ended, the
+        // guards remove the page and its cleanup clears this timer; a retry before then asks no server.
         refreshTimer = setTimeout(() => void refresh(), backoffDelay(failures))
         failures += 1
       } finally {
         refreshing = false
+        if (refreshAgain && !disposed) {
+          refreshAgain = false
+          void refresh()
+        }
       }
     }
 
@@ -187,14 +204,21 @@ function HostedFrame({ entry, visible, onStatus, deepLink, onTitle, onToast, onM
       if (path !== '/' && isModulePath(path)) channel.sendNavigate(path)
     }
 
+    onRolesChanged.current = (roles) => {
+      if (disposed || held === undefined || roles === heldRoles) return
+      if (refreshing) refreshAgain = true
+      else void refresh()
+    }
+
     async function answer(info: ReadyInfo): Promise<void> {
       // The module is alive: stop waiting for it. A second `ready` (the module reloaded) comes here
-      // too and gets the current token, from the cache while it is still good.
+      // too and gets the token it was last sent, while that is good: no exchange.
       clearTimeout(timer)
       const mine = (newest += 1)
       try {
         // A token for this module's own audience, kept for this module only (its id is the scope).
-        const token = await sessionRef.current.getModuleToken(entry.audience, entry.id)
+        const token =
+          held !== undefined && held.expiresAt > Date.now() ? held : await sessionRef.current.getModuleToken(entry.audience, entry.id)
         if (disposed || mine !== newest) return
         if (sessionRef.current.admin === null) throw new NotSignedInError()
         const sent = deliver(token, info.id)
@@ -278,6 +302,10 @@ function HostedFrame({ entry, visible, onStatus, deepLink, onTitle, onToast, onM
     if (isModulePath(deepLink)) channelRef.current?.sendNavigate(deepLink)
   }, [deepLink])
 
+  // A renewal that changes the admin's roles: the token the module holds carries the old ones.
+  const roles = session.roles.join(' ')
+  useEffect(() => onRolesChanged.current?.(roles), [roles])
+
   return (
     <iframe
       ref={frame}
@@ -325,6 +353,16 @@ export function ModuleHost({ entry }: { entry: ModuleEntry }) {
   // Limits on what a module can make the shell do: a flood of toasts or of address changes is dropped.
   const toastAllowed = useRef(createRateLimiter({ max: MAX_TOASTS_PER_WINDOW, windowMs: TOAST_WINDOW_MS })).current
   const titleAllowed = useRef(createRateLimiter({ max: MAX_TITLES_PER_WINDOW, windowMs: TOAST_WINDOW_MS })).current
+  // A renewal that says another admin now holds the cookie (another tab signed out and in, and this one
+  // missed it): the frame is replaced, so nothing the module was given for the previous admin survives.
+  const adminId = useSession().admin?.id
+  const [frameAdmin, setFrameAdmin] = useState(adminId)
+  if (frameAdmin !== adminId) {
+    setFrameAdmin(adminId)
+    setStatus({ kind: 'loading' })
+    setPageTitle(undefined)
+    setAttempt((value) => value + 1)
+  }
   const tabTitle = pageTitle !== undefined && pageTitle !== entry.title ? `${pageTitle} · ${entry.title}` : entry.title
   usePageTitle(status.kind === 'forbidden' ? "You don't have access" : tabTitle)
 
@@ -390,6 +428,20 @@ export function ModuleHost({ entry }: { entry: ModuleEntry }) {
 
   // The admin lost the role: the same page as typing a module they may not open. No frame.
   if (status.kind === 'forbidden') return <NoAccess what="module" />
+
+  // Never framed with this sandbox (see IFRAME_SANDBOX); the registry entry is wrong.
+  if (entry.origin === window.location.origin) {
+    return (
+      <Box>
+        <Typography component="h1" variant="h4" gutterBottom tabIndex={-1}>
+          {entry.title}
+        </Typography>
+        <Panel title={`${entry.title} cannot be opened`}>
+          It is set up to load from Shazlo-One's own address, which is not allowed. Tell the platform team.
+        </Panel>
+      </Box>
+    )
+  }
 
   const framed = status.kind === 'loading' || status.kind === 'ready'
   return (

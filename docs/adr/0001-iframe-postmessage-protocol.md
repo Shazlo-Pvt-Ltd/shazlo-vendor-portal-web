@@ -148,7 +148,7 @@ The iframe element:
 | The module's `logout` message | The shell ends the session, revokes the refresh token and removes the iframe |
 | The shell navigates away or unmounts | The module notices no `auth` refresh for more than twice the refresh interval and shows "session ended" |
 | Unknown type, wrong origin, oversize or malformed message | Dropped silently. A development build logs a warning |
-| Clock difference between the shell and the module | `expiresAt` is set by the shell. The module allows 30 seconds of slack |
+| Clock difference between the shell and the module | `expiresAt` is set by the shell, and both frames read the same browser clock. The 30 seconds of slack is the module's early warning: `needsToken()` is true from 30 seconds before `expiresAt`, while `getAccessToken()` returns the token until `expiresAt` itself. The shell replaces a token at least 30 seconds before it ends (60 seconds before, for a 5-minute token), except a token that lives under a minute, which it replaces at half its life |
 
 ### 8. Security notes
 
@@ -319,7 +319,8 @@ export function isTrustedMessage(
 - ~~Decide where the module registry lives.~~ Decided (Phase 6, #252): the shell's own typed configuration, one list per environment (`development`, `preview`, `production`), in `apps/shazlo-one/src/modules/registry.ts`. An entry holds `id`, `title`, `description`, `url`, `origin`, `roles`, `audience` and `supportedVersions`. It is checked when the shell builds and when it starts, and refused if an origin is a wildcard or pattern, is not https outside development, is not the origin of its `url`, repeats an id or origin, or has an empty role list. The CSP `frame-src` is generated from it, so adding a module is one entry. `super_admin` opens every module.
 
 **Decided in #255 (the shell's host)**
-- A module's tokens are kept per module (its registry id), not per audience, so two modules that share an audience never share a token, and they are dropped when the module's page is left, its frame is reloaded or the session ends.
+- A module's tokens are kept per module (its registry id), not per audience, so two modules that share an audience never share a token, and they are dropped when the module's page is left, Retry builds a new frame or the session ends. A module that reloads itself and sends `ready` again gets the token already kept for it.
+- The sandbox keeps `allow-scripts` with `allow-same-origin`, which is safe only for a module on an origin of its own; the host refuses to frame a module whose origin is the shell's.
 - The 10-second wait is cleared by the module's `ready` (it is alive); a slow token exchange is bounded by the API client's own timeout. A retry builds a new frame and a new listener. "3 failed retries" means the first load plus three retries, so four loads, then "unavailable"; a module that answers resets the count.
 - A version mismatch and an exchange failure each get their own panel with Retry, which does not count against the no-`ready` budget. `403 audience_not_allowed` is the 403 page.
 - "Unavailable" is reported through one hook (`setModuleFailureReporter`) that does nothing until a service is wired to it, which leaves the open item about production telemetry for later.
