@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 import { renderModule } from '../../test/render'
 import { rateErrors } from '../../copy/vendors'
 import { server } from '../../test/server'
@@ -156,14 +156,18 @@ describe('A-09 Commission card', { timeout: 30_000 }, () => {
 
   it('approves the proposal the card shows, by naming it', async () => {
     const bodies: unknown[] = []
-    server.events.on('request:start', async ({ request }) => {
+    // Removed even when the test fails, and only this one: other listeners stay.
+    const listener = async ({ request }: { request: Request }) => {
       if (request.url.endsWith('/commission/approve')) bodies.push(await request.clone().json())
+    }
+    server.events.on('request:start', listener)
+    onTestFinished(() => {
+      server.events.removeListener('request:start', listener)
     })
     const { user } = await open('v_indigo', 'Indigo Loom')
     await user.click(within(card()).getByRole('button', { name: 'Approve 10%' }))
     await screen.findByText('Agreed 10% with Indigo Loom. They see it in their store details.')
     expect(bodies).toEqual([{ proposed_bps: 1000 }])
-    server.events.removeAllListeners()
   })
 
   it('tells the reviewer when the brand changed its proposal while the card was open, and shows the new rate', async () => {
