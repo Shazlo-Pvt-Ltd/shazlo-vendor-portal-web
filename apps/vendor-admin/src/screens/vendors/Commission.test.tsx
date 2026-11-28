@@ -2,6 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { renderModule } from '../../test/render'
+import { rateErrors } from '../../copy/vendors'
 import { server } from '../../test/server'
 
 // Commission is per brand, with no default rate: the card on A-09 for approved brands, and the
@@ -133,11 +134,96 @@ describe('A-09 Commission card', { timeout: 30_000 }, () => {
   })
 
   it('shows a failed approval in an error banner', async () => {
-    server.use(http.post('*/api/v1/admin/vendors/:id/commission/approve', () => HttpResponse.json({ error: { code: 'no_proposal', message: 'There is no proposed rate waiting.', request_id: 'r' } }, { status: 409 })))
+    server.use(http.post('*/v1/admin/vendors/:id/commission/approve', () => HttpResponse.json({ error: { code: 'no_proposal', message: 'There is no proposed rate waiting.', request_id: 'r' } }, { status: 409 })))
     const { user } = await open('v_indigo', 'Indigo Loom')
     await user.click(within(card()).getByRole('button', { name: 'Approve 10%' }))
     const alert = await screen.findByRole('alert')
     expect(within(alert).getByText('There is no proposed rate waiting.')).toBeInTheDocument()
+  })
+
+  it('approves the proposal the card shows, by naming it', async () => {
+    const bodies: unknown[] = []
+    server.events.on('request:start', async ({ request }) => {
+      if (request.url.endsWith('/commission/approve')) bodies.push(await request.clone().json())
+    })
+    const { user } = await open('v_indigo', 'Indigo Loom')
+    await user.click(within(card()).getByRole('button', { name: 'Approve 10%' }))
+    await screen.findByText('Agreed 10% with Indigo Loom. They see it in their store details.')
+    expect(bodies).toEqual([{ proposed_bps: 1000 }])
+    server.events.removeAllListeners()
+  })
+
+  it('tells the reviewer when the brand changed its proposal while the card was open, and shows the new rate', async () => {
+    const { user, db } = await open('v_indigo', 'Indigo Loom')
+    expect(within(card()).getByText('Indigo Loom proposed 10%.')).toBeInTheDocument()
+    vendorOf(db, 'v_indigo').commission = { ...vendorOf(db, 'v_indigo').commission, proposed_bps: 900 }
+    await user.click(within(card()).getByRole('button', { name: 'Approve 10%' }))
+    const alert = await screen.findByRole('alert')
+    expect(within(alert).getByText('The brand changed its proposal. Reload to see the new rate.')).toBeInTheDocument()
+    // Nothing was agreed, and the card read the vendor again: it now shows 9%.
+    expect(vendorOf(db, 'v_indigo').commission).toMatchObject({ state: 'proposed', agreed_bps: 1200, proposed_bps: 900 })
+    expect(await within(card()).findByText('Indigo Loom proposed 9%.')).toBeInTheDocument()
+    expect(within(card()).getByRole('button', { name: 'Approve 9%' })).toBeInTheDocument()
+  })
+
+  it('refuses the second of two admins approving at once, and shows what the first agreed', async () => {
+    const { user, db } = await open('v_indigo', 'Indigo Loom')
+    // The other admin approves first.
+    vendorOf(db, 'v_indigo').commission = { state: 'agreed', agreed_bps: 1000, proposed_bps: null, note: null, updated_at: new Date().toISOString() }
+    await user.click(within(card()).getByRole('button', { name: 'Approve 10%' }))
+    const alert = await screen.findByRole('alert')
+    expect(within(alert).getByText('There is no proposed rate waiting.')).toBeInTheDocument()
+    expect(await within(card()).findByText('10%')).toBeInTheDocument()
+    expect(within(card()).queryByRole('button', { name: /^Approve/ })).not.toBeInTheDocument()
+    expect(db.outbox.filter((e) => e.event === 'vendor.commission_changed')).toHaveLength(0)
+  })
+
+  it.each([
+    ['0', 0],
+    ['40', 4000],
+  ])('sets %s%% (the ends of the range)', async (typed, bps) => {
+    const { user, db } = await open('v_kalki', 'Kalki Studio')
+    await user.click(within(card()).getByRole('button', { name: 'Change rate' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Change the commission for Kalki Studio' })
+    await user.clear(within(dialog).getByRole('textbox', { name: 'Commission' }))
+    await user.type(within(dialog).getByRole('textbox', { name: 'Commission' }), typed)
+    await user.click(within(dialog).getByRole('button', { name: 'Save rate' }))
+    await waitFor(() => expect(vendorOf(db, 'v_kalki').commission.agreed_bps).toBe(bps))
+    await waitFor(() => expect(within(card()).getByText(`${typed}%`)).toBeInTheDocument())
+  })
+
+  it('refuses a rate above 40% or with more than two decimals before asking vendor-api', async () => {
+    const { user, db } = await open('v_kalki', 'Kalki Studio')
+    await user.click(within(card()).getByRole('button', { name: 'Change rate' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Change the commission for Kalki Studio' })
+    const rate = within(dialog).getByRole('textbox', { name: 'Commission' })
+    for (const [typed, message] of [['40.1', 'Enter a commission between 0% and 40%.'], ['12.345', rateErrors.number]] as const) {
+      await user.clear(rate)
+      await user.type(rate, typed)
+      await user.click(within(dialog).getByRole('button', { name: 'Save rate' }))
+      expect(await within(dialog).findByText(message)).toBeInTheDocument()
+    }
+    expect(vendorOf(db, 'v_kalki').commission.agreed_bps).toBe(1200)
+  })
+
+  it('shows vendor-api’s own words for a rate it refuses (422 on commission_bps)', async () => {
+    server.use(http.post('*/v1/admin/vendors/:id/commission/set', () => HttpResponse.json({ error: { code: 'rate_range', message: 'x', request_id: 'r', details: [{ loc: ['body', 'commission_bps'], msg: 'Enter a commission between 0% and 40%.', type: 'value_error' }] } }, { status: 422 })))
+    const { user } = await open('v_kalki', 'Kalki Studio')
+    await user.click(within(card()).getByRole('button', { name: 'Change rate' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Change the commission for Kalki Studio' })
+    await user.clear(within(dialog).getByRole('textbox', { name: 'Commission' }))
+    await user.type(within(dialog).getByRole('textbox', { name: 'Commission' }), '14')
+    await user.click(within(dialog).getByRole('button', { name: 'Save rate' }))
+    expect(await within(dialog).findByText('Enter a commission between 0% and 40%.')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Save rate' })).toBeEnabled()
+  })
+
+  it('keeps the vendor when the answer is only the commission: the page still shows the same brand', async () => {
+    const { user } = await open('v_indigo', 'Indigo Loom')
+    await user.click(within(card()).getByRole('button', { name: 'Approve 10%' }))
+    await screen.findByText('Agreed 10% with Indigo Loom. They see it in their store details.')
+    expect(screen.getByRole('heading', { level: 1, name: 'Indigo Loom' })).toBeInTheDocument()
+    expect(within(card()).getByText('10%')).toBeInTheDocument()
   })
 
   it('has no commission card for a rejected brand', async () => {

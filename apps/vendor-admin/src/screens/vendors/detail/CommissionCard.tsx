@@ -131,7 +131,7 @@ export function CommissionCard({ vendor, primary, onDone, onFailed }: Props) {
   const approve = async () => {
     if (proposed == null) return
     try {
-      await action.mutateAsync({ step: 'approve' })
+      await action.mutateAsync({ step: 'approve', proposed_bps: proposed })
       onDone(copy.approveBanner(name, formatRate(proposed)), copy.approveDone(name, formatRate(proposed)))
     } catch (error) {
       onFailed(error as Error)

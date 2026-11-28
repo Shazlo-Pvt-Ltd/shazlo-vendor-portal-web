@@ -16,11 +16,13 @@ type MergeItem<Real, Proposed> = Omit<Real, DefinedMethods<Proposed>> & Pick<Pro
  * still has to build (`proposed.d.ts`, from `openapi/proposed.yaml`). A method in the proposal
  * replaces the same method of the same path; the path's other methods stay real.
  */
+type ProposedKeys = string extends keyof ProposedPaths ? never : keyof ProposedPaths // an empty proposal is `Record<string, never>`: no keys, not every key
+
 export type VendorApiPaths = {
-  [P in keyof RealPaths | keyof ProposedPaths]: P extends keyof ProposedPaths
+  [P in keyof RealPaths | ProposedKeys]: P extends ProposedKeys
     ? P extends keyof RealPaths
-      ? MergeItem<RealPaths[P], ProposedPaths[P]>
-      : ProposedPaths[P]
+      ? MergeItem<RealPaths[P], ProposedPaths[P & keyof ProposedPaths]>
+      : ProposedPaths[P & keyof ProposedPaths]
     : P extends keyof RealPaths
       ? RealPaths[P]
       : never

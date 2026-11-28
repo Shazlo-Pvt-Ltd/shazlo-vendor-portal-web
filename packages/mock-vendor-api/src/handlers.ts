@@ -4,6 +4,7 @@ import type { components } from './schema'
 
 type S = components['schemas']
 const API = '*/api/v1/admin'
+const COMMISSION_URL = '*/v1/admin/vendors/:id/commission/:step'
 const REASON_MIN = 10
 const NOTE_MAX = 600
 const MAX_BPS = 4000
@@ -36,8 +37,8 @@ function summaryOf(v: VendorRecord): S['VendorSummary'] {
 
 // A rate from the admin: whole basis points from 0 to 40%.
 function rateProblem(bps: unknown) {
-  const n = Number(bps)
-  if (bps === undefined || bps === null || bps === '' || !Number.isInteger(n) || n < 0 || n > MAX_BPS) return fail(422, 'validation_error', 'Check the commission.', { commission_bps: 'Enter a commission between 0% and 40%.' })
+  // vendor-api's StrictInt: a number, never a numeric string.
+  if (typeof bps !== 'number' || !Number.isInteger(bps) || bps < 0 || bps > MAX_BPS) return fail(422, 'validation_error', 'Check the commission.', { commission_bps: 'Enter a commission between 0% and 40%.' })
   return null
 }
 
@@ -297,19 +298,25 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       return HttpResponse.json(detail(v, db))
     })),
 
-    // Commission for approved (and suspended) brands. An application's rate is set when it is approved.
-    http.post(`${API}/vendors/:id/commission/:step`, guarded(async ({ params, request }, reviewer) => {
+    // `POST /v1/admin/vendors/{id}/commission/{approve|send-back|set}` as vendor-api serves it
+    // (services/vendor-api/vendor_api/api/admin_commission.py): the answer is the brand's commission,
+    // not the vendor. Approve names the proposal the reviewer saw (409 `commission_changed` when it is
+    // not the one waiting, 409 `no_proposal` when none waits); only a rejected application is refused.
+    http.post(COMMISSION_URL, guarded(async ({ params, request }, reviewer) => {
       const db = getDb()
       const v = db.vendors.find((x) => x.id === params.id)
-      if (!v) return fail(404, 'not_found', 'We could not find that vendor.')
-      if (v.status !== 'approved' && v.status !== 'suspended') return fail(409, 'invalid_status_transition', v.status === 'rejected' ? 'This application was rejected.' : 'Set the rate when you approve the application.')
+      if (!v) return fail(404, 'vendor_not_found', 'Vendor not found')
+      if (v.status === 'rejected') return fail(409, 'vendor_not_eligible', 'This application was rejected: there is no rate to agree.')
       const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
       const before = v.commission.agreed_bps
       const was = before == null ? '' : ` (was ${percent(before)})`
       const step = String(params.step)
       if (step === 'approve') {
+        const seen = body.proposed_bps
+        if (typeof seen !== 'number' || !Number.isInteger(seen) || seen < 0 || seen > MAX_BPS) return fail(422, 'validation_error', 'Check the commission.', { proposed_bps: 'Enter a commission between 0% and 40%.' })
         const proposed = v.commission.proposed_bps
         if (v.commission.state !== 'proposed' || proposed == null) return fail(409, 'no_proposal', 'There is no proposed rate waiting.')
+        if (proposed !== seen) return fail(409, 'commission_changed', 'The brand changed its proposal since you looked. Review it again.')
         agree(db, v, proposed, null)
         v.history.unshift({ at: iso(), event: 'commission_approved', by: reviewer, note: `${percent(proposed)}${was}` })
       } else if (step === 'send-back') {
@@ -330,7 +337,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       } else {
         return fail(404, 'not_found', 'Unknown action.')
       }
-      return HttpResponse.json(detail(v, db))
+      return HttpResponse.json(v.commission)
     })),
 
     http.get(`${API}/outbox`, guarded(({ request }) => {
