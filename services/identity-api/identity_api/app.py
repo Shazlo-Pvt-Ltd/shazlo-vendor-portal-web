@@ -91,7 +91,9 @@ def create_app(
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
         allow_headers=["Authorization", "Content-Type", REQUEST_ID_HEADER],
-        expose_headers=[REQUEST_ID_HEADER],
+        # Neither is CORS-safelisted: without this the shell, on its own origin, could not read the
+        # request ID to quote, nor how long a 429 (sign-in, refresh, exchange) asks it to wait.
+        expose_headers=[REQUEST_ID_HEADER, "Retry-After"],
     )
     app.add_middleware(RequestIdMiddleware)
     register_exception_handlers(app)
