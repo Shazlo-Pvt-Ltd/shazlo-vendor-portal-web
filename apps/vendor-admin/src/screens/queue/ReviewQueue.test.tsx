@@ -235,6 +235,17 @@ describe('A-04 Review queue', { timeout: 40_000 }, () => {
     expect(params(router).get('q')).toBeNull()
   })
 
+  it('cuts a search longer than the server accepts instead of failing the queue', async () => {
+    const seen = trackQueueRequests()
+    renderModule({ route: `/queue?q=${'x'.repeat(250)}` })
+    const box = await screen.findByRole('textbox', { name: 'Search item, vendor or SKU' }, { timeout: 10_000 })
+    expect(box).toHaveAttribute('maxlength', '200')
+    await waitFor(() => expect(seen.some((s) => s.get('q'))).toBe(true))
+    expect(seen.filter((s) => s.get('q')).every((s) => s.get('q')!.length === 200)).toBe(true)
+    expect(await screen.findByRole('heading', { name: 'No items match these filters' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   it('filters by vendor, submitted time and resubmissions, and sorts', async () => {
     const { user, router } = renderModule({ route: '/queue' })
     await waitForTitles(OLDEST_FIRST)

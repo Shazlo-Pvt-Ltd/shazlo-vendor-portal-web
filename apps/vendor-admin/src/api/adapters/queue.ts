@@ -10,6 +10,8 @@ type WirePage = components['schemas']['QueuePageOut']
 export const QUEUE_PAGE_SIZE = 50
 /** The most the server returns in one request; the CSV export asks for this many at a time. */
 export const QUEUE_MAX_PAGE_SIZE = 100
+/** The longest search text the server accepts (`q`); a longer one is a 422. */
+export const QUEUE_MAX_SEARCH = 200
 
 const KINDS: readonly M.ItemKind[] = ['product', 'brand_page', 'application']
 const CHANGES: readonly M.QueueItem['change'][] = ['new', 'edit', 'application']

@@ -43,7 +43,7 @@ describe('mock vendor-api: GET /v1/admin/queue', () => {
   })
 
   it('rejects a page size or offset the real service rejects, in the error envelope', async () => {
-    for (const bad of ['?limit=0', '?limit=101', '?offset=-1', '?limit=abc']) {
+    for (const bad of ['?limit=0', '?limit=101', '?offset=-1', '?limit=abc', `?q=${'x'.repeat(201)}`]) {
       const res = await get(bad)
       expect(res.status, bad).toBe(422)
       expect(Object.keys((res.body as unknown as { error: object }).error)).toEqual(expect.arrayContaining(['code', 'message', 'request_id']))

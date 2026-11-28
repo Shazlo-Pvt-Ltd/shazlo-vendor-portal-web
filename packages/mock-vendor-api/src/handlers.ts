@@ -141,6 +141,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       const offset = q.has('offset') ? Number(q.get('offset')) : 0
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) return fail(422, 'validation_error', 'Check the filters.', { limit: 'Use a page size from 1 to 100.' })
       if (!Number.isInteger(offset) || offset < 0 || offset > 100_000) return fail(422, 'validation_error', 'Check the filters.', { offset: 'Use an offset from 0 to 100000.' })
+      if ((q.get('q') ?? '').length > 200) return fail(422, 'validation_error', 'Check the filters.', { q: 'Use at most 200 characters.' })
       const all = queueItems(db)
       let items = all
       if (q.get('kind')) items = items.filter((i) => i.kind === q.get('kind'))
