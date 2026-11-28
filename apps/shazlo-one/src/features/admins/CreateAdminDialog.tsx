@@ -5,6 +5,7 @@ import type { components } from '../../api'
 import { CountdownNotice } from '../../components/CountdownNotice'
 import { useCountdown } from '../../hooks/useCountdown'
 import { registerSensitiveReset } from '../../security/sensitiveState'
+import { useSession } from '../../session/AuthProvider'
 import { LIMITS } from '../../session/passwordRules'
 import { RoleCheckboxes, TemporaryPasswordField, type RoleOption } from './formParts'
 import { refusalOf, type Refusal } from './refusals'
@@ -28,6 +29,7 @@ interface Props {
  */
 export function CreateAdminDialog({ roles, onClose, onCreated, onStale }: Props) {
   const formId = useId()
+  const session = useSession()
   const create = api.useMutation('post', '/v1/admins', { gcTime: 0 })
   const countdown = useCountdown()
   const [email, setEmail] = useState('')
@@ -43,6 +45,8 @@ export function CreateAdminDialog({ roles, onClose, onCreated, onStale }: Props)
   const show = (refusal: Refusal) => {
     if (refusal.staleList) onStale()
     if (refusal.retryAfter) countdown.start(refusal.retryAfter)
+    // The signed-in admin lost the super admin role: read the session again, which shows the 403 page.
+    if (refusal.lostAccess) void session.renew()
     if (refusal.control === 'form' || refusal.control === 'status') return setFormError(refusal.message)
     setErrors({ [refusal.control]: refusal.message })
     refs[refusal.control as 'email' | 'displayName' | 'password']?.current?.focus()

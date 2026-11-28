@@ -19,7 +19,7 @@ import {
   Typography,
 } from '@mui/material'
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, apiQueryKey } from '../api'
 import type { components } from '../api'
 import { friendlyError } from '../api/friendlyError'
@@ -28,6 +28,7 @@ import { usePageTitle } from '../hooks/usePageTitle'
 import { CreateAdminDialog } from '../features/admins/CreateAdminDialog'
 import { EditAdminDialog } from '../features/admins/EditAdminDialog'
 import { hasActiveFilters, pageCount, queryFromFilters, type StatusFilter } from '../features/admins/filters'
+import { refusalOf } from '../features/admins/refusals'
 import { roleLabel } from '../features/admins/rules'
 import { useAdminFilters } from '../features/admins/useAdminFilters'
 import { useSession } from '../session/AuthProvider'
@@ -49,7 +50,8 @@ function when(value: string | null): string {
 function AdminsContent() {
   usePageTitle('Admins')
   const queryClient = useQueryClient()
-  const { admin: me } = useSession()
+  const session = useSession()
+  const me = session.admin
   const { filters, apply, clear, qInput, setQInput } = useAdminFilters()
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<AdminOut | undefined>()
@@ -58,6 +60,18 @@ function AdminsContent() {
   const roles = api.useQuery('get', '/v1/roles')
   const admins = api.useQuery('get', '/v1/admins', { params: { query: queryFromFilters(filters) } })
   const reload = () => void queryClient.invalidateQueries({ queryKey: apiQueryKey('/v1/admins') })
+
+  // identity-api checks the roles in its database, so a super admin whose role was just removed is refused at
+  // once: read the session again, which shows the 403 page, rather than an error that says nothing of why.
+  // Once per refusal, so a session that comes back unchanged cannot start a loop.
+  const refused = [roles.error, admins.error].find((error) => error !== null && refusalOf(error).lostAccess === true)
+  const renewedFor = useRef<unknown>(undefined)
+  const { renew } = session
+  useEffect(() => {
+    if (refused === undefined || renewedFor.current === refused) return
+    renewedFor.current = refused
+    void renew()
+  }, [refused, renew])
 
   const roleOptions = roles.data ?? []
   const items = admins.data?.items ?? []

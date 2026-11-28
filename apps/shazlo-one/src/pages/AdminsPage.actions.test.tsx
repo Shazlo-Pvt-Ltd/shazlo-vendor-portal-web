@@ -444,6 +444,46 @@ describe('editing yourself', () => {
   })
 })
 
+describe('losing the super admin role while the page is open (identity-api checks the roles in its database)', () => {
+  const demote = (t: Setup) => {
+    t.backend.find(ME)!.roles = ['vendor_reviewer']
+    t.backend.forbidden = true
+  }
+
+  it('a 403 on create: your session is read again and the page becomes the 403 page', async () => {
+    const t = setup()
+    const dialog = await openCreate(t)
+    await fillCreate(t, dialog)
+    demote(t)
+    await t.user.click(within(dialog).getByRole('button', { name: 'Create admin' }))
+    expect(await screen.findByRole('heading', { level: 1, name: "You don't have access to this page" })).toBeTruthy()
+    expect(t.refresh).toHaveBeenCalledTimes(2)
+  })
+
+  it('a 403 on a password reset: the same', async () => {
+    const t = setup()
+    const edit = await openEdit(t, 'Bela Reviewer')
+    await t.user.click(within(edit).getByRole('button', { name: 'Reset password…' }))
+    const dialog = await screen.findByRole('dialog', { name: /Reset the password of Bela Reviewer/ })
+    await typeFast(t.user, within(dialog).getByLabelText(/^New temporary password/), GOOD)
+    demote(t)
+    await t.user.click(within(dialog).getByRole('button', { name: 'Reset password…' }))
+    const confirm = await screen.findByRole('dialog', { name: "Reset Bela Reviewer's password?" })
+    await t.user.click(within(confirm).getByRole('button', { name: 'Reset password' }))
+    expect(await screen.findByRole('heading', { level: 1, name: "You don't have access to this page" })).toBeTruthy()
+    expect(t.refresh).toHaveBeenCalledTimes(2)
+  })
+
+  it('a 403 on the list: the same, rather than "the admins could not be loaded"', async () => {
+    const t = setup()
+    await table()
+    demote(t)
+    await t.queryClient.invalidateQueries()
+    expect(await screen.findByRole('heading', { level: 1, name: "You don't have access to this page" })).toBeTruthy()
+    expect(t.refresh).toHaveBeenCalledTimes(2)
+  })
+})
+
 describe('resetting a password', () => {
   async function openReset(t: Setup, name = 'Bela Reviewer') {
     const edit = await openEdit(t, name)

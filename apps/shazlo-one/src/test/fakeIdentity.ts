@@ -59,6 +59,8 @@ export function fakeIdentity(server: SetupServer, initial: FakeAdmin[]) {
     /** Answer the next change (a PATCH) with this status and code. */
     nextPatchFails: undefined as { status: number; code: string } | undefined,
     listFails: false,
+    /** The signed-in admin is no longer a super admin in the database: every admin route answers 403 `forbidden`. */
+    forbidden: false,
     /** Answer the list after this many milliseconds. */
     listDelayMs: 0,
     /** Answer the list with nobody in it, whatever the filters. */
@@ -80,10 +82,12 @@ export function fakeIdentity(server: SetupServer, initial: FakeAdmin[]) {
   server.use(
     http.get(`${BASE}/v1/roles`, ({ request }) => {
       record('GET', '/v1/roles', request)
+      if (state.forbidden) return error(403, 'forbidden')
       return HttpResponse.json(state.roles)
     }),
     http.get(`${BASE}/v1/admins`, async ({ request }) => {
       record('GET', '/v1/admins', request)
+      if (state.forbidden) return error(403, 'forbidden')
       if (state.listDelayMs > 0) await delay(state.listDelayMs)
       if (state.listFails) return error(503, 'unavailable', 'database is down')
       if (state.listEmpty) return HttpResponse.json({ items: [], total: 0, limit: 25, offset: 0 })
@@ -103,6 +107,7 @@ export function fakeIdentity(server: SetupServer, initial: FakeAdmin[]) {
     http.post(`${BASE}/v1/admins`, async ({ request }) => {
       const body = (await request.json()) as { email: string; display_name: string; password: string; roles: string[] }
       record('POST', '/v1/admins', request, body)
+      if (state.forbidden) return error(403, 'forbidden')
       const failure = state.nextCreateFails
       if (failure) {
         state.nextCreateFails = undefined
@@ -119,6 +124,7 @@ export function fakeIdentity(server: SetupServer, initial: FakeAdmin[]) {
     http.patch(`${BASE}/v1/admins/:id`, async ({ request, params }) => {
       const body = (await request.json()) as { display_name?: string; roles?: string[]; is_active?: boolean }
       record('PATCH', '/v1/admins/{id}', request, { id: params.id, ...body })
+      if (state.forbidden) return error(403, 'forbidden')
       const failure = state.nextPatchFails
       if (failure) {
         state.nextPatchFails = undefined
@@ -136,6 +142,7 @@ export function fakeIdentity(server: SetupServer, initial: FakeAdmin[]) {
     http.post(`${BASE}/v1/admins/:id/reset-password`, async ({ request, params }) => {
       const body = (await request.json()) as { new_password: string }
       record('POST', '/v1/admins/{id}/reset-password', request, { id: params.id, ...body })
+      if (state.forbidden) return error(403, 'forbidden')
       const target = state.find(String(params.id))
       if (!target) return error(404, 'admin_not_found')
       const problem = weak(body.new_password, target.email)

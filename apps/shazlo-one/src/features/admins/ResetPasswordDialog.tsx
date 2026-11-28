@@ -6,6 +6,7 @@ import { CountdownNotice } from '../../components/CountdownNotice'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { useCountdown } from '../../hooks/useCountdown'
 import { registerSensitiveReset } from '../../security/sensitiveState'
+import { useSession } from '../../session/AuthProvider'
 import { TemporaryPasswordField } from './formParts'
 import { refusalOf, type Refusal } from './refusals'
 import { checkPassword } from './rules'
@@ -27,6 +28,7 @@ interface Props {
 export function ResetPasswordDialog({ admin, onClose, onDone, onStale }: Props) {
   const formId = useId()
   const confirm = useConfirm()
+  const session = useSession()
   const reset = api.useMutation('post', '/v1/admins/{admin_id}/reset-password', { gcTime: 0 })
   const countdown = useCountdown()
   const [password, setPassword] = useState('')
@@ -39,6 +41,8 @@ export function ResetPasswordDialog({ admin, onClose, onDone, onStale }: Props) 
   const show = (refusal: Refusal) => {
     if (refusal.staleList) onStale()
     if (refusal.retryAfter) countdown.start(refusal.retryAfter)
+    // The signed-in admin lost the super admin role: read the session again, which shows the 403 page.
+    if (refusal.lostAccess) void session.renew()
     if (refusal.control === 'password') {
       setError(refusal.message)
       input.current?.focus()
