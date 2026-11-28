@@ -149,7 +149,7 @@ export class SessionStore {
   private tokenExpiresAt = 0
   private listeners = new Set<() => void>()
   private renewTimer: ReturnType<typeof setTimeout> | undefined
-  private inFlight: Promise<boolean> | undefined
+  private inFlight: { promise: Promise<boolean>; endings: number } | undefined
   private started: Promise<void> | undefined
   private closed = true
   /**
@@ -248,10 +248,15 @@ export class SessionStore {
    * requests that find the token expired cause one refresh). Resolves true when there is a session.
    */
   renew = (): Promise<boolean> => {
-    this.inFlight ??= this.doRenew().finally(() => {
-      this.inFlight = undefined
+    if (this.inFlight && this.inFlight.endings === this.endings) return this.inFlight.promise
+    // One started before the session ended throws its answer away (another tab may sign in right
+    // after signing out): queue a fresh one behind it, so two refreshes never race for the cookie.
+    const before = this.inFlight?.promise
+    const promise: Promise<boolean> = (before ? before.then(() => this.doRenew()) : this.doRenew()).finally(() => {
+      if (this.inFlight?.promise === promise) this.inFlight = undefined
     })
-    return this.inFlight
+    this.inFlight = { promise, endings: this.endings }
+    return promise
   }
 
   private async doRenew(): Promise<boolean> {
@@ -270,7 +275,8 @@ export class SessionStore {
     } catch (error) {
       if (stale()) return false
       if (error instanceof ApiError && error.status === 401) {
-        this.end({ expired: hadSession })
+        // Already signed out (a stray 401 after sign-out): keep why the session ended.
+        if (this.state.status !== 'signedOut') this.end({ expired: hadSession })
       } else if (error instanceof NetworkError || error instanceof ApiError) {
         // The server is unreachable or failing: the session may still be good, so do not sign out.
         if (this.state.status === 'loading') this.set({ ...this.state, status: 'unavailable' })

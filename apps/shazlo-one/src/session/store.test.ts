@@ -423,6 +423,52 @@ describe('a sign-out while a renewal is under way', () => {
     expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', signedOutByUser: true, expired: false })
     store.close()
   })
+
+  it('still restores this tab when another tab signs in again before the old renewal answers', async () => {
+    const channels = fakeChannels()
+    let answer: (value: Body) => void = () => {}
+    let calls = 0
+    const refresh = () => {
+      calls += 1
+      if (calls === 2) {
+        return new Promise<Body>((resolve) => {
+          answer = resolve
+        })
+      }
+      return Promise.resolve(sessionBody({ token: `t${calls}` }))
+    }
+    const a = makeStore({ channel: channels() }).store
+    const b = makeStore({ channel: channels(), refresh }).store
+    await Promise.all([a.start(), b.start()])
+    const renewing = b.renew()
+    await a.logout()
+    a.signIn(sessionBody({ token: 'a-again' }))
+    // The new refresh waits for the old one, so the two never race for the cookie.
+    expect(calls).toBe(2)
+    answer(sessionBody({ token: 'stale' }))
+    expect(await renewing).toBe(false)
+    await vi.waitFor(() => expect(b.getSnapshot().status).toBe('signedIn'))
+    expect(b.getAccessToken()).toBe('t3')
+    a.close()
+    b.close()
+  })
+
+  it('a stray 401 after the admin signed out does not turn it into an expiry', async () => {
+    let signedOut = false
+    const refresh = async () => {
+      if (signedOut) throw apiError(401, 'invalid_refresh_token')
+      return sessionBody()
+    }
+    const onCleared = vi.fn()
+    const { store } = makeStore({ refresh, onCleared })
+    await store.start()
+    await store.logout()
+    signedOut = true
+    expect(await store.renew()).toBe(false)
+    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', signedOutByUser: true, expired: false })
+    expect(onCleared).toHaveBeenCalledOnce()
+    store.close()
+  })
 })
 
 describe('tabs', () => {
