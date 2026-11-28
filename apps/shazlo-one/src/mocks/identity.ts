@@ -90,12 +90,16 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
     const a = db.admins.find((x) => x.id === entry.adminId)
     return a?.is_active ? a : null
   }
-  const authed = (fn: (info: Parameters<HttpResponseResolver>[0], me: AdminRecord) => ReturnType<HttpResponseResolver>, role?: string): HttpResponseResolver => (info) => {
+  // As identity-api: a token for an admin who must change the temporary password opens nothing but
+  // change-password (403 password_change_required), and a role check reads the database's roles.
+  const authed = (fn: (info: Parameters<HttpResponseResolver>[0], me: AdminRecord) => ReturnType<HttpResponseResolver>, role?: string, { mustChangeOk = false } = {}): HttpResponseResolver => (info) => {
     const me = caller(info.request)
     if (!me) return fail(401, 'unauthorized', 'Your session has ended. Sign in again.')
+    if (me.must_change_password && !mustChangeOk) return fail(403, 'password_change_required', 'Choose your own password first.')
     if (role && !me.roles.includes(role)) return fail(403, 'forbidden', 'Only super admins can manage admins.')
     return fn(info, me)
   }
+  const unknownRole = (roles: string[] | null | undefined) => (roles ?? []).some((r) => !ROLES.some((known) => known.name === r))
 
   return [
     http.post('*/v1/auth/login', async ({ request }) => {
@@ -137,10 +141,11 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
       me.password = new_password
       me.must_change_password = false
       return HttpResponse.json(issue(getDb(), me))
-    })),
+    }, undefined, { mustChangeOk: true })),
 
     http.post('*/v1/auth/token', authed(async ({ request }, me) => {
       const { audience } = (await request.json()) as { audience: string }
+      if (audience === 'identity-api') return fail(400, 'audience_not_exchangeable', 'identity-api tokens come from sign-in and refresh only.')
       const allowed = AUDIENCE_ROLES[audience]
       if (!allowed) return fail(400, 'unknown_audience', 'No module backend is registered under this audience.')
       if (!me.roles.some((r) => allowed.includes(r))) return fail(403, 'audience_not_allowed', 'Your role does not give access to this module.')
@@ -175,6 +180,7 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
       if (!body.roles?.length) fields.roles = 'Choose at least one role.'
       if ((body.password ?? '').length < 12) fields.password = 'Temporary passwords need at least 12 characters.'
       if (Object.keys(fields).length) return fail(422, 'validation_error', 'Check the highlighted fields.', fields)
+      if (unknownRole(body.roles)) return fail(422, 'unknown_role', 'A role in the request does not exist.')
       if (db.admins.some((a) => a.email === body.email.toLowerCase())) return fail(409, 'email_taken', 'This email already has an admin account.')
       db.seq += 1
       const a: AdminRecord = { id: uuid(1000 + db.seq), email: body.email.toLowerCase(), display_name: body.display_name.trim(), roles: body.roles, is_active: true, must_change_password: true, created_at: db.now().toISOString(), last_login_at: null, password: body.password }
@@ -209,6 +215,7 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
         return fail(409, 'last_super_admin', 'The last active super_admin cannot be deactivated or lose the role.')
       }
       if (body.roles && !body.roles.length) return fail(422, 'validation_error', 'Choose at least one role.', { roles: 'Choose at least one role.' })
+      if (unknownRole(body.roles)) return fail(422, 'unknown_role', 'A role in the request does not exist.')
       Object.assign(a, Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)))
       if (body.is_active === false) for (const [token, owner] of db.refresh) if (owner === a.id) db.refresh.delete(token)
       return HttpResponse.json(out(a))

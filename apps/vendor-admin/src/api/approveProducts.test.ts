@@ -111,7 +111,7 @@ describe('mock vendor-api: approve several products', () => {
   it('answers 404 for an unknown vendor', async () => {
     const { status, body } = await approve('v_nope', { products: [seen('p_ajrakh')] })
     expect(status).toBe(404)
-    expect(body.error?.code).toBe('not_found')
+    expect(body.error?.code).toBe('vendor_not_found')
     expect(product('p_ajrakh').status).toBe('pending_review')
   })
 

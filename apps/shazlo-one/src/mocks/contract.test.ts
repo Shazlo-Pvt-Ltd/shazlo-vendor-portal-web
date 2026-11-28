@@ -94,6 +94,7 @@ describe('the identity mock against identity-api’s contract', () => {
     expect((await send('get', '/v1/roles')).status).toBe(200)
     expect((await send('post', '/v1/auth/token', { audience: 'vendor-api' })).status).toBe(200)
     expect((await send('post', '/v1/auth/token', { audience: 'no-such-module' })).status).toBe(400)
+    expect((await send('post', '/v1/auth/token', { audience: 'identity-api' })).body.error.code).toBe('audience_not_exchangeable')
 
     // Admins.
     const list = await send('get', '/v1/admins?limit=10&offset=0')
@@ -106,6 +107,8 @@ describe('the identity mock against identity-api’s contract', () => {
     expect((await send('post', '/v1/admins', { email: 'not-an-email', display_name: '', roles: [], password: 'x' })).status).toBe(422)
     expect((await send('patch', `/v1/admins/${id}`, { is_active: false })).status).toBe(200)
     expect((await send('patch', `/v1/admins/${id}`, { roles: [] })).status).toBe(422)
+    expect((await send('patch', `/v1/admins/${id}`, { roles: ['no_such_role'] })).body.error.code).toBe('unknown_role')
+    expect((await send('post', '/v1/admins', { email: 'other.person@shazlo.store', display_name: 'Other', roles: ['no_such_role'], password: 'a-long-temporary-pass' })).body.error.code).toBe('unknown_role')
     expect((await send('post', `/v1/admins/${id}/reset-password`, { new_password: 'another-long-temporary' })).status).toBeLessThan(300)
     expect((await send('post', `/v1/admins/${id}/reset-password`, { new_password: 'short' })).status).toBe(422)
     expect((await send('get', '/v1/admins/00000000-0000-0000-0000-000000000000')).status).toBe(404)
@@ -124,6 +127,19 @@ describe('the identity mock against identity-api’s contract', () => {
     for (const route of ['/v1/auth/login', '/v1/auth/refresh', '/v1/auth/logout', '/v1/auth/token', '/v1/auth/change-password', '/v1/me', '/v1/roles', '/v1/admins']) {
       expect(exchanges.some((x) => x.path === route && x.status < 300)).toBe(true)
     }
+  })
+
+  it('lets an admin with a temporary password do nothing but change it, as identity-api does', async () => {
+    const { send, exchanges, setToken } = harness()
+    const login = await send('post', '/v1/auth/login', INVITED_ADMIN)
+    expect(login.body.must_change_password).toBe(true)
+    setToken(login.body.access_token)
+    for (const [method, path, body] of [['get', '/v1/me'], ['get', '/v1/roles'], ['get', '/v1/admins/names?ids=x'], ['post', '/v1/auth/token', { audience: 'vendor-api' }]] as const) {
+      const answer = await send(method, path, body)
+      expect([answer.status, answer.body.error.code], path).toEqual([403, 'password_change_required'])
+    }
+    expect((await send('post', '/v1/auth/change-password', { current_password: INVITED_ADMIN.password, new_password: 'my-own-long-password' })).status).toBe(200)
+    expect(exchanges.flatMap(problems)).toEqual([])
   })
 
   it('rate-limits repeated wrong passwords with Retry-After and the rate_limited code', async () => {

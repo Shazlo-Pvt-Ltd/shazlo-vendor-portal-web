@@ -29,6 +29,8 @@ const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0
 const SEED_REVIEWERS: Record<string, string> = { 'Naman Sinha': uuid(1), 'Priya Mehta': uuid(2), 'Rahul Desai': uuid(3), 'Sneha Iyer': uuid(4), 'Kabir Shah': uuid(5) }
 
 // vendor-api's envelope: {error: {code, message, request_id, details?}}; a 422 lists pydantic-style problems.
+// The codes are vendor-api's own (vendor_not_found, review_not_found, outbox_event_not_found, the 409s);
+// `not_found` is what it answers for a route it does not have.
 function fail(status: number, code: string, message: string, fields?: Record<string, string>) {
   const details = fields ? Object.entries(fields).map(([field, msg]) => ({ loc: ['body', field], msg, type: 'value_error' })) : undefined
   const request_id = crypto.randomUUID()
@@ -309,14 +311,14 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
     http.get(`${API}/products/:id/review`, guarded(({ params }) => {
       const db = getDb()
       const p = db.products.find((x) => x.id === params.id)
-      if (!p) return fail(404, 'not_found', 'We could not find that product.')
+      if (!p) return fail(404, 'review_not_found', 'We could not find that product.')
       return HttpResponse.json({ id: p.id, sku: p.sku, status: p.status, vendor: ref(vendorOf(p.vendorId)), submitted_at: p.submittedAt, resubmission: p.resubmission, submitted: p.submitted, compare_to: p.compareTo, compare_label: p.compareLabel, history: p.history, ...neighbours(db, p.id) } satisfies S['ProductReview'])
     })),
 
     http.post(`${API}/products/:id/approve`, guarded(({ params }, reviewer) => {
       const db = getDb()
       const p = db.products.find((x) => x.id === params.id) as ProductRecord | undefined
-      if (!p) return fail(404, 'not_found', 'We could not find that product.')
+      if (!p) return fail(404, 'review_not_found', 'We could not find that product.')
       if (p.status !== 'pending_review') return fail(409, 'review_already_decided', `This product was already ${p.status === 'approved' ? 'approved' : 'sent back'}.`)
       approveProduct(db, p, reviewer)
       return HttpResponse.json({ id: p.id, decision: 'approved', at: iso(), next_id: nextWaiting(db, p.id) } satisfies S['Decision'])
@@ -325,7 +327,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
     http.post(`${API}/products/:id/reject`, guarded(async ({ params, request }, reviewer) => {
       const db = getDb()
       const p = db.products.find((x) => x.id === params.id)
-      if (!p) return fail(404, 'not_found', 'We could not find that product.')
+      if (!p) return fail(404, 'review_not_found', 'We could not find that product.')
       if (p.status !== 'pending_review') return fail(409, 'review_already_decided', 'This product was already decided.')
       const body = (await request.json()) as Partial<S['RejectBody']>
       const problem = rejectBody(body)
@@ -339,7 +341,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
     http.get(`${API}/brand-pages/:vendorId/review`, guarded(({ params }) => {
       const db = getDb()
       const b = db.brands.find((x) => x.vendorId === params.vendorId) as BrandRecord | undefined
-      if (!b) return fail(404, 'not_found', 'We could not find that brand page.')
+      if (!b) return fail(404, 'review_not_found', 'We could not find that brand page.')
       const changed = (Object.keys(b.draft) as (keyof S['BrandProfile'])[]).filter((k) => !b.live || b.live[k] !== b.draft[k])
       return HttpResponse.json({ vendor: ref(vendorOf(b.vendorId)), submitted_at: b.submittedAt, live: b.live, draft: b.draft, changed_fields: changed, history: b.history, ...neighbours(db, b.vendorId) } satisfies S['BrandReview'])
     })),
@@ -347,7 +349,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
     http.post(`${API}/brand-pages/:vendorId/approve`, guarded(({ params }, reviewer) => {
       const db = getDb()
       const b = db.brands.find((x) => x.vendorId === params.vendorId)
-      if (!b) return fail(404, 'not_found', 'We could not find that brand page.')
+      if (!b) return fail(404, 'review_not_found', 'We could not find that brand page.')
       if (b.status !== 'pending_review') return fail(409, 'review_already_decided', 'This brand page was already decided.')
       b.status = 'approved'
       b.live = b.draft
@@ -361,7 +363,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
     http.post(`${API}/brand-pages/:vendorId/reject`, guarded(async ({ params, request }, reviewer) => {
       const db = getDb()
       const b = db.brands.find((x) => x.vendorId === params.vendorId)
-      if (!b) return fail(404, 'not_found', 'We could not find that brand page.')
+      if (!b) return fail(404, 'review_not_found', 'We could not find that brand page.')
       const body = (await request.json()) as Partial<S['RejectBody']>
       const problem = rejectBody(body)
       if (problem) return problem
@@ -394,13 +396,13 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
     http.get(`${API}/vendors/:id`, guarded(({ params }) => {
       const db = getDb()
       const v = db.vendors.find((x) => x.id === params.id)
-      return v ? HttpResponse.json(detail(v, db)) : fail(404, 'not_found', 'We could not find that vendor.')
+      return v ? HttpResponse.json(detail(v, db)) : fail(404, 'vendor_not_found', 'We could not find that vendor.')
     })),
 
     http.post(`${API}/vendors/:id/:action`, guarded(async ({ params, request }, reviewer) => {
       const db = getDb()
       const v = db.vendors.find((x) => x.id === params.id)
-      if (!v) return fail(404, 'not_found', 'We could not find that vendor.')
+      if (!v) return fail(404, 'vendor_not_found', 'We could not find that vendor.')
       const action = String(params.action)
       const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
       const open = v.status === 'applied' || v.status === 'under_review'
@@ -451,7 +453,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
     http.post(`${API}/vendors/:id/commission/:step`, guarded(async ({ params, request }, reviewer) => {
       const db = getDb()
       const v = db.vendors.find((x) => x.id === params.id)
-      if (!v) return fail(404, 'not_found', 'We could not find that vendor.')
+      if (!v) return fail(404, 'vendor_not_found', 'We could not find that vendor.')
       // vendor-api's own codes: a rejected vendor is `vendor_not_eligible`, which keeps its own wording.
       if (v.status === 'rejected') return fail(409, 'vendor_not_eligible', 'This application was rejected: there is no rate to agree.')
       if (v.status !== 'approved' && v.status !== 'suspended') return fail(409, 'invalid_status_transition', 'Set the rate when you approve the application.')
@@ -490,7 +492,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
     http.post(`${API}/vendors/:id/products/approve`, guarded(async ({ params, request }, reviewer) => {
       const db = getDb()
       const v = db.vendors.find((x) => x.id === params.id)
-      if (!v) return fail(404, 'not_found', 'We could not find that vendor.')
+      if (!v) return fail(404, 'vendor_not_found', 'We could not find that vendor.')
       const checked = bulkProblem(await request.json().catch(() => null))
       if ('problem' in checked) return checked.problem
       // Approving here publishes; a suspended or rejected brand's products are hidden from the app.
@@ -527,7 +529,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
 
     http.post(`${API}/outbox/:id/retry`, guarded(({ params }) => {
       const e = getDb().outbox.find((x) => x.id === params.id)
-      if (!e) return fail(404, 'not_found', 'We could not find that event.')
+      if (!e) return fail(404, 'outbox_event_not_found', 'We could not find that event.')
       // vendor-api's code for a retry of an event that is not dead; the screens show its message as is.
       if (e.status === 'delivered') return fail(409, 'invalid_outbox_status', 'This event was already delivered.')
       Object.assign(e, { status: 'delivered', tries: e.tries + 1, last_attempt_at: iso(), next_attempt_at: null, last_error: null })
