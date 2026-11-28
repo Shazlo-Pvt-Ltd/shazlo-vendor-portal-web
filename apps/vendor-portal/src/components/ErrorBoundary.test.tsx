@@ -25,7 +25,7 @@ describe('ErrorBoundary', () => {
   it('shows a plain message, never the error or a stack', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
     render(<Harness />)
-    expect(screen.getByRole('heading', { level: 1, name: 'Something went wrong' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: 'This page did not load' })).toBeTruthy()
     expect(document.body.textContent).not.toMatch(/hunter2|secret internal|at Bomb|\.tsx/)
   })
 

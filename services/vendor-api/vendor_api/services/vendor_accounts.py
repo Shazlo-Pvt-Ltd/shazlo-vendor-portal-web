@@ -35,7 +35,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Protocol
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,7 +48,6 @@ from vendor_api.db.models import (
     VendorStatus,
     VendorStatusEvent,
 )
-from vendor_api.services.auth import AuthService
 from vendor_api.services.commission import state_condition as commission_state_condition
 from vendor_api.services.email import EmailTemplate, OutgoingEmail
 from vendor_api.services.outbox import OutboxWriter
@@ -132,12 +131,18 @@ def _like(text: str) -> str:
     return f"%{escaped}%"
 
 
+class SessionEnder(Protocol):
+    """What ends a vendor's sessions: `VendorSessions` in the admin app (ADR 0011)."""
+
+    async def end_sessions_of_vendor(self, db: AsyncSession, vendor_id: uuid.UUID) -> int: ...
+
+
 class VendorAccountService:
     """Lists vendors and changes their status. Commits its own changes."""
 
     def __init__(
         self,
-        sessions: AuthService,
+        sessions: SessionEnder,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         events: OutboxWriter | None = None,
     ) -> None:

@@ -3,20 +3,31 @@
 export interface Env {
   /** The vendor-api origin, without a trailing slash. */
   apiUrl: string
+  /**
+   * Demo mode (`VITE_MOCK_API=on`): a service worker answers the API with in-memory data
+   * (src/mocks). Off by default. The API URL is checked either way.
+   */
+  mockApi: boolean
 }
 
 export type EnvResult = { ok: true; env: Env } | { ok: false; problems: string[] }
 
 interface RawEnv {
   VITE_VENDOR_API_URL?: string
+  VITE_MOCK_API?: string
 }
 
 /**
  * Reads `VITE_VENDOR_API_URL`. It is required, must be an http(s) origin without credentials, a
  * path, a query or a fragment, and must be https unless the app runs in development. The problems
  * say what is wrong and never repeat the value (it could hold a password somebody pasted).
+ * `VITE_MOCK_API` is `on` or `off` (the default); anything else is a mistake, not a guess.
  */
 export function readEnv(raw: RawEnv, options: { dev: boolean }): EnvResult {
+  const mock = raw.VITE_MOCK_API ?? 'off'
+  if (mock !== 'on' && mock !== 'off') {
+    return { ok: false, problems: ['VITE_MOCK_API must be on or off.'] }
+  }
   const value = (raw.VITE_VENDOR_API_URL ?? '').trim()
   if (value === '') {
     return { ok: false, problems: ['VITE_VENDOR_API_URL is not set.'] }
@@ -45,7 +56,7 @@ export function readEnv(raw: RawEnv, options: { dev: boolean }): EnvResult {
   if (problems.length > 0) {
     return { ok: false, problems }
   }
-  return { ok: true, env: { apiUrl: url.origin } }
+  return { ok: true, env: { apiUrl: url.origin, mockApi: mock === 'on' } }
 }
 
 /** The environment of this build. */

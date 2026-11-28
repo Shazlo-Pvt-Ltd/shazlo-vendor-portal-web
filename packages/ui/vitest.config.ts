@@ -5,5 +5,6 @@ export default defineConfig({
     name: 'ui',
     include: ['src/**/*.test.ts', 'test/**/*.test.tsx'],
     environment: 'node',
+    setupFiles: ['./test/setup.ts'],
   },
 })

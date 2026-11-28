@@ -60,6 +60,31 @@ class AuthSession:
     refresh: RefreshSession
 
 
+class VendorSessions:
+    """Ends every session of a vendor's users: all the admin app needs from the session
+    store (ADR 0011). It holds no signing key and issues nothing; the admin app must use the
+    same Redis (`REDIS_URL`) as the seller app, or it ends nothing."""
+
+    def __init__(self, refresh_tokens: RefreshTokenStore) -> None:
+        self._refresh_tokens = refresh_tokens
+
+    async def end_sessions_of_vendor(self, db: AsyncSession, vendor_id: uuid.UUID) -> int:
+        """Ends every session of every user of a vendor, and returns how many users that was.
+
+        Called when an admin changes a vendor's status (suspend, reject): refreshing is
+        refused for those statuses anyway, but this also ends the sessions at once, so a
+        vendor that is approved again does not get its old sessions back. Access tokens already
+        issued expire on their own within 15 minutes, and `current_vendor_user` refuses a
+        suspended vendor's tokens meanwhile.
+        """
+        user_ids = list(
+            await db.scalars(select(VendorUser.id).where(VendorUser.vendor_id == vendor_id))
+        )
+        for user_id in user_ids:
+            await self._refresh_tokens.revoke_all(user_id)
+        return len(user_ids)
+
+
 class AuthService:
     """Login, refresh, logout and change-password for vendor users. Commits its own changes.
 
@@ -223,20 +248,8 @@ class AuthService:
         await self._refresh_tokens.revoke_all(user_id)
 
     async def end_sessions_of_vendor(self, db: AsyncSession, vendor_id: uuid.UUID) -> int:
-        """Ends every session of every user of a vendor, and returns how many users that was.
-
-        Phase 3 calls this when an admin changes a vendor's status (suspend, reject): refreshing
-        is refused for those statuses anyway, but this also ends the sessions at once, so a
-        vendor that is approved again does not get its old sessions back. Access tokens already
-        issued expire on their own within 15 minutes, and `current_vendor_user` refuses a
-        suspended vendor's tokens meanwhile.
-        """
-        user_ids = list(
-            await db.scalars(select(VendorUser.id).where(VendorUser.vendor_id == vendor_id))
-        )
-        for user_id in user_ids:
-            await self._refresh_tokens.revoke_all(user_id)
-        return len(user_ids)
+        """See `VendorSessions.end_sessions_of_vendor`."""
+        return await VendorSessions(self._refresh_tokens).end_sessions_of_vendor(db, vendor_id)
 
     async def _start_session(
         self, user: VendorUser, vendor: Vendor, generation: int

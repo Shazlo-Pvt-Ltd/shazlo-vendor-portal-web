@@ -1,40 +1,32 @@
-import { ApiError } from '../api/errors'
-import type { components } from '../api/schema'
+import { ApiError } from '../api/http'
+import type { components } from '../api/identity'
 import { SessionStore, type SessionDeps } from './store'
 
 type SessionResponse = components['schemas']['SessionResponse']
 type AdminProfile = components['schemas']['AdminProfile']
 
+// Test helpers for the session store (store.test.ts) and the module host.
+
 export function adminProfile(overrides: Partial<AdminProfile> = {}): AdminProfile {
-  return {
-    id: 'a1',
-    email: 'admin@shazlo.test',
-    display_name: 'Asha Admin',
-    roles: ['super_admin'],
-    must_change_password: false,
-    ...overrides,
-  }
+  return { id: 'a1', email: 'admin@shazlo.test', display_name: 'Asha Admin', roles: ['super_admin'], must_change_password: false, ...overrides }
 }
 
-export function sessionBody(
-  overrides: { roles?: string[]; token?: string; expires_in?: number; must_change_password?: boolean } = {},
-): SessionResponse {
+export function sessionBody(overrides: { roles?: string[]; token?: string; expires_in?: number; must_change_password?: boolean; admin?: Partial<AdminProfile> } = {}): SessionResponse {
   const mustChange = overrides.must_change_password ?? false
   return {
     access_token: overrides.token ?? 'token-1',
     expires_in: overrides.expires_in ?? 900,
     token_type: 'Bearer',
     must_change_password: mustChange,
-    // What identity-api sends for a first login: the profile, but a token with no roles.
-    admin: adminProfile({ roles: overrides.roles ?? ['super_admin'], must_change_password: mustChange }),
+    admin: adminProfile({ roles: overrides.roles ?? ['super_admin'], must_change_password: mustChange, ...overrides.admin }),
   }
 }
 
 export function apiError(status: number, code: string): ApiError {
-  return new ApiError({ status, code, message: code })
+  return new ApiError(status, code, code)
 }
 
-/** An in-memory stand-in for the BroadcastChannel; what one member sends the others receive. */
+/** An in-memory stand-in for the BroadcastChannel: what one member sends, the others receive. */
 export function fakeChannels() {
   const members: Array<{ onmessage: ((e: MessageEvent) => void) | null }> = []
   return () => {
@@ -55,10 +47,10 @@ export function fakeChannels() {
 export function makeStore(overrides: Partial<SessionDeps> = {}) {
   const deps: SessionDeps = {
     refresh: async () => sessionBody(),
-    fetchMe: async () => adminProfile(),
     exchange: async (audience) => ({ access_token: `module-${audience}`, token_type: 'Bearer', expires_in: 300, audience }),
     logout: async () => {},
     onCleared: () => {},
+    channel: null,
     conflictWaitMs: 0,
     ...overrides,
   }

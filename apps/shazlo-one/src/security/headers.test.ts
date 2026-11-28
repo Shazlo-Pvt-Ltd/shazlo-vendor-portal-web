@@ -1,256 +1,99 @@
 // @vitest-environment node
-import { spawnSync } from 'node:child_process'
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import {
-  HSTS,
-  PLACEHOLDER_API_ORIGIN,
-  contentSecurityPolicy,
-  securityHeaders,
-  vercelHeaders,
-} from './headers'
-import { MODULES, ENVIRONMENTS, modulesFor, originsOf } from '../modules/registry'
+import { parseRegistry, registryCsp } from '@shazlo/shell-protocol'
+import { contentSecurityPolicy, HSTS, PLACEHOLDER_IDENTITY_ORIGIN, securityHeaders, vercelHeaders, type HeaderOptions } from './headers'
 
-const app = fileURLToPath(new URL('../../', import.meta.url))
-const API = 'https://identity.shazlo.test'
-const MODULE = 'https://vendor-admin.shazlo.test'
+const directives = (policy: string) => Object.fromEntries(policy.split('; ').map((d) => { const [name, ...values] = d.split(' '); return [name!, values] }))
 
-function directives(policy: string): Map<string, string[]> {
-  return new Map(
-    policy.split(';').map((part) => {
-      const [name, ...values] = part.trim().split(/\s+/)
-      return [name!, values] as [string, string[]]
-    }),
-  )
-}
+const modules = registryCsp(
+  parseRegistry(
+    [
+      { id: 'catalogue', fallbackTitle: 'Catalogue', basePath: '/catalogue', url: 'https://catalogue.shazlo.store/', roles: ['catalogue_editor'], audience: 'catalogue-api', summaryUrl: 'https://catalogue-api.shazlo.store/v1/summary' },
+      { id: 'marketing', fallbackTitle: 'Marketing', basePath: '/marketing', url: 'https://marketing.shazlo.store/', roles: ['marketing_editor'], audience: 'marketing-api' },
+    ],
+    'production',
+  ),
+)
+const production: HeaderOptions = { mode: 'production', identityOrigin: 'https://identity.shazlo.store', frameOrigins: modules.frameSrc, moduleConnectOrigins: modules.connectSrc }
 
-describe('the production Content-Security-Policy', () => {
-  const policy = directives(contentSecurityPolicy({ apiOrigin: API, mode: 'production' }))
-
-  it('allows scripts only from the app itself: no inline script, no eval', () => {
-    expect(policy.get('default-src')).toEqual(["'self'"])
-    expect(policy.get('script-src')).toEqual(["'self'"])
-    expect(JSON.stringify([...policy])).not.toMatch(/unsafe-eval|wasm-unsafe-eval/)
-    expect(policy.get('script-src')).not.toContain("'unsafe-inline'")
+describe('the Content-Security-Policy', () => {
+  it.each(['production', 'preview', 'development'] as const)('lets nothing frame the shell (%s)', (mode) => {
+    expect(directives(contentSecurityPolicy({ ...production, mode }))['frame-ancestors']).toEqual(["'none'"])
+    expect(securityHeaders({ ...production, mode })['X-Frame-Options']).toBe('DENY')
   })
 
-  it('lets the page talk only to identity-api', () => {
-    expect(policy.get('connect-src')).toEqual([API])
+  it('frames only the registered modules, and nothing when there are none', () => {
+    expect(directives(contentSecurityPolicy(production))['frame-src']).toEqual(['https://catalogue.shazlo.store', 'https://marketing.shazlo.store'])
+    expect(directives(contentSecurityPolicy({ ...production, frameOrigins: [], moduleConnectOrigins: [] }))['frame-src']).toEqual(["'none'"])
   })
 
-  it('loads images and fonts only from the app itself', () => {
-    expect(policy.get('img-src')).toEqual(["'self'"])
-    expect(policy.get('font-src')).toEqual(["'self'"])
+  it('lets the shell call only identity-api and the modules’ manifests and summaries', () => {
+    expect(directives(contentSecurityPolicy(production))['connect-src']).toEqual([
+      'https://identity.shazlo.store',
+      'https://catalogue.shazlo.store',
+      'https://marketing.shazlo.store',
+      'https://catalogue-api.shazlo.store',
+    ])
   })
 
-  it('never lets anything frame the shell, in any mode and with modules registered', () => {
-    for (const mode of ['production', 'preview', 'development'] as const) {
-      const text = contentSecurityPolicy({ apiOrigin: API, mode, moduleOrigins: [MODULE] })
-      expect(directives(text).get('frame-ancestors')).toEqual(["'none'"])
+  it('allows its own origin only when identity-api is reached through it (the dev proxy, the mock)', () => {
+    expect(directives(contentSecurityPolicy(production))['connect-src']).not.toContain("'self'")
+    expect(directives(contentSecurityPolicy({ ...production, identityOrigin: null }))['connect-src']?.[0]).toBe("'self'")
+  })
+
+  it('runs no inline script and no eval outside development, and loads nothing from elsewhere', () => {
+    for (const mode of ['production', 'preview'] as const) {
+      const policy = directives(contentSecurityPolicy({ ...production, mode }))
+      expect(policy['script-src']).toEqual(["'self'"])
+      expect(policy['default-src']).toEqual(["'self'"])
+      expect(policy['img-src']).toEqual(["'self'"])
+      expect(policy['font-src']).toEqual(["'self'"])
+      expect(policy['object-src']).toEqual(["'none'"])
+      expect(policy['base-uri']).toEqual(["'self'"])
+      expect(policy['form-action']).toEqual(["'self'"])
+      expect(policy['worker-src']).toEqual(["'none'"])
     }
+    const dev = directives(contentSecurityPolicy({ ...production, mode: 'development', devOrigin: 'http://localhost:5192' }))
+    expect(dev['script-src']).toEqual(["'self'", "'unsafe-inline'"])
+    expect(dev['connect-src']).toContain('ws://localhost:5192')
   })
 
-  it('is never framed, and allows no plugin, new <base> or form post elsewhere', () => {
-    expect(policy.get('frame-ancestors')).toEqual(["'none'"])
-    expect(policy.get('object-src')).toEqual(["'none'"])
-    expect(policy.get('base-uri')).toEqual(["'self'"])
-    expect(policy.get('form-action')).toEqual(["'self'"])
+  it('allows a service worker only for the browser mock', () => {
+    expect(directives(contentSecurityPolicy({ ...production, mockWorker: true }))['worker-src']).toEqual(["'self'"])
   })
 
-  it('frames nothing while no module is registered in a deployed build', () => {
-    expect(originsOf(MODULES.preview)).toEqual([])
-    expect(originsOf(MODULES.production)).toEqual([])
-    expect(policy.get('frame-src')).toEqual(["'none'"])
-  })
-
-  it('registers the reference module in development only, so it can never be framed by a deployed shell', () => {
-    expect(originsOf(MODULES.development)).toEqual(['http://localhost:5175'])
-    for (const environment of ENVIRONMENTS) {
-      const ids = MODULES[environment].map((entry) => entry.id)
-      expect(ids.includes('reference'), environment).toBe(environment === 'development')
-    }
-  })
-
-  it('frames only the registered module origins, and nothing else gains them', () => {
-    const text = contentSecurityPolicy({ apiOrigin: API, mode: 'production', moduleOrigins: [MODULE] })
-    const withModule = directives(text)
-    expect(withModule.get('frame-src')).toEqual([MODULE])
-    expect(withModule.get('connect-src')).toEqual([API])
-    expect(withModule.get('frame-ancestors')).toEqual(["'none'"])
-    // Counted by splitting on the literal text: no regular expression to escape.
-    expect(text.split(MODULE).length - 1).toBe(1)
-  })
-
-  it('upgrades insecure requests and allows no wildcard, data: or blob: source', () => {
-    expect(policy.has('upgrade-insecure-requests')).toBe(true)
-    expect(contentSecurityPolicy({ apiOrigin: API, mode: 'production' })).not.toMatch(/\*|data:|blob:|http:/)
-  })
-})
-
-describe('the other headers', () => {
-  const headers = securityHeaders({ apiOrigin: API, mode: 'production' })
-
-  it('sets the referrer, content-type and permissions policies and HSTS', () => {
-    expect(headers['Referrer-Policy']).toBe('strict-origin-when-cross-origin')
-    expect(headers['X-Content-Type-Options']).toBe('nosniff')
-    expect(headers['Strict-Transport-Security']).toBe(HSTS)
-    expect(HSTS).toMatch(/max-age=\d{8,}/)
-    for (const feature of ['camera', 'microphone', 'geolocation', 'payment']) {
-      expect(headers['Permissions-Policy']).toContain(`${feature}=()`)
-    }
-  })
-
-  it('leaves HSTS out of preview and development, which run over http', () => {
-    expect(securityHeaders({ apiOrigin: API, mode: 'preview' })['Strict-Transport-Security']).toBeUndefined()
-    expect(securityHeaders({ apiOrigin: API, mode: 'development' })['Strict-Transport-Security']).toBeUndefined()
-  })
-
-  it('keeps preview as strict as production, and relaxes only what dev needs', () => {
-    const preview = directives(contentSecurityPolicy({ apiOrigin: API, mode: 'preview' }))
-    expect(preview.get('script-src')).toEqual(["'self'"])
-    const dev = directives(contentSecurityPolicy({ apiOrigin: API, mode: 'development' }))
-    expect(dev.get('script-src')).toContain("'unsafe-inline'")
-    expect(dev.get('connect-src')).toContain('ws://localhost:5173')
-    expect(dev.get('frame-ancestors')).toEqual(["'none'"])
+  it('upgrades requests and sends HSTS in production only', () => {
+    expect(contentSecurityPolicy(production)).toMatch(/upgrade-insecure-requests$/)
+    expect(contentSecurityPolicy({ ...production, mode: 'preview' })).not.toMatch(/upgrade-insecure-requests/)
+    expect(securityHeaders(production)['Strict-Transport-Security']).toBe(HSTS)
+    expect(securityHeaders({ ...production, mode: 'preview' })['Strict-Transport-Security']).toBeUndefined()
   })
 })
 
 describe('vercel.json', () => {
-  const config = JSON.parse(readFileSync(join(app, 'vercel.json'), 'utf8')) as {
-    rewrites: unknown[]
-    headers: unknown
-  }
+  const committed = JSON.parse(readFileSync(new URL('../../vercel.json', import.meta.url), 'utf8')) as { headers: unknown; rewrites: unknown }
 
-  it('carries exactly the production headers, for every path', () => {
-    expect(config.headers).toEqual(vercelHeaders(PLACEHOLDER_API_ORIGIN, originsOf(modulesFor('production'))))
+  it('holds the headers written from the one policy, for the placeholder origin and no modules', () => {
+    // `npm run headers:placeholder` rewrites it; the Vercel build writes the real origin and registry.
+    expect(committed.headers).toEqual(vercelHeaders({ identityOrigin: PLACEHOLDER_IDENTITY_ORIGIN, frameOrigins: [], moduleConnectOrigins: [] }))
   })
 
-  it('still rewrites every path to the single page', () => {
-    expect(config.rewrites).toEqual([{ source: '/(.*)', destination: '/index.html' }])
+  it('sends every page to the app, so a deep link loads it', () => {
+    expect(committed.rewrites).toEqual([{ source: '/(.*)', destination: '/index.html' }])
   })
 })
 
-describe('the Vercel prebuild step', () => {
-  function inTemporaryCopy(run: (dir: string) => void) {
-    const dir = mkdtempSync(join(tmpdir(), 'shell-headers-'))
-    try {
-      mkdirSync(join(dir, 'scripts'))
-      mkdirSync(join(dir, 'src/security'), { recursive: true })
-      mkdirSync(join(dir, 'src/modules'), { recursive: true })
-      cpSync(join(app, 'scripts/write-vercel-headers.mjs'), join(dir, 'scripts/write-vercel-headers.mjs'))
-      cpSync(join(app, 'src/security/headers.ts'), join(dir, 'src/security/headers.ts'))
-      cpSync(join(app, 'src/modules/registry.ts'), join(dir, 'src/modules/registry.ts'))
-      cpSync(join(app, 'vercel.json'), join(dir, 'vercel.json'))
-      writeFileSync(join(dir, 'package.json'), '{"type":"module"}')
-      run(dir)
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  }
-  const run = (dir: string, env: Record<string, string>) =>
-    spawnSync(process.execPath, [join(dir, 'scripts/write-vercel-headers.mjs')], {
-      env: { PATH: process.env.PATH ?? '', ...env },
-      encoding: 'utf8',
-    })
-
-  it('does nothing outside Vercel', () => {
-    inTemporaryCopy((dir) => {
-      const before = readFileSync(join(dir, 'vercel.json'), 'utf8')
-      expect(run(dir, { VITE_IDENTITY_API_URL: 'https://identity.real.test' }).status).toBe(0)
-      expect(readFileSync(join(dir, 'vercel.json'), 'utf8')).toBe(before)
-    })
-  })
-
-  it('on Vercel, puts the real API origin in connect-src and nothing else changes', () => {
-    inTemporaryCopy((dir) => {
-      expect(run(dir, { VERCEL: '1', VITE_IDENTITY_API_URL: 'https://identity.real.test' }).status).toBe(0)
-      const written = JSON.parse(readFileSync(join(dir, 'vercel.json'), 'utf8')) as {
-        headers: unknown
-        rewrites: unknown
-      }
-      expect(written.headers).toEqual(vercelHeaders('https://identity.real.test', originsOf(modulesFor('production'))))
-      expect(JSON.stringify(written.headers)).not.toContain('identity.example.com')
-    })
-  })
-
-  /** An entry for the production registry of a temporary copy, to see the script follow the registry. */
-  const withProductionEntry = (dir: string, fields: Partial<Record<string, string>> = {}) => {
-    const entry = {
-      id: 'vendor-admin',
-      title: 'Vendor admin',
-      description: 'Review vendors.',
-      url: 'https://vendor-admin.shazlo.test/',
-      origin: 'https://vendor-admin.shazlo.test',
-      roles: "['vendor_reviewer']",
-      audience: 'vendor-api',
-      supportedVersions: '[1]',
-      ...fields,
-    }
-    const text = Object.entries(entry)
-      .map(([key, value]) => (key === 'roles' || key === 'supportedVersions' ? `${key}: ${value}` : `${key}: ${JSON.stringify(value)}`))
-      .join(', ')
-    const file = join(dir, 'src/modules/registry.ts')
-    const source = readFileSync(file, 'utf8')
-    expect(source).toContain('  production: [],')
-    writeFileSync(file, source.replace('  production: [],', `  production: [{ ${text} }],`))
-  }
-
-  it('on Vercel, frame-src follows the registry: add a module and its origin is allowed, nothing else', () => {
-    inTemporaryCopy((dir) => {
-      withProductionEntry(dir)
-      expect(run(dir, { VERCEL: '1', VITE_IDENTITY_API_URL: 'https://identity.real.test' }).status).toBe(0)
-      const written = JSON.parse(readFileSync(join(dir, 'vercel.json'), 'utf8')) as {
-        headers: Array<{ headers: Array<{ key: string; value: string }> }>
-      }
-      const csp = written.headers[0]!.headers.find((header) => header.key === 'Content-Security-Policy')!.value
-      expect(directives(csp).get('frame-src')).toEqual(['https://vendor-admin.shazlo.test'])
-    })
-  })
-
-  it.each([
-    ['a wildcard origin', { origin: 'https://*.shazlo.test', url: 'https://vendor-admin.shazlo.test/' }, /wildcard/],
-    ['a non-https origin', { origin: 'http://vendor-admin.shazlo.test', url: 'http://vendor-admin.shazlo.test/' }, /https outside development/],
-    ['a url on another origin', { url: 'https://evil.test/' }, /url is not on the module origin/],
-    ['an empty role list', { roles: '[]' }, /roles is empty/],
-  ])('on Vercel, fails the build for a registry with %s, saying what is wrong', (_name, fields, message) => {
-    inTemporaryCopy((dir) => {
-      withProductionEntry(dir, fields)
-      const result = run(dir, { VERCEL: '1', VITE_IDENTITY_API_URL: 'https://identity.real.test' })
-      expect(result.status).toBe(1)
-      expect(result.stderr).toMatch(message)
-      expect(result.stderr).toContain('vendor-admin')
-    })
-  })
-
-  it('on a Vercel preview deploy, uses the preview registry, not production', () => {
-    inTemporaryCopy((dir) => {
-      withProductionEntry(dir)
-      expect(run(dir, { VERCEL: '1', VERCEL_ENV: 'preview', VITE_IDENTITY_API_URL: 'https://identity.real.test' }).status).toBe(0)
-      const written = JSON.parse(readFileSync(join(dir, 'vercel.json'), 'utf8')) as {
-        headers: Array<{ headers: Array<{ key: string; value: string }> }>
-      }
-      const csp = written.headers[0]!.headers.find((header) => header.key === 'Content-Security-Policy')!.value
-      expect(directives(csp).get('frame-src')).toEqual(["'none'"])
-    })
-  })
-
-  it.each(['', 'http://identity.real.test', 'https://user:pw@identity.real.test', 'https://identity.real.test/v1', 'https://identity.real.test;sandbox', 'nonsense'])(
-    'on Vercel, fails the build for VITE_IDENTITY_API_URL=%j',
-    (value) => {
-      inTemporaryCopy((dir) => {
-        const result = run(dir, { VERCEL: '1', VITE_IDENTITY_API_URL: value })
-        expect(result.status).toBe(1)
-        expect(result.stderr).not.toContain('pw')
-      })
-    },
-  )
-
-  it("is wired as the build's prebuild step", () => {
-    const scripts = (JSON.parse(readFileSync(join(app, 'package.json'), 'utf8')) as { scripts: Record<string, string> })
-      .scripts
-    expect(scripts.prebuild).toBe('node scripts/write-vercel-headers.mjs')
+describe('the dev and preview servers', () => {
+  it('send the same headers as production, from the same policy', async () => {
+    const { default: config } = await import('../../vite.config')
+    const resolved = await (config as (env: { mode: string; command: 'serve'; isPreview: boolean }) => Promise<{ server: { headers: Record<string, string> }; preview: { headers: Record<string, string> } }> | { server: { headers: Record<string, string> }; preview: { headers: Record<string, string> } })({ mode: 'development', command: 'serve', isPreview: false })
+    const policy = directives(resolved.server.headers['Content-Security-Policy']!)
+    expect(policy['frame-ancestors']).toEqual(["'none'"])
+    // The mock registry: the module on 5193, its summaries from the mock backend on 5194.
+    expect(policy['frame-src']).toEqual(['http://localhost:5193'])
+    expect(policy['connect-src']).toEqual(expect.arrayContaining(["'self'", 'http://localhost:5193', 'http://localhost:5194']))
+    expect(Object.keys(resolved.preview.headers).sort()).toEqual(Object.keys(securityHeaders({ ...production, mode: 'preview' })).sort())
+    expect(resolved.preview.headers['Content-Security-Policy']).not.toContain("'unsafe-inline' ws:")
   })
 })

@@ -1,0 +1,188 @@
+import { screen, waitFor, within } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { renderModule } from '../test/render'
+import { server } from '../test/server'
+import { isSecondary, isSemibold } from '../test/style'
+import { setViewport } from '../test/viewport'
+
+// On a phone the lists are cards: one list item per row, the same facts, and a link (or button)
+// named after the item that opens it. No table is drawn.
+beforeEach(() => setViewport(390))
+
+async function cardList(name: string) {
+  // The first visit compiles the screen's chunk; give it room on a busy machine.
+  const list = await screen.findByRole('list', { name }, { timeout: 10_000 })
+  await waitFor(() => expect(list).not.toHaveAttribute('aria-busy', 'true'), { timeout: 10_000 })
+  return list
+}
+
+const card = (list: HTMLElement, name: string) => within(list).getByRole('link', { name }).closest('li')!
+
+// A card is pressable as a whole: its one main link covers it, a chevron says it opens, and the
+// pointer shows over all of it.
+function expectWholeCardLink(item: HTMLElement) {
+  const link = item.querySelector('a[data-stretch]')!
+  expect(link).not.toBeNull()
+  expect(isSemibold(link)).toBe(true)
+  expect(getComputedStyle(item).cursor).toBe('pointer')
+  expect(getComputedStyle(item).position).toBe('relative')
+  expect(item.querySelector('[data-chevron]')!.closest('[aria-hidden="true"]')).not.toBeNull()
+}
+
+describe('Phone layout', { timeout: 40_000 }, () => {
+  it('shows the dashboard’s brands as whole-row links and puts each banner’s button under its message', async () => {
+    server.use(http.get('*/api/v1/admin/vendors', () => HttpResponse.json({ error: { code: 'forbidden', message: 'Vendors are not available to your role.', request_id: 'req-test' } }, { status: 403 }), { once: true }))
+    const { user } = renderModule({ route: '/dashboard' })
+    await screen.findByRole('heading', { level: 1, name: 'Vendor dashboard' }, { timeout: 10_000 })
+
+    // Each brand is one row and one link, at least 64 px tall, with no other control inside it.
+    const list = await screen.findByRole('list', { name: 'Brands with products waiting' }, { timeout: 10_000 })
+    for (const item of within(list).getAllByRole('listitem')) {
+      const links = within(item).getAllByRole('link')
+      expect(links).toHaveLength(1)
+      expect(within(item).queryByRole('button')).toBeNull()
+      expect(getComputedStyle(links[0]!).cursor).toBe('pointer')
+      expect(getComputedStyle(links[0]!).minHeight).toBe('64px')
+      expect(item.querySelector('[data-chevron]')!.closest('[aria-hidden="true"]')).not.toBeNull()
+    }
+    expect(within(list).getByRole('link', { name: /^Kalki Studio/ })).toHaveAttribute('href', '/vendors/v_kalki?tab=products')
+
+    // A banner's button moves under its words, so the words keep the card's width.
+    const vendors = screen.getByRole('region', { name: 'Vendors' })
+    const error = await within(vendors).findByRole('alert')
+    expect(error.closest('[data-layout]')).toHaveAttribute('data-layout', 'stacked')
+    const publishing = screen.getByRole('region', { name: 'Publishing to the app' })
+    const warning = await within(publishing).findByRole('alert', {}, { timeout: 10_000 })
+    expect(warning.closest('[data-layout]')).toHaveAttribute('data-layout', 'stacked')
+    expect(within(warning).getByRole('link', { name: 'See failed events' })).toBeInTheDocument()
+
+    await user.click(within(error).getByRole('button', { name: 'Try again to load vendor figures' }))
+    const figures = await within(vendors).findByRole('group', { name: 'Vendor figures' })
+    expect(within(figures).getAllByRole('link')).toHaveLength(4)
+  })
+
+  it('shows the review queue as cards that open the item', async () => {
+    const { user, router } = renderModule({ route: '/queue' })
+    const list = await cardList('Items waiting for review')
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(14))
+
+    for (const item of within(list).getAllByRole('listitem')) {
+      expectWholeCardLink(item)
+      expect(within(item).getAllByRole('link')).toHaveLength(1)
+      expect(within(item).queryByRole('button')).toBeNull()
+    }
+    const ajrakh = card(list, 'Ajrakh Block-Print Kurta')
+    expect(within(ajrakh).getByRole('link', { name: 'Ajrakh Block-Print Kurta' })).toHaveAttribute('href', '/review/product/rev_p_ajrakh')
+    expect(within(ajrakh).getByText('KS-AJR-014')).toBeInTheDocument()
+    expect(isSecondary(within(ajrakh).getByText('KS-AJR-014'))).toBe(true)
+    expect(isSecondary(within(card(list, 'Kaaya Ethnic')).getByText('Vendor application · Hyderabad, Telangana'))).toBe(true)
+    expect(within(ajrakh).getByText('Kalki Studio')).toBeInTheDocument()
+    expect(within(ajrakh).getByText('Resubmission #1')).toBeInTheDocument()
+    expect(within(ajrakh).getByText('2 h')).toBeInTheDocument()
+    expect(within(card(list, 'Patola Silk Stole')).getByText('34 h')).toHaveAttribute('data-overdue', 'true')
+    expect(within(list).getByRole('link', { name: 'Nila Handloom brand page' })).toHaveAttribute('href', '/review/brand/rev_brand_v_nila')
+    expect(within(list).getByRole('link', { name: 'Kaaya Ethnic' })).toHaveAttribute('href', '/vendors/v_kaaya')
+
+    // The figures and filters are still there, the tabs scroll.
+    expect(screen.getByRole('group', { name: 'Waiting' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Search item, vendor or SKU' })).toBeInTheDocument()
+
+    await user.click(within(list).getByRole('link', { name: 'Ajrakh Block-Print Kurta' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/review/product/rev_p_ajrakh'))
+  })
+
+  it('shows vendors as cards with status, owner and the row actions', async () => {
+    const { user, router } = renderModule({ route: '/vendors' })
+    const list = await cardList('Vendors')
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(15))
+
+    for (const item of within(list).getAllByRole('listitem')) expectWholeCardLink(item)
+    const kalki = card(list, 'Kalki Studio')
+    expect(within(kalki).getByRole('link', { name: 'Kalki Studio' })).toHaveAttribute('href', '/vendors/v_kalki')
+    // The menu sits beside the link and above its cover, never inside it.
+    const menu = within(kalki).getByRole('button', { name: 'Actions for Kalki Studio' })
+    expect(menu.closest('a')).toBeNull()
+    expect(getComputedStyle(menu).zIndex).toBe('1')
+    expect(within(kalki).getByText('Kiran Shah')).toBeInTheDocument()
+    expect(within(kalki).getByText('Approved')).toBeInTheDocument()
+    expect(within(kalki).getByText('12%')).toBeInTheDocument()
+    expect(within(kalki).getByText('18')).toBeInTheDocument()
+    expect(within(kalki).getByText('Women')).toBeInTheDocument()
+    expect(within(card(list, 'Indigo Loom')).getByText('10% proposed')).toHaveAttribute('data-status', 'pending')
+    expect(within(card(list, 'Rann Weaves')).getByText('Not set')).toBeInTheDocument()
+
+    // An approved vendor's menu offers suspend; an application is opened from its card.
+    await user.click(within(kalki).getByRole('button', { name: 'Actions for Kalki Studio' }))
+    expect(await screen.findByRole('menuitem', { name: 'Suspend' })).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    expect(within(card(list, 'Kaaya Ethnic')).queryByRole('button', { name: /^Actions for/ })).not.toBeInTheDocument()
+
+    await user.click(within(list).getByRole('link', { name: 'Kaaya Ethnic' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/vendors/v_kaaya'))
+  })
+
+  it('shows outbox events as cards and opens the chosen one full screen', async () => {
+    const { user, router } = renderModule({ route: '/publishing' })
+    const list = await cardList('Outbox events')
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(16))
+
+    const failed = within(list).getByRole('button', { name: 'Phulkari Dupatta — Mustard' }).closest('li')!
+    expect(within(failed).getByText('product.published')).toBeInTheDocument()
+    expect(within(failed).getByText('Nila Handloom')).toBeInTheDocument()
+    expect(within(failed).getByText('Failed')).toBeInTheDocument()
+
+    expect(screen.getByRole('button', { name: /^Retry all failed/ })).toBeInTheDocument()
+    await user.click(within(failed).getByRole('button', { name: 'Phulkari Dupatta — Mustard' }))
+    await waitFor(() => expect(new URLSearchParams(router.state.location.search).get('event')).toBeTruthy())
+    const dialog = await screen.findByRole('dialog', { name: 'Event details' })
+    expect(within(dialog).getByRole('heading', { name: 'Phulkari Dupatta — Mustard' })).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Close details' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(new URLSearchParams(router.state.location.search).get('event')).toBeNull()
+  })
+
+  it('puts the commission card first on a brand’s page, with its actions full width, and opens its dialogs full screen', async () => {
+    const { user } = renderModule({ route: '/vendors/v_indigo' })
+    await screen.findByRole('heading', { level: 1, name: 'Indigo Loom' }, { timeout: 10_000 })
+    const commission = screen.getByRole('region', { name: 'Commission' })
+    const application = screen.getByRole('region', { name: 'Application' })
+    // Above the long application, so a rate to review is the first thing on the page.
+    expect(commission.compareDocumentPosition(application) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(commission).getByText('Indigo Loom proposed 10%.')).toBeInTheDocument()
+    const actions = within(commission).getByRole('group', { name: 'Commission actions' })
+    expect(within(actions).getAllByRole('button').map((b) => b.textContent)).toEqual(['Approve 10%', 'Send back', 'Set a different rate'])
+    expect(actions).toHaveAttribute('data-layout', 'stacked')
+
+    await user.click(within(actions).getByRole('button', { name: 'Send back' }))
+    const sendBack = await screen.findByRole('dialog', { name: 'Send back Indigo Loom’s proposed rate' })
+    expect(sendBack).toHaveClass('MuiDialog-paperFullScreen')
+    await user.click(within(sendBack).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    await user.click(within(actions).getByRole('button', { name: 'Set a different rate' }))
+    expect(await screen.findByRole('dialog', { name: 'Change the commission for Indigo Loom' })).toHaveClass('MuiDialog-paperFullScreen')
+  })
+
+  it('keeps the review decision in a bar at the bottom of a product review', async () => {
+    const { user } = renderModule({ route: '/review/product/rev_p_ajrakh' })
+    await screen.findByRole('heading', { level: 1, name: 'Ajrakh Block-Print Kurta' }, { timeout: 10_000 })
+    const bar = screen.getByRole('region', { name: 'Decision' })
+    const approve = within(bar).getByRole('button', { name: 'Approve and publish' })
+    expect(approve).toBeDisabled()
+    expect(within(bar).getByRole('button', { name: 'Send back' })).toBeEnabled()
+    // One set of decision buttons on the page: the checklist card holds only the checks.
+    expect(screen.getAllByRole('button', { name: 'Approve and publish' })).toHaveLength(1)
+
+    const checklist = screen.getByRole('group', { name: 'Review checklist' })
+    for (const box of within(checklist).getAllByRole('checkbox')) await user.click(box)
+    expect(approve).toBeEnabled()
+
+    await user.click(within(bar).getByRole('button', { name: 'Send back' }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
+})

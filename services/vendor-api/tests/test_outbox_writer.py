@@ -339,7 +339,7 @@ async def test_a_failure_after_the_event_leaves_no_event_behind(
     async def broken(db: AsyncSession, outcome: Decision) -> None:
         raise RuntimeError("a later step failed")
 
-    tenants.api.app.state.review_decisions.add_hook(broken)
+    tenants.api.admin.state.review_decisions.add_hook(broken)
     profile_id, review_id = await pending_profile(session, tenants.a)
     with pytest.raises(RuntimeError, match="later step"):
         await decide(tenants, review_id, "approve", {"version": 1})
@@ -391,6 +391,6 @@ async def test_a_rejection_with_publishing_off_logs_nothing_about_events(
 async def test_the_app_registers_the_writer_on_the_decision_service(
     tenants: Tenants,
 ) -> None:
-    app = tenants.api.app
+    app = tenants.api.admin  # approvals are made in the admin app
     assert isinstance(app.state.outbox_writer, OutboxWriter)
     assert app.state.outbox_writer.on_decision in app.state.review_decisions._hooks  # noqa: SLF001

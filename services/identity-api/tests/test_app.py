@@ -150,11 +150,21 @@ def test_docs_served_outside_prod_only(settings: Settings) -> None:
 
 def test_cors_allows_only_configured_origins(settings: Settings) -> None:
     client = make_client(settings)
-    allowed = client.get("/health", headers={"Origin": "http://localhost:5173"})
-    assert allowed.headers["access-control-allow-origin"] == "http://localhost:5173"
+    allowed = client.get("/health", headers={"Origin": "http://localhost:5192"})
+    assert allowed.headers["access-control-allow-origin"] == "http://localhost:5192"
     assert allowed.headers["access-control-allow-credentials"] == "true"
     denied = client.get("/health", headers={"Origin": "https://evil.example"})
     assert "access-control-allow-origin" not in denied.headers
+
+
+def test_cors_exposes_request_id_and_retry_after(settings: Settings) -> None:
+    # Neither is CORS-safelisted, so the shell on its own origin reads them only if exposed: the
+    # request ID to quote to support, and how long a 429 asks it to wait.
+    response = make_client(settings).get("/health", headers={"Origin": "http://localhost:5192"})
+    exposed = {
+        h.strip().lower() for h in response.headers["access-control-expose-headers"].split(",")
+    }
+    assert {"x-request-id", "retry-after"} <= exposed
 
 
 def test_logs_are_json_with_request_id(

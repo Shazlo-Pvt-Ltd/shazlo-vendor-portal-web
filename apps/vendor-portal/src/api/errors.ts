@@ -34,6 +34,33 @@ export class ApiError extends Error {
     this.retryAfter = init.retryAfter
     this.fieldErrors = init.fieldErrors ?? {}
   }
+
+  /** {@link fieldErrors} under the name Build 2's screens use. */
+  get fields(): FieldErrors {
+    return this.fieldErrors
+  }
+}
+
+/**
+ * The same error with its field messages keyed the way a screen names its fields (vendor-api's
+ * `fabric` is the screen's `material`). `rename` returns the new key, or null to drop the message;
+ * the first message for a new key wins. Anything that is not an {@link ApiError} is returned as is.
+ */
+export function remapFieldErrors<E>(error: E, rename: (key: string) => string | null): E | ApiError {
+  if (!(error instanceof ApiError)) return error
+  const fieldErrors: FieldErrors = {}
+  for (const [key, message] of Object.entries(error.fieldErrors)) {
+    const next = rename(key)
+    if (next !== null) fieldErrors[next] ??= message
+  }
+  return new ApiError({
+    status: error.status,
+    code: error.code,
+    message: error.message,
+    requestId: error.requestId,
+    retryAfter: error.retryAfter,
+    fieldErrors,
+  })
 }
 
 /** No answer arrived: the network failed or the request ran out of time. */

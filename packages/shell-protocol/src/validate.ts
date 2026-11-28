@@ -16,6 +16,7 @@ import type {
   TokenRequestPayload,
   UserInfo,
 } from './types'
+import { isModulePath } from './paths'
 
 /*
  * `postMessage` data is untyped at runtime, so every payload is checked here. Nothing in this file
@@ -45,19 +46,8 @@ function text(value: unknown, max: number, options: { min?: number; multiline?: 
   return value
 }
 
-/** A path inside a module: starts with `/`, is not `//host` and has no backslash or control character. */
-export function isModulePath(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length >= 1 &&
-    value.length <= 2000 &&
-    value.startsWith('/') &&
-    !value.startsWith('//') &&
-    !value.includes('\\') &&
-    // eslint-disable-next-line no-control-regex
-    !/[\u0000-\u001f\u007f]/.test(value)
-  )
-}
+/** A path inside a module (paths.ts): starts with `/`, is not `//host`, and cannot climb out of the module. */
+export { isModulePath }
 
 /**
  * `expiresAt` is epoch **seconds**. Anything past this (the year 2286) is a time in milliseconds sent

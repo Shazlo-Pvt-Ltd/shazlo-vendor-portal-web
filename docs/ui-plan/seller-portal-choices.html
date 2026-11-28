@@ -1,0 +1,632 @@
+<title>Seller Portal Build Choices</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,600&family=Ovo&family=Schoolbell&display=swap">
+<style>
+/* Layout: one reading column of plan → skills → decision groups; each decision is a row of drawn option cards; a sticky tally sits at the bottom. */
+:root {
+  --bg: #FFF8E1; --surface: #FFFCE3; --ink: #17120E; --muted: #6B4A2E; --line: #D9CAA8;
+  --accent: #FAB62A; --accent-ink: #620032; --link: #2E6A93; --navy: #103C64; --pick: #620032; --pick-bg: #FFEDA3;
+  /* Product palette inside the drawings stays fixed: they picture the light-mode app. */
+  --p-canvas: #FFF8E1; --p-surface: #FFFCE3; --p-ink: #17120E; --p-brown: #7A451E; --p-line: #D9CAA8; --p-line2: #A99572;
+  --p-cream: #FFEDA3; --p-amber: #FAB62A; --p-wine: #620032; --p-navy: #103C64; --p-blue: #2E6A93; --p-ph: #F2E6C5;
+  --p-ok: #E5EFF5; --p-wa: #FFEDA3; --p-er: #F6E5EC; --p-sb: #FCE7D0;
+  --display: "Bodoni Moda", Georgia, "Times New Roman", serif;
+  --body: "Ovo", Georgia, "Times New Roman", serif;
+  --hand: "Schoolbell", "Comic Sans MS", cursive;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0D1B29; --surface: #132A40; --ink: #FFFCE3; --muted: #E3D3A8; --line: #2C4862; --link: #8EC1E6; --pick: #FAB62A; --pick-bg: #2A3A2A; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #0D1B29; --surface: #132A40; --ink: #FFFCE3; --muted: #E3D3A8; --line: #2C4862; --link: #8EC1E6; --pick: #FAB62A; --pick-bg: #2A3A2A; color-scheme: dark }
+
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--ink); font: 16px/1.55 var(--body); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 96px }
+.wrap { max-width: 1120px; margin: 0 auto }
+h1, h2, h3 { font-family: var(--display); font-weight: 600; text-wrap: balance; margin: 0; line-height: 1.15 }
+h1 { font-size: clamp(32px, 5vw, 52px); font-weight: 400; letter-spacing: -0.5px }
+h2 { font-size: 28px; font-weight: 400 }
+h3 { font-size: 19px }
+p { margin: 0; max-width: 68ch }
+a { color: var(--link) }
+.muted { color: var(--muted) }
+.eyebrow { font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted) }
+.hand { font-family: var(--hand); font-size: 18px; color: var(--muted) }
+code { font-family: var(--mono); font-size: 0.86em; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px }
+
+header.top { padding-block: 40px 24px; display: grid; gap: 14px; border-bottom: 1px solid var(--line) }
+.toc { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 15px }
+.toc a { text-decoration: none; border-bottom: 1px solid var(--line) }
+section { padding-block: 40px; border-bottom: 1px solid var(--line); display: grid; gap: 20px }
+.lede { display: grid; gap: 8px }
+
+/* Plan */
+.phases { display: grid; gap: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overflow: hidden }
+.phase { display: grid; grid-template-columns: 64px minmax(0, 1fr) minmax(0, 220px); gap: 16px; padding: 16px 18px; border-top: 1px solid var(--line) }
+.phase:first-child { border-top: 0 }
+.phase .n { font-family: var(--display); font-size: 30px; line-height: 1; color: var(--muted) }
+.phase ul { margin: 6px 0 0; padding-left: 18px; font-size: 15px }
+.phase li { margin: 2px 0 }
+.phase .meta { font-size: 14px; color: var(--muted); display: grid; gap: 4px; align-content: start }
+.gates { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px }
+.gate { border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; background: var(--surface); font-size: 15px; display: grid; gap: 4px }
+.gate b { font-family: var(--display); font-size: 16px; font-weight: 600 }
+
+/* Skills */
+.tablebox { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface) }
+table { border-collapse: collapse; width: 100%; font-size: 15px; min-width: 720px }
+th, td { text-align: left; padding: 10px 14px; border-top: 1px solid var(--line); vertical-align: top }
+thead th { border-top: 0; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); font-weight: 400 }
+.fit { display: inline-block; font-size: 13px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); white-space: nowrap }
+.fit.use { background: var(--pick-bg); color: var(--pick); border-color: transparent }
+.rules { columns: 2 300px; column-gap: 32px; font-size: 15px; margin: 0; padding-left: 20px }
+.rules li { break-inside: avoid; margin-bottom: 6px }
+.rules small { color: var(--muted) }
+
+/* Decisions */
+.group-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 10px }
+.dec { display: grid; gap: 12px; padding-block: 22px; border-top: 1px dashed var(--line) }
+.dec:first-of-type { border-top: 0 }
+.dec-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline }
+.dec-head .ref { font-family: var(--mono); font-size: 12px; color: var(--muted) }
+.dec-head .state { margin-left: auto; font-size: 14px; color: var(--muted) }
+.dec-head .state.done { color: var(--pick) }
+.opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px }
+.opt { all: unset; box-sizing: border-box; cursor: pointer; display: grid; gap: 8px; align-content: start; padding: 10px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--surface); position: relative; transition: border-color .15s, box-shadow .15s }
+.opt:hover { border-color: var(--muted) }
+.opt:focus-visible { outline: 3px solid var(--link); outline-offset: 2px }
+.opt[aria-pressed="true"] { border-color: var(--pick); box-shadow: 0 0 0 2px var(--pick) inset }
+.opt .lbl { display: flex; gap: 8px; align-items: baseline; font-size: 15px; line-height: 1.3 }
+.opt .k { font-family: var(--display); font-weight: 600; font-size: 16px }
+.opt .why { font-size: 13.5px; color: var(--muted); line-height: 1.4 }
+.opt .rec { position: absolute; top: 16px; right: 16px; font-size: 11px; letter-spacing: .6px; text-transform: uppercase; background: var(--p-navy); color: #FFFCE3; padding: 2px 7px; border-radius: 99px; z-index: 2 }
+.opt .tick { display: none; position: absolute; top: 16px; left: 16px; width: 22px; height: 22px; border-radius: 50%; background: var(--p-wine); color: #FFFCE3; font-size: 13px; line-height: 22px; text-align: center; z-index: 2 }
+.opt[aria-pressed="true"] .tick { display: block }
+.note { display: flex; gap: 8px; align-items: center }
+.note label { font-size: 14px; color: var(--muted); white-space: nowrap }
+.note input { flex: 1; min-width: 0; font: inherit; font-size: 15px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink) }
+.note input:focus-visible { outline: 2px solid var(--link); outline-offset: 1px }
+
+/* Drawing kit: tiny product UI parts in the fixed product palette */
+.art { position: relative; aspect-ratio: 16 / 10; max-width: 100%; background: var(--p-canvas); border: 1px solid var(--p-line); border-radius: 6px; overflow: hidden; display: flex; font-family: var(--body); color: var(--p-ink) }
+.art i { display: block; flex: none }
+.art.c { align-items: center; justify-content: center; padding: 8px }
+.sb { width: 23%; background: var(--p-surface); border-right: 1px solid var(--p-line); padding: 7px 5px; display: flex; flex-direction: column; gap: 4px }
+.sb.rail { width: 9% }
+.logo { height: 7px; width: 60%; background: var(--p-ink); border-radius: 1px; margin-bottom: 4px }
+.nv { height: 7px; border-radius: 2px; background: linear-gradient(90deg, var(--p-line2) 0 55%, transparent 55%); opacity: .7 }
+.nv.on { background: var(--p-cream); opacity: 1 }
+.rail .nv { width: 8px; height: 8px; margin: 0 auto; background: var(--p-line2); border-radius: 2px }
+.rail .nv.on { background: var(--p-amber) }
+.mn { flex: 1; min-width: 0; padding: 8px; display: flex; flex-direction: column; gap: 5px }
+.l { height: 3.5px; border-radius: 2px; background: var(--p-line2) }
+.l.t { height: 6px; background: var(--p-ink) }
+.l.s { background: var(--p-line) }
+.l.w { background: var(--p-wine) }
+.row { display: flex; gap: 4px; align-items: center; min-width: 0 }
+.col { display: flex; flex-direction: column; gap: 3px; min-width: 0 }
+.cd { background: var(--p-surface); border: 1px solid var(--p-line); border-radius: 4px; padding: 5px; display: flex; flex-direction: column; gap: 3px; min-width: 0 }
+.cd.flat { border: 0; border-bottom: 1px solid var(--p-line); border-radius: 0; background: transparent; padding-inline: 0 }
+.cd.soft { border-color: transparent; box-shadow: 0 2px 6px rgba(23, 18, 14, .12) }
+.bt { height: 9px; border-radius: 3px; background: var(--p-amber); min-width: 18px }
+.bt.o { background: var(--p-surface); border: 1px solid var(--p-line2) }
+.bt.n { background: var(--p-navy) }
+.bt.w { background: var(--p-wine) }
+.pl { height: 7px; width: 22px; border-radius: 4px; background: var(--p-ok); position: relative }
+.pl::before { content: ""; position: absolute; left: 3px; top: 2px; width: 3px; height: 3px; border-radius: 50%; background: var(--p-blue) }
+.pl.wa { background: var(--p-wa) } .pl.wa::before { background: var(--p-brown) }
+.pl.er { background: var(--p-er) } .pl.er::before { background: var(--p-wine) }
+.pl.sb2 { background: var(--p-sb) } .pl.sb2::before { background: var(--p-brown) }
+.im { background: var(--p-ph); border-radius: 3px }
+.cb { width: 6px; height: 6px; border: 1px solid var(--p-line2); border-radius: 1.5px; background: var(--p-surface) }
+.cb.on { background: var(--p-brown); border-color: var(--p-brown) }
+.tr { display: flex; gap: 5px; align-items: center; padding: 3px 4px; border-top: 1px solid var(--p-line); min-width: 0 }
+.tr.sel { background: #FFF3C4 }
+.num { font-family: var(--display); font-weight: 600; font-size: 13px; line-height: 1 }
+.tx { font-size: 7.5px; line-height: 1.2; color: var(--p-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.tx.m { color: var(--p-brown) }
+.tx.h { font-family: var(--hand); font-size: 9px; color: var(--p-brown) }
+.tx.d { font-family: var(--display); font-size: 10px; font-weight: 600 }
+.ph { border: 3px solid var(--p-line2); border-radius: 10px; background: var(--p-surface); overflow: hidden; display: flex; flex-direction: column; gap: 3px; padding: 3px }
+.dz { border: 1px dashed var(--p-line2); border-radius: 3px; display: flex; align-items: center; justify-content: center }
+.bar { height: 4px; border-radius: 2px; background: var(--p-cream); overflow: hidden }
+.bar > i { height: 100%; background: var(--p-amber) }
+.sk { background: linear-gradient(90deg, var(--p-ph), #FBF1D6, var(--p-ph)); border-radius: 3px }
+.step { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--p-line2); background: var(--p-surface) }
+.step.on { background: var(--p-ink); border-color: var(--p-ink) }
+.ln { height: 1px; flex: 1; background: var(--p-line2) }
+.mark { position: absolute; width: 3px; border-radius: 2px; background: var(--p-amber) }
+.snack { position: absolute; left: 8px; bottom: 7px; height: 12px; width: 38%; border-radius: 3px; background: var(--p-ink) }
+.pop { position: absolute; background: var(--p-surface); border: 1px solid var(--p-line2); border-radius: 4px; box-shadow: 0 3px 8px rgba(23, 18, 14, .16); padding: 5px; display: flex; flex-direction: column; gap: 4px }
+.art svg { display: block }
+
+/* Tally */
+.tally { position: fixed; left: 0; right: 0; bottom: 0; background: var(--surface); border-top: 1px solid var(--line); padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); z-index: 20 }
+.tally .in { max-width: 1120px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center }
+.tally .count { font-family: var(--display); font-size: 18px }
+.tally .meter { flex: 1 1 160px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; min-width: 120px }
+.tally .meter i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s }
+.tally .save { font-size: 13px; color: var(--muted) }
+.btn { font: inherit; font-size: 15px; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent) }
+.btn:focus-visible { outline: 3px solid var(--link); outline-offset: 2px }
+#copyBox { width: 100%; min-height: 120px; font: 13px/1.4 var(--mono); margin-top: 8px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 8px }
+
+@media (max-width: 720px) {
+  .phase { grid-template-columns: 40px minmax(0, 1fr) }
+  .phase .meta { grid-column: 2 }
+  .phase .n { font-size: 22px }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>Seller portal: plan and choices</h1>
+    <p>This is how we turn the Penpot wireframes (V-01 to V-09 and the 390 px versions) into the real <code>apps/vendor-portal</code>. Read the plan, then pick one option for each decision. Every option is drawn in the Shazlo palette. The one marked <b>Pick</b> is what the wireframe already shows, or what I recommend. Your picks save as you click, and I read them before building.</p>
+    <nav class="toc" aria-label="Sections">
+      <a href="#plan">Plan</a><a href="#skills">Design skills</a><a href="#foundations">Foundations</a><a href="#screens">Screens</a><a href="#engineering">Engineering</a>
+    </nav>
+  </header>
+
+  <section id="plan">
+    <div class="lede">
+      <h2>Seven steps, each one a PR with tests first</h2>
+      <p class="muted">vendor-api is still in Phase 2, so the screens are built against a mock API that copies its contract. When an endpoint ships, the mock for it is removed. Each PR goes red tests, then green, then a visual check at 1440 px and 390 px.</p>
+    </div>
+    <div class="phases" id="phases"></div>
+    <h3>Quality gates on every PR</h3>
+    <div class="gates" id="gates"></div>
+  </section>
+
+  <section id="skills">
+    <div class="lede">
+      <h2>Skills that keep the build from looking generated</h2>
+      <p class="muted" id="skillsLede">Read from each skill's own SKILL.md on GitHub, not from blog summaries. Shazlo already has a fixed palette, fonts and theme, so a skill is kept only if it helps with polish, states, motion or review without replacing the brand.</p>
+    </div>
+    <div class="tablebox"><table>
+      <thead><tr><th>Skill</th><th>What it adds</th><th>Fit</th><th>Use it for</th></tr></thead>
+      <tbody id="skillRows"></tbody>
+    </table></div>
+    <h3>Rules taken from them for this build</h3>
+    <ol class="rules" id="rules"></ol>
+  </section>
+
+  <section id="foundations"></section>
+  <section id="screens"></section>
+  <section id="engineering"></section>
+
+  <section id="copy">
+    <div class="lede">
+      <h2>Send me your picks</h2>
+      <p class="muted">Picks save on this page automatically. If they don't, copy them and paste them in chat.</p>
+    </div>
+    <div class="row" style="gap:10px;flex-wrap:wrap">
+      <button class="btn" id="copyBtn" type="button">Copy picks as text</button>
+    </div>
+    <textarea id="copyBox" hidden readonly aria-label="Picks as text"></textarea>
+  </section>
+</div>
+
+<div class="tally" role="region" aria-label="Progress">
+  <div class="in">
+    <span class="count"><span id="nPicked">0</span> of <span id="nTotal">0</span> picked</span>
+    <span class="meter" aria-hidden="true"><i id="meter"></i></span>
+    <span class="save" id="saveState">Loading saved picks…</span>
+    <button class="btn primary" id="recBtn" type="button">Use recommended for the rest</button>
+  </div>
+</div>
+
+<script>
+/* ---------- drawing helpers ---------- */
+const L = (w, c = '') => `<i class="l ${c}" style="width:${w}%"></i>`;
+const T = w => L(w, 't');
+const B = (w = 28, c = '', st = '') => `<i class="bt ${c}" style="width:${w}%;${st}"></i>`;
+const P = (c = '') => `<i class="pl ${c}"></i>`;
+const IM = st => `<i class="im" style="${st}"></i>`;
+const CD = (x, st = '', c = '') => `<div class="cd ${c}" style="${st}">${x}</div>`;
+const ROW = (x, st = '') => `<div class="row" style="${st}">${x}</div>`;
+const COL = (x, st = '') => `<div class="col" style="${st}">${x}</div>`;
+const TX = (s, c = '', st = '') => `<span class="tx ${c}" style="${st}">${s}</span>`;
+const SB = (on = 0, rail = false) => `<div class="sb ${rail ? 'rail' : ''}">${rail ? '' : '<i class="logo"></i>'}${[0,1,2,3,4,5].map(i => `<i class="nv ${i === on ? 'on' : ''}"></i>`).join('')}</div>`;
+const MN = (x, st = '') => `<div class="mn" style="${st}">${x}</div>`;
+const SHELL = (x, on = 0) => SB(on) + MN(x);
+const HEAD = (btns = 2) => ROW(COL(T(55) + L(40, 's'), 'flex:1') + (btns > 1 ? B(16, 'o') : '') + (btns ? B(18) : ''));
+const STAT = (n = '18', c = '') => CD(L(55, 's') + `<b class="num">${n}</b>` + L(70, 's'), 'flex:1', c);
+const STATS = (c = '') => ROW(STAT('18', c) + STAT('4', c) + STAT('2', c) + STAT('3', c));
+const TROW = (p = '', sel = false, thumb = true) => `<div class="tr ${sel ? 'sel' : ''}"><i class="cb ${sel ? 'on' : ''}"></i>${thumb ? IM('width:12px;height:12px') : ''}${COL(L(80) + L(45, 's'), 'flex:1')}${L(10)}${P(p)}</div>`;
+const TABLE = (rows = ['er', '', 'wa', '', ''], st = '') => CD(`<div class="tr" style="border:0">${L(20, 's')}</div>` + rows.map((p, i) => TROW(p, false)).join(''), 'padding:0;gap:0;' + st);
+const PHONE = (x, st = '') => `<div class="ph" style="${st}">${x}</div>`;
+const STEPS = (on = 2, n = 4) => ROW(Array.from({ length: n }, (_, i) => `<i class="step ${i < on ? 'on' : ''}"></i>` + (i < n - 1 ? '<i class="ln"></i>' : '')).join(''));
+const FIELD = (w = 100) => COL(L(28) + `<i class="cd" style="height:9px;padding:0;width:${w}%"></i>`);
+const ICONS = style => {
+  const s = style === 'lucide' ? 'fill="none" stroke="#17120E" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"'
+          : style === 'phos' ? 'fill="none" stroke="#17120E" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"'
+          : 'fill="#17120E" stroke="none"';
+  const home = style === 'mat' ? '<path d="M4 11 12 4l8 7v9h-5v-6H9v6H4z"/>' : '<path d="M4 11 12 4l8 7v9h-5v-6H9v6H4z"/>';
+  const box = style === 'mat' ? '<path d="M4 7l8-4 8 4v10l-8 4-8-4z"/>' : '<path d="M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10"/>';
+  const up = style === 'mat' ? '<path d="M11 16V8.8L8.4 11.4 7 10l5-5 5 5-1.4 1.4L13 8.8V16zM5 19v-2h14v2z"/>' : '<path d="M12 16V5M7 10l5-5 5 5M5 19h14"/>';
+  const clock = style === 'mat' ? '<path d="M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zm-1 4v6l5 3 1-1.6-4-2.4V7z"/>' : '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>';
+  return ROW([home, box, up, clock].map(p => `<svg width="30" height="30" viewBox="0 0 24 24" ${s} aria-hidden="true">${p}</svg>`).join(''), 'gap:14px');
+};
+
+/* ---------- plan content ---------- */
+const PHASES = [
+  { n: '0', t: 'Groundwork', items: ['Vite + React Router + TanStack Query scaffold in <code>apps/vendor-portal</code>, with <code>VITE_VENDOR_API_URL</code>', 'Typed API client and a mock API built from vendor-api\'s contract (fixtures use the wireframe data: Kalki Studio, Ajrakh kurta…)', 'Shared parts in <code>packages/ui</code>: PageHeader, StatCard, StatusPill, EmptyState, Skeletons, DataTable, FileSlot, Stepper, FormField, Snackbar host', 'Playwright + axe set up; screenshot baseline for the demo page'], meta: ['Needs: your foundation picks', 'Size: 3–4 PRs', 'Unblocks everything'] },
+  { n: '1', t: 'App shell', items: ['Desktop sidebar with store switcher, counts and user footer', 'Mobile shell for 390 px', 'Route map for all nine screens, a 404 page, a module error page', 'Keyboard order, skip link, focus on route change'], meta: ['Screens: shell of V-04 to V-09', 'Size: 1–2 PRs'] },
+  { n: '2', t: 'Sign in and onboarding', items: ['V-01 Sign in, V-02 Apply to sell, V-03 Set password', 'Route guards, session refresh and the "set password" invite link', 'Error copy for every API failure the contract lists'], meta: ['Screens: V-01, V-02, V-03', 'Real API: Phase 2 vendor auth', 'Size: 2 PRs'] },
+  { n: '3', t: 'Overview and review status', items: ['V-04 Overview: sent-back banner, stat cards, recent decisions, brand card, setup checklist', 'V-09 Review status: waiting and decided lists, reviewer reasons, "Fix and resubmit"', 'Notifications entry point'], meta: ['Screens: V-04, V-09', 'Real API: Phase 3 reviews', 'Size: 2 PRs'] },
+  { n: '4', t: 'Brand page editor', items: ['V-05 form: identity, cover, story, shopping details', 'Live phone preview with Draft / Live toggle', 'Changed-field markers, discard draft, submit for review'], meta: ['Screen: V-05', 'Real API: brand_profiles draft/published', 'Size: 2 PRs'] },
+  { n: '5', t: 'Products', items: ['V-06 list: status tabs, filters, search, bulk select, pagination', 'V-07 editor: photos with signed Cloudinary uploads, details, price with "you receive", sizes and stock, review history', 'Edit-of-live-product flow (live version stays up while the edit is reviewed)'], meta: ['Screens: V-06, V-07', 'Real API: Phase 3 products and assets', 'Size: 3–4 PRs'] },
+  { n: '6', t: 'Bulk import', items: ['V-08: template download, upload, per-row report, create drafts', 'Error report download; old seller-sheet columns still accepted'], meta: ['Screen: V-08', 'Real API: Phase 3 bulk import', 'Size: 1–2 PRs'] },
+  { n: '7', t: 'Polish and audit', items: ['Run the design-skill audits on every screen (anti-pattern scan, states, motion, contrast)', 'All 390 px layouts checked; reduced motion; empty, loading and error states for every list', 'Swap each remaining mock for the real endpoint and delete it'], meta: ['All screens', 'Size: 1–2 PRs'] },
+];
+const GATES = [
+  ['Tests written first', 'Each screen\'s behaviour from the wireframe notes becomes Testing Library tests, red, before the code is written.'],
+  ['Integration against the mock API', 'Flows run through the real router, Query client and mock API: sign in, submit, get sent back, fix, resubmit.'],
+  ['Accessibility', 'axe on every route, keyboard-only walk-through, visible focus, WCAG AA contrast (the token contrast tests already exist).'],
+  ['Visual check', 'Playwright screenshots at 1440 px and 390 px, compared with the Penpot frames before review.'],
+  ['States', 'Every list and form has loading, empty, error and success states. A PR that is missing one isn\'t done.'],
+  ['Copy', 'Real Shazlo copy from the wireframes. Errors say what happened and how to fix it. Prices use en-IN formatting (₹2,499).'],
+];
+
+/* ---------- skills (from reading each SKILL.md) ---------- */
+const SKILLS = [
+  { name: 'better-interface and friends', repo: 'jakubkrehel/skills · MIT · ★10.5k', adds: 'Review skills for accessibility (WCAG 2.2), typography, layout, writing and UI detail. They keep the project\'s own tokens and never suggest new typefaces. <code>interface-review</code> reviews a diff; <code>break</code> builds a worst-case-data test page.', fit: 'Use', use: 'Main rule set and the review on every PR' },
+  { name: 'Emil Kowalski\'s skills', repo: 'emilkowalski/skills · MIT · ★53k', adds: 'Motion by how often an action happens: nothing on keystrokes or actions done 100 times a day, under 300 ms, ease-out, never from scale(0). <code>mobile-native</code> fixes sticky hover, tap flash, 100vh and input zoom.', fit: 'Use', use: '<code>review-animations</code>, <code>emil-design-eng</code>, <code>mobile-native</code> for the 390 px screens. Not <code>pick-ui-library</code>, which pushes away from MUI.' },
+  { name: 'Impeccable', repo: 'pbakaus/impeccable · Apache-2.0 · ★101k', adds: 'A detector with 62 rules for generated-UI tells (side stripes, gradient text, tracked caps, kicker labels, bounce easing, low contrast), plus <code>audit</code>, <code>harden</code> and <code>polish</code>. It says the brief\'s fonts and palette win.', fit: 'Use partly', use: '<code>npx impeccable detect</code> in CI, plus audit and harden. Never its styling commands or <code>live</code>, which can run agents with permission checks off.' },
+  { name: 'Taste Skill', repo: 'Leonxlnx/taste-skill · MIT · ★109k', adds: 'An art-direction engine. Its <code>app-screens.md</code>, distilled from 23 real product screens, has the best dashboard and table rules of the lot.', fit: 'Borrow', use: 'Copy the app-screen rules as reference. Don\'t install it: its lint fails a cream palette and warns at three typefaces.' },
+  { name: 'frontend-design', repo: 'anthropics/skills · Apache-2.0', adds: 'Invents a distinctive look for a new project. Good writing rules.', fit: 'Skip', use: 'Shazlo\'s look is already fixed, and this skill\'s own tell list flags cream with a serif heading font.' },
+  { name: 'UI UX Pro Max', repo: 'nextlevelbuilder/ui-ux-pro-max-skill · MIT', adds: 'Generates a palette, fonts and style from a library of presets. Stack guidance is for Tailwind and shadcn.', fit: 'Skip', use: 'A competing style engine for the wrong stack. Its sound rules duplicate the better-* skills.' },
+];
+const RULES = [
+  ['Flat fills only: no gradient text, gradient washes or glow shadows.', 'Impeccable, Taste'],
+  ['Stat figures are type: a number, a label and a baseline ("within 24 h"). No icon circles or sparklines.', 'Taste app-screens'],
+  ['No coloured stripe down the side of cards or banners. Status goes in a pill with an icon, so the V-04 and V-07 banners lose their amber edge.', 'Impeccable side-tab'],
+  ['Amber marks the main action and the current selection. One main action per view.', 'Taste, better-layout'],
+  ['Status is never colour alone: pill, icon and word together.', 'better-accessibility'],
+  ['Prices, stock and counts right-aligned in tabular figures with en-IN grouping. Check Ovo\'s figures; use Bodoni Moda for big numbers if Ovo lacks tabular ones.', 'better-typography, Taste'],
+  ['A missing value shows as a grey dash, a real zero is printed, and totals come from the rows shown.', 'Taste'],
+  ['Every list, table and panel has loading, empty (says what to do next), error (says how to fix it) and partial states. A disabled control says why.', 'Impeccable, better-writing'],
+  ['Test with worst-case data: very long brand and product names, 0 and 1,000 products, long import errors, Devanagari text.', 'better break, Impeccable harden'],
+  ['No fake bold: Ovo has one weight, so MUI\'s 500 and 700 defaults are overridden. Bodoni only for headings, Schoolbell never in labels, buttons or data.', 'better-typography, Impeccable'],
+  ['Body text 60–75 characters wide; balanced headings; no tiny tracked-caps labels.', 'better-typography'],
+  ['A fixed type scale, no fluid clamp() headings inside the app.', 'Impeccable'],
+  ['Radii stay 6 / 8 / 12; a nested corner is the inner radius plus the padding.', 'better-ui'],
+  ['Borders for structure. No identical soft shadow under every card.', 'better-ui, Impeccable'],
+  ['Motion: named properties only, 150–250 ms, ease-out, no bounce, nothing on sort, tab switch or typing, no fade-up on every section.', 'Emil, better-ui'],
+  ['Hover styles only on devices that can hover; reduced motion gets gentler motion, not none.', 'Emil mobile-native, better-ui'],
+  ['Visible focus ring (3:1 on cream and amber), labels not placeholders, errors linked to their field, focus moves to the first error.', 'better-accessibility'],
+  ['44 px touch targets and 16 px inputs on phones; layout holds at 320 px and 200% zoom.', 'better-accessibility'],
+  ['Theme the browser bits too: text selection, caret, scrollbars and link underlines.', 'Impeccable'],
+  ['One icon set, using currentColor, with the stroke matched to the text. No emoji as icons.', 'better-ui, Impeccable'],
+  ['Buttons say what they do ("Save draft", "Submit for review"). The same words mean the same thing everywhere.', 'better-writing'],
+  ['Modals are not the first answer: edit inline or in a drawer. Destructive actions get a confirm or an undo.', 'Impeccable, better-interface'],
+];
+
+/* ---------- decisions ---------- */
+const GROUPS = [
+  { id: 'foundations', eyebrow: 'Foundations', title: 'Look and feel across every screen', lede: 'Choose these first. They set the shared components in packages/ui.' },
+  { id: 'screens', eyebrow: 'Screens', title: 'Screen by screen, V-01 to V-09', lede: 'Each wireframe already makes one choice. These are the alternatives worth a second look before they turn into code.' },
+  { id: 'engineering', eyebrow: 'Engineering', title: 'How it\'s built', lede: 'You won\'t see these on screen, but they decide how fast and how safely the screens ship.' },
+];
+
+const D = [
+  /* Foundations */
+  { g: 'foundations', id: 'shell', ref: 'all screens', q: 'Desktop navigation', why: 'Seller work happens across five sections and comes back to them often.', rec: 'A', o: [
+    ['Fixed sidebar', 'As in the wireframe: labels, counts and store switcher always visible.', SHELL(HEAD() + STATS() + ROW(TABLE(undefined, 'flex:2') + CD(L(60) + L(80, 's') + B(100, 'o'), 'flex:1')))],
+    ['Collapsible rail', 'Icons only until you hover. Gives tables more width but hides the counts.', SB(0, true) + MN(HEAD() + STATS() + TABLE())],
+    ['Top bar', 'Sections as tabs across the top. Simple, but there\'s no room for counts and it gets crowded at six items.', `<div class="col" style="flex:1"><div class="row" style="padding:6px 8px;background:var(--p-surface);border-bottom:1px solid var(--p-line);gap:8px"><i class="logo" style="width:12%;margin:0"></i>${L(9)}${L(9, 's')}${L(9, 's')}${L(9, 's')}${L(9, 's')}</div>${MN(HEAD() + STATS() + TABLE())}</div>`],
+  ]},
+  { g: 'foundations', id: 'mobileNav', ref: 'V-04m – V-07m', q: 'Mobile navigation (390 px)', why: 'Most small brands manage their shop from a phone.', rec: 'A', o: [
+    ['Bottom tab bar', 'Overview, Products, Add, Review, More. One tap anywhere.', `<div class="art c">${PHONE(T(50) + STAT('18') + STAT('4') + `<div style="flex:1"></div>` + ROW('<i class="bt o" style="flex:1;height:10px"></i><i class="bt o" style="flex:1;height:10px"></i><i class="bt" style="flex:1;height:10px"></i><i class="bt o" style="flex:1;height:10px"></i><i class="bt o" style="flex:1;height:10px"></i>'), 'width:34%;height:96%')}</div>`],
+    ['Menu drawer', 'A ☰ button opens the full sidebar. Familiar, but every section is two taps away.', `<div class="art c">${PHONE(ROW(`<i class="l t" style="width:12%"></i>` + `<i style="flex:1"></i>` + L(20, 's')) + `<div class="row" style="flex:1;align-items:stretch"><div class="col" style="width:62%;background:var(--p-surface);border-right:1px solid var(--p-line);padding:3px;gap:4px"><i class="logo"></i><i class="nv on"></i><i class="nv"></i><i class="nv"></i><i class="nv"></i></div><div class="col" style="flex:1;opacity:.35;gap:3px;padding:3px">${STAT()}${STAT()}</div></div>`, 'width:34%;height:96%')}</div>`],
+    ['Scrolling top tabs', 'Sections as swipeable tabs. Fits in a small space, but tabs off the edge are easy to miss.', `<div class="art c">${PHONE(T(40) + ROW(`<i class="bt" style="width:30%;height:7px"></i><i class="bt o" style="width:30%;height:7px"></i><i class="bt o" style="width:30%;height:7px"></i>`) + STAT('18') + STAT('4') + STAT('2'), 'width:34%;height:96%')}</div>`],
+  ]},
+  { g: 'foundations', id: 'typeScale', ref: 'all screens', q: 'How loud the headings are', why: 'Bodoni Moda gives the brand its character, but at large sizes it starts to take over a work tool.', rec: 'A', o: [
+    ['Restrained', 'Bodoni for page titles (32 px) and card titles (18 px). Ovo for everything else.', SHELL(`<span class="tx d" style="font-size:13px">Overview</span>` + L(40, 's') + STATS() + TABLE())],
+    ['Editorial', 'Large 48 px Bodoni titles and handwritten notes. Striking, but it pushes the work down the page.', SHELL(`<span class="tx d" style="font-size:20px;font-weight:400">Overview</span>` + TX('4 of 5 done, nearly there', 'h') + STATS())],
+    ['Quiet', 'Ovo titles too. Bodoni only in the logo and big numbers. Calm, but less recognisably Shazlo.', SHELL(TX('Overview', '', 'font-size:11px') + L(40, 's') + STATS() + TABLE())],
+  ]},
+  { g: 'foundations', id: 'hand', ref: 'empty states, tips', q: 'Where the handwritten Schoolbell font appears', why: 'The brand includes a handwritten voice. Used everywhere it looks cute; used once in a while it feels personal.', rec: 'B', o: [
+    ['Nowhere in the app', 'The portal stays fully formal. The handwritten voice lives in marketing only.', SHELL(T(40) + CD(TX('No products yet', 'd') + L(70, 's') + B(35), 'align-items:flex-start;flex:1'))],
+    ['Empty states and tips only', 'A short handwritten line where there\'s nothing to show yet, or a tip during setup.', SHELL(T(40) + CD(TX('Your first kurta goes here ↓', 'h') + TX('No products yet', 'd') + B(35), 'align-items:flex-start;flex:1'))],
+    ['Also on section labels', 'Handwritten labels above sections. Warm, but it competes with Bodoni.', SHELL(TX('this week', 'h') + T(40) + STATS() + TX('recent', 'h') + TABLE(['', 'ok']))],
+  ]},
+  { g: 'foundations', id: 'surface', ref: 'all cards', q: 'How sections are set apart', why: 'Sets how heavy or light every screen feels.', rec: 'A', o: [
+    ['Bordered cards on cream', 'As in the wireframe: off-white cards with a thin line on the cream page.', SHELL(HEAD() + STATS() + TABLE())],
+    ['Flat with dividers', 'No boxes, just hairline rules between sections. Lighter, but long forms lose their grouping.', SHELL(HEAD() + STATS('flat') + CD(L(80) + L(60, 's') + L(80) + L(60, 's'), 'flex:1', 'flat'))],
+    ['Soft shadows', 'Cards lifted with a shadow and no border. Looks softer, and closer to generic templates.', SHELL(HEAD() + STATS('soft') + CD(L(80) + L(60, 's') + L(70) + L(50, 's'), 'flex:1', 'soft'))],
+  ]},
+  { g: 'foundations', id: 'primary', ref: 'buttons', q: 'Main action button', why: '"Submit for review", "Add product" and "Create drafts" all use it.', rec: 'A', o: [
+    ['Amber, wine text', 'The theme as it is now: #FAB62A with #620032 text (contrast 7.4:1).', `<div class="art c" style="gap:10px;flex-direction:column">${ROW(`<i class="bt o" style="width:70px;height:20px"></i><span class="bt" style="width:96px;height:20px;display:flex;align-items:center;justify-content:center"><span class="tx" style="color:var(--p-wine);font-size:9px">Submit for review</span></span>`, 'gap:8px')}</div>`],
+    ['Navy, off-white text', 'Calmer and more corporate. Amber stays for highlights.', `<div class="art c" style="gap:10px;flex-direction:column">${ROW(`<i class="bt o" style="width:70px;height:20px"></i><span class="bt n" style="width:96px;height:20px;display:flex;align-items:center;justify-content:center"><span class="tx" style="color:#FFFCE3;font-size:9px">Submit for review</span></span>`, 'gap:8px')}</div>`],
+    ['Wine, cream text', 'Richer and more fashion-led. Wine is already used for errors, so the two could be confused.', `<div class="art c" style="gap:10px;flex-direction:column">${ROW(`<i class="bt o" style="width:70px;height:20px"></i><span class="bt w" style="width:96px;height:20px;display:flex;align-items:center;justify-content:center"><span class="tx" style="color:#FFEDA3;font-size:9px">Submit for review</span></span>`, 'gap:8px')}</div>`],
+  ]},
+  { g: 'foundations', id: 'badge', ref: 'Live · Pending · Sent back · Draft', q: 'Status badges', why: 'Every list in the portal is a list of statuses.', rec: 'A', o: [
+    ['Tinted pill with icon', 'As in the wireframe. Colour, icon and word, so it doesn\'t depend on colour alone.', `<div class="art c" style="flex-direction:column;gap:7px">${['Live|var(--p-ok)|var(--p-blue)|✓', 'Pending review|var(--p-wa)|var(--p-brown)|◷', 'Sent back|var(--p-sb)|var(--p-brown)|✕', 'Suspended|var(--p-er)|var(--p-wine)|!'].map(s => { const [t, b, f, ic] = s.split('|'); return `<span style="background:${b};color:${f};font-size:9px;padding:2px 8px;border-radius:99px">${ic} ${t}</span>`; }).join('')}</div>`],
+    ['Dot and word', 'Quieter, so long tables look calmer. The small dot is easy to miss.', `<div class="art c" style="flex-direction:column;gap:9px;align-items:flex-start;padding-left:30%">${['Live|var(--p-blue)', 'Pending review|var(--p-brown)', 'Sent back|#C26A1E', 'Suspended|var(--p-wine)'].map(s => { const [t, f] = s.split('|'); return `<span style="font-size:9px;display:flex;gap:5px;align-items:center"><i style="width:6px;height:6px;border-radius:50%;background:${f}"></i>${t}</span>`; }).join('')}</div>`],
+    ['Outlined chip', 'A border instead of a fill. Neat, but it looks too much like a button.', `<div class="art c" style="flex-direction:column;gap:7px">${['Live|var(--p-blue)', 'Pending review|var(--p-brown)', 'Sent back|var(--p-brown)', 'Suspended|var(--p-wine)'].map(s => { const [t, f] = s.split('|'); return `<span style="border:1px solid ${f};color:${f};font-size:9px;padding:1px 8px;border-radius:4px">${t}</span>`; }).join('')}</div>`],
+  ]},
+  { g: 'foundations', id: 'icons', ref: 'all icons', q: 'Icon set', why: 'One set, one stroke width, everywhere.', rec: 'A', o: [
+    ['Lucide', 'The set the wireframes use. Thin 1.5 px lines that suit Bodoni and Ovo.', `<div class="art c">${ICONS('lucide')}</div>`],
+    ['Phosphor', 'Heavier, rounder lines. Friendlier, but bulkier next to a thin serif.', `<div class="art c">${ICONS('phos')}</div>`],
+    ['Material Symbols', 'Filled shapes that come with MUI. Easy, and the most "default Google" look.', `<div class="art c">${ICONS('mat')}</div>`],
+  ]},
+  { g: 'foundations', id: 'density', ref: 'tables', q: 'Table row height', why: 'Fashion sellers spot products by their photo, so photos make rows taller.', rec: 'A', o: [
+    ['Comfortable, with photo', '56 px rows and a 40 px thumbnail, as in the wireframe.', SHELL(T(30) + CD(TROW('er') + TROW('') + TROW('wa') + TROW(''), 'padding:0;gap:0'))],
+    ['Compact', '40 px rows, small photo. Twice as many rows fit, but they\'re harder to tell apart.', SHELL(T(30) + CD([1,2,3,4,5,6,7,8].map((_, i) => `<div class="tr" style="padding:1.5px 4px">${IM('width:6px;height:6px')}${L(40)}${L(10)}${P(i === 1 ? 'er' : '')}</div>`).join(''), 'padding:0;gap:0'))],
+    ['Seller chooses', 'A density switch above the table. Flexible, but it doubles the visual testing.', SHELL(ROW(T(30) + `<i style="flex:1"></i>` + `<i class="bt o" style="width:10%"></i><i class="bt" style="width:10%"></i>`) + CD(TROW('er') + TROW('') + TROW('wa'), 'padding:0;gap:0'))],
+  ]},
+  { g: 'foundations', id: 'empty', ref: 'every list', q: 'Empty states', why: 'A new seller\'s first screen is mostly empty states.', rec: 'B', o: [
+    ['Words and one button', 'Says what will show up here and how to add the first one.', SHELL(T(30) + CD(`<div class="col" style="align-items:center;gap:4px;padding:10px 0">${TX('No products yet', 'd')}${L(50, 's')}${B(30)}</div>`, 'flex:1;justify-content:center'))],
+    ['Small line drawing', 'A brown line sketch of a kurta on a hanger, plus the words and button. Feels made for Shazlo.', SHELL(T(30) + CD(`<div class="col" style="align-items:center;gap:4px;padding:6px 0"><svg width="34" height="30" viewBox="0 0 34 30" fill="none" stroke="#7A451E" stroke-width="1.2" stroke-linecap="round"><path d="M17 3a2 2 0 1 1 2 2c0 1-2 1.5-2 3M5 13l12-5 12 5M9 11l-2 17h20l-2-17M13 9l4 4 4-4"/></svg>${TX('No products yet', 'd')}${B(30)}</div>`, 'flex:1;justify-content:center'))],
+    ['Handwritten note', 'A Schoolbell line and a brush arrow pointing at "Add product". Playful.', SHELL(ROW(T(30) + `<i style="flex:1"></i>` + B(18)) + CD(`<div class="col" style="align-items:center;gap:4px;padding:10px 0">${TX('start with your best seller ↗', 'h', 'font-size:11px')}${L(40, 's')}</div>`, 'flex:1;justify-content:center'))],
+  ]},
+  { g: 'foundations', id: 'loading', ref: 'every page', q: 'Loading', why: 'Mobile data in India is often slow. Loading has to look calm, not broken.', rec: 'A', o: [
+    ['Skeletons', 'Grey blocks shaped like the real content, so the page doesn\'t jump when it arrives.', SHELL(`<i class="sk" style="height:7px;width:40%"></i>` + ROW([1,2,3,4].map(() => `<i class="sk" style="flex:1;height:30px"></i>`).join('')) + `<i class="sk" style="height:12px"></i><i class="sk" style="height:12px"></i><i class="sk" style="height:12px"></i>`)],
+    ['Spinner', 'One spinner in the middle. Simplest, but the page jumps when content lands.', SHELL(`<div style="flex:1;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FAB62A" stroke-width="2.5"><path d="M12 3a9 9 0 1 1-9 9" stroke-linecap="round"/></svg></div>`)],
+    ['Thin top bar', 'Old content stays on screen with a progress line above it. Best for refreshes, not first loads.', `<i style="position:absolute;top:0;left:0;height:2px;width:55%;background:var(--p-amber)"></i>` + SHELL(HEAD() + STATS() + TABLE())],
+  ]},
+  { g: 'foundations', id: 'motion', ref: 'transitions', q: 'Motion', why: 'Motion should help you follow what changed. It isn\'t decoration.', rec: 'B', o: [
+    ['Minimal', 'Fades of 120–180 ms only. Nothing moves.', `<div class="art c" style="gap:10px">${CD(L(70) + L(50, 's'), 'width:30%;opacity:.35')}<span class="tx m">→</span>${CD(L(70) + L(50, 's'), 'width:30%')}</div>`],
+    ['Subtle', 'Fades plus a 4 px rise on new items. Panels and sheets slide in at 200 ms. Turned off for reduced-motion users.', `<div class="art c" style="gap:10px">${CD(L(70) + L(50, 's'), 'width:30%;opacity:.35;transform:translateY(6px)')}<span class="tx m">→</span>${CD(L(70) + L(50, 's'), 'width:30%')}</div>`],
+    ['Expressive', 'Springy, staggered lists and animated counters. Lively, and quickly tiring in a tool used every day.', `<div class="art c" style="gap:6px;flex-direction:column">${[0, 1, 2].map(i => CD(L(70), `width:50%;transform:translateX(${(2 - i) * 10}px) scale(${1 - (2 - i) * .04});opacity:${.4 + i * .3}`)).join('')}</div>`],
+  ]},
+  { g: 'foundations', id: 'feedback', ref: 'after any action', q: 'Confirming an action', why: 'Sellers need to know an action worked, and what happens next.', rec: 'C', o: [
+    ['Snackbar', '"Draft saved" appears bottom-left and fades away.', SHELL(HEAD() + CD(FIELD() + FIELD() + FIELD(60), 'flex:1')) + `<i class="snack"></i>`],
+    ['Banner at the top', 'A bar at the top of the page that stays until you close it.', SHELL(CD(L(60) + L(40, 's'), 'background:var(--p-ok);border-color:transparent') + HEAD() + CD(FIELD() + FIELD(), 'flex:1'))],
+    ['Both, by weight', 'Snackbar for small things (saved, copied). A banner for review outcomes (submitted, sent back).', SHELL(CD(L(60) + L(40, 's'), 'background:var(--p-wa);border-color:transparent') + HEAD() + CD(FIELD() + FIELD(), 'flex:1')) + `<i class="snack" style="width:28%"></i>`],
+  ]},
+  { g: 'foundations', id: 'dark', ref: 'theme', q: 'Dark mode', why: 'The design language is defined for light backgrounds only.', rec: 'A', o: [
+    ['Light only for v1', 'Ship the cream theme well first. Tokens stay ready for dark mode later.', SHELL(HEAD() + STATS() + TABLE())],
+    ['Light and dark from day one', 'A navy-based dark theme. Doubles the visual testing, and the brand guide doesn\'t define it yet.', `<div class="sb" style="background:#132A40;border-color:#2C4862"><i class="logo" style="background:#FFFCE3"></i><i class="nv on" style="background:#2A3A2A"></i><i class="nv"></i><i class="nv"></i></div><div class="mn" style="background:#0D1B29">${ROW(COL(`<i class="l" style="width:55%;height:6px;background:#FFFCE3"></i>`, 'flex:1') + B(18))}${ROW([1,2,3].map(() => `<div class="cd" style="flex:1;background:#132A40;border-color:#2C4862"><i class="l" style="width:50%;background:#2C4862"></i><b class="num" style="color:#FFFCE3">18</b></div>`).join(''))}</div>`],
+  ]},
+
+  /* Screens */
+  { g: 'screens', id: 's01', ref: 'V-01', q: 'Sign in', why: 'Returning sellers want speed. New ones want reassurance.', rec: 'A', o: [
+    ['Centred card', 'As in the wireframe: logo, card, footer links. Quick and calm.', `<div class="art c" style="flex-direction:column">${CD(T(70) + L(50, 's') + FIELD() + FIELD() + B(100), 'width:40%;gap:5px')}</div>`],
+    ['Split with craft photo', 'The form on the left and a full-height photo of a maker on the right. Needs real brand photography.', `<div class="col" style="flex:1;padding:14px 10px;justify-content:center;gap:5px">${T(70)}${FIELD()}${FIELD()}${B(100)}</div>${IM('width:48%;border-radius:0')}`],
+    ['Split with reasons to sell', 'The form plus three short points: "reviewed in 24 h", "15% commission", "paid weekly".', `<div class="col" style="flex:1;padding:14px 10px;justify-content:center;gap:5px">${T(70)}${FIELD()}${FIELD()}${B(100)}</div><div class="col" style="width:46%;background:var(--p-cream);padding:14px 10px;gap:7px;justify-content:center">${TX('Why sell on Shazlo', 'd')}${ROW('<i class="cb on"></i>' + L(70))}${ROW('<i class="cb on"></i>' + L(60))}${ROW('<i class="cb on"></i>' + L(75))}</div>`],
+  ]},
+  { g: 'screens', id: 's02', ref: 'V-02', q: 'Apply to sell', why: 'This form decides how many brands finish signing up.', rec: 'B', o: [
+    ['One long page', 'All fields on one page, in sections. Fast for sellers who know what they\'re doing.', `<div class="art c" style="padding:6px">${CD(T(50) + FIELD() + FIELD(60) + L(30, 's') + FIELD() + FIELD(70) + B(30), 'width:55%;gap:4px')}</div>`],
+    ['Three steps', 'Brand, then contact, then catalogue, with a step indicator. Each step can be saved.', `<div class="art c" style="flex-direction:column;gap:6px">${`<div style="width:55%">${STEPS(1, 3)}</div>`}${CD(T(40) + FIELD() + FIELD() + ROW(`<i style="flex:1"></i>` + B(30)), 'width:55%;gap:5px')}</div>`],
+    ['Form with a summary', 'The form on the left. On the right, "your application so far" and what happens next.', `<div class="art" style="padding:8px;gap:6px">${CD(T(50) + FIELD() + FIELD() + FIELD(60) + B(30), 'flex:1.4')}${CD(TX('Your application', 'd') + L(80, 's') + L(60, 's') + L(70, 's'), 'flex:1;background:var(--p-cream);border-color:transparent')}</div>`],
+  ]},
+  { g: 'screens', id: 's03', ref: 'V-03', q: 'Set password', why: 'Comes from the invite email. It\'s the seller\'s first moment inside the portal.', rec: 'A', o: [
+    ['Rules that tick off', 'Each rule turns into a ✓ as you type: 10+ characters, not your email, and so on.', `<div class="art c">${CD(T(60) + FIELD() + ROW('<i class="cb on"></i>' + L(60)) + ROW('<i class="cb on"></i>' + L(50)) + ROW('<i class="cb"></i>' + L(55, 's')) + B(100), 'width:42%;gap:5px')}</div>`],
+    ['Strength bar', 'A bar that fills from weak to strong. Familiar, but it doesn\'t say what to change.', `<div class="art c">${CD(T(60) + FIELD() + `<div class="bar"><i style="width:66%"></i></div>` + L(30, 's') + B(100), 'width:42%;gap:5px')}</div>`],
+    ['Bar and rules', 'The bar, plus the rules that are still unmet.', `<div class="art c">${CD(T(60) + FIELD() + `<div class="bar"><i style="width:66%"></i></div>` + ROW('<i class="cb"></i>' + L(55, 's')) + B(100), 'width:42%;gap:5px')}</div>`],
+  ]},
+  { g: 'screens', id: 's04', ref: 'V-04', q: 'Overview layout', why: 'The first screen after sign-in. It has to answer "what needs me today?"', rec: 'A', o: [
+    ['Numbers, then lists', 'As in the wireframe: sent-back banner, four stat cards, recent decisions, brand card and checklist.', SHELL(HEAD() + CD(L(60), 'background:var(--p-cream);border-color:transparent') + STATS() + ROW(TABLE(['er', '', ''], 'flex:2') + COL(CD(L(60) + B(100, 'o')) + CD(`<div class="bar"><i style="width:80%"></i></div>` + L(70, 's') + L(60, 's')), 'flex:1')))],
+    ['To-do list first', 'A "Needs your attention" list at the top, and the numbers in a thin strip below it.', SHELL(HEAD() + CD(TX('Needs your attention', 'd') + TROW('er') + TROW('er') + TROW('wa'), 'gap:0') + ROW(L(15) + L(15) + L(15) + L(15), 'gap:10px') + TABLE(['', ''], ''))],
+    ['Activity feed', 'One feed of what happened, newest first, next to the setup checklist.', SHELL(HEAD() + ROW(CD([1,2,3,4,5].map((_, i) => ROW(`<i style="width:5px;height:5px;border-radius:50%;background:${i < 2 ? 'var(--p-wine)' : 'var(--p-blue)'}"></i>` + COL(L(80) + L(40, 's'), 'flex:1'))).join(''), 'flex:2;gap:6px') + CD(`<div class="bar"><i style="width:80%"></i></div>` + L(70, 's') + L(60, 's') + L(50, 's'), 'flex:1'), 'align-items:stretch'))],
+  ]},
+  { g: 'screens', id: 's04b', ref: 'V-04', q: 'Setup checklist', why: 'Gets new sellers to their first live product.', rec: 'A', o: [
+    ['Card in the side column', 'As in the wireframe. Stays put until all five are done.', SHELL(HEAD() + ROW(TABLE(['', '', ''], 'flex:2') + CD(`<div class="bar"><i style="width:80%"></i></div>` + ROW('<i class="cb on"></i>' + L(60)) + ROW('<i class="cb on"></i>' + L(50)) + ROW('<i class="cb"></i>' + L(55, 's')), 'flex:1'), 'align-items:flex-start'))],
+    ['Banner you can close', 'A slim progress banner at the top of every page until you close it.', SHELL(CD(ROW(TX('4 of 5 set up', '', 'font-size:8px') + `<div class="bar" style="flex:1"><i style="width:80%"></i></div>` + B(15, 'o')), 'background:var(--p-cream);border-color:transparent') + HEAD() + STATS())],
+    ['Its own page', 'A "Get started" page replaces the Overview until setup is done.', SHELL(`<span class="tx d">Let\'s get you live</span>` + [1,2,3,4,5].map((_, i) => CD(ROW(`<i class="step ${i < 4 ? 'on' : ''}"></i>` + L(50) + `<i style="flex:1"></i>` + (i === 4 ? B(16) : '')), 'padding:3px 5px')).join(''))],
+  ]},
+  { g: 'screens', id: 's05', ref: 'V-05', q: 'Brand page preview', why: 'Sellers trust the editor once they can see how shoppers will see it.', rec: 'A', o: [
+    ['Phone beside the form', 'As in the wireframe: a phone preview that stays in view, with a Draft / Live switch.', SHELL(HEAD() + ROW(CD(IM('height:22px') + FIELD() + FIELD() + FIELD(), 'flex:1.6') + `<div class="col" style="flex:1;align-items:center">${PHONE(IM('height:16px') + `<i class="im" style="width:12px;height:12px;border-radius:50%"></i>` + L(60) + L(80, 's') + ROW(IM('flex:1;height:14px') + IM('flex:1;height:14px')), 'width:70%')}</div>`, 'align-items:flex-start'), 1)],
+    ['Edit and Preview tabs', 'A full-width form, and a tab to switch to the preview. Better on small laptops, but you can\'t see both at once.', SHELL(ROW(T(30) + `<i style="flex:1"></i>` + `<i class="bt" style="width:14%"></i><i class="bt o" style="width:14%"></i>`) + CD(IM('height:24px') + FIELD() + FIELD() + FIELD(), 'flex:1'), 1)],
+    ['Preview in a drawer', 'A "Preview" button slides the phone in from the right.', SHELL(HEAD() + CD(IM('height:22px') + FIELD() + FIELD(), 'flex:1;opacity:.45'), 1) + `<div class="pop" style="right:0;top:0;bottom:0;width:30%;border-radius:0;align-items:center;justify-content:center">${PHONE(IM('height:14px') + L(60) + L(80, 's') + IM('height:14px'), 'width:80%')}</div>`],
+  ]},
+  { g: 'screens', id: 's05b', ref: 'V-05', q: 'Marking changed fields', why: 'Reviewers approve only what changed, so sellers should see what they changed.', rec: 'A', o: [
+    ['"Changed" tag', 'As in the wireframe: a small amber tag next to the field label.', `<div class="art c">${CD(ROW(L(20) + `<span style="background:var(--p-cream);font-size:7px;padding:0 5px;border-radius:99px">◷ Changed</span>`) + `<i class="cd" style="height:16px;padding:0"></i>` + L(20) + `<i class="cd" style="height:9px;padding:0"></i>`, 'width:60%;gap:4px')}</div>`],
+    ['Bar in the margin', 'An amber bar along the left edge of each changed field. Easy to scan, but there\'s no word.', `<div class="art c">${CD(`<div style="position:relative;padding-left:6px" class="col">${'<i class="mark" style="left:0;top:0;bottom:0"></i>'}${L(20)}<i class="cd" style="height:16px;padding:0"></i></div>` + COL(L(20) + `<i class="cd" style="height:9px;padding:0"></i>`, 'padding-left:6px'), 'width:60%;gap:6px')}</div>`],
+    ['Old value shown', 'Shows the live value struck through under the new one. The most exact, and the busiest.', `<div class="art c">${CD(L(20) + `<i class="cd" style="height:12px;padding:0"></i>` + `<span class="tx m" style="text-decoration:line-through">Hand-printed in Kutch</span>` + L(20) + `<i class="cd" style="height:9px;padding:0"></i>`, 'width:60%;gap:4px')}</div>`],
+  ]},
+  { g: 'screens', id: 's06', ref: 'V-06', q: 'Product list', why: '27 products now, hundreds later.', rec: 'A', o: [
+    ['Table', 'As in the wireframe: photo, name and SKU, category, price, stock, status, updated.', SHELL(HEAD() + ROW(L(8) + L(8, 's') + L(8, 's') + L(8, 's'), 'gap:8px') + TABLE(['er', 'er', '', 'wa', '']), 2)],
+    ['Photo grid', 'Big photos with the status on each card. Looks good, but comparing stock and price is harder.', SHELL(HEAD() + `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px">${['er', '', 'wa', '', '', 'er', '', ''].map(p => CD(IM('height:18px') + L(80) + P(p), 'padding:3px')).join('')}</div>`, 2)],
+    ['Table, with a grid switch', 'The table by default, and a switch for the grid. Both views to build and test.', SHELL(ROW(T(30) + `<i style="flex:1"></i>` + `<i class="bt" style="width:8%"></i><i class="bt o" style="width:8%"></i>`) + TABLE(['er', '', 'wa', '']), 2)],
+  ]},
+  { g: 'screens', id: 's06b', ref: 'V-06', q: 'Bulk actions', why: 'Submitting or archiving many products at once.', rec: 'A', o: [
+    ['Navy bar above the table', 'As in the wireframe: "2 selected · Submit for review · Archive".', SHELL(T(30) + CD(ROW(L(20) + `<i style="flex:1"></i>` + B(16, 'o') + B(12, 'o')), 'background:var(--p-navy);border-color:transparent') + CD(TROW('er', true) + TROW('er', true) + TROW('') + TROW(''), 'padding:0;gap:0'), 2)],
+    ['Floating bar at the bottom', 'A dark bar floats at the bottom of the screen. Stays in view while you scroll.', SHELL(T(30) + CD(TROW('er', true) + TROW('er', true) + TROW('') + TROW(''), 'padding:0;gap:0'), 2) + `<div class="pop" style="left:34%;right:10%;bottom:6px;background:var(--p-ink);flex-direction:row;align-items:center">${L(20, 's')}<i style="flex:1"></i>${B(18)}</div>`],
+    ['Header turns into actions', 'The table header row becomes the action row. Compact, but easy to miss.', SHELL(T(30) + CD(`<div class="tr" style="border:0;background:var(--p-cream)"><i class="cb on"></i>${L(20)}<i style="flex:1"></i>${B(16, 'o')}${B(12, 'o')}</div>` + TROW('er', true) + TROW('er', true) + TROW(''), 'padding:0;gap:0'), 2)],
+  ]},
+  { g: 'screens', id: 's06c', ref: 'V-06', q: 'Filters', why: 'Finding the two products that were sent back among a hundred.', rec: 'A', o: [
+    ['Status tabs and dropdowns', 'As in the wireframe: tabs with counts, then search, category, gender and stock.', SHELL(T(30) + ROW(`<i class="l t" style="width:9%;height:3px;background:var(--p-amber)"></i>` + L(9, 's') + L(9, 's') + L(9, 's') + L(9, 's'), 'gap:8px') + ROW(`<i class="cd" style="width:36%;height:9px;padding:0"></i>` + B(12, 'o') + B(12, 'o') + B(12, 'o')) + TABLE(['er', '', '']), 2)],
+    ['Filter panel', 'A panel on the left with checkboxes. Better for big catalogues, but it takes width from the table.', SHELL(T(30) + ROW(CD(L(70) + ROW('<i class="cb on"></i>' + L(50, 's')) + ROW('<i class="cb"></i>' + L(40, 's')) + L(60) + ROW('<i class="cb"></i>' + L(50, 's')), 'width:26%') + TABLE(['er', '', '', ''], 'flex:1'), 'align-items:flex-start'), 2)],
+    ['Search with chips', 'One search box, and active filters shown as removable chips.', SHELL(T(30) + `<i class="cd" style="height:10px;padding:0"></i>` + ROW(`<span style="font-size:7px;background:var(--p-cream);padding:0 5px;border-radius:99px">Sent back ✕</span><span style="font-size:7px;background:var(--p-cream);padding:0 5px;border-radius:99px">Kurtas ✕</span>`) + TABLE(['er', 'er']), 2)],
+  ]},
+  { g: 'screens', id: 's07', ref: 'V-07', q: 'Product editor layout', why: 'The screen sellers spend the most time on.', rec: 'A', o: [
+    ['Long page, side column', 'As in the wireframe: photos, details, price, sizes. Review history and returns on the right.', SHELL(HEAD() + CD(L(60), 'background:var(--p-cream);border-color:transparent') + ROW(COL(CD(ROW(IM('flex:1;height:16px') + IM('flex:1;height:16px') + IM('flex:1;height:16px'))) + CD(FIELD() + FIELD()), 'flex:2') + COL(CD(L(60) + L(80, 's') + L(50, 's')) + CD(L(60)), 'flex:1'), 'align-items:flex-start'), 2)],
+    ['Tabs', 'Photos, Details, Price, Stock as tabs. Shorter page, but errors in other tabs are hidden.', SHELL(HEAD() + ROW(`<i class="l t" style="width:11%;height:3px;background:var(--p-amber)"></i>` + L(11, 's') + L(11, 's') + L(11, 's'), 'gap:8px') + CD(ROW(IM('flex:1;height:22px') + IM('flex:1;height:22px') + IM('flex:1;height:22px')) + L(60, 's'), 'flex:1'), 2)],
+    ['Section list on the left', 'A list of sections that marks what\'s done and jumps to each one.', SHELL(HEAD() + ROW(COL(ROW('<i class="cb on"></i>' + L(60)) + ROW('<i class="cb"></i>' + L(50)) + ROW('<i class="cb on"></i>' + L(40)) + ROW('<i class="cb on"></i>' + L(55)), 'width:22%;gap:6px') + COL(CD(ROW(IM('flex:1;height:16px') + IM('flex:1;height:16px'))) + CD(FIELD() + FIELD()), 'flex:1'), 'align-items:flex-start'), 2)],
+  ]},
+  { g: 'screens', id: 's07b', ref: 'V-07', q: 'Photo upload', why: 'Missing back photos are the most common reason a product is sent back.', rec: 'A', o: [
+    ['Named slots', 'As in the wireframe: Front, Back, Fabric close-up, then extras. A missing slot is obvious.', `<div class="art c" style="flex-direction:column;gap:4px">${ROW(['Front', 'Back', 'Close-up', 'Extra'].map((t, i) => COL((i === 1 ? `<div class="dz" style="height:34px;width:30px"><span class="tx m">↑</span></div>` : IM('height:34px;width:30px')) + TX(t, i === 1 ? '' : 'm'))).join('') + `<div class="col"><div class="dz" style="height:34px;width:30px;opacity:.6"><span class="tx m">+</span></div>${TX('Add', 'm')}</div>`, 'gap:6px')}</div>`],
+    ['Drop zone and grid', 'One drop zone for any photos, sorted by dragging. Flexible, but nothing asks for a back photo.', `<div class="art c" style="flex-direction:column;gap:5px">${`<div class="dz" style="width:70%;height:30px"><span class="tx m">Drop photos here</span></div>`}${ROW(IM('height:22px;width:22px') + IM('height:22px;width:22px') + IM('height:22px;width:22px'), 'gap:5px')}</div>`],
+    ['Slots with outlines', 'Named slots that show a garment outline as a guide for each shot.', `<div class="art c" style="gap:6px">${['Front', 'Back', 'Close-up'].map(t => COL(`<div class="dz" style="height:40px;width:34px"><svg width="20" height="24" viewBox="0 0 20 24" fill="none" stroke="#A99572" stroke-width="1"><path d="M3 5l7-3 7 3-2 3v14H5V8z"/></svg></div>` + TX(t, 'm'))).join('')}</div>`],
+  ]},
+  { g: 'screens', id: 's07c', ref: 'V-07', q: 'Sizes and stock', why: 'A kurta comes in five sizes, and sometimes in colours too.', rec: 'A', o: [
+    ['A row per size', 'As in the wireframe: size, generated SKU, stock box, delete.', `<div class="art c">${CD(['XS', 'S', 'M', 'L', 'XL'].map(s => `<div class="tr">${TX(s, '', 'width:14px')}<span class="tx m" style="flex:1;font-family:var(--mono);font-size:6.5px">KS-AJR-014-${s}</span><i class="cd" style="width:22px;height:8px;padding:0"></i></div>`).join(''), 'width:62%;padding:0;gap:0')}</div>`],
+    ['Size chips and steppers', 'Tap the sizes you stock, then set each count with − and +.', `<div class="art c" style="flex-direction:column;gap:6px">${ROW(['XS', 'S', 'M', 'L', 'XL', 'XXL'].map((s, i) => `<span style="font-size:8px;padding:2px 6px;border-radius:99px;${i < 5 ? 'background:var(--p-ink);color:#FFFCE3' : 'border:1px solid var(--p-line2)'}">${s}</span>`).join(''), 'gap:3px')}${ROW(['S', 'M', 'L'].map(s => CD(TX(s) + ROW(`<span class="tx m">−</span><span class="tx">8</span><span class="tx m">+</span>`, 'gap:6px'), 'align-items:center;padding:3px 6px')).join(''))}</div>`],
+    ['Size × colour grid', 'Stock for every size and colour pair. Needed only if products come in colours.', `<div class="art c">${CD(`<div class="tr" style="border:0">${TX('', '', 'width:28px')}${['S', 'M', 'L', 'XL'].map(s => TX(s, 'm', 'flex:1;text-align:center')).join('')}</div>` + ['Indigo', 'Rust', 'Ivory'].map(c => `<div class="tr">${TX(c, '', 'width:28px')}${[1,2,3,4].map(() => `<i class="cd" style="flex:1;height:8px;padding:0"></i>`).join('')}</div>`).join(''), 'width:66%;padding:0;gap:0')}</div>`],
+  ]},
+  { g: 'screens', id: 's07d', ref: 'V-07', q: 'What the seller receives', why: 'The commission answer sellers look for first.', rec: 'A', o: [
+    ['Card next to price', 'As in the wireframe: "You receive per sale ₹2,124, after 15% commission (₹375)".', `<div class="art c">${CD(ROW(FIELD() + FIELD() + CD(TX('You receive', 'm') + `<b class="num">₹2,124</b>` + TX('after 15% (₹375)', 'm'), 'background:var(--p-cream);border-color:transparent;flex:1'), 'align-items:flex-end'), 'width:84%')}</div>`],
+    ['Footer bar', 'The amount stays in a bar at the bottom of the editor while you edit anything.', SHELL(HEAD() + CD(FIELD() + FIELD(), 'flex:1'), 2) + `<div class="pop" style="left:23%;right:0;bottom:0;border-radius:0;flex-direction:row;align-items:center;gap:8px">${TX('You receive', 'm')}<b class="num" style="font-size:11px">₹2,124</b><i style="flex:1"></i>${B(22)}</div>`],
+    ['Hint under the field', 'One line of text under "Selling price". Small, and easy to miss.', `<div class="art c">${CD(ROW(FIELD() + FIELD()) + TX('You receive ₹2,124 after 15% commission', 'm'), 'width:70%')}</div>`],
+  ]},
+  { g: 'screens', id: 's07e', ref: 'V-04 – V-07', q: 'Saving drafts', why: 'Losing a half-written product description loses the seller\'s trust.', rec: 'B', o: [
+    ['Save button', 'Nothing saves until you click "Save draft". Simple, and work is easy to lose.', `<div class="art c">${CD(ROW(T(40) + `<i style="flex:1"></i>` + B(20, 'o') + B(24)) + FIELD() + FIELD(), 'width:72%;gap:6px')}</div>`],
+    ['Autosave and status', 'Saves a second after you stop typing and shows "Saved · 2 min ago". Submitting stays a deliberate click.', `<div class="art c">${CD(ROW(T(40) + TX('✓ Saved · 2 min ago', 'm') + `<i style="flex:1"></i>` + B(24)) + FIELD() + FIELD(), 'width:72%;gap:6px')}</div>`],
+  ]},
+  { g: 'screens', id: 's08', ref: 'V-08', q: 'Bulk import flow', why: 'Replaces the old Excel catalogue upload.', rec: 'A', o: [
+    ['Steps on a page', 'As in the wireframe: template, upload, fix errors, create drafts, with the column guide alongside.', SHELL(T(30) + STEPS(2) + ROW(STAT('52') + STAT('47') + STAT('5') + STAT('3')) + ROW(TABLE(['er', 'er', 'er'], 'flex:2') + CD(L(60) + L(80, 's') + L(70, 's'), 'flex:1'), 'align-items:flex-start'), 3)],
+    ['Wizard in a dialog', 'A modal walks you through the steps over the products list.', SHELL(T(30) + TABLE(['', '', '']), 2) + `<div style="position:absolute;inset:0;background:rgba(23,18,14,.35)"></div><div class="pop" style="left:30%;right:12%;top:14%;bottom:14%">${STEPS(2)}${CD(L(60) + TROW('er') + TROW('er'), 'gap:0')}${ROW(`<i style="flex:1"></i>` + B(24))}</div>`],
+    ['Drop and report', 'Drop a file and get the report right away. No steps, which helps repeat users most.', SHELL(T(30) + `<div class="dz" style="height:30px"><span class="tx m">Drop your .xlsx here</span></div>` + ROW(STAT('47') + STAT('5')) + TABLE(['er', 'er']), 3)],
+  ]},
+  { g: 'screens', id: 's08b', ref: 'V-08', q: 'Import error report', why: 'Sellers fix errors in Excel and upload again.', rec: 'A', o: [
+    ['Rows to fix', 'As in the wireframe: row number, product, column, and what to fix in plain words.', `<div class="art c">${CD(['12|Price|Must be a number above 0', '19|Size|"Free size" not supported', '27|Image 1|Link could not be opened', '41|Category|Closest match: Dupattas'].map(r => { const [n, c, w] = r.split('|'); return `<div class="tr">${TX(n, 'm', 'width:12px')}${TX(c, '', 'width:34px')}${TX('⚠ ' + w, '', 'flex:1')}</div>`; }).join(''), 'width:82%;padding:0;gap:0')}</div>`],
+    ['Grouped by problem', '"3 rows: price format", "2 rows: unknown size". Quicker to fix the same mistake in many rows.', `<div class="art c" style="flex-direction:column;gap:5px">${['Price format · 3 rows', 'Unknown size · 1 row', 'Image link · 1 row'].map(t => CD(ROW(TX('⚠ ' + t) + `<i style="flex:1"></i>` + TX('rows 12, 15, 30', 'm')), 'width:80%;padding:4px 6px')).join('')}</div>`],
+    ['Sheet preview', 'The uploaded sheet as a grid with the bad cells highlighted. Familiar to Excel users, and dense.', `<div class="art c">${CD([0,1,2,3,4].map(r => `<div class="tr" style="padding:2px">${[0,1,2,3,4].map(c => `<i style="flex:1;height:7px;border-radius:1px;background:${(r === 1 && c === 2) || (r === 3 && c === 4) ? 'var(--p-er);outline:1px solid var(--p-wine)' : 'var(--p-ph)'}"></i>`).join('')}</div>`).join(''), 'width:80%;padding:0;gap:0')}</div>`],
+  ]},
+  { g: 'screens', id: 's09', ref: 'V-09', q: 'Review status page', why: 'Where sellers see what was decided and why.', rec: 'A', o: [
+    ['Waiting and decided lists', 'As in the wireframe: two lists, reasons quoted, and "How review works" on the side.', SHELL(T(30) + CD(L(70), 'background:var(--p-cream);border-color:transparent') + ROW(COL(CD(TROW('wa', false) + TROW('wa', false), 'padding:0;gap:0') + CD(TROW('er', false) + CD(L(80, 's'), 'background:var(--p-cream);border-color:transparent;margin:0 4px 4px') + TROW('', false), 'padding:0;gap:0'), 'flex:2') + CD(L(60) + L(80, 's') + L(70, 's'), 'flex:1'), 'align-items:flex-start'), 4)],
+    ['Timeline', 'Every submission on one timeline, newest first, with decisions marked.', SHELL(T(30) + `<div class="col" style="gap:6px;padding-left:8px;border-left:1px solid var(--p-line2);margin-left:4px">${['wa', 'er', '', 'er', ''].map(p => ROW(`<i style="width:5px;height:5px;border-radius:50%;background:var(--p-brown);margin-left:-11px"></i>` + COL(L(60) + L(35, 's'), 'flex:1') + P(p))).join('')}</div>`, 4)],
+    ['Board', 'Columns for Waiting, Sent back, Live, with cards in each.', SHELL(T(30) + ROW(['wa', 'er', ''].map(p => `<div class="col" style="flex:1;background:var(--p-ph);border-radius:4px;padding:3px;gap:3px">${L(50)}${CD(L(80) + P(p))}${CD(L(70) + P(p))}</div>`).join(''), 'align-items:flex-start'), 4)],
+  ]},
+  { g: 'screens', id: 's09b', ref: 'V-04, V-07, V-09', q: 'Showing a reviewer\'s reason', why: 'Sellers who understand the reason fix the product the first time.', rec: 'A', o: [
+    ['Quoted reason and a button', 'As in the wireframe: the reason quoted under the item, and "Fix and resubmit" next to it.', `<div class="art c">${CD(ROW(IM('width:16px;height:16px') + COL(L(60) + L(40, 's'), 'flex:1') + P('er')) + CD(TX('"Back photo is missing. Add front, back and a close-up."'), 'background:var(--p-cream);border-color:transparent') + ROW(`<i style="flex:1"></i>` + B(30, 'o')), 'width:78%')}</div>`],
+    ['Banner in the editor', 'The reason appears only at the top of the product editor, where you fix it.', `<div class="art c">${CD(CD(TX('ⓘ Back photo is missing. Add front, back and a close-up.'), 'background:var(--p-cream);border-color:transparent') + FIELD() + ROW(IM('flex:1;height:14px') + `<div class="dz" style="flex:1;height:14px"></div>` + IM('flex:1;height:14px')), 'width:78%')}</div>`],
+    ['Conversation', 'A thread where the seller can reply to the reviewer. Needs reviewer-side work in Shazlo-One too.', `<div class="art c">${CD(ROW(`<i class="im" style="width:10px;height:10px;border-radius:50%"></i>` + CD(TX('Back photo is missing.'), 'background:var(--p-cream);border-color:transparent')) + ROW(`<i style="flex:1"></i>` + CD(TX('Added. Please check again.'), '')) + `<i class="cd" style="height:9px;padding:0"></i>`, 'width:78%;gap:5px')}</div>`],
+  ]},
+  { g: 'screens', id: 'notif', ref: 'top bar', q: 'Notifications', why: 'Review decisions arrive while the seller is busy elsewhere.', rec: 'A', o: [
+    ['Bell with a list', 'The bell in the top bar opens a short list. Each item links to the product.', SHELL(ROW(`<i style="flex:1"></i>` + `<i style="width:8px;height:8px;border-radius:50%;background:var(--p-wine)"></i>`) + HEAD() + STATS()) + `<div class="pop" style="right:6px;top:16px;width:36%">${TROW('er', false, false)}${TROW('', false, false)}${TROW('wa', false, false)}</div>`],
+    ['Side panel', 'The bell opens a full-height panel with tabs for Reviews and Account.', SHELL(HEAD() + STATS()) + `<div class="pop" style="right:0;top:0;bottom:0;width:34%;border-radius:0">${T(50)}${TROW('er', false, false)}${TROW('', false, false)}${TROW('wa', false, false)}${TROW('', false, false)}</div>`],
+    ['No bell', 'Counts in the sidebar plus the Review status page. Email does the rest.', SHELL(HEAD() + STATS() + TABLE(['er', '', '']), 4)],
+  ]},
+  { g: 'screens', id: 'mtable', ref: 'V-06m', q: 'Product list on a phone', why: 'A seven-column table won\'t fit 390 px.', rec: 'A', o: [
+    ['A card per product', 'Photo, name, price, stock and status stacked in a card. Tap to edit.', `<div class="art c">${PHONE(T(40) + [0, 1, 2].map(i => CD(ROW(IM('width:18px;height:18px') + COL(L(80) + L(50, 's'), 'flex:1') + P(['er', '', 'wa'][i])), 'padding:3px')).join(''), 'width:34%;height:96%')}</div>`],
+    ['Sideways-scrolling table', 'The desktop table, scrolling sideways. Everything is there, but it\'s awkward to use.', `<div class="art c">${PHONE(T(40) + `<div style="overflow:hidden;border:1px solid var(--p-line);border-radius:3px"><div style="width:180%">${TROW('er') + TROW('') + TROW('wa') + TROW('')}</div></div>`, 'width:34%;height:96%')}</div>`],
+    ['Two-line list', 'Name and status on one line, price and stock on the next. No photo. Dense.', `<div class="art c">${PHONE(T(40) + [0, 1, 2, 3, 4].map(i => `<div class="col" style="border-top:1px solid var(--p-line);padding:2px 0">${ROW(L(60) + `<i style="flex:1"></i>` + P(['er', '', 'wa', '', ''][i]))}${L(40, 's')}</div>`).join(''), 'width:34%;height:96%')}</div>`],
+  ]},
+
+  /* Engineering */
+  { g: 'engineering', id: 'mock', ref: 'all screens', q: 'Building before vendor-api is ready', why: 'vendor-api is in Phase 2. The screens shouldn\'t wait months for it.', rec: 'A', o: [
+    ['Mock API (MSW)', 'Intercepts real network calls in the browser and in tests. The data shapes follow the vendor-api contract, so switching later changes one line.', `<div class="art c" style="gap:6px">${CD(TX('Screen'), 'padding:4px 8px')}<span class="tx m">fetch →</span>${CD(TX('Mock (MSW)'), 'padding:4px 8px;background:var(--p-cream)')}<span class="tx m">→ later</span>${CD(TX('vendor-api'), 'padding:4px 8px;opacity:.5')}</div>`],
+    ['Fixtures in components', 'Hard-coded sample data inside the screens. Quick to start, but every screen needs rework later.', `<div class="art c" style="gap:6px">${CD(TX('Screen') + TX('const data = [...]', 'm', 'font-family:var(--mono)'), 'padding:4px 8px')}</div>`],
+    ['Wait for the API', 'Build each screen only once its endpoint exists. No throwaway work, and nothing to show for months.', `<div class="art c" style="flex-direction:column;gap:4px">${STEPS(1, 5)}${TX('Phase 2 → 3 → then UI', 'm')}</div>`],
+  ]},
+  { g: 'engineering', id: 'forms', ref: 'V-02, V-05, V-07', q: 'Forms', why: 'The portal is mostly forms. Validation must match the API exactly.', rec: 'A', o: [
+    ['React Hook Form + Zod', 'Fast forms, one schema shared by validation and types, and good accessibility hooks.', `<div class="art c" style="flex-direction:column;gap:4px">${CD(TX('productSchema (Zod)', '', 'font-family:var(--mono)'), 'padding:4px 8px')}<span class="tx m">↙ ↘</span>${ROW(CD(TX('form rules'), 'padding:3px 6px') + CD(TX('TypeScript types'), 'padding:3px 6px'), 'gap:8px')}</div>`],
+    ['Formik + Yup', 'Older and widely known. Slower on long forms like the product editor.', `<div class="art c">${CD(TX('Formik → Yup schema'), 'padding:4px 8px')}</div>`],
+    ['Plain MUI state', 'No library: useState for every field. Fine for sign-in, painful for the product editor.', `<div class="art c">${CD(TX('useState × 24 fields', '', 'font-family:var(--mono)'), 'padding:4px 8px')}</div>`],
+  ]},
+  { g: 'engineering', id: 'table', ref: 'V-06, V-08', q: 'Tables', why: 'Sorting, selection and pagination, drawn to look exactly like the wireframe.', rec: 'A', o: [
+    ['TanStack Table + MUI Table', 'Logic from TanStack, markup and styling entirely ours. Matches the wireframe exactly.', `<div class="art c">${TABLE(['er', '', 'wa'], 'width:70%')}</div>`],
+    ['MUI X Data Grid', 'Lots built in, but its look is hard to bend away from "admin dashboard", and the advanced features are paid.', `<div class="art c">${CD(`<div class="tr" style="background:#EEE;border:0">${L(20)}${L(20)}${L(20)}</div>` + [1,2,3].map(() => `<div class="tr">${L(20, 's')}${L(20, 's')}${L(20, 's')}</div>`).join(''), 'width:70%;padding:0;gap:0;border-radius:0')}</div>`],
+    ['Plain MUI Table', 'Hand-written sorting and selection. Fine for 27 products, not for 500.', `<div class="art c">${TABLE(['', ''], 'width:70%')}</div>`],
+  ]},
+  { g: 'engineering', id: 'client', ref: 'API layer', q: 'API client', why: 'Keeps the screens in step with the FastAPI services.', rec: 'A', o: [
+    ['Generated from OpenAPI', 'openapi-typescript + openapi-fetch read FastAPI\'s schema, so a renamed field breaks the build, not production.', `<div class="art c" style="gap:6px">${CD(TX('openapi.json'), 'padding:4px 8px')}<span class="tx m">→</span>${CD(TX('types + client'), 'padding:4px 8px;background:var(--p-cream)')}<span class="tx m">→</span>${CD(TX('useQuery'), 'padding:4px 8px')}</div>`],
+    ['Hand-written', 'Our own fetch functions and types. Full control, and they drift from the API.', `<div class="art c">${CD(TX('api.ts (by hand)'), 'padding:4px 8px')}</div>`],
+    ['Generated hooks (Orval)', 'Generates ready TanStack Query hooks too. Less code, but generated hooks are harder to adjust.', `<div class="art c" style="gap:6px">${CD(TX('openapi.json'), 'padding:4px 8px')}<span class="tx m">→</span>${CD(TX('useGetProducts()'), 'padding:4px 8px;background:var(--p-cream)')}</div>`],
+  ]},
+  { g: 'engineering', id: 'workshop', ref: 'packages/ui', q: 'Where components are previewed', why: 'Shared parts must look right on their own before they\'re used in screens.', rec: 'B', o: [
+    ['Storybook', 'A separate workshop app for every component and state. Popular, but adds a heavy toolchain.', `<div class="art">${SB(1)}${MN(T(40) + ROW(B(20) + B(20, 'o') + B(20, 'n')) + ROW(P('') + P('wa') + P('er')))}</div>`],
+    ['Grow the demo page', 'Extend the existing packages/ui demo (already built, tested and screenshotted) with each new component.', `<div class="art"><div class="mn">${T(40)}${CD(ROW(B(20) + B(20, 'o')) + ROW(P('') + P('wa') + P('er')))}${CD(STATS())}</div></div>`],
+  ]},
+  { g: 'engineering', id: 'visual', ref: 'CI', q: 'Visual regression', why: 'Keeps a later PR from quietly breaking how a screen looks.', rec: 'A', o: [
+    ['Playwright screenshots', 'Key screens at 1440 px and 390 px compared with saved images in CI. Free, and runs in our pipeline.', `<div class="art c" style="gap:8px">${CD(IM('height:30px;width:48px'), 'padding:3px')}<span class="tx m">vs</span>${CD(IM('height:30px;width:48px;outline:1px solid var(--p-wine)'), 'padding:3px')}</div>`],
+    ['None', 'Rely on review only. Cheapest, and visual bugs slip through.', `<div class="art c">${TX('—', 'm', 'font-size:16px')}</div>`],
+    ['Chromatic', 'A hosted visual review service. Polished, but paid and tied to Storybook.', `<div class="art c">${CD(TX('Chromatic (hosted)'), 'padding:4px 8px')}</div>`],
+  ]},
+  { g: 'engineering', id: 'place', ref: 'repo layout', q: 'Where shared components live', why: 'Shazlo-One and vendor-admin will reuse the same parts.', rec: 'A', o: [
+    ['packages/ui from the start', 'Pills, cards, tables and empty states go in packages/ui; screens stay in the app. The admin apps reuse them.', `<div class="art c" style="gap:8px">${CD(TX('packages/ui') + TX('StatusPill · StatCard · DataTable', 'm'), 'padding:4px 8px;background:var(--p-cream)')}<span class="tx m">→</span>${COL(CD(TX('vendor-portal'), 'padding:3px 6px') + CD(TX('shazlo-one'), 'padding:3px 6px'))}</div>`],
+    ['App first, move later', 'Build everything inside the vendor portal and move parts out when the admin needs them. Faster now, extra work later.', `<div class="art c">${CD(TX('vendor-portal/src/components'), 'padding:4px 8px')}</div>`],
+  ]},
+  { g: 'engineering', id: 'lang', ref: 'all copy', q: 'Language', why: 'Many sellers are in Gujarat, Rajasthan and UP.', rec: 'A', o: [
+    ['English, ready for more', 'English copy, kept in one place per screen so Hindi can be added without touching components.', `<div class="art c">${CD(TX('en.ts → "Submit for review"', '', 'font-family:var(--mono)'), 'padding:4px 8px')}</div>`],
+    ['English and Hindi at launch', 'Both languages from day one. Needs translation and checking on every screen.', `<div class="art c" style="flex-direction:column;gap:4px">${CD(TX('Submit for review'), 'padding:3px 8px')}${CD(TX('समीक्षा के लिए भेजें'), 'padding:3px 8px')}</div>`],
+    ['Text in the code', 'Copy written straight into components. Fastest now, and hard to translate later.', `<div class="art c">${CD(TX('<Button>Submit…</Button>', '', 'font-family:var(--mono)'), 'padding:4px 8px')}</div>`],
+  ]},
+];
+
+/* ---------- render static content ---------- */
+const $ = s => document.querySelector(s);
+$('#phases').innerHTML = PHASES.map(p => `<div class="phase"><span class="n">${p.n}</span><div><h3>${p.t}</h3><ul>${p.items.map(i => `<li>${i}</li>`).join('')}</ul></div><div class="meta">${p.meta.map(m => `<span>${m}</span>`).join('')}</div></div>`).join('');
+$('#gates').innerHTML = GATES.map(([b, t]) => `<div class="gate"><b>${b}</b><span class="muted">${t}</span></div>`).join('');
+function renderSkills() {
+  $('#skillRows').innerHTML = SKILLS.map(s => `<tr><td><b>${s.name}</b><br><span class="muted" style="font-size:13px">${s.repo}</span></td><td>${s.adds}</td><td><span class="fit ${s.fit === 'Use' ? 'use' : ''}">${s.fit}</span></td><td>${s.use}</td></tr>`).join('');
+  $('#rules').innerHTML = RULES.map(([r, src]) => `<li>${r} <small>· ${src}</small></li>`).join('');
+}
+renderSkills();
+
+for (const g of GROUPS) {
+  const el = document.getElementById(g.id);
+  const items = D.filter(d => d.g === g.id);
+  el.innerHTML = `<div class="group-head"><div class="lede"><h2>${g.title}</h2><p class="muted">${items.length} decisions. ${g.lede}</p></div></div>` +
+    items.map(d => `<div class="dec" id="d-${d.id}" role="group" aria-labelledby="q-${d.id}">
+      <div class="dec-head"><h3 id="q-${d.id}">${d.q}</h3><span class="ref">${d.ref}</span><span class="state" data-state="${d.id}">Not picked</span></div>
+      <p class="muted" style="font-size:15px">${d.why}</p>
+      <div class="opts">${d.o.map(([name, why, art], i) => { const k = 'ABCD'[i]; const isArt = art.trim().startsWith('<div class="art'); return `<button type="button" class="opt" data-d="${d.id}" data-k="${k}" aria-pressed="false">
+        ${d.rec === k ? '<span class="rec">Pick</span>' : ''}<span class="tick" aria-hidden="true">✓</span>
+        ${isArt ? art : `<div class="art">${art}</div>`}
+        <span class="lbl"><span class="k">${k}</span><span>${name}</span></span>
+        <span class="why">${why}</span></button>`; }).join('')}</div>
+      <div class="note"><label for="n-${d.id}">Note</label><input id="n-${d.id}" data-note="${d.id}" placeholder="Optional: anything to change in this option" autocomplete="off"></div>
+    </div>`).join('');
+}
+$('#nTotal').textContent = D.length;
+
+/* ---------- picks state ---------- */
+let picks = {};
+let db = null;
+const LS = 'shazlo-seller-picks';
+try { picks = JSON.parse(localStorage.getItem(LS) || '{}') || {} } catch (e) { picks = {} }
+const saveLocal = () => { try { localStorage.setItem(LS, JSON.stringify(picks)) } catch (e) {} };
+const setSave = t => { $('#saveState').textContent = t };
+
+function paint() {
+  let n = 0;
+  for (const d of D) {
+    const p = picks[d.id];
+    if (p && p.choice) n++;
+    document.querySelectorAll(`.opt[data-d="${d.id}"]`).forEach(b => b.setAttribute('aria-pressed', String(!!p && p.choice === b.dataset.k)));
+    const st = document.querySelector(`[data-state="${d.id}"]`);
+    if (p && p.choice) { const i = 'ABCD'.indexOf(p.choice); st.textContent = `Picked ${p.choice}: ${d.o[i][0]}`; st.classList.add('done') } else { st.textContent = 'Not picked'; st.classList.remove('done') }
+    const inp = document.querySelector(`[data-note="${d.id}"]`);
+    if (inp && document.activeElement !== inp) inp.value = (p && p.note) || '';
+  }
+  $('#nPicked').textContent = n;
+  $('#meter').style.width = (100 * n / D.length) + '%';
+}
+
+const chains = {};
+function persist(id) {
+  saveLocal();
+  if (!db) return;
+  const body = { choice: picks[id].choice || '', note: picks[id].note || '', at: new Date().toISOString() };
+  chains[id] = (chains[id] || Promise.resolve()).then(() => db.collection('picks').doc(id).set(body))
+    .then(() => setSave('Saved. Claude can read your picks.'))
+    .catch(() => setSave('Saved in this browser only. Use "Copy picks as text" below.'));
+}
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('.opt');
+  if (!b) return;
+  const id = b.dataset.d;
+  picks[id] = { ...(picks[id] || {}), choice: b.dataset.k };
+  paint(); persist(id);
+});
+const timers = {};
+document.addEventListener('input', e => {
+  const id = e.target.dataset && e.target.dataset.note;
+  if (!id) return;
+  picks[id] = { ...(picks[id] || {}), note: e.target.value };
+  clearTimeout(timers[id]);
+  timers[id] = setTimeout(() => persist(id), 700);
+});
+$('#recBtn').addEventListener('click', async () => {
+  const todo = D.filter(d => !(picks[d.id] && picks[d.id].choice));
+  for (const d of todo) { picks[d.id] = { ...(picks[d.id] || {}), choice: d.rec }; persist(d.id) }
+  paint();
+  setSave(todo.length ? `Filled ${todo.length} with the recommended option` : 'Everything is already picked');
+});
+$('#copyBtn').addEventListener('click', () => {
+  const text = D.map(d => { const p = picks[d.id]; if (!p || !p.choice) return `${d.id}: (not picked)`; const i = 'ABCD'.indexOf(p.choice); return `${d.id}: ${p.choice} ${d.o[i][0]}${p.note ? ' (note: ' + p.note + ')' : ''}`; }).join('\n');
+  const box = $('#copyBox');
+  box.value = text; box.hidden = false;
+  try { navigator.clipboard.writeText(text).then(() => { $('#copyBtn').textContent = 'Copied' }, () => { box.select() }) } catch (e) { box.select() }
+});
+paint();
+
+(async () => {
+  try { db = window.claude && window.claude.use ? await window.claude.use('db') : null } catch (e) { db = null }
+  if (!db) { setSave('Saved in this browser only. Use "Copy picks as text" below.'); return }
+  const slow = setTimeout(() => setSave('Can\'t reach saved picks yet. Your clicks are kept here.'), 10000);
+  db.collection('picks').onSnapshot(snap => {
+    if (!snap.metadata.fromCache) { clearTimeout(slow); setSave('Picks save automatically') }
+    for (const doc of snap.docs) { const v = doc.data(); if (v && D.some(d => d.id === doc.id)) picks[doc.id] = { choice: v.choice || '', note: v.note || '' } }
+    saveLocal(); paint();
+  }, () => { clearTimeout(slow); db = null; setSave('Saved in this browser only. Use "Copy picks as text" below.') });
+})();
+</script>

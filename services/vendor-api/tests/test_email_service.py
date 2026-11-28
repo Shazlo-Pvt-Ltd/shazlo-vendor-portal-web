@@ -7,8 +7,8 @@ from fastapi import BackgroundTasks, FastAPI
 from fastapi.testclient import TestClient
 from smtp_server import fake_smtp
 
-from vendor_api.api.deps import Emails
-from vendor_api.app import create_app
+from vendor_api.api.common import Emails
+from vendor_api.app import create_seller_app
 from vendor_api.core.settings import Settings
 from vendor_api.services.email import (
     EmailService,
@@ -137,7 +137,7 @@ async def test_the_retry_pause_doubles(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def app_with(settings: Settings, sender: FlakySender) -> TestClient:
-    app: FastAPI = create_app(settings, readiness_checks={})
+    app: FastAPI = create_seller_app(settings, readiness_checks={})
     app.state.emails = service(sender)
 
     @app.post("/signup-ish")
@@ -167,7 +167,7 @@ def test_a_working_sender_sends_after_the_request(settings: Settings) -> None:
 
 
 async def test_the_app_builds_its_email_service_from_the_settings(settings: Settings) -> None:
-    app = create_app(settings, readiness_checks={})
+    app = create_seller_app(settings, readiness_checks={})
     assert isinstance(app.state.emails, EmailService)
 
 

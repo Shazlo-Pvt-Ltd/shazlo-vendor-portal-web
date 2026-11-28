@@ -1,13 +1,19 @@
 # @shazlo/shell-protocol
 
-The `postMessage` protocol between the Shazlo-One shell and each module it frames
-([ADR 0001](../../docs/adr/0001-iframe-postmessage-protocol.md)): the types and constants, a runtime
-validator for every message, and both ends of the channel. The shell and every module use this
-package; nothing else posts or reads cross-frame messages (a test in this package fails if app code
-does).
+Two things the Shazlo One shell and its modules share:
 
-A mistake here is a security bug (a `*` target origin, a missing origin check), so it is written and
-tested once, here. There is **no runtime dependency**: the validators are small and hand-written.
+- the `postMessage` protocol between the shell and each module it frames
+  ([ADR 0001](../../docs/adr/0001-iframe-postmessage-protocol.md)): the types and constants, a runtime
+  validator for every message, and both ends of the channel. The shell (`apps/shazlo-one`) and every
+  module (`apps/vendor-admin`) use it; nothing else posts or reads cross-frame messages (a test in
+  this package fails if app code does);
+- the module registry, manifest and summary ([ADR 0011](../../docs/adr/0011-vendor-portal-and-vendors-module-as-microservices.md)):
+  which modules the shell trusts, what each says about itself, and the figures its backend serves for
+  the shell's Home and badges.
+
+A mistake in the first half is a security bug (a `*` target origin, a missing origin check), so it is
+written and tested once, here, and has **no runtime dependency**: the validators are small and
+hand-written. The second half reads build files and HTTP answers, and uses zod.
 
 ```
 src/
@@ -22,6 +28,11 @@ src/
   logger.ts         createDropLogger: development logs, production is silent
   shellChannel.ts   createShellChannel: the shell's end
   moduleClient.ts   createModuleClient: a module's end
+  paths.ts          isModulePath: the one check for a path inside a module
+  registry.ts       parseRegistry, registryCsp (ADR 0011)
+  manifest.ts       parseManifest, MANIFEST_PATH (ADR 0011)
+  summary.ts        parseSummary, badgeOf, actorIds (ADR 0011)
+  testing.ts        fakeModule: a stand-in module for the shell's tests (msw)
 test/
   harness.ts        two real jsdom windows with a browser-faithful postMessage
   contract.test.ts  both ends together, including hostile cases
@@ -40,7 +51,7 @@ Map, Set, buffer or Blob (JSON writes those as `{}`, so their size could not be 
 | Type | Payload | Notes |
 | --- | --- | --- |
 | `auth` | `{ accessToken, expiresAt, user: { id, email, roles }, locale? }` | After `ready` (with `replyTo`), and again on every refresh. `expiresAt` is epoch **seconds**. The module ignores one that expires earlier than the token it holds |
-| `navigate` | `{ path }` | `path` starts with `/` (not `//`), at most 2000 characters, no backslash or control character |
+| `navigate` | `{ path }` | A module path: starts with `/` (not `//`), at most 512 characters, no backslash, whitespace or control character, and no `.` or `..` segment (plain or percent-encoded), so the shell can put it after the module's base path |
 | `error` | `{ code, message }` | For example `version_unsupported`. A module reads it whatever its `v` |
 
 **Module to shell**
@@ -48,7 +59,7 @@ Map, Set, buffer or Blob (JSON writes those as `{}`, so their size could not be 
 | Type | Payload | Notes |
 | --- | --- | --- |
 | `ready` | `{ module, supportedVersions, moduleVersion }` | On every page load, first. The shell reads it whatever its `v`, to answer `version_unsupported` |
-| `title` | `{ path, title }` | `title` is plain text, at most 200 characters |
+| `title` | `{ path, title }` | `path` as for `navigate`; `title` is plain text, at most 200 characters, one line, and text that looks like an HTML tag is refused |
 | `token:request` | `{ reason: "expired" \| "unauthorized" }` | At most once every 30 seconds (the client enforces it) |
 | `logout` | `{ reason? }` | |
 | `toast` | `{ level, message, durationMs? }` | `level` is `info`, `success`, `warning` or `error`. `message` is plain text, **at most 280 characters**, and text that looks like an HTML tag is refused. `durationMs` is 0 to 60 000 |
@@ -94,6 +105,7 @@ silent.
 
 ```ts
 import { createShellChannel } from '@shazlo/shell-protocol'
+// apps/shazlo-one/src/shell/ModuleHost.tsx is the real one.
 
 // 1. Create the channel BEFORE setting the iframe's src: it listens from this moment.
 const channel = createShellChannel({
@@ -119,6 +131,7 @@ iframe.src = entry.url
 
 ```ts
 import { createModuleClient } from '@shazlo/shell-protocol'
+// apps/vendor-admin/src/runtime/runtime.tsx is the real one.
 
 // SHELL_ORIGIN is a build-time setting per environment. Pass it through unchanged: a missing value,
 // a wildcard or a non-https origin throws, so a bad production build fails at start.

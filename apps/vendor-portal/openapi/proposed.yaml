@@ -1,0 +1,559 @@
+openapi: 3.1.0
+info:
+  title: vendor-api, proposed additions for the seller portal (Build 2)
+  version: 0.1.0
+  description: |
+    What the seller portal needs from vendor-api that `services/vendor-api/openapi.json` does not
+    have yet (issue #288; #265 was closed by PR 281). The decided plan is `docs/ui-plan/build2-on-main.md`, "Proposed
+    additions". Every operation here, and every field it adds, is marked `x-proposal: true`.
+
+    How to read this file:
+    - A path and method here replaces the same path and method in `openapi.json`; the other methods
+      of that path stay as they are. `src/api/client.ts` merges the generated types the same way.
+    - It follows vendor-api's style: `/v1` paths, snake_case, money in paise, ids as UUIDs, images
+      as asset ids from `POST /v1/vendor/assets`, a `PUT` replaces the whole object, a `version` on
+      what can be edited, and every error as `{error: {code, message, request_id, details?}}`
+      (`ErrorEnvelope`, which documents what `core/errors.py` already sends). A 422 lists its
+      problems in `details` as pydantic does: `[{loc: ['body', 'field', ...], msg, type}]`.
+    - `x-extends: X` means the schema is the real schema X plus new fields (an `allOf`).
+      `x-replaces: X` means a full copy of X with the changes its description lists; it is used
+      where a field becomes optional or nullable, which an `allOf` cannot express.
+    - When vendor-api ships a route, move it into `openapi.json` and delete it here; then run
+      `npm run api:generate` and `npm run api:proposed` in `apps/vendor-portal`.
+
+    Not in the plan's list, but needed to keep Build 2's screens working (agree with vendor-api):
+    `based_in` on the brand profile; `proposed_commission_bps` and `price_rule_accepted` on sign-up;
+    drafts may have no category, gender or price (submit lists what is missing).
+
+    Added after the first review, to replace reads the portal makes today: list rows with price,
+    stock, photo, colour, gender and the working state, with list filters and sorts
+    (`GET /v1/vendor/products`); `product_id` and `was_live` on submissions; and a `version` check on the product
+    `PUT` (409 `version_conflict`).
+    Shipped by vendor-api in PR #281 and so removed from here: the store details
+    (`GET /v1/vendor/store-details` and a `PUT` per section), the IFSC lookup, the commission
+    (`GET /v1/vendor/commission` and the proposal; it is not on the session or `/v1/vendor/me`) and
+    the size charts. The sign-up's `store_details` below now names vendor-api's own section bodies.
+servers:
+  - url: http://localhost:8002
+
+paths:
+  # ---- 1. Sign-up -----------------------------------------------------------------------------
+  /v1/auth/signup:
+    post:
+      operationId: signup
+      x-proposal: true
+      summary: Sign up with the store details
+      description: |
+        As today (a pending vendor and its owner, a verification email, the same 202 whether or not
+        the email exists), plus Build 2's sign-up: who the brand sells for, the city it ships from,
+        and optionally the store details, a proposed commission and the price rule. `product_type`
+        and the price range become optional: the requirements PDF does not ask for them.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ProposedSignupRequest' } } }
+      responses:
+        '202': { description: Accepted, content: { application/json: { schema: { $ref: '../../../services/vendor-api/openapi.json#/components/schemas/Message' } } } }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  # ---- 4. Products ----------------------------------------------------------------------------
+  /v1/vendor/products:
+    get:
+      operationId: listProducts
+      x-proposal: true
+      summary: The vendor's products, with what a list row shows, filtered and sorted
+      description: |
+        As today (`status`, `category`, `q`, `limit`, `offset`; archived ones only when asked), and:
+        each row also carries its price, MRP, total stock, first photo, main colour, gender and the
+        state of the revision being edited or reviewed (`ProposedProductSummaryOut`), so a list page
+        is one request; and the list can be filtered by `gender` and `in_stock` and sorted by price
+        or stock. Today the portal reads every row's product in full to show the same list.
+      parameters:
+        - { name: status, in: query, required: false, schema: { type: [string, 'null'], enum: [draft, pending_review, approved, rejected, archived, null] } }
+        - { name: category, in: query, required: false, schema: { type: [string, 'null'], maxLength: 100 } }
+        - { name: q, in: query, required: false, description: Part of the code or title, schema: { type: [string, 'null'], maxLength: 100 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+        - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, maximum: 100000, default: 0 } }
+        - { name: gender, in: query, required: false, x-proposal: true, description: Only products for this gender., schema: { $ref: '../../../services/vendor-api/openapi.json#/components/schemas/Gender' } }
+        - { name: in_stock, in: query, required: false, x-proposal: true, description: 'true - some stock (total above 0); false - sold out (it has sizes, all at 0). Products with no sizes match neither.', schema: { type: boolean } }
+        - { name: sort, in: query, required: false, x-proposal: true, description: 'updated_desc (the default, as today), price_asc and price_desc (products without a price last), stock_asc.', schema: { $ref: '#/components/schemas/ProductSort' } }
+      responses:
+        '200': { description: A page of products, content: { application/json: { schema: { $ref: '#/components/schemas/ProposedProductPageOut' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    post:
+      operationId: createProduct
+      x-proposal: true
+      summary: A new draft product
+      description: |
+        As today, with Build 2's fields (`ProposedCreateProductBody`). The code (`sku`) is optional:
+        the server makes one when it is left out. `409 sku_taken` if a given code is in use.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProposedCreateProductBody' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/ProposedProductOut' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/vendor/products/{product_id}:
+    parameters:
+      - { name: product_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getProduct
+      x-proposal: true
+      summary: One product, live and working revisions (with Build 2's fields)
+      responses:
+        '200': { description: Product, content: { application/json: { schema: { $ref: '#/components/schemas/ProposedProductOut' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    put:
+      operationId: replaceProductContent
+      x-proposal: true
+      summary: Replaces the content of the revision being edited (with Build 2's fields)
+      description: |
+        As today (`409 product_in_review` while a version is in review; the code cannot change), with
+        `ProposedProductContentBody`. Proposed: the body may carry the product's `version` as the
+        editor last read it (the style of the admin review decisions). If the product has changed
+        since, nothing is saved and the answer is `409 version_conflict`, so an edit never overwrites
+        a change it did not see. Every change to a product raises its `version` (`ProposedProductOut`).
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProposedProductContentBody' } } } }
+      responses:
+        '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/ProposedProductOut' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/vendor/products/{product_id}/submit:
+    parameters:
+      - { name: product_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: submitProduct
+      x-proposal: true
+      summary: Sends the revision being edited for review
+      description: |
+        `422 product_incomplete` lists every missing requirement in `details`, one item each, with
+        `loc: [<SubmitRequirement>]` (see `ProductIncompleteDetail`), including `store_details`
+        while the store details are incomplete. `409 nothing_to_submit` / `product_in_review` as today.
+      responses:
+        '200': { description: In review, content: { application/json: { schema: { $ref: '#/components/schemas/ProposedProductOut' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /v1/vendor/submissions:
+    get:
+      operationId: listSubmissions
+      x-proposal: true
+      summary: Everything the vendor submitted for review, with the product it is about
+      description: As today, and each product submission names its product (`product_id`), so a decision can link to the product without reading the product list, and says whether the product was live when it was sent (`was_live`), so a change to a live product can be told from a product that never went live.
+      parameters:
+        - { name: status, in: query, required: false, schema: { type: string, enum: [pending, approved, rejected, withdrawn, all], default: all } }
+        - { name: subject, in: query, required: false, schema: { type: [string, 'null'], enum: [brand_profile, product, null] } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+        - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, maximum: 100000, default: 0 } }
+      responses:
+        '200': { description: A page of submissions, content: { application/json: { schema: { $ref: '#/components/schemas/ProposedSubmissionPageOut' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  # ---- 6. Bulk import -------------------------------------------------------------------------
+  /v1/vendor/products/import:
+    post:
+      operationId: importProducts
+      x-proposal: true
+      summary: Imports products with the requirements PDF's columns
+      description: |
+        As today (raw `.csv` or `.xlsx` body, `mode`, always 200 with a report, file problems 413,
+        415 or 422), but one row is one product with exactly these columns, in this order:
+        `product_name, gender, product_type, main_colour, other_colours, selling_price, sizes_stock,
+        description, material, mrp`. `other_colours` (up to 2, comma separated) and `mrp` are
+        optional; colours are any name or hex code, as in `main_colour`; `sizes_stock` reads like
+        `S:4, M:6, L:3, XL:0`; prices are in rupees. Codes are
+        made by the server (`products[].sku`). `RowErrorOut.column` names a column from that list,
+        or is null for a problem with the whole row. Imported products are drafts without photos.
+      parameters:
+        - { name: mode, in: query, required: false, schema: { $ref: '../../../services/vendor-api/openapi.json#/components/schemas/ImportMode' } }
+      requestBody:
+        required: true
+        content:
+          text/csv: { schema: { type: string, format: binary } }
+          application/vnd.openxmlformats-officedocument.spreadsheetml.sheet: { schema: { type: string, format: binary } }
+      responses:
+        '200': { description: Report, content: { application/json: { schema: { $ref: '../../../services/vendor-api/openapi.json#/components/schemas/ImportReportOut' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '415': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/vendor/products/import/template:
+    get:
+      operationId: importTemplate
+      x-proposal: true
+      summary: The template with the PDF's columns
+      parameters:
+        - { name: format, in: query, required: false, schema: { type: string, enum: [xlsx, csv], default: xlsx } }
+      responses:
+        '200':
+          description: The template
+          content:
+            text/csv: { schema: { type: string } }
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet: { schema: { type: string, format: binary } }
+        '401': { $ref: '#/components/responses/Error' }
+
+  # ---- 7. Brand profile -----------------------------------------------------------------------
+  /v1/vendor/brand-profile:
+    get:
+      operationId: getBrandDraft
+      x-proposal: true
+      summary: The draft to edit (with `based_in`)
+      responses:
+        '200': { description: Draft, content: { application/json: { schema: { $ref: '#/components/schemas/ProposedDraftOut' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+    put:
+      operationId: saveBrandDraft
+      x-proposal: true
+      summary: Replaces the draft's content (price range optional, `based_in` added)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProposedBrandProfileBody' } } } }
+      responses:
+        '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/ProposedDraftOut' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/vendor/brand-profile/published:
+    get:
+      operationId: getPublishedBrand
+      x-proposal: true
+      summary: The published version (with `based_in`)
+      description: '`404 no_published_profile` until a version is approved.'
+      responses:
+        '200': { description: Published, content: { application/json: { schema: { $ref: '#/components/schemas/ProposedBrandProfileOut' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/vendor/brand-profile/submit:
+    post:
+      operationId: submitBrandDraft
+      x-proposal: true
+      summary: Sends the draft for review (with `based_in`)
+      description: 'Today vendor-api refuses a draft with no `categories` (422 `profile_incomplete`), and Build 2 no longer asks for them on the brand page: the store details already say who the brand sells for (`sells`). Proposed: when the draft has no categories, take them from `sells` (women → [women], men → [men], both → [women, men]) and answer 422 `profile_incomplete` only when `sells` is not known either. Until then the portal writes them into the draft itself before sending.'
+      responses:
+        '200': { description: In review, content: { application/json: { schema: { $ref: '#/components/schemas/ProposedBrandProfileOut' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+components:
+  responses:
+    Error:
+      description: Any failure, as vendor-api sends it
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  schemas:
+    # ---- errors (documents what vendor-api already sends; not a proposal) ----------------------
+    ErrorEnvelope:
+      type: object
+      description: Every error from vendor-api (`core/errors.py`). `X-Request-ID` carries the same id.
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, description: 'Machine-readable, like invalid_credentials or product_incomplete.' }
+            message: { type: string }
+            request_id: { type: [string, 'null'] }
+            details:
+              description: For a 422, pydantic's list of problems; otherwise anything the error adds.
+              type: [array, object, 'null']
+    ValidationDetail:
+      type: object
+      description: One item of a 422's `details`.
+      required: [loc, msg, type]
+      properties:
+        loc: { type: array, items: { type: [string, integer] } }
+        msg: { type: string }
+        type: { type: string }
+
+    # ---- 1. sign-up ----------------------------------------------------------------------------
+    Sells:
+      type: string
+      x-proposal: true
+      enum: [women, men, both]
+      description: Who the brand sells for.
+    ProposedSignupRequest:
+      type: object
+      x-proposal: true
+      x-replaces: SignupRequest
+      additionalProperties: false
+      description: |
+        SignupRequest with `sells`, `city`, `store_details`, `proposed_commission_bps` and
+        `price_rule_accepted` added, and `product_type`, `price_min_paise`, `price_max_paise` made
+        optional. The brand section of the store details comes from `sells`, `city` and
+        `website_or_instagram`; the contact section from `contact_name`, `phone` and `email`.
+      required: [brand_name, contact_name, email, phone, password, terms_accepted, sells, city, price_rule_accepted]
+      properties:
+        brand_name: { type: string, minLength: 1, maxLength: 200 }
+        contact_name: { type: string, minLength: 1, maxLength: 200 }
+        email: { type: string, minLength: 3, maxLength: 320 }
+        phone: { type: string, pattern: '^\+?[0-9][0-9 ()-]{5,29}[0-9]$' }
+        password: { type: string, minLength: 1, maxLength: 128 }
+        terms_accepted: { type: boolean }
+        website_or_instagram: { type: [string, 'null'], maxLength: 300 }
+        product_type: { type: string, minLength: 1, maxLength: 100, description: 'Now optional.' }
+        price_min_paise: { type: integer, minimum: 0, maximum: 1000000000000, description: 'Now optional.' }
+        price_max_paise: { type: integer, minimum: 0, maximum: 1000000000000, description: 'Now optional.' }
+        sells: { x-proposal: true, $ref: '#/components/schemas/Sells' }
+        city: { x-proposal: true, type: string, minLength: 1, maxLength: 120, description: 'City or area the brand ships from.' }
+        store_details: { x-proposal: true, $ref: '#/components/schemas/SignupStoreDetails' }
+        proposed_commission_bps: { x-proposal: true, type: integer, minimum: 0, maximum: 4000, description: 'Optional. Left out when a rate was agreed with the team.' }
+        price_rule_accepted: { x-proposal: true, type: boolean, description: '"My price on Shazlo will never be higher than anywhere else." Must be true (422 price_rule_not_accepted).' }
+    SignupStoreDetails:
+      type: object
+      x-proposal: true
+      additionalProperties: false
+      description: The store-details sections given at sign-up; each one optional, each the same body as its `PUT /v1/vendor/store-details/{section}`.
+      properties:
+        delivery: { $ref: '../../../services/vendor-api/openapi.json#/components/schemas/DeliveryIn' }
+        returns: { $ref: '../../../services/vendor-api/openapi.json#/components/schemas/ReturnsIn' }
+        payment: { $ref: '../../../services/vendor-api/openapi.json#/components/schemas/PaymentIn' }
+        payout: { $ref: '../../../services/vendor-api/openapi.json#/components/schemas/PayoutIn' }
+        business: { $ref: '../../../services/vendor-api/openapi.json#/components/schemas/BusinessIn' }
+
+    # ---- 4. products ---------------------------------------------------------------------------
+    PhotoAngle:
+      type: string
+      x-proposal: true
+      enum: [front, back, detail, worn, extra, tryon]
+      description: front, back, detail and worn are the 4 required product photos (one each); extra holds up to 4 more; tryon holds the 5 required try-on photos of real people wearing it.
+    ProposedImageBody:
+      type: object
+      x-proposal: true
+      x-extends: ImageBody
+      additionalProperties: false
+      description: ImageBody plus the photo's slot.
+      required: [asset_id]
+      properties:
+        asset_id: { type: string, format: uuid }
+        alt_text: { type: [string, 'null'], maxLength: 200 }
+        angle: { x-proposal: true, $ref: '#/components/schemas/PhotoAngle', description: 'Defaults to extra. At most one each of front, back, detail and worn; 4 extra; 5 tryon.' }
+    ProposedImageOut:
+      x-proposal: true
+      x-extends: ImageOut
+      description: ImageOut plus the photo's slot.
+      allOf:
+        - $ref: '../../../services/vendor-api/openapi.json#/components/schemas/ImageOut'
+        - type: object
+          required: [angle]
+          properties:
+            angle: { x-proposal: true, $ref: '#/components/schemas/PhotoAngle' }
+    ProposedVariantBody:
+      type: object
+      x-proposal: true
+      x-replaces: VariantBody
+      additionalProperties: false
+      description: |
+        VariantBody with `stock` added and `sku`, `price_paise` and `mrp_paise` optional: the server
+        makes the code, and a draft may have sizes before it has a price (submit then lists
+        `price_paise`). The price is the same on every variant of a product.
+      properties:
+        sku: { type: string, minLength: 1, maxLength: 64, description: 'Now optional; the server makes one.' }
+        size: { type: string, maxLength: 32, description: 'Empty when left out.' }
+        color: { type: string, maxLength: 32, description: 'Empty when left out.' }
+        is_active: { type: boolean, description: 'True when left out.' }
+        price_paise: { type: [integer, 'null'], exclusiveMinimum: 0, maximum: 1000000000000, description: 'Now optional on a draft.' }
+        mrp_paise: { type: [integer, 'null'], exclusiveMinimum: 0, maximum: 1000000000000, description: 'Now optional; the selling price cannot be above it.' }
+        stock: { x-proposal: true, type: integer, minimum: 0, maximum: 1000000, description: 'Units in stock; 0 means sold out, and 0 when left out (so current clients keep working).' }
+    ProposedVariantOut:
+      type: object
+      x-proposal: true
+      x-replaces: VariantOut
+      description: VariantOut with `stock` added and `price_paise`/`mrp_paise` nullable (a draft may have no price yet).
+      required: [id, sku, size, color, price_paise, mrp_paise, is_active, stock]
+      properties:
+        id: { type: string, format: uuid }
+        sku: { type: string }
+        size: { type: string }
+        color: { type: string }
+        price_paise: { type: [integer, 'null'] }
+        mrp_paise: { type: [integer, 'null'] }
+        is_active: { type: boolean }
+        stock: { x-proposal: true, type: integer, minimum: 0 }
+    ProposedProductContentBody:
+      type: object
+      x-proposal: true
+      x-replaces: ProductContentBody
+      additionalProperties: false
+      description: |
+        ProductContentBody with `main_colour` and `other_colours` added; `variants` and `images` as
+        the proposed bodies; images up to 13 (4 named + 4 extra + 5 try-on); `category` (the product
+        type) and `gender` optional and nullable on a draft (submit lists them). Material is the
+        existing `fabric`.
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        category: { type: [string, 'null'], minLength: 1, maxLength: 100, description: 'The product type, like kurtas. Now optional on a draft.' }
+        gender: { oneOf: [{ $ref: '../../../services/vendor-api/openapi.json#/components/schemas/Gender' }, { type: 'null' }], description: 'Now optional on a draft.' }
+        subcategory: { type: [string, 'null'], maxLength: 100 }
+        description: { type: [string, 'null'], maxLength: 4000 }
+        fabric: { type: [string, 'null'], maxLength: 80, description: 'The material, like "100% linen".' }
+        weight_grams: { type: [integer, 'null'], exclusiveMinimum: 0, maximum: 1000000 }
+        returnable: { type: boolean, description: 'False when left out.' }
+        return_window_days: { type: [integer, 'null'], minimum: 0, maximum: 30 }
+        main_colour: { x-proposal: true, type: [string, 'null'], maxLength: 32, description: 'Any colour name (trimmed, the listed colours in their own spelling) or a hex code, kept as `#RRGGBB` in capitals; 422 for a hex code that is not one.' }
+        other_colours: { x-proposal: true, type: array, maxItems: 2, items: { type: string, maxLength: 32 }, description: 'Up to 2, each a name or hex code as `main_colour`, different from the main colour and from each other (case does not matter).' }
+        variants: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/ProposedVariantBody' } }
+        images: { type: array, maxItems: 13, items: { $ref: '#/components/schemas/ProposedImageBody' } }
+        version: { x-proposal: true, type: integer, minimum: 1, description: "The product's `version` this edit is based on. Optional; when it is not the current one, 409 version_conflict and nothing is saved. Not used on create." }
+    ProposedCreateProductBody:
+      x-proposal: true
+      x-replaces: CreateProductBody
+      description: ProposedProductContentBody plus an optional `sku` (the server makes one when it is left out).
+      allOf:
+        - $ref: '#/components/schemas/ProposedProductContentBody'
+        - type: object
+          properties:
+            sku: { type: string, minLength: 1, maxLength: 64 }
+    ProposedRevisionOut:
+      type: object
+      x-proposal: true
+      x-replaces: RevisionOut
+      description: RevisionOut with `main_colour` and `other_colours` added, the proposed variants and images, and `category`/`gender` nullable on a draft.
+      required: [id, version, state, title, description, category, subcategory, gender, fabric, weight_grams, returnable, return_window_days, main_colour, other_colours, variants, images, submitted_at, review, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        version: { type: integer }
+        state: { type: string, description: '`live`, or for the working revision editing, in_review, rejected or withdrawn.' }
+        title: { type: string }
+        description: { type: [string, 'null'] }
+        category: { type: [string, 'null'] }
+        subcategory: { type: [string, 'null'] }
+        gender: { type: [string, 'null'] }
+        fabric: { type: [string, 'null'] }
+        weight_grams: { type: [integer, 'null'] }
+        returnable: { type: boolean }
+        return_window_days: { type: [integer, 'null'] }
+        main_colour: { x-proposal: true, type: [string, 'null'] }
+        other_colours: { x-proposal: true, type: array, items: { type: string } }
+        variants: { type: array, items: { $ref: '#/components/schemas/ProposedVariantOut' } }
+        images: { type: array, items: { $ref: '#/components/schemas/ProposedImageOut' } }
+        submitted_at: { type: [string, 'null'], format: date-time }
+        review: { oneOf: [{ $ref: '../../../services/vendor-api/openapi.json#/components/schemas/ProductReviewOut' }, { type: 'null' }] }
+        updated_at: { type: string, format: date-time }
+    ProposedProductOut:
+      type: object
+      x-proposal: true
+      x-replaces: ProductOut
+      description: ProductOut with both revisions as ProposedRevisionOut, and `version` raised by every change to the product (each content save, submit, decision and archive), not only when what is live changes, so an edit can say which version it is based on.
+      required: [id, sku, status, version, created_at, updated_at, live, working]
+      properties:
+        id: { type: string, format: uuid }
+        sku: { type: string }
+        status: { type: string, description: 'draft, pending_review, approved, rejected or archived.' }
+        version: { x-proposal: true, type: integer, minimum: 1, description: 'Raised by every change to the product (proposed; today only when what is live changes).' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        live: { oneOf: [{ $ref: '#/components/schemas/ProposedRevisionOut' }, { type: 'null' }] }
+        working: { oneOf: [{ $ref: '#/components/schemas/ProposedRevisionOut' }, { type: 'null' }] }
+    ProductSort:
+      type: string
+      x-proposal: true
+      enum: [updated_desc, price_asc, price_desc, stock_asc]
+    ProposedProductSummaryOut:
+      x-proposal: true
+      x-extends: ProductSummaryOut
+      description: ProductSummaryOut plus what a list row shows, taken from the revision being edited or reviewed, else the live one (as `title` and `category` are today).
+      allOf:
+        - $ref: '../../../services/vendor-api/openapi.json#/components/schemas/ProductSummaryOut'
+        - type: object
+          required: [price_paise, mrp_paise, stock, thumbnail_url, main_colour, gender, working_state]
+          properties:
+            price_paise: { x-proposal: true, type: [integer, 'null'], description: 'The selling price (the same on every size); null before one is set.' }
+            mrp_paise: { x-proposal: true, type: [integer, 'null'] }
+            stock: { x-proposal: true, type: [integer, 'null'], minimum: 0, description: 'Units in stock over every active size; null when it has no sizes.' }
+            thumbnail_url: { x-proposal: true, type: [string, 'null'], description: 'The front photo, else the first one.' }
+            main_colour: { x-proposal: true, type: [string, 'null'] }
+            gender: { x-proposal: true, oneOf: [{ $ref: '../../../services/vendor-api/openapi.json#/components/schemas/Gender' }, { type: 'null' }] }
+            working_state: { x-proposal: true, type: [string, 'null'], description: 'The state of the revision being edited or reviewed (editing, in_review, rejected, withdrawn), or null when there is none. A live product whose working_state is in_review has changes in review.' }
+    ProposedProductPageOut:
+      x-proposal: true
+      x-extends: ProductPageOut
+      description: ProductPageOut with ProposedProductSummaryOut rows.
+      allOf:
+        - $ref: '../../../services/vendor-api/openapi.json#/components/schemas/ProductPageOut'
+        - type: object
+          properties:
+            items: { type: array, items: { $ref: '#/components/schemas/ProposedProductSummaryOut' } }
+    ProposedSubmissionOut:
+      x-proposal: true
+      x-extends: SubmissionOut
+      description: SubmissionOut plus the product it is about, and whether that product was live when it was sent.
+      allOf:
+        - $ref: '../../../services/vendor-api/openapi.json#/components/schemas/SubmissionOut'
+        - type: object
+          required: [product_id, was_live]
+          properties:
+            product_id: { x-proposal: true, type: [string, 'null'], format: uuid, description: 'The product, for a product submission; null for the brand page.' }
+            was_live: { x-proposal: true, type: boolean, description: 'True when the product already had a live version when this one was sent: the decision is about a change to a live product, and the live version stays as it is while it waits. False for a product that was not live yet. Always false for the brand page, whose edits are told by version.' }
+    ProposedSubmissionPageOut:
+      x-proposal: true
+      x-extends: SubmissionPageOut
+      description: SubmissionPageOut with ProposedSubmissionOut items.
+      allOf:
+        - $ref: '../../../services/vendor-api/openapi.json#/components/schemas/SubmissionPageOut'
+        - type: object
+          properties:
+            items: { type: array, items: { $ref: '#/components/schemas/ProposedSubmissionOut' } }
+    SubmitRequirement:
+      type: string
+      x-proposal: true
+      enum: [title, gender, category, main_colour, fabric, description, photos, tryon_photos, variants, price_paise, store_details]
+      description: |
+        What a submit can find missing, in this order. photos - fewer than the 4 named photos
+        (front, back, detail, worn); tryon_photos - fewer than 5 try-on photos; variants - no size
+        in stock list; price_paise - no selling price, or above the MRP; store_details - the store
+        details are incomplete.
+    ProductIncompleteDetail:
+      type: object
+      x-proposal: true
+      description: One item of `422 product_incomplete`'s `details`.
+      required: [loc, msg, type]
+      properties:
+        loc: { type: array, minItems: 1, maxItems: 1, items: { $ref: '#/components/schemas/SubmitRequirement' } }
+        msg: { type: string }
+        type: { type: string, enum: [missing] }
+
+    # ---- 7. brand profile ----------------------------------------------------------------------
+    ProposedBrandProfileBody:
+      type: object
+      x-proposal: true
+      x-replaces: BrandProfileBody
+      additionalProperties: false
+      description: BrandProfileBody with `price_min_paise`/`price_max_paise` optional and `based_in` added.
+      required: [brand_name]
+      properties:
+        brand_name: { type: string, minLength: 1, maxLength: 120 }
+        tagline: { type: [string, 'null'], maxLength: 160 }
+        about: { type: [string, 'null'], maxLength: 4000 }
+        logo_asset_id: { type: [string, 'null'], format: uuid }
+        banner_asset_id: { type: [string, 'null'], format: uuid }
+        website_url: { type: [string, 'null'], maxLength: 500 }
+        instagram_handle: { type: [string, 'null'], maxLength: 31 }
+        categories: { type: array, maxItems: 20, items: { type: string } }
+        price_min_paise: { type: integer, minimum: 0, maximum: 1000000000000, description: 'Now optional.' }
+        price_max_paise: { type: integer, minimum: 0, maximum: 1000000000000, description: 'Now optional.' }
+        based_in: { x-proposal: true, type: [string, 'null'], maxLength: 120, description: 'Where the brand is based, like "Ahmedabad, Gujarat"; shown on the brand page.' }
+    ProposedBrandProfileOut:
+      x-proposal: true
+      x-extends: BrandProfileOut
+      allOf:
+        - $ref: '../../../services/vendor-api/openapi.json#/components/schemas/BrandProfileOut'
+        - type: object
+          required: [based_in]
+          properties:
+            based_in: { x-proposal: true, type: [string, 'null'] }
+    ProposedDraftOut:
+      x-proposal: true
+      x-extends: DraftOut
+      allOf:
+        - $ref: '../../../services/vendor-api/openapi.json#/components/schemas/DraftOut'
+        - type: object
+          required: [based_in]
+          properties:
+            based_in: { x-proposal: true, type: [string, 'null'] }

@@ -531,7 +531,7 @@ async def test_if_the_sessions_cannot_be_ended_the_change_is_not_made(
     async def redis_is_down(db: AsyncSession, vendor_id: uuid.UUID) -> int:
         raise ConnectionError("redis is down")
 
-    tenants.api.app.state.sessions.end_sessions_of_vendor = redis_is_down
+    tenants.api.admin.state.vendor_sessions.end_sessions_of_vendor = redis_is_down
     with pytest.raises(ConnectionError):
         await act(tenants, a_id, "suspend", "Paused")
     # Not suspended with every session still alive: nothing was saved, nothing was sent.
@@ -546,7 +546,7 @@ async def test_if_ending_the_sessions_again_fails_after_the_commit_the_change_st
     sender = record_emails(tenants.api)
     a_id = tenants.a.vendor.id
     await put_status(session, a_id, "approved")
-    sessions = tenants.api.app.state.sessions
+    sessions = tenants.api.admin.state.vendor_sessions
     real = sessions.end_sessions_of_vendor
     calls: list[int] = []
 

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "catalogue",
+    "fallbackTitle": "Catalogue",
+    "basePath": "/catalogue",
+    "url": "https://catalogue.test/",
+    "roles": ["vendor_reviewer", "super_admin"],
+    "audience": "vendor-api",
+    "summaryUrl": "https://catalogue-api.test/v1/summary"
+  },
+  {
+    "id": "campaigns",
+    "fallbackTitle": "Campaigns",
+    "basePath": "/campaigns",
+    "url": "https://campaigns.test/",
+    "roles": ["super_admin"],
+    "audience": "vendor-api",
+    "summaryUrl": "https://campaigns-api.test/v1/summary"
+  }
+]

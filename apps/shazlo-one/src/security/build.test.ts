@@ -1,98 +1,165 @@
 // @vitest-environment node
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parse, type DefaultTreeAdapterMap } from 'parse5'
 import { build } from 'vite'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 
-type Built = Exclude<Awaited<ReturnType<typeof build>>, { close: unknown } | unknown[]>
-type Item = Built['output'][number]
-type Asset = Extract<Item, { type: 'asset' }>
-type Chunk = Extract<Item, { type: 'chunk' }>
-type Node = DefaultTreeAdapterMap['node']
-type Element = DefaultTreeAdapterMap['element']
+// Real production builds of the shell (`vite build`), checked file by file. Slow: a few builds.
+vi.setConfig({ testTimeout: 300_000 })
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
+const outDirs: string[] = []
+afterAll(() => {
+  for (const dir of outDirs) rmSync(dir, { recursive: true, force: true })
+})
 
-/** Every element of a page, parsed the way a browser parses it (the content of a `<template>` too). */
-function elementsOf(html: string): Element[] {
-  const elements: Element[] = []
-  const visit = (node: Node): void => {
-    if ('tagName' in node) elements.push(node)
-    if ('content' in node) visit(node.content)
-    if ('childNodes' in node) node.childNodes.forEach(visit)
+/** Builds with these settings into a temporary folder and returns every file's text by path. */
+async function buildWith(settings: Record<string, string | undefined>): Promise<Map<string, string>> {
+  // As `npm run build` runs it: vitest's own NODE_ENV=test would make it a development bundle.
+  const env = { ...settings, NODE_ENV: 'production' }
+  const saved = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]))
+  Object.assign(process.env, env)
+  for (const [key, value] of Object.entries(env)) if (value === undefined) delete process.env[key]
+  const outDir = mkdtempSync(join(tmpdir(), 'shazlo-one-build-'))
+  outDirs.push(outDir)
+  try {
+    await build({ root, configFile: join(root, 'vite.config.ts'), mode: 'production', logLevel: 'silent', build: { outDir, emptyOutDir: true } })
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
   }
-  visit(parse(html))
-  return elements
+  const files = new Map<string, string>()
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, name.name)
+      if (name.isDirectory()) walk(path)
+      else files.set(path.slice(outDir.length + 1).replaceAll('\\', '/'), /\.(png|woff2?|ttf|ico)$/.test(name.name) ? '' : readFileSync(path, 'utf8'))
+    }
+  }
+  walk(outDir)
+  return files
 }
-
-const scriptsOf = (html: string) => elementsOf(html).filter((element) => element.tagName === 'script')
 
 /**
- * What a page could run without loading a file: a `<script>` that has no `src` or has a body, an
- * inline event handler (`onclick=...`) and a `javascript:` URL. The markup is parsed, not matched
- * with a regular expression, so `</script >`, upper-case tags, odd spacing and comments cannot hide
- * anything from the check.
+ * Every `<script>` element of a page: its start tag and the text it holds. A small scan rather than a
+ * regular expression: browsers end a script at `</script` followed by whitespace, `/` or `>`, and accept
+ * anything up to the next `>` (`</script\t\n bar>`), which a pattern for the end tag easily misses. A
+ * script with no end tag holds the rest of the page; a start tag with no `>` is the rest of the page.
  */
-function inlineCode(html: string): string[] {
-  const found: string[] = []
-  for (const element of elementsOf(html)) {
-    for (const { name, value } of element.attrs) {
-      if (name.startsWith('on')) found.push(`<${element.tagName} ${name}>`)
-      if (/^\s*javascript:/i.test(value)) found.push(`<${element.tagName} ${name}="javascript:...">`)
+function scriptElements(html: string): Array<{ tag: string; body: string }> {
+  const lower = html.toLowerCase()
+  const isBoundary = (char: string | undefined) => char === undefined || char === '/' || char === '>' || char.trim() === ''
+  const found: Array<{ tag: string; body: string }> = []
+  let at = 0
+  for (;;) {
+    const start = lower.indexOf('<script', at)
+    if (start === -1) return found
+    if (!isBoundary(lower[start + 7])) {
+      at = start + 7
+      continue
     }
-    if (element.tagName === 'script') {
-      const body = element.childNodes.map((child) => ('value' in child ? child.value : '')).join('')
-      if (!element.attrs.some(({ name }) => name === 'src') || body.trim() !== '') found.push('<script> with no src or with a body')
+    const tagEnd = lower.indexOf('>', start)
+    if (tagEnd === -1) {
+      found.push({ tag: html.slice(start), body: html.slice(start) })
+      return found
     }
+    let close = lower.indexOf('</script', tagEnd)
+    while (close !== -1 && !isBoundary(lower[close + 8])) close = lower.indexOf('</script', close + 8)
+    if (close === -1) {
+      found.push({ tag: html.slice(start, tagEnd + 1), body: html.slice(tagEnd + 1) })
+      return found
+    }
+    found.push({ tag: html.slice(start, tagEnd + 1), body: html.slice(tagEnd + 1, close) })
+    at = close + 8
   }
-  return found
 }
 
-const page = (markup: string) => `<!doctype html><html><head></head><body>${markup}</body></html>`
-
-describe('the check for inline code', () => {
-  it('accepts a page whose only script is a module loaded by address', () => {
-    const html = page('<script type="module" src="/a.js"></script>')
-    expect(scriptsOf(html)).toHaveLength(1)
-    expect(inlineCode(html)).toEqual([])
+describe('the script scan the build checks use', () => {
+  it('finds external and inline scripts, whatever the end tag looks like', () => {
+    expect(scriptElements('<script type="module" src="/a.js"></script>')).toEqual([{ tag: '<script type="module" src="/a.js">', body: '' }])
+    expect(scriptElements('<SCRIPT>alert(1)</script\t\n bar>')).toEqual([{ tag: '<SCRIPT>', body: 'alert(1)' }])
+    expect(scriptElements('<script>a()</scriptx>b()</script >')).toEqual([{ tag: '<script>', body: 'a()</scriptx>b()' }])
+    expect(scriptElements('<script src="/a.js"></script><script\n>x()</script>')).toEqual([
+      { tag: '<script src="/a.js">', body: '' },
+      { tag: '<script\n>', body: 'x()' },
+    ])
   })
 
-  it.each([
-    ['an inline script', '<script>alert(1)</script>'],
-    ['an end tag with a space', '<script >alert(1)</script >'],
-    ['an end tag with an attribute', '<script>alert(1)</script foo="bar">'],
-    ['upper-case tags', '<SCRIPT>alert(1)</SCRIPT>'],
-    ['a script with an address and a body', '<script src="/a.js">alert(1)</script>'],
-    ['a script inside a template', '<template><script>alert(1)</script></template>'],
-    ['an inline handler', '<img src="/a.png" onerror="alert(1)">'],
-    ['an upper-case inline handler', '<div ONCLICK="alert(1)"></div>'],
-    ['a javascript: link', '<a href=" JavaScript:alert(1)">x</a>'],
-  ])('finds %s', (_name, markup) => {
-    expect(inlineCode(page(markup))).not.toEqual([])
+  it('treats an unclosed script as holding the rest of the page, and skips look-alike tags', () => {
+    expect(scriptElements('<script>x()')).toEqual([{ tag: '<script>', body: 'x()' }])
+    expect(scriptElements('<script src="/a.js"')[0]!.body).not.toBe('')
+    expect(scriptElements('<scripts></scripts>')).toEqual([])
   })
 })
 
-describe('the production build', () => {
-  it('has no inline script, no inline handler, no javascript: URL and no data: asset', async () => {
-    const result = (await build({
-      root,
-      configFile: `${root}vite.config.ts`,
-      logLevel: 'silent',
-      build: { write: false, outDir: 'dist-test' },
-    })) as unknown as Built | Built[]
-    const output = (Array.isArray(result) ? result[0]! : result).output
-    const index = output.find((item): item is Asset => item.type === 'asset' && item.fileName === 'index.html')
-    expect(index).toBeDefined()
-    const html = String(index!.source)
+const PRODUCTION = { VITE_IDENTITY_API_URL: 'https://identity.example.com', VITE_SHELL_REGISTRY: 'registry/example.production.json', VITE_MOCK_API: undefined }
+// What only the browser mock carries: the demo accounts' passwords, MSW and its service worker.
+const MOCK_MARKERS = [/shazlo-one-2026/, /welcome-sneha-01/, /mockServiceWorker/, /setupWorker/, /\bmsw\b/i, /shazloOneResetDemo/]
 
-    expect(scriptsOf(html).length).toBeGreaterThan(0)
-    expect(inlineCode(html)).toEqual([])
+describe('a production build', () => {
+  let files: Map<string, string>
 
-    const css = output.filter((item): item is Asset => item.type === 'asset' && item.fileName.endsWith('.css'))
-    for (const sheet of css) {
-      expect(String(sheet.source)).not.toMatch(/url\(\s*["']?data:/i)
+  it('builds with the production settings', async () => {
+    files = await buildWith(PRODUCTION)
+    expect(files.has('index.html')).toBe(true)
+  })
+
+  it('ships no mock, no demo password and no mock service worker', () => {
+    expect(files.has('mockServiceWorker.js')).toBe(false)
+    for (const [path, text] of files) for (const marker of MOCK_MARKERS) expect(marker.test(text), `${path} matches ${marker}`).toBe(false)
+  })
+
+  it('has no inline script, no inline handler and no javascript: URL in its page', () => {
+    const html = files.get('index.html')!
+    const scripts = scriptElements(html)
+    expect(scripts.length).toBeGreaterThan(0)
+    for (const { tag, body } of scripts) {
+      expect(tag).toMatch(/\ssrc=/i)
+      expect(body.trim()).toBe('')
     }
-    const code = output.filter((item): item is Chunk => item.type === 'chunk')
-    expect(code.length).toBeGreaterThan(0)
-  }, 180_000)
+    expect(html).not.toMatch(/\son[a-z]+\s*=/i)
+    expect(html).not.toMatch(/javascript:/i)
+  })
+
+  it('inlines no asset as a data: URI, which the policy would block', () => {
+    for (const [path, text] of files) if (path.endsWith('.css')) expect(text, path).not.toMatch(/url\(\s*["']?data:/i)
+  })
+
+  it('builds the registry it was given into the bundle, and nothing from development', () => {
+    const code = [...files.entries()].filter(([path]) => path.endsWith('.js')).map(([, text]) => text).join('\n')
+    expect(code).toContain('https://vendor-admin.example.com/')
+    expect(code).not.toContain('http://localhost:5193')
+  })
+})
+
+describe('a demo build', () => {
+  it('carries the mock and its worker only when asked for by name (VITE_MOCK_API=on)', async () => {
+    const files = await buildWith({ ...PRODUCTION, VITE_IDENTITY_API_URL: undefined, VITE_MOCK_API: 'on' })
+    expect(files.has('mockServiceWorker.js')).toBe(true)
+    const code = [...files.values()].join('\n')
+    expect(code).toMatch(/setupWorker|shazloOneResetDemo/)
+    // Even the demo writes no mock token to storage: that is for the dev server only.
+    expect(code).not.toContain('shazlo.one.mock-identity.v1')
+  })
+})
+
+describe('a production build that is not set up', () => {
+  it.each([
+    ['without identity-api’s origin', { ...PRODUCTION, VITE_IDENTITY_API_URL: undefined }, /VITE_IDENTITY_API_URL is not set/],
+    ['with an http origin', { ...PRODUCTION, VITE_IDENTITY_API_URL: 'http://identity.example.com' }, /must use https/],
+    ['with a host that could inject a CSP directive', { ...PRODUCTION, VITE_IDENTITY_API_URL: 'https://identity.example.com;script-src' }, /letters, digits, dots and hyphens/],
+    ['with an unknown mock setting', { ...PRODUCTION, VITE_MOCK_API: 'true' }, /VITE_MOCK_API must be/],
+    ['without a registry', { ...PRODUCTION, VITE_SHELL_REGISTRY: undefined }, /VITE_SHELL_REGISTRY/],
+    ['with the development registry (plain http)', { ...PRODUCTION, VITE_SHELL_REGISTRY: 'registry/development.json' }, /must be https outside development/],
+  ])('fails %s', async (_name, env, message) => {
+    await expect(buildWith(env)).rejects.toThrow(message)
+  })
+
+  it('wrote nothing', () => {
+    expect(existsSync(join(root, 'dist', 'mockServiceWorker.js'))).toBe(false)
+  })
 })

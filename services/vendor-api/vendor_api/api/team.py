@@ -7,10 +7,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from shazlo_security.rate_limit import Check
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from vendor_api.api.auth import EMAIL_PATTERN, Message, no_store
+from vendor_api.api.auth import EMAIL_PATTERN, Message
+from vendor_api.api.common import Emails, no_store
 from vendor_api.api.deps import (
     CurrentVendorUser,
-    Emails,
     Limits,
     Sessions,
     require_vendor_role,

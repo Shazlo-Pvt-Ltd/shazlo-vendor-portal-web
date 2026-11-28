@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from shazlo_security.keys import KeyConfigError, load_keyring
 
 from vendor_api import cli
-from vendor_api.app import create_app
+from vendor_api.app import create_seller_app
 from vendor_api.core.security import key_ring_config
 from vendor_api.core.settings import Settings
 
@@ -24,7 +24,7 @@ def test_jwks_endpoint_serves_public_keys_only(
     both = override(
         settings, jwt_keys=json.dumps(key_pems), jwt_signing_kid="test-key-1", env="test"
     )
-    with TestClient(create_app(both, readiness_checks={})) as client:
+    with TestClient(create_seller_app(both, readiness_checks={})) as client:
         response = client.get("/.well-known/jwks.json")
         assert response.status_code == 200
         assert response.headers["cache-control"] == "max-age=600"
@@ -54,14 +54,14 @@ def test_jwks_endpoint_serves_public_keys_only(
 
 def test_the_app_refuses_to_start_without_keys(settings: Settings, override: Override) -> None:
     with pytest.raises(KeyConfigError, match="no JWT keys"):
-        create_app(override(settings, jwt_keys=None), readiness_checks={})
+        create_seller_app(override(settings, jwt_keys=None), readiness_checks={})
 
 
 def test_the_app_refuses_a_signing_kid_that_is_not_configured(
     settings: Settings, override: Override
 ) -> None:
     with pytest.raises(KeyConfigError, match="not one of the configured keys"):
-        create_app(override(settings, jwt_signing_kid="nope"), readiness_checks={})
+        create_seller_app(override(settings, jwt_signing_kid="nope"), readiness_checks={})
 
 
 def test_the_key_config_never_shows_the_keys(settings: Settings) -> None:
