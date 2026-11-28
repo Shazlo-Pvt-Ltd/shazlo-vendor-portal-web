@@ -14,7 +14,7 @@ import type {
   LogoutPayload,
 } from './types'
 import { parseModuleToShell, payloadChecks } from './validate'
-import { negotiateVersion, shellSupportedVersions } from './version'
+import { assertVersions, negotiateVersion, shellSupportedVersions } from './version'
 
 /** What the shell learns from a module's `ready`. */
 export interface ReadyInfo {
@@ -72,7 +72,7 @@ export interface ShellChannel {
 export function createShellChannel(options: ShellChannelOptions): ShellChannel {
   const development = options.development === true
   const origin = assertExactOrigin(options.origin, { development, name: 'The module origin' })
-  const supported = options.supportedVersions ?? shellSupportedVersions(PROTOCOL_VERSION)
+  const supported = assertVersions(options.supportedVersions ?? shellSupportedVersions(PROTOCOL_VERSION), 'The shell versions')
   const listenOn = options.window ?? options.iframe.ownerDocument.defaultView
   if (listenOn === null || listenOn === undefined) throw new Error('The shell channel needs a window to listen on.')
   const logger = options.logger ?? createDropLogger({ development })

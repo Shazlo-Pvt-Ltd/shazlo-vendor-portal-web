@@ -30,6 +30,15 @@ function sources(dir: string): Array<[string, string]> {
   return found
 }
 
+/** Whether code posts to, or listens for, messages from another window. `?.` and `!.` count too. */
+function talksAcrossFrames(body: string): boolean {
+  return (
+    /\b(window|parent|top|opener|self|contentWindow|globalThis)[?!]?\.postMessage\s*\(/.test(body) ||
+    /addEventListener\s*\(\s*['"`]message['"`]/.test(body) ||
+    /\b(window|self|globalThis)\.onmessage\b/.test(body)
+  )
+}
+
 /** The code with comments removed, so a sentence that mentions `postMessage` is not mistaken for a call. */
 const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 
@@ -89,17 +98,23 @@ describe('the apps', () => {
   })
 
   it('post and read cross-frame messages only through @shazlo/shell-protocol', () => {
-    const offenders = apps
-      .filter(([, text]) => {
-        const body = code(text)
-        return (
-          /\b(window|parent|top|opener|self|contentWindow|globalThis)\??\.postMessage\s*\(/.test(body) ||
-          /\.contentWindow\??\.postMessage/.test(body) ||
-          /addEventListener\s*\(\s*['"`]message['"`]/.test(body) ||
-          /\b(window|self|globalThis)\.onmessage\b/.test(body)
-        )
-      })
-      .map(([path]) => path)
+    const offenders = apps.filter(([, text]) => talksAcrossFrames(code(text))).map(([path]) => path)
     expect(offenders).toEqual([])
+  })
+
+  it.each([
+    "window.parent.postMessage(data, '*')",
+    'window.top?.postMessage(data, origin)',
+    'iframe.contentWindow!.postMessage(data, origin)',
+    'frame.contentWindow?.postMessage(data, origin)',
+    'parent!.postMessage(data, origin)',
+    "window.addEventListener('message', onMessage)",
+    'window.onmessage = onMessage',
+  ])('the check catches %s', (line) => {
+    expect(talksAcrossFrames(line)).toBe(true)
+  })
+
+  it('the check leaves a same-origin BroadcastChannel alone', () => {
+    expect(talksAcrossFrames("channel.postMessage({ type: 'logout' }); channel.onmessage = onMessage")).toBe(false)
   })
 })

@@ -213,5 +213,17 @@ describe('the session against identity-api', () => {
       await expect(store.getModuleToken('mystery')).rejects.toBeInstanceOf(UnknownAudienceError)
       store.close()
     })
+
+    it('refuses an exchange answer with no token instead of handing one out', async () => {
+      server.use(
+        http.post(`${BASE}/v1/auth/refresh`, () => HttpResponse.json(sessionBody())),
+        http.get(`${BASE}/v1/me`, () => HttpResponse.json(adminProfile())),
+        http.post(`${BASE}/v1/auth/token`, () => HttpResponse.json({ token_type: 'Bearer', audience: 'vendor-api' })),
+      )
+      const store = wire()
+      await store.start()
+      await expect(store.getModuleToken('vendor-api')).rejects.toMatchObject({ code: 'bad_session_response' })
+      store.close()
+    })
   })
 })

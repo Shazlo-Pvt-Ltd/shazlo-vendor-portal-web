@@ -93,6 +93,12 @@ describe('the envelope', () => {
     expect(isEnvelope(envelope('x', {}, { protocol: 'other' }))).toBe(false)
     expect(isEnvelope(null)).toBe(false)
     expect(isEnvelope(envelope('x', {}, { payload: undefined }))).toBe(false)
+    // The same envelope rules the parsers apply, so the two can never disagree.
+    expect(isEnvelope(envelope('x', {}, { v: 1.5 }))).toBe(false)
+    expect(isEnvelope(envelope('x', {}, { id: 'abc' }))).toBe(false)
+    expect(isEnvelope(envelope('x', {}, { replyTo: 'abc' }))).toBe(false)
+    expect(isEnvelope(envelope('x', {}, { sentAt: Infinity }))).toBe(false)
+    expect(isEnvelope(new Proxy({}, { get: () => { throw new Error('hostile') } }))).toBe(false)
   })
 })
 
@@ -119,6 +125,7 @@ describe('auth (shell to module)', () => {
     ['no expiresAt', { expiresAt: undefined }],
     ['a zero expiresAt', { expiresAt: 0 }],
     ['a NaN expiresAt', { expiresAt: NaN }],
+    ['an expiresAt in milliseconds, not seconds', { expiresAt: 1_700_000_900_000 }],
     ['no user', { user: undefined }],
     ['a user that is a string', { user: 'asha' }],
     ['a user with no id', { user: { ...USER, id: undefined } }],

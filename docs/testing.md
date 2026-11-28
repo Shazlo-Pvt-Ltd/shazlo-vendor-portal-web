@@ -20,7 +20,7 @@ Most of this document is a record of the assessment made on 29 and 30 October 20
   | `services/vendor-api` (no DB) | 899 → 993 (1176 DB skips) | 66.8% → 67.5% | 44.3% → 45.9% |
   | `apps/vendor-portal` | 599 → 622 | at least 91.5% after | at least 84.2% after |
   | `packages/ui` | 68 | 100% | 96.6% |
-  | `packages/shell-protocol` | 236 | 99.7% | 96.5% |
+  | `packages/shell-protocol` | 261 | 99.7% | 96.6% |
   | `test/contracts` (JSON files, no source coverage) | 132 → 172 | | |
   | legacy `app/` | 63 | 20.5% (its behaviour modules 82 to 100%) | 14.8% |
 
