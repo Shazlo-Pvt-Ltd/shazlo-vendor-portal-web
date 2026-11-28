@@ -4,6 +4,7 @@ import type { components } from './schema'
 
 type S = components['schemas']
 const API = '*/api/v1/admin'
+const QUEUE_URL = '*/v1/admin/queue'
 const REASON_MIN = 10
 const NOTE_MAX = 600
 const MAX_BPS = 4000
@@ -131,9 +132,16 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       } satisfies S['Summary'])
     })),
 
-    http.get(`${API}/queue`, guarded(({ request }) => {
+    // `GET /v1/admin/queue` as vendor-api serves it (services/vendor-api/vendor_api/api/admin_queue.py):
+    // filtered, sorted and paged here; `counts` and `vendors` always describe the whole queue.
+    http.get(QUEUE_URL, guarded(({ request }) => {
       const db = getDb()
       const q = new URL(request.url).searchParams
+      const limit = q.has('limit') ? Number(q.get('limit')) : 50
+      const offset = q.has('offset') ? Number(q.get('offset')) : 0
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) return fail(422, 'validation_error', 'Check the filters.', { limit: 'Use a page size from 1 to 100.' })
+      if (!Number.isInteger(offset) || offset < 0 || offset > 100_000) return fail(422, 'validation_error', 'Check the filters.', { offset: 'Use an offset from 0 to 100000.' })
+      if ((q.get('q') ?? '').length > 200) return fail(422, 'validation_error', 'Check the filters.', { q: 'Use at most 200 characters.' })
       const all = queueItems(db)
       let items = all
       if (q.get('kind')) items = items.filter((i) => i.kind === q.get('kind'))
@@ -145,10 +153,13 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       if (q.get('submitted') === '24h') items = items.filter((i) => age(i) >= 24 * 3_600_000 && age(i) < 48 * 3_600_000)
       if (q.get('submitted') === 'older') items = items.filter((i) => age(i) >= 48 * 3_600_000)
       if (q.get('resubmissions') === 'true') items = items.filter((i) => i.resubmission > 0)
-      if (q.get('sort') === 'newest') items = [...items].reverse()
+      // Same time keeps a fixed order (by id), so paging never repeats or skips an item.
+      const order = (a: S['QueueItem'], b: S['QueueItem']) => Date.parse(a.submitted_at) - Date.parse(b.submitted_at) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+      items = [...items].sort(order)
+      if (q.get('sort') === 'newest') items.reverse()
       const count = (k: S['ItemKind']) => all.filter((i) => i.kind === k).length
-      const vendors = [...new Map(all.map((i) => [i.vendor.id, i.vendor])).values()]
-      return HttpResponse.json({ items, counts: { all: all.length, product: count('product'), brand_page: count('brand_page'), application: count('application') }, vendors } satisfies S['QueuePage'])
+      const vendors = [...new Map(all.map((i) => [i.vendor.id, i.vendor])).values()].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
+      return HttpResponse.json({ items: items.slice(offset, offset + limit), total: items.length, limit, offset, counts: { all: all.length, product: count('product'), brand_page: count('brand_page'), application: count('application') }, vendors })
     })),
 
     http.get(`${API}/products/:id/review`, guarded(({ params }) => {
