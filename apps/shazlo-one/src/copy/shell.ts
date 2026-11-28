@@ -37,6 +37,10 @@ export const shellCopy = {
     unreachable: 'The module did not answer. It may be restarting; the rest of Shazlo One still works.',
     invalid: 'The module answered in a form Shazlo One cannot read. Tell the platform team in #shazlo-one.',
   },
+  misconfigured: {
+    title: 'Shazlo One is not set up correctly',
+    body: 'It will not start until its settings are fixed. If you look after this deployment, fix the settings below and build it again; otherwise tell the platform team in #shazlo-one.',
+  },
   unavailable: {
     title: 'Shazlo One cannot reach its sign-in service',
     body: 'Your network may have dropped, or the service is restarting. You have not been signed out.',

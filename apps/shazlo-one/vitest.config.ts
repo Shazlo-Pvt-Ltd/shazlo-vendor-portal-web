@@ -8,7 +8,7 @@ const registry = readFileSync(new URL('./src/test/registry.json', import.meta.ur
 
 export default defineConfig({
   plugins: [react()],
-  define: { __SHELL_REGISTRY__: registry, __SHELL_REGISTRY_MODE__: JSON.stringify('development') },
+  define: { __SHELL_REGISTRY__: registry, __SHELL_REGISTRY_MODE__: JSON.stringify('development'), __MOCK_API__: 'false' },
   test: {
     name: 'shazlo-one',
     include: ['src/**/*.test.{ts,tsx}'],

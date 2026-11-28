@@ -28,9 +28,17 @@ const entry = z
 export type RegistryInput = z.input<typeof entry>
 export type RegistryEntry = z.output<typeof entry> & { origin: string }
 
-function checkUrl(label: string, raw: string, mode: RegistryMode, problems: string[]): URL | null {
-  if (raw.includes('*')) {
-    problems.push(`${label} must be exact, without wildcards: ${raw}`)
+// A host name the URL parser accepts can still hold characters such as ";" or ",", and the origin is
+// written into the shell's Content-Security-Policy, where ";" starts a new directive. A module's host
+// may hold only lower-case letters, digits, dots and hyphens (an IPv6 address is refused too).
+export const PLAIN_HOST = /^[a-z0-9-]+(?:\.[a-z0-9-]+)*$/
+// Plain http is for a module on this machine, in development only (the protocol channel refuses
+// anything else, ADR 0001).
+const LOOPBACK = new Set(['localhost', '127.0.0.1'])
+
+function checkUrl(label: string, raw: string, mode: RegistryMode, problems: string[], { originOnly }: { originOnly: boolean }): URL | null {
+  if (/[*?^$|()[\]{}\\]/.test(raw)) {
+    problems.push(`${label} must be exact, without wildcards or patterns: ${raw}`)
     return null
   }
   let url: URL
@@ -42,8 +50,12 @@ function checkUrl(label: string, raw: string, mode: RegistryMode, problems: stri
   }
   if (url.protocol !== 'https:' && url.protocol !== 'http:') problems.push(`${label} must be http(s): ${raw}`)
   else if (url.protocol !== 'https:' && mode !== 'development') problems.push(`${label} must be https outside development: ${raw}`)
+  else if (url.protocol !== 'https:' && !LOOPBACK.has(url.hostname)) problems.push(`${label} may use plain http only for localhost: ${raw}`)
+  if (!PLAIN_HOST.test(url.hostname)) problems.push(`${label} must have a host of letters, digits, dots and hyphens only: ${raw}`)
   if (url.username || url.password) problems.push(`${label} must not carry credentials`)
   if (url.search || url.hash) problems.push(`${label} must not carry a query or a fragment: ${raw}`)
+  // The module is its origin: the shell frames it there and reads its manifest from the root.
+  if (originOnly && url.pathname !== '/') problems.push(`${label} must be the module's origin with no path (for example https://vendor-admin.shazlo.store/): ${raw}`)
   return url
 }
 
@@ -59,8 +71,8 @@ export function parseRegistry(raw: unknown, mode: RegistryMode): RegistryEntry[]
   const seen = { id: new Set<string>(), origin: new Set<string>(), basePath: new Set<string>() }
   for (const item of parsed.data) {
     const where = `module "${item.id}"`
-    const url = checkUrl(`${where} url`, item.url, mode, problems)
-    if (item.summaryUrl) checkUrl(`${where} summaryUrl`, item.summaryUrl, mode, problems)
+    const url = checkUrl(`${where} url`, item.url, mode, problems, { originOnly: true })
+    if (item.summaryUrl) checkUrl(`${where} summaryUrl`, item.summaryUrl, mode, problems, { originOnly: false })
     if ((RESERVED_BASE_PATHS as readonly string[]).includes(item.basePath)) problems.push(`${where} basePath ${item.basePath} belongs to the shell`)
     // identity-api is never a token-exchange target (ADR 0009).
     if (item.audience === 'identity-api') problems.push(`${where} audience cannot be identity-api`)

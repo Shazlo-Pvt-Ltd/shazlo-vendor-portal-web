@@ -72,6 +72,11 @@ describe('parseRegistry', () => {
     expect(entry).toMatchObject({ id: 'vendor-admin', origin: 'https://vendor-admin.shazlo.store', audience: 'vendor-api', roles: ['vendor_reviewer', 'super_admin'] })
   })
 
+  it('allows plain http only for localhost, and only in development', () => {
+    const lan = { ...vendors, url: 'http://192.168.1.20:5193/', summaryUrl: 'http://vendor-api.lan/v1/admin/summary' }
+    expect(() => parseRegistry([lan], 'development')).toThrow(/url may use plain http only for localhost[\s\S]*summaryUrl may use plain http only for localhost/)
+  })
+
   it('allows plain http in development only', () => {
     const local = { ...vendors, url: 'http://localhost:5193/', summaryUrl: 'http://localhost:8004/v1/admin/summary' }
     expect(parseRegistry([local], 'development')[0]?.origin).toBe('http://localhost:5193')
@@ -82,7 +87,17 @@ describe('parseRegistry', () => {
   it.each([
     ['a wildcard', { url: 'https://*.shazlo.store/' }, /wildcards/],
     ['credentials', { url: 'https://user:pw@vendor-admin.shazlo.store/' }, /credentials/],
-    ['a query', { url: 'https://vendor-admin.shazlo.store/?next=1' }, /query or a fragment/],
+    ['a query', { url: 'https://vendor-admin.shazlo.store/?next=1' }, /without wildcards or patterns/],
+    ['a fragment', { url: 'https://vendor-admin.shazlo.store/#x' }, /query or a fragment/],
+    ['a path', { url: 'https://vendor-admin.shazlo.store/app/' }, /origin with no path/],
+    ['a pattern', { url: 'https://vendor-admin.shazlo.(store|com)/' }, /without wildcards or patterns/],
+    // The URL parser keeps these in a host; each would end the CSP directive the origin is written into.
+    ['a semicolon in the host', { url: 'https://vendor-admin.shazlo.store;script-src*/' }, /letters, digits, dots and hyphens|wildcards/],
+    ['a semicolon in the host, no pattern characters', { url: 'https://a;b.shazlo.store/' }, /letters, digits, dots and hyphens/],
+    ['a comma in the host', { url: 'https://a,b.shazlo.store/' }, /letters, digits, dots and hyphens/],
+    ['a quote in the host', { url: "https://a'b.shazlo.store/" }, /letters, digits, dots and hyphens/],
+    ['an IPv6 host', { url: 'https://[::1]/' }, /letters, digits, dots and hyphens|patterns/],
+    ['a bad summary host', { summaryUrl: 'https://a;b.shazlo.store/v1/summary' }, /summaryUrl must have a host/],
     ['not a URL', { url: 'vendor-admin' }, /not a URL/],
     ['another scheme', { url: 'ftp://vendor-admin.shazlo.store/' }, /http\(s\)/],
     ['a shell route', { basePath: '/admins' }, /belongs to the shell/],
@@ -255,7 +270,7 @@ describe('a summary from a FastAPI backend, and its activity', () => {
 })
 
 describe('fakeModule (shell tests)', () => {
-  const entry: RegistryInput = { id: 'catalogue', fallbackTitle: 'Catalogue', basePath: '/catalogue', url: 'http://catalogue.test/', roles: ['super_admin'], audience: 'catalogue-api', summaryUrl: 'http://catalogue-api.test/v1/summary' }
+  const entry: RegistryInput = { id: 'catalogue', fallbackTitle: 'Catalogue', basePath: '/catalogue', url: 'https://catalogue.test/', roles: ['super_admin'], audience: 'catalogue-api', summaryUrl: 'https://catalogue-api.test/v1/summary' }
   const summary = { v: 1 as const, badge: { count: 2, label: '2 waiting' }, sections: [] }
 
   async function call(handlers: ReturnType<ReturnType<typeof fakeModule>['handlers']>, request: Request) {
@@ -268,8 +283,8 @@ describe('fakeModule (shell tests)', () => {
 
   it('serves its manifest without a token, and its summary only with one', async () => {
     const fake = fakeModule(entry, { manifest: { links: [{ label: 'Queue', path: '/queue', icon: 'inbox' }] }, summary })
-    expect(fake.entry.origin).toBe('http://catalogue.test')
-    expect(fake.manifestUrl).toBe('http://catalogue.test/shazlo-module.json')
+    expect(fake.entry.origin).toBe('https://catalogue.test')
+    expect(fake.manifestUrl).toBe('https://catalogue.test/shazlo-module.json')
     const manifest = await call(fake.handlers(), new Request(fake.manifestUrl))
     expect(parseManifest(await manifest?.json(), 'catalogue')?.links.map((l) => l.path)).toEqual(['/queue'])
     expect((await call(fake.handlers(), new Request(entry.summaryUrl!)))?.status).toBe(401)

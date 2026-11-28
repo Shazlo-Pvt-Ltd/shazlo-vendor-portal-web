@@ -22,6 +22,7 @@ service-account*.json
 
 # Build output
 dist/
+*.tsbuildinfo
 dist-ssr/
 build/
 coverage/

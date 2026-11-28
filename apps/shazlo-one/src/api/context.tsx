@@ -51,7 +51,8 @@ export function createAppContext({ identityUrl, channel }: { identityUrl: string
   return { session, identity, queryClient }
 }
 
-export function apiUrls(identityUrl: string | undefined = import.meta.env.VITE_IDENTITY_API_URL as string | undefined) {
+// identity-api's origin (checked by src/config/env.ts), or the shell's own origin for the dev proxy and the mock.
+export function apiUrls(identityUrl: string | undefined) {
   const origin = typeof window !== 'undefined' && window.location.origin !== 'null' ? window.location.origin : 'http://localhost'
   return { identityUrl: (identityUrl ?? origin).replace(/\/+$/, '') }
 }

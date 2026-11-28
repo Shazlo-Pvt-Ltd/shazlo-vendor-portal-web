@@ -13,8 +13,10 @@ for (const name of ['localStorage', 'sessionStorage'] as const) {
 // Lazily loaded screens compile on first use in jsdom; give the first find* calls room.
 configure({ asyncUtilTimeout: 4000 })
 
-// jsdom lacks these browser APIs; MUI and the shell read them.
-if (!window.matchMedia) {
+// jsdom lacks these browser APIs; MUI and the shell read them. (A test that runs in Node, such as the
+// build checks, has no window at all.)
+const browser = typeof window !== 'undefined'
+if (browser && !window.matchMedia) {
   window.matchMedia = (query: string) => ({
     matches: false,
     media: query,
@@ -26,7 +28,7 @@ if (!window.matchMedia) {
     dispatchEvent: () => false,
   })
 }
-window.scrollTo = () => {}
+if (browser) window.scrollTo = () => {}
 globalThis.ResizeObserver ??= class {
   observe() {}
   unobserve() {}
@@ -37,8 +39,9 @@ if (!URL.revokeObjectURL) URL.revokeObjectURL = () => {}
 
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => {
-  cleanup()
   server.resetHandlers()
+  if (!browser) return
+  cleanup()
   localStorage.clear()
   sessionStorage.clear()
 })

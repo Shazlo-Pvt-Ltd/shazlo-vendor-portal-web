@@ -4,8 +4,11 @@ import { describe, expect, it } from 'vitest'
 import { campaigns, catalogue } from '../test/modules'
 import { currentLink, isModuleHome, isOnLink, moduleFor, modulePath, moduleTarget, registry, resolveModule } from './registry'
 
-// The committed registry files, as the build reads them (vite.config.ts).
-const files = import.meta.glob<unknown>('../../registry/*.json', { import: 'default', eager: true })
+// The committed registry files, as the build reads them (vite.config.ts). The example production one is
+// what CI builds with (exact https URLs on example.com); the others are for this machine.
+const all = import.meta.glob<unknown>('../../registry/*.json', { import: 'default', eager: true })
+const EXAMPLE = '../../registry/example.production.json'
+const files = Object.fromEntries(Object.entries(all).filter(([path]) => path !== EXAMPLE))
 
 describe('module registry files', () => {
   it('finds them', () => {
@@ -19,6 +22,15 @@ describe('module registry files', () => {
 
   it('keeps localhost out of production: every committed file is for local use', () => {
     for (const raw of Object.values(files)) expect(() => parseRegistry(raw, 'production')).toThrow(/must be https outside development/)
+  })
+
+  it('has an example production registry, on example.com only, that a production build accepts', () => {
+    const entries = parseRegistry(all[EXAMPLE], 'production')
+    expect(entries.length).toBeGreaterThan(0)
+    for (const entry of entries) {
+      expect(new URL(entry.url).hostname).toMatch(/\.example\.com$/)
+      if (entry.summaryUrl) expect(new URL(entry.summaryUrl).hostname).toMatch(/\.example\.com$/)
+    }
   })
 })
 
