@@ -119,7 +119,7 @@ export function ModuleHost({ module }: { module: ShellModule }) {
   // `ready` is never missed (ADR 0001 §3.1).
   useLayoutEffect(() => listenAsShell({ origin: module.origin, source: () => frame.current?.contentWindow, onMessage }), [module.origin, onMessage])
 
-  const src =useMemo(() => new URL(firstTarget.replace(/^\//, ''), module.url).toString(), [firstTarget, module.url])
+  const src = useMemo(() => new URL(firstTarget.replace(/^\//, ''), module.url).toString(), [firstTarget, module.url])
 
   useEffect(() => {
     const timer = setTimeout(() => setState((s) => (s.kind === 'loading' ? { kind: attempt >= MAX_ATTEMPTS ? 'unavailable' : 'failed' } : s)), READY_TIMEOUT_MS)
