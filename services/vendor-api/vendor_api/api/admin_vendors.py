@@ -15,11 +15,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vendor_api.api.admin import AdminRequest, Reviewer, reviewer_dependency
-from vendor_api.api.auth import no_store
-from vendor_api.api.commission import CommissionOut, Commissions, commission_out
-from vendor_api.api.deps import Emails
-from vendor_api.api.store_details import Service as StoreDetails
-from vendor_api.api.store_details import StoreDetailsOut, store_details_of_vendor
+from vendor_api.api.common import Emails, no_store
+from vendor_api.api.views import (
+    CommissionOut,
+    Commissions,
+    StoreDetailsOut,
+    commission_out,
+    store_details_of_vendor,
+)
 from vendor_api.db.models import CommissionState, Vendor, VendorStatus, VendorStatusEvent
 from vendor_api.db.session import get_session
 from vendor_api.services.commission import CommissionService, CommissionView
@@ -215,12 +218,12 @@ async def get_vendor(
 
 @router.get("/{vendor_id}/store-details")
 async def get_vendor_store_details(
-    vendor_id: uuid.UUID, response: Response, db: Db, service: StoreDetails
+    vendor_id: uuid.UUID, response: Response, db: Db
 ) -> StoreDetailsOut:
     """A vendor's store details as the vendor sees them: payouts masked (bank, last four digits
     or a masked UPI ID), never the number. `404` for an unknown vendor."""
     no_store(response)
-    found = await store_details_of_vendor(db, service, vendor_id)
+    found = await store_details_of_vendor(db, vendor_id)
     if found is None:
         raise VENDOR_NOT_FOUND
     return found

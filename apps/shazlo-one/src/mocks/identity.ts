@@ -1,4 +1,3 @@
-import { mockModuleToken } from '@shazlo/mock-vendor-api'
 import { http, HttpResponse, type HttpResponseResolver } from 'msw'
 import type { components } from '../api/identity'
 
@@ -20,6 +19,12 @@ export const ROLES: S['RoleOut'][] = [
 // ADR 0009: which roles may get a token for which service.
 const AUDIENCE_ROLES: Record<string, string[]> = { 'vendor-api': ['super_admin', 'vendor_reviewer'] }
 const ACCESS_SECONDS = 15 * 60
+
+// A module token from the token exchange: mock.<audience>.<adminId>.<name>.<expEpochSeconds>. A module's
+// mock backend reads the admin from it (the mock vendor-api does, for the browser demo).
+export function mockModuleToken(audience: string, admin: { id: string; name: string }, expiresAt: number) {
+  return `mock.${audience}.${admin.id}.${encodeURIComponent(admin.name)}.${expiresAt}`
+}
 const MAX_FAILURES = 5
 
 type AdminRecord = S['AdminOut'] & { password: string }
@@ -140,7 +145,7 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
       if (!allowed) return fail(400, 'unknown_audience', 'No module backend is registered under this audience.')
       if (!me.roles.some((r) => allowed.includes(r))) return fail(403, 'audience_not_allowed', 'Your role does not give access to this module.')
       const exp = Math.floor(getDb().now().getTime() / 1000) + 300
-      return HttpResponse.json({ access_token: mockModuleToken({ id: me.id, name: me.display_name }, exp), token_type: 'Bearer', expires_in: 300, audience } satisfies S['TokenResponse'])
+      return HttpResponse.json({ access_token: mockModuleToken(audience, { id: me.id, name: me.display_name }, exp), token_type: 'Bearer', expires_in: 300, audience } satisfies S['TokenResponse'])
     })),
 
     http.get('*/v1/me', authed((_, me) => HttpResponse.json(profile(me)))),

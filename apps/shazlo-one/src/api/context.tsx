@@ -2,7 +2,6 @@ import { QueryClient } from '@tanstack/react-query'
 import { createContext, useContext, type ReactNode } from 'react'
 import { ApiError, createApi, type Api } from './http'
 import type { paths as IdentityPaths } from './identity'
-import type { paths as VendorPaths } from './vendor-api'
 
 // The shell's session: identity-api access token in memory only (ADR 0001/0009), refreshed through the
 // HttpOnly identity_refresh cookie, plus short-lived module tokens from the token exchange.
@@ -86,33 +85,15 @@ export class SessionStore {
 export interface AppContext {
   session: SessionStore
   identity: Api<IdentityPaths>
-  vendorApi: Api<VendorPaths>
   queryClient: QueryClient
 }
 
-export function createAppContext({ identityUrl, vendorApiUrl }: { identityUrl: string; vendorApiUrl: string }): AppContext {
+// Modules' backends are reached with their own exchanged tokens (api/modules.ts); the shell has no
+// client for any of them (ADR 0011).
+export function createAppContext({ identityUrl }: { identityUrl: string }): AppContext {
   const session = new SessionStore()
   const identity = createApi<IdentityPaths>({ baseUrl: identityUrl, getToken: session.accessToken, renew: () => session.refresh(), withCookies: true })
   session.identity = identity
-  let vendorToken: string | null = null
-  const vendorApi = createApi<VendorPaths>({
-    baseUrl: vendorApiUrl,
-    getToken: () => vendorToken,
-    renew: async () => {
-      vendorToken = null
-      return Boolean(await ensureVendorToken())
-    },
-  })
-  async function ensureVendorToken() {
-    vendorToken = (await session.moduleToken('vendor-api')).token
-    return vendorToken
-  }
-  // Every vendor-api call first makes sure a module token is in hand.
-  const call = vendorApi.call
-  vendorApi.call = (async (fn: Parameters<typeof call>[0], options?: Parameters<typeof call>[1]) => {
-    await ensureVendorToken()
-    return call(fn, options)
-  }) as typeof call
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { staleTime: 20_000, refetchOnWindowFocus: false, retry: (n, e) => n < 2 && e instanceof ApiError && (e.status === 0 || e.status >= 500) },
@@ -122,14 +103,13 @@ export function createAppContext({ identityUrl, vendorApiUrl }: { identityUrl: s
   session.subscribe(() => {
     if (session.get().status === 'signed_out') queryClient.clear()
   })
-  return { session, identity, vendorApi, queryClient }
+  return { session, identity, queryClient }
 }
 
 export function apiUrls() {
   const origin = typeof window !== 'undefined' && window.location.origin !== 'null' ? window.location.origin : 'http://localhost'
   return {
     identityUrl: ((import.meta.env.VITE_IDENTITY_API_URL as string | undefined) ?? origin).replace(/\/+$/, ''),
-    vendorApiUrl: ((import.meta.env.VITE_VENDOR_API_URL as string | undefined) ?? 'http://localhost:5194').replace(/\/+$/, ''),
   }
 }
 

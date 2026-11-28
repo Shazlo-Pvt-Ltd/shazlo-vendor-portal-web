@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { DEMO_ADMIN } from '../mocks/identity'
-import { IDENTITY_URL, VENDOR_API_URL } from '../test/render'
+import { IDENTITY_URL } from '../test/render'
 import { resetMocks, server } from '../test/server'
 import { createAppContext } from './context'
 
@@ -10,7 +10,7 @@ const envelope = (code: string, message = code) => ({ error: { code, message, re
 
 async function signedIn() {
   const { identityDb } = resetMocks()
-  const context = createAppContext({ identityUrl: IDENTITY_URL, vendorApiUrl: VENDOR_API_URL })
+  const context = createAppContext({ identityUrl: IDENTITY_URL })
   context.session.adopt(await context.identity.call((c) => c.POST('/v1/auth/login', { body: DEMO_ADMIN })))
   return { context, identityDb }
 }
@@ -18,7 +18,7 @@ async function signedIn() {
 describe('session restore and renewal', () => {
   it('restores the session from the refresh cookie on load', async () => {
     const { context } = await signedIn()
-    const fresh = createAppContext({ identityUrl: IDENTITY_URL, vendorApiUrl: VENDOR_API_URL })
+    const fresh = createAppContext({ identityUrl: IDENTITY_URL })
     expect(await fresh.session.refresh()).toBe(true)
     expect(fresh.session.get()).toMatchObject({ status: 'signed_in', admin: { email: DEMO_ADMIN.email } })
     context.session.end()
@@ -83,7 +83,7 @@ describe('session restore and renewal', () => {
   it('leaves "checking" on load when identity-api cannot be reached, instead of spinning forever', async () => {
     resetMocks()
     server.use(http.post('*/v1/auth/refresh', () => HttpResponse.error()))
-    const fresh = createAppContext({ identityUrl: IDENTITY_URL, vendorApiUrl: VENDOR_API_URL })
+    const fresh = createAppContext({ identityUrl: IDENTITY_URL })
     expect(await fresh.session.refresh()).toBe(false)
     expect(fresh.session.get().status).toBe('signed_out')
   })

@@ -7,8 +7,8 @@ import { App } from './app/App'
 import { routes } from './app/routes'
 
 async function start() {
-  // identity-api is mocked in the browser unless VITE_MOCK_API=off. vendor-api's admin routes come from
-  // the shared mock server (npm run serve -w @shazlo/mock-vendor-api) or VITE_VENDOR_API_URL.
+  // identity-api is mocked in the browser unless VITE_MOCK_API=off. Modules and their summaries come
+  // from the registry the build was made with (vite.config.ts, ADR 0011).
   if (import.meta.env.VITE_MOCK_API !== 'off') {
     const { startMockIdentity } = await import('./mocks/browser')
     await startMockIdentity()

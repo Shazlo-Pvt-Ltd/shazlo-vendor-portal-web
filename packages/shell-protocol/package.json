@@ -5,7 +5,8 @@
   "description": "ADR 0001 postMessage protocol between the Shazlo One shell and its module iframes",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
@@ -13,5 +14,16 @@
   },
   "dependencies": {
     "zod": "^4.6.7"
+  },
+  "peerDependencies": {
+    "msw": "^3.0.5"
+  },
+  "peerDependenciesMeta": {
+    "msw": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "msw": "^3.0.5"
   }
 }

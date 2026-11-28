@@ -5,7 +5,7 @@ import { GuestOnly, RequireAdmin } from '../session/guards'
 import { PageFallback } from '../shell/PageFallback'
 import { ShellLayout } from '../shell/ShellLayout'
 import { CrumbProvider, type RouteHandle } from './crumbs'
-import { modules } from './registry'
+import { registry } from './registry'
 
 const SignIn = lazy(() => import('../screens/SignIn'))
 const ChangePassword = lazy(() => import('../screens/ChangePassword'))
@@ -33,7 +33,9 @@ export const routes: RouteObject[] = [
         children: [
           { index: true, element: <Home />, handle: crumbs({ label: 'Home' }) },
           { path: 'admins', element: <SuperAdminOnly><Admins /></SuperAdminOnly>, handle: crumbs({ label: 'Admins & roles' }) },
-          ...modules.map((m) => ({ path: `${m.basePath.slice(1)}/*`, element: <ModuleRoute module={m} />, handle: crumbs({ label: m.title, to: m.basePath + m.home.path }) })),
+          // One route per registered module (ADR 0011); the crumb uses the registry title, which a module's
+          // manifest title should match.
+          ...registry.map((m) => ({ path: `${m.basePath.slice(1)}/*`, element: <ModuleRoute entry={m} />, handle: crumbs({ label: m.fallbackTitle, to: m.basePath }) })),
           { path: '*', element: <NotFound />, handle: crumbs({ label: 'Not found' }) },
         ],
       },

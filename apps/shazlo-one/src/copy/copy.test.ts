@@ -25,8 +25,9 @@ const SENTENCES = new Set([
   'unavailableBody',
   'versionBody',
   'forbiddenBody',
-  // The failed-events banner says what happened and what to do, in sentences.
-  'failedTitle',
+  // A module's manifest or summary could not be read.
+  'unreachable',
+  'invalid',
 ])
 
 type Leaf = { path: string; key: string; text: string }

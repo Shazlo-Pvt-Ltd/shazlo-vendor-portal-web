@@ -73,9 +73,17 @@ class Settings(BaseSettings):
     database_url: str
     redis_url: str
 
-    # Origins allowed to call the API with credentials (the vendor portal).
+    # Origins allowed to call the seller app with credentials (the vendor portal).
     # Comma separated in the environment.
     cors_allowed_origins: Annotated[list[str], NoDecode] = ["http://localhost:5174"]
+    # Origins allowed to call the admin app (ADR 0011): Shazlo One's Vendors module, and the
+    # Shazlo One shell itself, which reads the module's summary for its Home and badge. Bearer
+    # tokens only, never credentials. Comma separated in the environment; the admin app refuses
+    # plain http origins in prod.
+    admin_cors_allowed_origins: Annotated[list[str], NoDecode] = [
+        "http://localhost:5193",
+        "http://localhost:5192",
+    ]
 
     # Refresh-token cookie (added with vendor login). `Secure` is on by default; turn it off only
     # for local dev. SameSite=None requires Secure (browsers drop the cookie otherwise).
@@ -100,10 +108,10 @@ class Settings(BaseSettings):
     argon2_parallelism: int = 1
     password_min_length: int = 12
 
-    # Admin tokens come from identity-api (ADR 0009), verified through its JWKS: `/v1/admin/*`
-    # accepts only those, `/v1/vendor/*` only vendor-api's own. The JWKS is fetched lazily on the
-    # first admin token and cached, so vendor-api starts and serves vendors while identity-api is
-    # down. Both settings go together; outside dev the URL must be https, and prod needs them.
+    # Admin tokens come from identity-api (ADR 0009), verified through its JWKS. Only the admin
+    # app (`/v1/admin/*`) reads these, and it refuses to start without them (ADR 0011); the
+    # seller app accepts only vendor-api's own tokens. The JWKS is fetched lazily on the first
+    # admin token and cached. Both settings go together; outside dev the URL must be https.
     identity_jwks_url: str | None = None
     identity_issuer: str | None = None
 
@@ -258,7 +266,7 @@ class Settings(BaseSettings):
             raise ValueError("RECONCILE_AT must be a time of day like 03:00 (UTC)")
         return value.strip()
 
-    @field_validator("cors_allowed_origins", mode="before")
+    @field_validator("cors_allowed_origins", "admin_cors_allowed_origins", mode="before")
     @classmethod
     def _split_origins(cls, value: object) -> object:
         if isinstance(value, str):
@@ -271,6 +279,18 @@ class Settings(BaseSettings):
         # A wildcard cannot be combined with credentials, so it is never what is meant.
         if "*" in value:
             raise ValueError("a wildcard origin is not allowed: credentials are enabled")
+        return value
+
+    @field_validator("admin_cors_allowed_origins")
+    @classmethod
+    def _check_admin_origins(cls, value: list[str]) -> list[str]:
+        # Exact origins only: the admin app is called by two known front ends, never by any page.
+        for origin in value:
+            parts = urlsplit(origin)
+            if origin == "*" or parts.scheme not in ("http", "https") or not parts.hostname:
+                raise ValueError("each admin origin must be an exact origin like https://host")
+            if parts.path or parts.query or parts.fragment:
+                raise ValueError("an admin origin has no path, query or fragment")
         return value
 
     @field_validator("database_url")
@@ -326,9 +346,7 @@ class Settings(BaseSettings):
         if (url is None) != (issuer is None):
             raise ValueError("IDENTITY_JWKS_URL and IDENTITY_ISSUER go together")
         if url is None:
-            if self.env == "prod":
-                raise ValueError("IDENTITY_JWKS_URL and IDENTITY_ISSUER are required in prod")
-            return self
+            return self  # the admin app refuses to start without them (ADR 0011)
         try:
             # Plain http is for dev (a compose hostname); anywhere else the keys that decide
             # which admin tokens are valid must not travel unprotected.
@@ -346,7 +364,9 @@ class Settings(BaseSettings):
             key = None  # `RATE_LIMIT_HMAC_KEY=` copied from .env.example means "not set"
         if key is None:
             if self.env == "prod":
-                raise ValueError("RATE_LIMIT_HMAC_KEY is required in prod")
+                # Only the seller app rate-limits; it refuses to start without the key in prod.
+                self.rate_limit_hmac_key = None
+                return self
             key = SecretStr(secrets.token_hex(32))
         elif len(key.get_secret_value()) < MIN_HMAC_KEY_LENGTH:
             # In every env: a short key set on purpose is a mistake wherever it is made.
@@ -363,10 +383,13 @@ class Settings(BaseSettings):
             keys = None  # `PAYOUT_ENCRYPTION_KEYS=` copied from .env.example means "not set"
         kid = (self.payout_encryption_kid or "").strip() or None
         if keys is None:
-            if self.env == "prod":
-                raise ValueError("PAYOUT_ENCRYPTION_KEYS is required in prod")
             if kid is not None:
                 raise ValueError("PAYOUT_ENCRYPTION_KID is set but PAYOUT_ENCRYPTION_KEYS is not")
+            if self.env == "prod":
+                # Only the seller app seals payout numbers; it refuses to start without them. The
+                # admin app reads them masked and the worker never touches them.
+                self.payout_encryption_keys, self.payout_encryption_kid = None, None
+                return self
             kid = "ephemeral"
             key = base64.b64encode(secrets.token_bytes(32)).decode()
             keys = SecretStr(json.dumps({kid: key}))

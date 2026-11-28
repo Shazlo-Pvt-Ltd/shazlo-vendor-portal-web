@@ -1,6 +1,6 @@
 import createClient, { type Client } from 'openapi-fetch'
 
-// Shared request runner for the shell's two backends: identity-api and (with an exchanged token) vendor-api.
+// Request runner for identity-api, the shell's own backend. Module backends are read in api/modules.ts.
 export class ApiError extends Error {
   readonly status: number
   readonly code: string

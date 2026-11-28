@@ -4,7 +4,7 @@ import { toApiError } from './http'
 const res = (status: number, headers: Record<string, string> = {}) => new Response(null, { status, headers })
 const envelope = (code: string, message: string, details?: unknown) => ({ error: { code, message, request_id: 'req-1', ...(details === undefined ? {} : { details }) } })
 
-describe('toApiError (identity-api and vendor-api envelope)', () => {
+describe('toApiError (the shared error envelope of every service)', () => {
   it('reads code, message and request id from {error: {...}}', () => {
     const e = toApiError(res(409), envelope('email_taken', 'An admin with this email already exists'))
     expect(e.status).toBe(409)

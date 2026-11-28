@@ -7,8 +7,8 @@
     "dev": "vite",
     "build": "tsc -p tsconfig.json && vite build",
     "preview": "vite preview --strictPort",
-    "api:types": "openapi-typescript ../../services/identity-api/openapi.json -o src/api/identity.d.ts && openapi-typescript ../../services/vendor-api/openapi.json -o src/api/vendor-api.d.ts",
-    "api:check": "openapi-typescript ../../services/identity-api/openapi.json -o src/api/identity.d.ts --check && openapi-typescript ../../services/vendor-api/openapi.json -o src/api/vendor-api.d.ts --check",
+    "api:types": "openapi-typescript ../../services/identity-api/openapi.json -o src/api/identity.d.ts",
+    "api:check": "openapi-typescript ../../services/identity-api/openapi.json -o src/api/identity.d.ts --check",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
@@ -27,8 +27,7 @@
     "react-hook-form": "^7.91.0",
     "react-router": "^7.18.5",
     "zod": "^4.6.7",
-    "@shazlo/shell-protocol": "*",
-    "@shazlo/mock-vendor-api": "*"
+    "@shazlo/shell-protocol": "*"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",

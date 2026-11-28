@@ -5,6 +5,8 @@ from collections.abc import Callable
 import pytest
 from pydantic import ValidationError
 
+from vendor_api.admin_app import check_admin_settings
+from vendor_api.app import check_seller_settings
 from vendor_api.core.settings import Settings
 
 # What prod needs besides email: where admin tokens come from (identity-api), over https.
@@ -18,6 +20,7 @@ PROD_IDENTITY = {
     "identity_jwks_url": "https://identity.shazlo.store/.well-known/jwks.json",
     "identity_issuer": "https://identity.shazlo.store",
     "jwt_issuer": "https://vendor-api.shazlo.store",
+    "admin_cors_allowed_origins": "https://vendor-admin.shazlo.store,https://one.shazlo.store",
     **PROD_PAYOUT,
 }
 
@@ -256,7 +259,9 @@ def test_invalid_rate_limit_settings_are_rejected(overrides: dict[str, object]) 
         make(**overrides)
 
 
-def test_the_hmac_key_is_required_in_prod_and_never_empty() -> None:
+def test_the_hmac_key_is_never_short_and_the_seller_app_needs_it_in_prod() -> None:
+    """Only the seller app rate-limits (ADR 0011): in prod an unset key stays unset, so the admin
+    app and the worker run without it, and the seller app refuses to start."""
     prod = {
         "env": "prod",
         "email_backend": "smtp",
@@ -264,9 +269,14 @@ def test_the_hmac_key_is_required_in_prod_and_never_empty() -> None:
         "portal_base_url": "https://vendors.shazlo.store",
         **PROD_IDENTITY,
     }
-    for bad in (None, "", "   ", "x" * 31):
-        with pytest.raises(ValidationError, match="RATE_LIMIT_HMAC_KEY"):
-            make(**prod, rate_limit_hmac_key=bad)
+    with pytest.raises(ValidationError, match="RATE_LIMIT_HMAC_KEY"):
+        make(**prod, rate_limit_hmac_key="x" * 31)
+    for unset in (None, "", "   "):
+        settings = make(**prod, rate_limit_hmac_key=unset)
+        assert settings.rate_limit_hmac_key is None
+        with pytest.raises(RuntimeError, match="RATE_LIMIT_HMAC_KEY"):
+            check_seller_settings(settings)
+        check_admin_settings(settings)  # the admin app does not need it
     accepted = make(**prod, rate_limit_hmac_key="x" * 32).rate_limit_hmac_key
     assert accepted is not None
     assert accepted.get_secret_value() == "x" * 32
@@ -350,16 +360,19 @@ def test_outside_dev_the_jwks_url_must_be_https(env: str) -> None:
             )
 
 
-def test_prod_needs_the_identity_settings() -> None:
-    with pytest.raises(ValidationError, match="IDENTITY_JWKS_URL"):
-        make(
-            env="prod",
-            jwt_issuer="https://vendor-api.shazlo.store",
-            email_backend="smtp",
-            smtp_host="smtp.provider.example",
-            portal_base_url="https://vendors.shazlo.store",
-            rate_limit_hmac_key="k" * 32,
-        )
+def test_only_the_admin_app_needs_the_identity_settings() -> None:
+    """The seller app and the worker never verify admin tokens (ADR 0011)."""
+    settings = make(
+        env="prod",
+        jwt_issuer="https://vendor-api.shazlo.store",
+        email_backend="smtp",
+        smtp_host="smtp.provider.example",
+        portal_base_url="https://vendors.shazlo.store",
+        rate_limit_hmac_key="k" * 32,
+    )
+    assert settings.identity_jwks_url is None and settings.identity_issuer is None
+    with pytest.raises(RuntimeError, match="IDENTITY_JWKS_URL"):
+        check_admin_settings(settings)
 
 
 PROD_EMAIL: dict[str, object] = {
@@ -639,11 +652,16 @@ def test_a_refusal_across_several_settings_does_not_print_any_of_them() -> None:
 # --- payout encryption keys (#265) -----------------------------------------------------------
 
 
-def test_payout_keys_are_required_in_prod() -> None:
+def test_only_the_seller_app_needs_the_payout_keys_in_prod() -> None:
+    """The admin app reads payout details masked and the worker never touches them (ADR 0011):
+    in prod unset keys stay unset, and only the seller app refuses to start."""
     prod = {**PROD_EMAIL, **PROD_IDENTITY}
     del prod["payout_encryption_keys"], prod["payout_encryption_kid"]
-    with pytest.raises(ValidationError, match="PAYOUT_ENCRYPTION_KEYS is required in prod"):
-        make(env="prod", **prod)
+    settings = make(env="prod", **prod)
+    assert settings.payout_encryption_keys is None and settings.payout_encryption_kid is None
+    with pytest.raises(RuntimeError, match="PAYOUT_ENCRYPTION_KEYS"):
+        check_seller_settings(settings)
+    check_admin_settings(settings)
     assert make(env="prod", **PROD_EMAIL, **PROD_IDENTITY).payout_encryption_kid == "2026-11"
 
 
@@ -684,3 +702,30 @@ def test_payout_keys_never_show_in_the_settings_repr() -> None:
     key = json.loads(PROD_PAYOUT["payout_encryption_keys"])["2026-11"]
     assert key not in repr(settings)
     assert key not in str(settings.model_dump())
+
+
+# --- admin app origins (ADR 0011) ------------------------------------------------------------
+
+
+def test_admin_origins_default_to_the_module_and_the_shell_in_dev() -> None:
+    assert make().admin_cors_allowed_origins == ["http://localhost:5193", "http://localhost:5192"]
+    parsed = make(admin_cors_allowed_origins=" https://a.test , https://b.test:8443 ")
+    assert parsed.admin_cors_allowed_origins == ["https://a.test", "https://b.test:8443"]
+
+
+@pytest.mark.parametrize(
+    "origin",
+    ["*", "https://a.test/", "https://a.test/path", "https://a.test?x=1", "ftp://a.test", "a.test"],
+)
+def test_an_admin_origin_is_an_exact_origin(origin: str) -> None:
+    with pytest.raises(ValidationError, match="admin origin"):
+        make(admin_cors_allowed_origins=origin)
+
+
+def test_the_admin_app_refuses_plain_http_origins_in_prod() -> None:
+    prod = {**PROD_EMAIL, **PROD_IDENTITY}
+    check_admin_settings(make(env="prod", **prod))
+    plain = make(env="prod", **{**prod, "admin_cors_allowed_origins": "http://one.shazlo.store"})
+    with pytest.raises(RuntimeError, match="ADMIN_CORS_ALLOWED_ORIGINS"):
+        check_admin_settings(plain)
+    check_seller_settings(plain)  # the seller app does not read them

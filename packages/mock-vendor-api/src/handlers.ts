@@ -213,6 +213,69 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       })
     })),
 
+    // vendor-api's `GET /v1/admin/module-summary` (ADR 0011): what Shazlo One shows for this module, in
+    // the shell's shared ModuleSummary shape. The words and paths match services/vendor-api's
+    // api/admin_module_summary.py, so the browser demo reads the same as the real service.
+    http.get('*/v1/admin/module-summary', guarded(() => {
+      const db = getDb()
+      const items = queueItems(db)
+      const day = new Date(db.now()).toISOString().slice(0, 10)
+      const count = (k: S['ItemKind']) => items.filter((i) => i.kind === k).length
+      const n = (value: number) => value.toLocaleString('en-US')
+      const plural = (k: number, one: string, many: string) => (k === 1 ? one : many)
+      const waiting = items.length
+      const today = db.decisions.filter((d) => d.at.slice(0, 10) === day).length
+      const outbox = (status: string) => db.outbox.filter((e) => e.status === status).length
+      const failed = outbox('failed')
+      const open = { label: 'Open publishing', path: '/publishing' }
+      const kindLabel: Record<string, string> = { product: 'Product', brand_page: 'Brand page', application: 'Application', commission: 'Commission' }
+      const pathOf = (d: MockVendorApi['decisions'][number]) => (d.kind === 'brand_page' ? `/review/brand/${d.vendorId}` : d.kind === 'application' ? `/vendors/${d.vendorId}` : '/queue')
+      return HttpResponse.json({
+        v: 1,
+        badge: { count: waiting, label: `${n(waiting)} waiting` },
+        sections: [
+          {
+            title: 'Vendors',
+            icon: 'store',
+            action: { label: 'Open review queue', path: '/queue' },
+            alert: null,
+            figures: [
+              { label: 'Waiting', value: waiting, unit: 'count', hint: `Products ${n(count('product'))} · Brand pages ${n(count('brand_page'))} · Applications ${n(count('application'))}`, path: '/queue' },
+              { label: 'Waiting over 24 hours', value: items.filter((i) => db.now().getTime() - Date.parse(i.submitted_at) > 24 * 3_600_000).length, unit: 'count', hint: 'Oldest first in the queue', path: '/queue?sort=oldest' },
+              { label: 'Decided today', value: today, unit: 'count', hint: 'Approved or sent back since midnight', path: null },
+              { label: 'Median time to decision', value: today === 0 ? null : 320, unit: 'minutes', hint: 'From submission to decision', path: null },
+            ],
+          },
+          {
+            title: 'Publishing to the app',
+            icon: 'send',
+            action: open,
+            alert: failed > 0 ? { tone: 'warning', text: `${failed} ${plural(failed, 'event did', 'events did')} not reach the app. ${plural(failed, 'It retries', 'They retry')} automatically, or you can retry ${plural(failed, 'it', 'them')} now.`, action: open } : null,
+            figures: [
+              { label: 'Delivered in the last 24 h', value: 312 + outbox('delivered'), unit: 'count', hint: 'Reached the Shazlo app', path: '/publishing?status=delivered' },
+              { label: 'Waiting', value: outbox('waiting'), unit: 'count', hint: 'Sent within a minute', path: '/publishing?status=waiting' },
+              { label: 'Retrying', value: outbox('retrying'), unit: 'count', hint: 'The app did not answer yet', path: '/publishing?status=retrying' },
+              { label: 'Failed', value: failed, unit: 'count', hint: failed > 0 ? 'Needs a look' : 'Nothing failed', path: '/publishing?status=failed' },
+            ],
+          },
+        ],
+        activity: {
+          title: 'Recent decisions',
+          icon: 'clipboard-check',
+          empty: { title: 'No decisions yet', body: 'Approvals and send-backs show here as reviewers make them.' },
+          items: db.decisions.slice(0, 5).map((d) => ({
+            id: d.id,
+            title: d.title,
+            subtitle: `${vendorOf(d.vendorId).brand_name} · ${kindLabel[d.kind] ?? d.kind}`,
+            status: d.decision === 'approved' ? { tone: 'positive', label: 'Approved' } : { tone: 'attention', label: 'Sent back' },
+            at: d.at,
+            actor_id: reviewerIds.get(d.reviewer) ?? null,
+            path: pathOf(d),
+          })),
+        },
+      })
+    })),
+
     // `GET /v1/admin/queue` as vendor-api serves it (services/vendor-api/vendor_api/api/admin_queue.py):
     // filtered, sorted and paged here; `counts` and `vendors` always describe the whole queue.
     http.get(QUEUE_URL, guarded(({ request }) => {

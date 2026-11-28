@@ -11,8 +11,7 @@ export const shellCopy = {
   homeLink: 'Shazlo One home',
   skip: 'Skip to content',
   roles: { super_admin: 'Super admin', vendor_reviewer: 'Vendor reviewer' } as Record<string, string>,
-  waiting: (n: number) => `${n} waiting`,
-  // The top bar's row of a module's pages ("Vendors pages").
+  // The top bar's row of a module's pages ("Catalogue pages").
   moduleNav: (title: string) => `${title} pages`,
   module: {
     loading: (title: string) => `Loading ${title}`,
@@ -28,6 +27,9 @@ export const shellCopy = {
     reload: 'Reload page',
     forbiddenTitle: (title: string) => `You do not have access to ${title}`,
     forbiddenBody: 'Your role does not include this module. A super admin can add it in Admins & roles.',
+    // A module's manifest or summary could not be read (api/modules.ts).
+    unreachable: 'The module did not answer. It may be restarting; the rest of Shazlo One still works.',
+    invalid: 'The module answered in a form Shazlo One cannot read. Tell the platform team in #shazlo-one.',
   },
   expired: 'Your session ended, so we signed you out. Sign in again to carry on where you were.',
   signedOut: 'You are signed out.',

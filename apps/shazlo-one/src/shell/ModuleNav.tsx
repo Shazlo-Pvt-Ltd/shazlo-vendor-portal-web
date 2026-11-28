@@ -2,7 +2,7 @@ import { Box, Link } from '@mui/material'
 import { brand, emphasis, neutral, radius } from '@shazlo/ui'
 import { useEffect, useRef } from 'react'
 import { Link as RouterLink, useLocation } from 'react-router'
-import { currentLink, type ShellModule } from '../app/registry'
+import { currentLink, type ResolvedModule } from '../app/registry'
 import { shellCopy as copy } from '../copy/shell'
 import { MODULE_NAV } from './metrics'
 
@@ -11,9 +11,9 @@ const focusRing = { outline: `2px solid ${brand.navy}`, outlineOffset: -2 } as c
 
 // The open module's pages as a row in the top bar, under the crumbs: the same pages the sidebar
 // nests under the module, one click away. Both mark the current page with currentLink; on the
-// module's dashboard none is current. A link only changes the shell URL, and ModuleHost turns that
+// module's home page none is current. A link only changes the shell URL, and ModuleHost turns that
 // into a `navigate` message, so the module moves without reloading.
-export function ModuleNav({ module, phone }: { module: ShellModule; phone: boolean }) {
+export function ModuleNav({ module, phone }: { module: ResolvedModule; phone: boolean }) {
   const { pathname } = useLocation()
   const current = currentLink(module, pathname)
   const row = useRef<HTMLElement>(null)

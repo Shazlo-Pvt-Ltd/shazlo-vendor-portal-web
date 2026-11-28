@@ -8,6 +8,7 @@ One file per decision, named `NNNN-short-title.md`. Copy [0000-template.md](0000
 | [0003](0003-central-app-publishing-contract.md) | Central-app publishing contract | proposed |
 | [0009](0009-auth-model.md) | Auth model: RS256 JWTs, JWKS and roles | accepted |
 | [0010](0010-shared-security-package.md) | Share the security plumbing between identity-api and vendor-api; copy the glue | proposed |
+| [0011](0011-vendor-portal-and-vendors-module-as-microservices.md) | The Vendor Portal and Shazlo One's Vendors module as two microservices over one vendor database | proposed |
 
 Status of the two `proposed` decisions that are already built: ADR 0003 waits for the central-app team to confirm its answers (issue #179; vendor-api and `central-stub` implement it), and ADR 0010 is implemented in `packages/py-security` but has not been marked accepted. ADR 0001 (iframe protocol) belongs to Phases 6 and 7, which have not started.
 
