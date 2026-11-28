@@ -10,15 +10,27 @@ export interface AppContext {
   queryClient: QueryClient
 }
 
+// identity-api checks roles in its database, so an admin whose role was just removed is refused at once.
+// A 403 on any call reads the session again (the screens then follow the new roles), at most this often,
+// so a session that comes back unchanged cannot start a loop.
+export const FORBIDDEN_RENEW_GAP_MS = 10_000
+
 // The shell's session (session/store.ts) and identity-api client. Modules' backends are reached with
 // their own exchanged tokens (api/modules.ts); the shell has no client for any of them (ADR 0011).
 export function createAppContext({ identityUrl, channel }: { identityUrl: string; channel?: SessionDeps['channel'] }): AppContext {
   // The session needs the client (to refresh) and the client needs the session (its token): the
   // client only reads `session` when a request is made, after both exist.
+  let lastForbiddenRenew = Number.NEGATIVE_INFINITY
   const identity = createApi<IdentityPaths>({
     baseUrl: identityUrl,
     getToken: () => session.accessToken(),
     renew: () => session.renew(),
+    onForbidden: () => {
+      const now = Date.now()
+      if (session.get().status !== 'signed_in' || now - lastForbiddenRenew < FORBIDDEN_RENEW_GAP_MS) return
+      lastForbiddenRenew = now
+      void session.renew()
+    },
     withCookies: true,
   })
   const queryClient = new QueryClient({

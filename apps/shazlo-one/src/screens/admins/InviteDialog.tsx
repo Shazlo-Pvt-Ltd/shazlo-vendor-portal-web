@@ -2,13 +2,15 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField, Typography, useMediaQuery, useTheme } from '@mui/material'
 import { Banner, fontFamily } from '@shazlo/ui'
 import { RefreshCw } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
 import { ApiError } from '../../api/http'
 import { temporaryPassword, useCreateAdmin, useRoles } from '../../api/queries'
 import { adminsCopy } from '../../copy/admins'
 import { fieldProps } from '../../lib/forms'
+import { registerSensitiveReset } from '../../security/sensitiveState'
+import { refusalOf } from './refusals'
 import { CopyButton, CopyRow, RoleChecklist, type Admin } from './shared'
 
 const copy = adminsCopy.inviteDialog
@@ -38,13 +40,14 @@ function InviteForm({ onCreated, onClose }: { onCreated: (admin: Admin, password
     setFailure(null)
     try {
       const admin = await create.mutateAsync({ display_name: values.display_name.trim(), email: values.email.trim().toLowerCase(), roles: values.roles, password: values.password })
+      // The request held the temporary password: the mutation cache lets it go now.
+      create.reset()
       onCreated(admin, values.password)
     } catch (error) {
-      if (error instanceof ApiError) {
-        const known = FIELDS.filter((f) => error.fields[f])
-        known.forEach((f, i) => setError(f, { type: 'server', message: error.fields[f] }, { shouldFocus: i === 0 }))
-        if (known.length === 0) setFailure(error.fields.password ?? error.message)
-      } else setFailure(errors.generic)
+      create.reset()
+      const known = error instanceof ApiError ? FIELDS.filter((f) => error.fields[f]) : []
+      known.forEach((f, i) => setError(f, { type: 'server', message: (error as ApiError).fields[f] }, { shouldFocus: i === 0 }))
+      if (known.length === 0) setFailure(refusalOf(error).message)
     }
   })
 
@@ -117,6 +120,8 @@ function Sent({ admin, password, onClose }: { admin: Admin; password: string; on
 // Create, then a second step with the details to send; the dialog keeps the password until it closes.
 export function InviteDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [sent, setSent] = useState<{ admin: Admin; password: string } | null>(null)
+  // The temporary password never outlives the session.
+  useEffect(() => registerSensitiveReset(() => setSent(null)), [])
   const theme = useTheme()
   const phone = useMediaQuery(theme.breakpoints.down('sm'), { noSsr: true })
   return (

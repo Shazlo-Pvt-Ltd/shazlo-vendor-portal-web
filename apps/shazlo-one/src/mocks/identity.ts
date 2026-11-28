@@ -159,7 +159,11 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
       if (text) items = items.filter((a) => `${a.display_name} ${a.email}`.toLowerCase().includes(text))
       if (q.get('role')) items = items.filter((a) => a.roles.includes(q.get('role')!))
       if (q.get('is_active')) items = items.filter((a) => String(a.is_active) === q.get('is_active'))
-      return HttpResponse.json({ items: items.map(out), total: items.length, limit: 25, offset: 0 } satisfies S['AdminList'])
+      // identity-api's paging: limit 1 to 100 (25 by default), offset from 0.
+      const limit = Number(q.get('limit') ?? 25)
+      const offset = Number(q.get('offset') ?? 0)
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0) return fail(422, 'validation_error', 'Check the paging values.')
+      return HttpResponse.json({ items: items.slice(offset, offset + limit).map(out), total: items.length, limit, offset } satisfies S['AdminList'])
     }, 'super_admin')),
 
     http.post('*/v1/admins', authed(async ({ request }) => {
@@ -195,8 +199,14 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
       const a = db.admins.find((x) => x.id === params.id)
       if (!a) return fail(404, 'admin_not_found', 'We could not find that admin.')
       const body = (await request.json()) as S['UpdateAdminRequest']
-      if (a.id === me.id && (body.is_active === false || (body.roles && !body.roles.includes('super_admin')))) {
-        return fail(409, 'cannot_deactivate_self', 'You cannot remove your own super admin access or deactivate yourself.')
+      // identity-api's rules (services/admins.py): nobody deactivates themself, and the last active
+      // super admin can be neither deactivated nor lose the role.
+      const deactivating = body.is_active === false && a.is_active
+      if (deactivating && a.id === me.id) return fail(409, 'cannot_deactivate_self', 'You cannot deactivate yourself.')
+      const losesSuper = body.roles !== undefined && body.roles !== null && a.roles.includes('super_admin') && !body.roles.includes('super_admin')
+      const activeSupers = db.admins.filter((x) => x.is_active && x.roles.includes('super_admin')).length
+      if (a.is_active && a.roles.includes('super_admin') && (deactivating || losesSuper) && activeSupers <= 1) {
+        return fail(409, 'last_super_admin', 'The last active super_admin cannot be deactivated or lose the role.')
       }
       if (body.roles && !body.roles.length) return fail(422, 'validation_error', 'Choose at least one role.', { roles: 'Choose at least one role.' })
       Object.assign(a, Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)))

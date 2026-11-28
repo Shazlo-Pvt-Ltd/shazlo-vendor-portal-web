@@ -79,9 +79,10 @@ export interface Api<Paths extends object> {
 }
 
 // `getToken` supplies the bearer; on a 401, `renew` gets a fresh one once, shared by parallel calls.
+// `onForbidden` hears every 403: the caller's roles may have changed under it.
 // Only identity-api needs cookies (its HttpOnly refresh cookie); other APIs use bearer tokens, and
 // sending credentials cross-origin would also require Access-Control-Allow-Credentials there.
-export function createApi<Paths extends object>({ baseUrl, getToken, renew, withCookies = false }: { baseUrl: string; getToken: () => string | null; renew?: () => Promise<boolean>; withCookies?: boolean }): Api<Paths> {
+export function createApi<Paths extends object>({ baseUrl, getToken, renew, onForbidden, withCookies = false }: { baseUrl: string; getToken: () => string | null; renew?: () => Promise<boolean>; onForbidden?: (error: ApiError) => void; withCookies?: boolean }): Api<Paths> {
   const client = createClient<Paths>({ baseUrl, credentials: withCookies ? 'include' : 'same-origin' })
   client.use({
     onRequest({ request }) {
@@ -107,7 +108,11 @@ export function createApi<Paths extends object>({ baseUrl, getToken, renew, with
       })
       if (await renewing) result = await send(fn)
     }
-    if (result.error !== undefined || !result.response.ok) throw toApiError(result.response, result.error)
+    if (result.error !== undefined || !result.response.ok) {
+      const error = toApiError(result.response, result.error)
+      if (error.status === 403) onForbidden?.(error)
+      throw error
+    }
     return result.data as T
   }
   return { client, call }
