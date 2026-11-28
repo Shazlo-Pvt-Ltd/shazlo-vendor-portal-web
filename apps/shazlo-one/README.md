@@ -69,7 +69,7 @@ src/
   session/            the admin session: store, AuthProvider, guards, return-to check
   modules/            registry.ts (the module list and its checks), loadRegistry, ModuleRegistryProvider
   security/           headers.ts (every header, defined once), sensitiveState.ts, PasswordField.tsx, and the tests
-  components/         ErrorBoundary, ErrorScreen, RouteError, NotFound, Misconfigured
+  components/         ShellLayout, NavList, AccountMenu, NoAccess (403), NotFound, ErrorBoundary, ErrorScreen, RouteError, Misconfigured, CountdownNotice
   hooks/              usePageTitle
   pages/              one file per route
   test/               test setup
@@ -120,11 +120,17 @@ on a `401` from anything but `/v1/auth/*`, renews the session once and repeats t
   state as soon as it is sent and from the query cache when the call ends) and `/change-password`.
   An admin who must change their password sees "Choose your password", can reach nothing else, and
   then continues to `return-to`; any other admin reaches "Change your password" from the account
-  menu. The API ends every other session and returns a new one, which the shell adopts. The account
+  menu. The API ends every other session and returns a new one, which the shell adopts; a `401`
+  from it makes the shell check the session again (login if it has ended). The account
   menu shows the admin's name, email and roles, and signs out (every tab follows). Password inputs
   go through `PasswordField` only (a test enforces it).
 - Ending the session clears the query cache, the sensitive forms (`registerSensitiveReset`) and every
   module token.
+  A renewal that comes back with another admin does the same; one that comes back with new roles
+  drops the cached module tokens. A sign-out (in any tab) while a renewal is under way wins: the
+  renewal's answer is thrown away.
+- Session and token-exchange answers are checked: a non-empty token and a lifetime between 0 and a
+  day, or the answer is refused.
 
 ## Modules and the layout
 
@@ -147,7 +153,7 @@ the Content-Security-Policy `frame-src` all follow:
 
 The registry is checked when the shell builds (the Vite config and the Vercel prebuild step) and
 when it starts (a bad one shows the misconfiguration screen). It refuses a wildcard or pattern
-origin, a non-https origin outside development, a `url` that is not on its `origin`, duplicate ids
+origin, a host with anything but letters, digits, dots and hyphens, a non-https origin outside development, a `url` that is not on its `origin`, duplicate ids
 or origins, and an empty role list; the message names the module and what to change. Which list a
 build uses: `development` for `npm run dev`, `preview` when `VITE_DEPLOY_ENV` (or Vercel's
 `VERCEL_ENV`) is `preview`, `production` otherwise. The file has no imports, so Node and Vite read
@@ -162,6 +168,34 @@ it without loading the app.
 - **Routes:** `/m/:moduleId/*` (the rest of the path belongs to the module). An unknown id is "Page
   not found"; a module the roles do not allow is the 403 page. Neither renders a frame.
 - **Home:** a card for each module the admin may open, or an explanation when there is none.
+
+## Admin management
+
+`/admins` (the "Admins" section, `src/pages/AdminsPage.tsx` and `src/features/admins/`) is for `super_admin` only:
+the route guard, the navigation and identity-api (on every call) each check it, and everyone else gets the 403 page
+without the admins being asked for at all.
+
+- **List:** name, email, roles, active or deactivated, and whether they must still change their password. The
+  search (name or email), the role and status filters and the page are in the address (`?q=&role=&status=&page=`):
+  shareable, they survive a reload and the back button steps through them. Typing replaces the address entry
+  rather than adding one; choosing a filter or a page adds one; a filter goes back to page 1.
+- **Create:** email, name, roles (from `GET /v1/roles`, each with its description) and a temporary password. The
+  dialog says they must change it at their first sign-in and that it must be handed over in person or through a
+  secure channel: it is never emailed. "Generate a password" makes a random 20-character one (no look-alike
+  characters) and shows it, because it has to be read once.
+- **Edit:** the name and the roles; deactivate and reactivate (a confirmation says their sessions end at once);
+  reset the password (a confirmation says the sessions end and they must choose a new password). You cannot
+  deactivate yourself, and the button says why.
+- **Refusals** are plain words next to the control they are about: `email_taken` by the email, `weak_password` by
+  the password, `unknown_role` by the roles, `cannot_deactivate_self` and `last_super_admin` by the control that
+  asked for it (the last super admin cannot be deactivated or lose the role, and the screen says why),
+  `admin_not_found` above the form (the list reloads), and a `403` means your own super admin role was removed
+  (your session is read again and the page becomes the 403 page).
+- **Roles take effect** at the admin's next token, within 15 minutes, and the dialog says so. A super admin who
+  edits their **own** roles has their session refreshed at once, so they see them.
+- **Temporary passwords:** the field is emptied the moment the call is sent (success or not), the mutation keeps
+  no copy, nothing is written to web storage, and a half-typed one is emptied when the session ends. Tests check
+  the form, the mutation cache, the query cache and the page.
 
 ## The module host
 
@@ -211,6 +245,7 @@ npm run dev:with-module -w @shazlo/shazlo-one   # shell on 5173, module on 5175
   when the token expires (never the token).
 - It calls vendor-api's `GET /v1/admin/me` with that token (`aud=vendor-api`) and shows the answer. A `401`
   makes it send `token:request` (at most once every 30 seconds) and repeat the call when the shell answers.
+  An expired token is never sent: the module sends `token:request` with `expired` instead, then calls.
 - Buttons send every module-to-shell message: `title` (in-module pages), a `toast` of each level, `logout`,
   and a non-fatal and a fatal `error`. The shell's `navigate` and `error` are shown.
 - Its responses carry `Content-Security-Policy: frame-ancestors <shell origin>` (plus `http://localhost:5173`

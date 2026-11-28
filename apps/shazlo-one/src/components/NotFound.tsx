@@ -4,6 +4,7 @@ import { usePageTitle } from '../hooks/usePageTitle'
 
 /** "Nothing here." Inside the signed-in shell (`embedded`) it is just the page; alone it is a page. */
 export function NotFound({ embedded = false }: { embedded?: boolean }) {
+  // Inside the shell the previous page's title would otherwise stay, naming a page that is not shown.
   usePageTitle('Page not found')
   return (
     <Box component={embedded ? 'div' : 'main'} sx={embedded ? {} : { p: 3, maxWidth: 560, mx: 'auto', mt: 8 }}>
