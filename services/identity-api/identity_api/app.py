@@ -12,7 +12,7 @@ from shazlo_security.rate_limit import RateLimitGuard, RedisRateLimiter
 from shazlo_security.refresh_tokens import RefreshTokenStore
 
 from identity_api import __version__
-from identity_api.api import admins, auth, health, jwks, me
+from identity_api.api import admin_names, admins, auth, health, jwks, me
 from identity_api.core.errors import register_exception_handlers
 from identity_api.core.logging import configure_logging
 from identity_api.core.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
@@ -101,6 +101,8 @@ def create_app(
     v1 = APIRouter(prefix="/v1")
     v1.include_router(auth.router)
     v1.include_router(me.router)
+    # Before `admins`: `/admins/names` must not be read as `/admins/{admin_id}`.
+    v1.include_router(admin_names.router)
     v1.include_router(admins.router)
     app.include_router(v1)  # feature routers are added here
     return app

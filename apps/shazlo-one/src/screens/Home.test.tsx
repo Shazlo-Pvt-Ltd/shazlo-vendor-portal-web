@@ -2,6 +2,7 @@ import type { MockVendorApi } from '@shazlo/mock-vendor-api'
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { delay, http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { HomeSummary } from '../api/summary'
 import { renderShell } from '../test/render'
 import * as mocks from '../test/server'
 
@@ -21,7 +22,7 @@ afterEach(() => {
 // Changes the vendor seed that the next renderShell creates, before any request reads it.
 function seed(change: (db: MockVendorApi) => void) {
   server.use(
-    http.all('*/api/v1/*', () => {
+    http.all('*/v1/admin/*', () => {
       change(mocks.vendorDb)
     }),
   )
@@ -104,7 +105,7 @@ describe('A-02 Home: Vendors', () => {
 
   it('shows skeletons while the figures load', async () => {
     server.use(
-      http.get('*/api/v1/admin/summary', async () => {
+      http.get('*/v1/admin/summary', async () => {
         await delay(300)
       }),
     )
@@ -116,7 +117,7 @@ describe('A-02 Home: Vendors', () => {
     // vendor-api stays down until the admin tries again: React Query may refetch a failed query by
     // itself (on mount or reconnect), and a one-off failure would be gone before the test looks.
     let down = true
-    server.use(http.get('*/api/v1/admin/summary', () => (down ? HttpResponse.json({ error: { code: 'unavailable', message: 'vendor-api is restarting.', request_id: 'r' } }, { status: 404 }) : undefined)))
+    server.use(http.get('*/v1/admin/summary', () => (down ? HttpResponse.json({ error: { code: 'unavailable', message: 'vendor-api is restarting.', request_id: 'r' } }, { status: 404 }) : undefined)))
     const { user } = await renderShell()
     // The publishing card has its own alert (a failed event in the seed), so find this one by its text.
     const alert = (await screen.findByText('Vendor figures did not load')).closest<HTMLElement>('[role="alert"]')!
@@ -261,6 +262,145 @@ describe('A-02 Home: recent decisions', () => {
     const [, , brandPage] = await within(card).findAllByRole('listitem')
     await user.click(within(brandPage!).getByText('by Naman Sinha', { exact: false }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/vendors/review/brand/v_kalki'))
+  })
+})
+
+describe('#299 Home: names behind the decisions', () => {
+  it('keeps the figures and says "a former admin" when identity-api cannot be reached for names', async () => {
+    server.use(http.get('*/v1/admins/names', () => HttpResponse.json({ error: { code: 'unavailable', message: 'down', request_id: 'r' } }, { status: 503 })))
+    await renderShell()
+    const rows = await within(await region('Recent decisions')).findAllByRole('listitem')
+    expect(rows[0]).toHaveTextContent('by a former admin')
+    expect(within(await figure(await region('Vendors'), 'Waiting')).getByText('14')).toBeInTheDocument()
+  })
+
+  it('says "a former admin" for a reviewer identity-api no longer knows, and keeps the others', async () => {
+    server.use(
+      http.get('*/v1/admins/names', ({ request }) => {
+        const ids = new URL(request.url).searchParams.getAll('ids')
+        // Priya (…002) is gone; the others are still there.
+        return HttpResponse.json({ items: ids.filter((id) => !id.endsWith('2')).map((id) => ({ id, display_name: id.endsWith('1') ? 'Naman Sinha' : 'Rahul Desai' })) })
+      }),
+    )
+    await renderShell()
+    const rows = await within(await region('Recent decisions')).findAllByRole('listitem')
+    expect(rows[0]).toHaveTextContent('by a former admin')
+    expect(rows[2]).toHaveTextContent('by Naman Sinha')
+    expect(rows[3]).toHaveTextContent('by Rahul Desai')
+  })
+
+  it('keeps the names it had when a later lookup fails, rather than calling everyone "a former admin"', async () => {
+    const { context } = await renderShell()
+    const list = await region('Recent decisions')
+    await waitFor(() => expect(within(list).getAllByRole('listitem')[0]).toHaveTextContent('by Priya Mehta'))
+    let asked = 0
+    server.use(
+      http.get('*/v1/admins/names', () => {
+        asked += 1
+        return HttpResponse.json({ error: { code: 'unavailable', message: 'down', request_id: 'r' } }, { status: 503 })
+      }),
+    )
+    vi.setSystemTime(new Date(NOW.getTime() + 6 * 60_000))
+    await act(() => context.queryClient.refetchQueries({ queryKey: ['vendor-summary'] }))
+    expect(asked).toBe(1)
+    expect(context.queryClient.getQueryData<HomeSummary>(['vendor-summary'])!.recent[0]!.reviewer).toBe('Priya Mehta')
+    await waitFor(() => expect(within(list).getAllByRole('listitem')[0]).toHaveTextContent('by Priya Mehta'))
+  })
+
+  it('looks the names up once for the refreshes of the next five minutes', async () => {
+    let asked = 0
+    server.use(
+      http.get('*/v1/admins/names', () => {
+        asked += 1
+      }),
+    )
+    const { context } = await renderShell()
+    await within(await region('Recent decisions')).findAllByRole('listitem')
+    await waitFor(() => expect(asked).toBe(1))
+    vi.setSystemTime(new Date(NOW.getTime() + 60_000))
+    await act(() => context.queryClient.refetchQueries({ queryKey: ['vendor-summary'] }))
+    expect(asked).toBe(1)
+    vi.setSystemTime(new Date(NOW.getTime() + 6 * 60_000))
+    await act(() => context.queryClient.refetchQueries({ queryKey: ['vendor-summary'] }))
+    expect(asked).toBe(2)
+  })
+
+  it('asks for each reviewer once, however many decisions they made', async () => {
+    const asked: string[][] = []
+    server.use(
+      http.get('*/v1/admins/names', ({ request }) => {
+        asked.push(new URL(request.url).searchParams.getAll('ids'))
+      }),
+    )
+    await renderShell()
+    await within(await region('Recent decisions')).findAllByRole('listitem')
+    expect(asked[0]).toHaveLength(3)
+    expect(new Set(asked[0]).size).toBe(3)
+  })
+
+  it('shows a commission decision whose admin was never recorded, without asking for names', async () => {
+    let asked = false
+    server.use(
+      http.get('*/v1/admins/names', () => {
+        asked = true
+      }),
+      http.get('*/v1/admin/summary', () =>
+        HttpResponse.json({
+          waiting: { product: 0, brand_page: 0, application: 0, over_24h: 0 },
+          decisions: { decided_today: 0, median_minutes: null },
+          resubmissions: 0,
+          commission_proposals: 0,
+          publishing: { delivered_24h: 0, waiting: 0, retrying: 0, failed: 0 },
+          recent: [{ id: 'commission-1', kind: 'commission', review_id: null, subject_id: 'v_kalki', title: 'Commission: Kalki Studio', vendor_id: 'v_kalki', vendor_name: 'Kalki Studio', decision: 'rejected', at: '2026-11-09T10:00:00+05:30', reviewer_id: null }],
+        }),
+      ),
+    )
+    await renderShell()
+    const rows = await within(await region('Recent decisions')).findAllByRole('listitem')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toHaveTextContent('Commission: Kalki Studio')
+    expect(rows[0]).toHaveTextContent('Sent back')
+    expect(rows[0]).toHaveTextContent('by a former admin')
+    expect(within(rows[0]!).getByRole('link')).toHaveAttribute('href', '/vendors/vendors/v_kalki')
+    expect(asked).toBe(false)
+  })
+
+  it('shows zeros and "No decisions yet" when nothing was ever decided, with no median', async () => {
+    server.use(
+      http.get('*/v1/admin/summary', () =>
+        HttpResponse.json({
+          waiting: { product: 0, brand_page: 0, application: 0, over_24h: 0 },
+          decisions: { decided_today: 0, median_minutes: null },
+          resubmissions: 0,
+          commission_proposals: 0,
+          publishing: { delivered_24h: 0, waiting: 0, retrying: 0, failed: 0 },
+          recent: [],
+        }),
+      ),
+    )
+    await renderShell()
+    const card = await region('Vendors')
+    expect(within(await figure(card, 'Waiting')).getByText('0')).toBeInTheDocument()
+    expect(within(await region('Recent decisions')).getByRole('heading', { name: 'No decisions yet' })).toBeInTheDocument()
+  })
+
+  it('counts ten thousand waiting items as one figure', async () => {
+    server.use(
+      http.get('*/v1/admin/summary', () =>
+        HttpResponse.json({
+          waiting: { product: 9_000, brand_page: 500, application: 500, over_24h: 7_000 },
+          decisions: { decided_today: 0, median_minutes: null },
+          resubmissions: 0,
+          commission_proposals: 0,
+          publishing: { delivered_24h: 0, waiting: 0, retrying: 0, failed: 0 },
+          recent: [],
+        }),
+      ),
+    )
+    await renderShell()
+    const card = await region('Vendors')
+    expect(within(await figure(card, 'Waiting')).getByText('10,000')).toBeInTheDocument()
+    expect(within(await figure(card, 'Waiting over 24 hours')).getByText('7,000')).toBeInTheDocument()
   })
 })
 
