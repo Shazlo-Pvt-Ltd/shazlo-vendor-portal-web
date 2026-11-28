@@ -16,9 +16,11 @@ export interface Session extends SessionState {
   /** Gets a new token and reads `GET /v1/me` again now, so the admin's roles are current (true when signed in). */
   renew: () => Promise<boolean>
   /** A short token for one module's backend; the iframe host uses it. */
-  getModuleToken: (audience: string, scope?: string) => Promise<ModuleToken>
+  getModuleToken: (audience: string, scope?: string, options?: { fresh?: boolean }) => Promise<ModuleToken>
   /** Forgets the tokens kept for one module: call it when its page is left. */
   dropModuleTokens: (scope: string) => void
+  /** Ends the session as expired (it could not be kept alive): the admin is sent to sign in again. */
+  expireSession: () => void
 }
 
 const StoreContext = createContext<SessionStore | undefined>(undefined)
@@ -65,7 +67,8 @@ export function useSession(): Session {
       logout: () => store.logout(),
       retry: () => store.retry(),
       renew: () => store.renew(),
-      getModuleToken: (audience, scope) => store.getModuleToken(audience, scope),
+      getModuleToken: (audience, scope, options) => store.getModuleToken(audience, scope, options),
+      expireSession: () => store.expire(),
       dropModuleTokens: (scope) => store.dropModuleTokens(scope),
     }),
     [state, store],

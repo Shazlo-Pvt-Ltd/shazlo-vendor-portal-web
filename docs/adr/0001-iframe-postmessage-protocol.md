@@ -67,11 +67,18 @@ Messages larger than **64 KB** are dropped.
 2. The module sends `ready` to the shell origin (`window.parent.postMessage(msg, SHELL_ORIGIN)`).
 3. The shell checks the message (section 4), picks the highest version both sides support, and answers with `auth`.
 4. The module keeps the token **in memory only** and sends it as `Authorization: Bearer` to its own API. Its API validates the token with the identity service's JWKS, as decided in [ADR 0009](0009-auth-model.md).
-5. The shell refreshes the token itself and pushes a new `auth` when about **80% of the lifetime** has passed, or at least 30 seconds before expiry. The module replaces its token and keeps working.
-6. If an API call returns 401, the module sends `token:request` at most **once every 30 seconds**. The shell answers with a fresh `auth`, or signs the user out when it cannot get one.
+5. The shell keeps each open module supplied with a token. For each one it schedules a refresh from that token's own `expiresAt`: at **80% of the token's life**, or **30 seconds before it ends**, whichever comes first (the lead time never exceeds half the token's life, so a very short token is replaced at its half-life, not the moment it was issued). It then exchanges a new token (not the cached one) and pushes a new `auth`. The module replaces its token and keeps working. Before it exchanges, the shell renews its own identity token if that would end before a new module token should (see the lifetimes below).
+6. If an API call returns 401, the module sends `token:request` at most **once every 30 seconds**. The shell accepts at most one per 30 seconds per module whatever the module sends, and answers with a fresh `auth`, or ends the session when no token can be had.
 7. The module ignores any `auth` whose `expiresAt` is earlier than the token it already holds.
 
-The token's audience, lifetime and claims come from [ADR 0009](0009-auth-model.md): an access token that lasts 15 minutes, an `aud` that names the module's backend, and `roles` claims. The shell gets each module's token from identity-api's token exchange, not by refreshing the module token itself.
+The token's audience, lifetime and claims come from [ADR 0009](0009-auth-model.md). There are two lifetimes, and an earlier draft of this ADR assumed the first for both:
+
+| Token | Lifetime | Setting |
+| --- | --- | --- |
+| The shell's identity token | **15 minutes** | `ACCESS_TOKEN_TTL_SECONDS` (900) |
+| A module's token (an exchanged one, `aud` names the module's backend, carries the roles allowed for it) | **5 minutes**, never past the identity token that asked for it | `EXCHANGED_TOKEN_TTL_SECONDS` (300; 30 to 900) |
+
+The shell gets each module's token from identity-api's token exchange, not by refreshing the module token itself. A module token is cut short when the identity token behind it is about to end, so before a refresh the shell renews the identity token first if that would end before a new module token should (when it would help, that is, when the identity token lives longer than a module token). If that renewal cannot be done now, the exchange goes ahead with the identity token the shell has, the module token is shorter, and it is refreshed again sooner.
 
 ### 4. Origin allow-listing
 
@@ -134,12 +141,14 @@ The iframe element:
 | The module never sends `ready` | After 10 seconds the shell shows an error panel with **Retry**, which reloads the iframe. After 3 failed retries it shows "module unavailable" and reports the failure |
 | The module is blocked by a CSP or framing error | The parent cannot see this. It looks the same as "no `ready`" and uses the same timeout |
 | The module reloads (or hot-reloads) and sends `ready` again | The shell answers with the current `auth`. The handshake is idempotent |
-| The shell cannot refresh the token | It keeps the current token until it expires and retries with backoff (5 s, 15 s, 30 s). At expiry it removes the iframe, shows "session expired" and goes to login |
-| The module gets a 401 | `token:request` once per 30 seconds. The shell answers with `auth`, or signs the user out |
+| The shell cannot refresh the token (the network, a 5xx) | It keeps the current token until it expires and retries with backoff (5 s, 15 s, then every 30 s). At expiry it removes the iframe, ends the session as expired (without calling the server, which may be what is down) and goes to login, with `return-to` set to the module's path. A retry that works resets the backoff |
+| The admin lost the role (`403 audience_not_allowed` on a refresh or a request) | The shell closes that module and shows the 403 page. It does not retry |
+| The session ends from anywhere (sign-out here or in another tab, a revoked refresh family, a deactivated admin) | Every module's frame is removed at once and its tokens are dropped, so no module keeps a usable token; the admin goes to login |
+| The module gets a 401 | `token:request` once per 30 seconds per module. The shell answers with `auth`, or ends the session when no token can be had |
 | The module's `logout` message | The shell ends the session, revokes the refresh token and removes the iframe |
 | The shell navigates away or unmounts | The module notices no `auth` refresh for more than twice the refresh interval and shows "session ended" |
 | Unknown type, wrong origin, oversize or malformed message | Dropped silently. A development build logs a warning |
-| Clock difference between the shell and the module | `expiresAt` is set by the shell. The module allows 30 seconds of slack |
+| Clock difference between the shell and the module | `expiresAt` is set by the shell, and both frames read the same browser clock. The 30 seconds of slack is the module's early warning: `needsToken()` is true from 30 seconds before `expiresAt`, while `getAccessToken()` returns the token until `expiresAt` itself. The shell replaces a token at least 30 seconds before it ends (60 seconds before, for a 5-minute token), except a token that lives under a minute, which it replaces at half its life |
 
 ### 8. Security notes
 

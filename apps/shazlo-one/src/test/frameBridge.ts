@@ -115,3 +115,17 @@ export function readyMessage(overrides: Record<string, unknown> = {}): Record<st
     ...overrides,
   }
 }
+
+/** A well-formed `token:request` built by hand: the shell must answer it at most once every 30 seconds. */
+export function tokenRequestMessage(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  counter += 1
+  return {
+    protocol: 'shazlo-one',
+    v: 1,
+    type: 'token:request',
+    id: `00000000-0000-4000-8000-${(counter + 100_000).toString(16).padStart(12, '0')}`,
+    sentAt: 1_700_000_000_000,
+    payload: { reason: 'unauthorized' },
+    ...overrides,
+  }
+}

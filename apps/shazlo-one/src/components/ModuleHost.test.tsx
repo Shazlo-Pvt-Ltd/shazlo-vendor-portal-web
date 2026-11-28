@@ -480,17 +480,21 @@ describe('when the token cannot be got', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
-  it('an exchange failure on a reload replaces the frame with the panel rather than leave a half-working module', async () => {
-    await open('/m/vendor-admin', exchange((call) => (call === 2 ? new NetworkError('network') : undefined)))
+  it('a reload while the refreshes fail gets the token it holds, and ends with the session at its expiry like any other', async () => {
+    // The server goes away after the first token: the shell's refreshes fail, so the token ages out.
+    const t = await open('/m/vendor-admin', exchange((call) => (call >= 2 ? new NetworkError('network') : undefined)))
     const module = await moduleSaysReady()
-    expect(screen.queryByRole('alert')).toBeNull()
-    // The module's token (5 minutes) is about to end, so the reload needs a new exchange, which fails.
-    await settle(295_000)
+    await settle(292_000)
+    const calls = t.exchange.mock.calls.length
+    // Just before the token ends the module reloads: it gets the same token again, with no exchange.
     expect(module.client.sendReady()).toBe(true)
     await settle()
-    expect(screen.getByRole('alert').textContent).toMatch(/Vendor admin could not be opened/)
+    expect(module.auths.map((auth) => auth.accessToken)).toEqual([module.auths[0]!.accessToken, module.auths[0]!.accessToken])
+    expect(t.exchange.mock.calls.length).toBe(calls)
+    expect(screen.queryByRole('alert')).toBeNull()
+    await settle(8_000)
     expect(frames()).toBe(0)
-    expect(module.auths).toHaveLength(1)
+    expect(t.store.getSnapshot()).toMatchObject({ status: 'signedOut', expired: true })
   })
 })
 
