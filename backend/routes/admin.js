@@ -80,7 +80,7 @@ export function createAdminRouter({ rateLimits } = {}) {
           approvedAt: new Date(),
           approvedBy,
         },
-        { new: true }
+        { returnDocument: "after" }
       ).populate("sellerId", "name email");
 
       if (!product) {
@@ -105,7 +105,7 @@ export function createAdminRouter({ rateLimits } = {}) {
       const product = await Product.findByIdAndUpdate(
         productId,
         { status: "rejected" },
-        { new: true }
+        { returnDocument: "after" }
       ).populate("sellerId", "name email");
 
       if (!product) {
