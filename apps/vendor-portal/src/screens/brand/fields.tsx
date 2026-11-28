@@ -66,7 +66,7 @@ function CountedHelper({ message, count, max }: { message?: string; count: numbe
   )
 }
 
-type TextName = 'based_in' | 'tagline' | 'story' | 'instagram' | 'website'
+type TextName = 'based_in' | 'story' | 'instagram' | 'website'
 
 export const TextInput = memo(function TextInput({
   control,

@@ -8,6 +8,8 @@ const QUEUE_URL = '*/v1/admin/queue'
 const REASON_MIN = 10
 const NOTE_MAX = 600
 const MAX_BPS = 4000
+// The most products one bulk approval takes.
+const BULK_MAX = 50
 
 // Tokens come from the identity mock's token exchange: mock.vendor-api.<adminId>.<name>.<expEpochSeconds>
 export function mockModuleToken(admin: { id: string; name: string }, expiresAt: number) {
@@ -45,6 +47,33 @@ function rateProblem(bps: unknown) {
   const n = Number(bps)
   if (bps === undefined || bps === null || bps === '' || !Number.isInteger(n) || n < 0 || n > MAX_BPS) return fail(422, 'validation_error', 'Check the commission.', { commission_bps: 'Enter a commission between 0% and 40%.' })
   return null
+}
+
+type BulkItem = S['ApproveProductsBody']['products'][number]
+
+// A bulk approval's list: 1 to 50 products, each once, each with its id and the version the
+// reviewer saw. Anything else is a 422 and nothing is approved.
+function bulkProblem(body: unknown): { items: BulkItem[] } | { problem: ReturnType<typeof fail> } {
+  const invalid = (message: string) => ({ problem: fail(422, 'validation_error', message, { products: message }) })
+  const products = (body as { products?: unknown } | null)?.products
+  if (!Array.isArray(products) || products.length === 0) return invalid('Choose at least one product to approve.')
+  if (products.length > BULK_MAX) return invalid(`Approve up to ${BULK_MAX} products at a time.`)
+  const wellFormed = (item: unknown): item is BulkItem => {
+    const { id, submitted_at: at } = (item ?? {}) as Record<string, unknown>
+    return typeof id === 'string' && id !== '' && typeof at === 'string' && !Number.isNaN(Date.parse(at))
+  }
+  if (!products.every(wellFormed)) return invalid('Each product needs its id and the submitted_at you saw.')
+  if (new Set(products.map((p) => p.id)).size !== products.length) return invalid('List each product only once.')
+  return { items: products }
+}
+
+// The product review page's rule (vendor-admin ProductPhotos): front, back, detail and worn photos,
+// and 5 try-on photos. How many of those a version lacks.
+const REQUIRED_SLOTS: S['ProductPhoto']['slot'][] = ['front', 'back', 'detail', 'worn']
+const TRY_ONS = 5
+function photosMissing(version: ProductRecord['submitted']) {
+  const slots = new Set(version.photos.map((photo) => photo.slot))
+  return REQUIRED_SLOTS.filter((slot) => !slots.has(slot)).length + Math.max(0, TRY_ONS - version.try_on_photos.length)
 }
 
 export function createVendorApiHandlers(getDb: () => MockVendorApi) {
@@ -102,13 +131,24 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
   }
 
   function detail(v: VendorRecord, db: MockVendorApi): S['VendorDetail'] {
-    const products = db.products.filter((p) => p.vendorId === v.id).map((p) => ({ id: p.id, title: p.submitted.title, status: p.status, price_paise: p.submitted.price_paise, thumbnail_url: p.submitted.photos[0]?.url ?? null }))
+    const products = db.products.filter((p) => p.vendorId === v.id).map((p) => ({ id: p.id, title: p.submitted.title, status: p.status, price_paise: p.submitted.price_paise, thumbnail_url: p.submitted.photos[0]?.url ?? null, submitted_at: p.submittedAt, photos_missing: photosMissing(p.submitted) }))
     return { ...summaryOf(v), application: v.application, checks: checksFor(v), products, brand_live: db.brands.some((b) => b.vendorId === v.id && b.live !== null) || v.status === 'approved', history: v.history }
   }
 
   function decide(db: MockVendorApi, kind: S['ItemKind'], id: string, title: string, vendorId: string, decision: 'approved' | 'rejected', reviewer: string) {
     db.seq += 1
     db.decisions.unshift({ id: `d${db.seq}`, subjectId: id, kind, title, vendorId, decision, at: iso(), reviewer })
+  }
+
+  // Approving a waiting product, on its own or with others: it goes live, its history says who
+  // approved it, the app is told (one outbox event) and the decision is recorded.
+  function approveProduct(db: MockVendorApi, p: ProductRecord, reviewer: string) {
+    p.status = 'approved'
+    p.history.unshift({ at: iso(), event: 'approved', by: reviewer })
+    const v = vendorOf(p.vendorId)
+    v.live_products += p.change === 'new' ? 1 : 0
+    publish(db, p.change === 'edit' ? 'product.updated' : 'product.published', p.submitted.title, v)
+    decide(db, 'product', p.id, p.submitted.title, p.vendorId, 'approved', reviewer)
   }
 
   function rejectBody(body: Partial<S['RejectBody']>) {
@@ -215,12 +255,7 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
       const p = db.products.find((x) => x.id === params.id) as ProductRecord | undefined
       if (!p) return fail(404, 'not_found', 'We could not find that product.')
       if (p.status !== 'pending_review') return fail(409, 'review_already_decided', `This product was already ${p.status === 'approved' ? 'approved' : 'sent back'}.`)
-      p.status = 'approved'
-      p.history.unshift({ at: iso(), event: 'approved', by: reviewer })
-      const v = vendorOf(p.vendorId)
-      v.live_products += p.change === 'new' ? 1 : 0
-      publish(db, p.change === 'edit' ? 'product.updated' : 'product.published', p.submitted.title, v)
-      decide(db, 'product', p.id, p.submitted.title, p.vendorId, 'approved', reviewer)
+      approveProduct(db, p, reviewer)
       return HttpResponse.json({ id: p.id, decision: 'approved', at: iso(), next_id: nextWaiting(db, p.id) } satisfies S['Decision'])
     })),
 
@@ -385,6 +420,31 @@ export function createVendorApiHandlers(getDb: () => MockVendorApi) {
         return fail(404, 'not_found', 'Unknown action.')
       }
       return HttpResponse.json(detail(v, db))
+    })),
+
+    // Several of an approved vendor's waiting products at once. Each is approved exactly as on its own, unless
+    // it is not this vendor's, was already decided or changed since the reviewer looked.
+    http.post(`${API}/vendors/:id/products/approve`, guarded(async ({ params, request }, reviewer) => {
+      const db = getDb()
+      const v = db.vendors.find((x) => x.id === params.id)
+      if (!v) return fail(404, 'not_found', 'We could not find that vendor.')
+      const checked = bulkProblem(await request.json().catch(() => null))
+      if ('problem' in checked) return checked.problem
+      // Approving here publishes; a suspended or rejected brand's products are hidden from the app.
+      if (v.status !== 'approved') return fail(409, 'invalid_status_transition', 'Products can be approved together only for an approved brand.')
+      const result: S['ApproveProductsResult'] = { approved: [], failed: [] }
+      for (const item of checked.items) {
+        // Another vendor's product is not found here, whatever its state: this URL never approves it.
+        const p = db.products.find((x) => x.id === item.id && x.vendorId === v.id)
+        if (!p) result.failed.push({ id: item.id, code: 'not_found', message: 'We could not find this product for this brand.' })
+        else if (p.status !== 'pending_review') result.failed.push({ id: p.id, code: 'not_pending', message: `This product was already ${p.status === 'approved' ? 'approved' : 'sent back'}.` })
+        else if (Date.parse(p.submittedAt) !== Date.parse(item.submitted_at)) result.failed.push({ id: p.id, code: 'changed', message: 'The brand changed this product after you looked. Open it to review the new version.' })
+        else {
+          approveProduct(db, p, reviewer)
+          result.approved.push({ id: p.id, at: iso() })
+        }
+      }
+      return HttpResponse.json(result)
     })),
 
     http.get(`${API}/outbox`, guarded(({ request }) => {

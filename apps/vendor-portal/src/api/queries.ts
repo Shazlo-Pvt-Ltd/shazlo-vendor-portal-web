@@ -3,7 +3,7 @@ import { uploadImage } from './uploads/upload'
 import type { StoreSection } from '../lib/storeDetails'
 import { isValidIfsc, normaliseIfsc } from '../lib/validators'
 import { assetIdForUrl, rememberAsset } from './adapters/assets'
-import { brandErrors, brandPageFromApi, draftBodyFromProfile, publishedAsBody } from './adapters/brand'
+import { brandErrors, brandPageFromApi, draftBodyFromProfile, draftReadyForReview, publishedAsBody } from './adapters/brand'
 import { genderToApi, newProductCode, productTypeFromApi, productTypeToApi } from './adapters/common'
 import { importCommitFromReport, importJobFromReport, importReportFromApi, WHOLE_ROW } from './adapters/imports'
 import { commissionFromApi, meFromApi } from './adapters/me'
@@ -664,21 +664,22 @@ export function useDiscardBrandDraft() {
  * Build 2 no longer asks for categories: "who you sell for" in the store details replaced them. A
  * draft without one takes that answer (women, men or both) before it is sent. Without store
  * details the submit is refused as before, and the editor says to fill them in.
+ * The same PUT clears an old tagline the draft may still carry (the brand page has none now).
  */
-async function ensureBrandCategories(qc: QueryClient): Promise<void> {
+async function readyBrandDraft(qc: QueryClient): Promise<void> {
   const draft = await brandDraft()
-  if (Array.isArray(draft.categories) && draft.categories.length > 0) return
-  const sells = (await storeDetails(qc).catch(() => null))?.sells
-  if (!sells) return
-  const categories = sells === 'both' ? ['women', 'men'] : [sells]
-  await callObject(client().PUT('/v1/vendor/brand-profile', { body: { ...publishedAsBody(draft), categories } }))
+  const hasCategories = Array.isArray(draft.categories) && draft.categories.length > 0
+  const sells = hasCategories ? undefined : (await storeDetails(qc).catch(() => null))?.sells
+  const categories = !sells ? null : sells === 'both' ? ['women', 'men'] : [sells]
+  const body = draftReadyForReview(draft, categories)
+  if (body) await callObject(client().PUT('/v1/vendor/brand-profile', { body }))
 }
 
 export function useSubmitBrandPage() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async () => {
-      await ensureBrandCategories(qc)
+      await readyBrandDraft(qc)
       await callObject(client().POST('/v1/vendor/brand-profile/submit'))
       return brandPage()
     },

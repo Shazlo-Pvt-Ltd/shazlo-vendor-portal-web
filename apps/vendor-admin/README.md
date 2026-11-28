@@ -1,9 +1,9 @@
 # vendor-admin
 
-The Vendors module of Shazlo One (roadmap Phase 7): the review queue, product and brand-page review with
-send back, vendor applications and management, and publishing status. It only runs inside Shazlo One:
-`frame-ancestors` names the shell origin, and it gets its token only through the ADR 0001 postMessage
-protocol. Opened on its own, it explains that and links to Shazlo One.
+The Vendors module of Shazlo One (roadmap Phase 7): a vendor dashboard, the review queue, product and
+brand-page review with send back, vendor applications and management, and publishing status. It only
+runs inside Shazlo One: `frame-ancestors` names the shell origin, and it gets its token only through the
+ADR 0001 postMessage protocol. Opened on its own, it explains that and links to Shazlo One.
 
 Run it with the shell: see [apps/shazlo-one](../shazlo-one/README.md).
 
@@ -13,6 +13,9 @@ Run it with the shell: see [apps/shazlo-one](../shazlo-one/README.md).
 | Errors | `src/api/http.ts` reads vendor-api's `{error: {code, message, request_id, details?}}`; a 422's `details` become field errors, and the 409s `stale_review`, `review_already_decided`, `invalid_status_transition`, `commission_changed` and `no_proposal` use the screens' wording. Other codes show the server's message |
 | Runtime | `src/runtime/runtime.tsx`: `ready` on load, token in memory, `token:request` on 401, follows `navigate`, `useModuleTitle` for every screen, `toast` to the shell |
 | Mock | `packages/mock-vendor-api`: MSW handlers in tests, a local HTTP server in the browser so shell and module share one state |
-| Screens | A-04 review queue, A-05 product review, A-06 send back, A-07 brand page review, A-08 vendors, A-09 vendor detail, A-10 publishing |
+| Screens | Vendor dashboard, A-04 review queue, A-05 product review, A-06 send back, A-07 brand page review, A-08 vendors, A-09 vendor detail, A-10 publishing |
+| Routes | `/dashboard` (the landing page: `/` redirects there, and Shazlo One's Vendors item opens `/vendors/dashboard`), `/queue`, `/review/product/:id`, `/review/brand/:vendorId`, `/vendors`, `/vendors/:id` (`?tab=products\|brand\|activity`), `/publishing` (`?status=`). Paths live in `modulePaths` (`src/app/routes.tsx`) |
+| Dashboard | `src/screens/dashboard`: the vendor side at a glance, from `summary`, `vendors` (counts) and every page of vendor-api's `GET /v1/admin/queue?kind=product` (so a brand's count is whole). Vendors (live, applications waiting, rates to review, suspended), Review queue (products and brand pages waiting, over 24 h, decided today), Brands with products waiting (one row per brand, most first, up to 8, each opening the brand's Products tab), Publishing (by status, with a warning when an event failed) and Recent decisions. Each figure opens its list through the filters that screen reads (`/vendors?status=`, `?commission=proposed`, `/queue?kind=`, `?sort=oldest`, `/publishing?status=`). Each card loads, fails and retries on its own |
+| Bulk approve | A-09's Products tab (`src/screens/vendors/detail/ProductsTab.tsx`, `ApproveProductsDialog.tsx`): on an approved brand, tick several waiting products, or Select all waiting, and approve up to 50 at once. The confirm dialog lists each product with its price and any required photos it lacks. Each is approved as if on its own (its own decision, history entry and publishing event), only at the `submitted_at` the reviewer saw; products already decided, changed since or not this brand's come back in a warning banner and stay waiting. A suspended or rejected brand's products are reviewed one at a time. Route `POST /api/v1/admin/vendors/{id}/products/approve` (`x-proposal` in `openapi/vendor-admin.yaml`, served only by the mock, like the rest of A-09 until it moves to `/v1/admin/*`; vendor-api has no bulk route yet, and a suspended or rejected brand gets `409 invalid_status_transition`); Kalki Studio has four waiting products for the demo |
 | Commission | Per brand, never a default rate ([vendor requirements §6](../../docs/ui-plan/vendor-requirements-and-phone-ux.md)). A-09's Commission card approves a proposal, sends it back with a note, or sets the rate (`/vendors/{id}/commission/approve`, `send-back`, `set`); approving an application asks for the rate, starting from the brand's proposal. A-08's "Rate to review" tab is `?commission=proposed`, linked from the queue |
 | Tests | `npx vitest run --project vendor-admin`, with a fake shell (`src/test/render.tsx`) |

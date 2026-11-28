@@ -12,6 +12,8 @@ export const shellCopy = {
   skip: 'Skip to content',
   roles: { super_admin: 'Super admin', vendor_reviewer: 'Vendor reviewer' } as Record<string, string>,
   waiting: (n: number) => `${n} waiting`,
+  // The top bar's row of a module's pages ("Vendors pages").
+  moduleNav: (title: string) => `${title} pages`,
   module: {
     loading: (title: string) => `Loading ${title}`,
     failedTitle: (title: string) => `${title} did not load`,

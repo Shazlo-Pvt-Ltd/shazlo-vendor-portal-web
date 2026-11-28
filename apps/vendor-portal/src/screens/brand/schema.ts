@@ -9,8 +9,8 @@ export type Profile = Schemas['BrandProfile']
 // fields, so the form carries them through unchanged; nothing on the page edits them.
 const RETURN_POLICIES = ['no_returns', '7_day', '14_day'] as const satisfies readonly Profile['return_policy'][]
 const DISPATCH_TIMES = ['1_2_days', '2_3_days', '3_5_days', '5_7_days'] as const satisfies readonly Profile['dispatch_time'][]
-/** Build 2's limits for what shoppers read, and vendor-api's for the rest (PUT /brand-profile). */
-export const LIMITS = { tagline: 60, story: 600, basedIn: 120, website: 500 } as const
+/** Build 2's limit for what shoppers read, and vendor-api's for the rest (PUT /brand-profile). */
+export const LIMITS = { story: 600, basedIn: 120, website: 500 } as const
 
 /**
  * The cover's shape in the app (8:3, full width at the top of the brand page) and the size the
@@ -61,7 +61,6 @@ export function instagramHref(value: string): string | undefined {
 export const brandSchema = z.object({
   brand_name: z.string(),
   based_in: z.string().max(LIMITS.basedIn, copy.errors.basedIn),
-  tagline: z.string().max(LIMITS.tagline, copy.errors.tagline),
   story: z.string().max(LIMITS.story, copy.errors.story),
   logo_url: z.string().nullable(),
   cover_url: z.string().nullable(),
@@ -76,8 +75,9 @@ export const brandSchema = z.object({
 
 export type BrandValues = z.infer<typeof brandSchema>
 
-// The fields a seller can change; brand_name is fixed (support changes it).
-export const EDITABLE = ['logo_url', 'cover_url', 'based_in', 'tagline', 'story', 'instagram', 'website'] as const satisfies readonly (keyof Profile)[]
+// The fields a seller can change; brand_name is fixed (support changes it). The page has no tagline:
+// vendor-api still has one, which the portal never shows and clears on save (adapters/brand.ts).
+export const EDITABLE = ['logo_url', 'cover_url', 'based_in', 'story', 'instagram', 'website'] as const satisfies readonly (keyof Profile)[]
 export type EditableField = (typeof EDITABLE)[number]
 
 export const isEditableField = (key: string): key is EditableField => (EDITABLE as readonly string[]).includes(key)
@@ -87,7 +87,6 @@ export function toValues(p: Profile): BrandValues {
   return {
     brand_name: p.brand_name,
     based_in: p.based_in,
-    tagline: p.tagline,
     story: p.story,
     logo_url: p.logo_url,
     cover_url: p.cover_url,
@@ -105,7 +104,7 @@ export function forSaving(values: BrandValues): BrandValues {
 }
 
 export function emptyProfile(brandName: string): Profile {
-  return { brand_name: brandName, based_in: '', tagline: '', story: '', logo_url: null, cover_url: null, return_policy: '7_day', dispatch_time: '2_3_days', instagram: '', website: '' }
+  return { brand_name: brandName, based_in: '', story: '', logo_url: null, cover_url: null, return_policy: '7_day', dispatch_time: '2_3_days', instagram: '', website: '' }
 }
 
 const comparable = (key: EditableField, value: string | null) => (key === 'instagram' && value !== null ? (normaliseInstagram(value) ?? value) : value)

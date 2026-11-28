@@ -4,7 +4,6 @@ import { brandSchema, changedFields, emptyProfile, forSaving, instagramHref, nor
 const live: Profile = {
   ...emptyProfile('Kalki Studio'),
   based_in: 'Ahmedabad, Gujarat',
-  tagline: 'Hand block-printed.',
   story: 'We work with Ajrakh printers.',
   instagram: '@kalki.studio',
   website: 'https://kalkistudio.in',
@@ -71,18 +70,31 @@ describe("vendor-api's limits", () => {
     expect(problems(values({ website: `kalkistudio.in/${'a'.repeat(478)}` })).website).toBe('Keep the web address to 500 characters.')
   })
 
-  it("keeps Build 2's shorter limits for the tagline and the story", () => {
-    expect(problems(values({ tagline: 'x'.repeat(61) })).tagline).toBe('Keep the tagline to 60 characters.')
+  it("keeps Build 2's shorter limit for the story", () => {
+    expect(problems(values({ story: 'x'.repeat(600) })).story).toBeUndefined()
     expect(problems(values({ story: 'x'.repeat(601) })).story).toBe('Keep the story to 600 characters.')
   })
 })
 
 describe('what is live and what is your draft', () => {
   it('names nothing changed before a page has gone live', () => {
-    expect(changedFields(values({ tagline: 'New' }), null).size).toBe(0)
+    expect(changedFields(values({ story: 'New' }), null).size).toBe(0)
   })
 
   it('names each field that differs from the live page', () => {
-    expect([...changedFields(values({ tagline: 'New', cover_url: 'https://res.cloudinary.com/x.jpg' }), live)]).toEqual(['cover_url', 'tagline'])
+    expect([...changedFields(values({ story: 'New', cover_url: 'https://res.cloudinary.com/x.jpg' }), live)]).toEqual(['cover_url', 'story'])
+  })
+})
+
+describe('the tagline', () => {
+  it('is not part of the brand page any more', () => {
+    expect(toValues(live)).not.toHaveProperty('tagline')
+    expect(emptyProfile('Kalki Studio')).not.toHaveProperty('tagline')
+    expect(Object.keys(brandSchema.shape)).not.toContain('tagline')
+  })
+
+  it('is dropped from what the form checks, whatever an old value says', () => {
+    const parsed = brandSchema.parse({ ...values(), tagline: 'x'.repeat(200) })
+    expect(parsed).not.toHaveProperty('tagline')
   })
 })

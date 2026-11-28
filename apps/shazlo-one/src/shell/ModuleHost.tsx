@@ -5,7 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useLocation, useNavigate } from 'react-router'
 import { useAppContext } from '../api/context'
 import { paths } from '../app/paths'
-import type { ShellModule } from '../app/registry'
+import { moduleTarget, type ShellModule } from '../app/registry'
 import { useCrumb } from '../app/crumbs'
 import { shellCopy } from '../copy/shell'
 import { useSession } from '../session/useSession'
@@ -35,8 +35,14 @@ export function ModuleHost({ module }: { module: ShellModule }) {
   const sendAuthRef = useRef<(replyTo?: string, force?: boolean) => Promise<void>>(async () => {})
   useCrumb(title)
 
-  const pathInModule = location.pathname.slice(module.basePath.length) || module.links[0]!.path
-  const target = pathInModule + location.search
+  // The module page this URL shows; the bare base path ("/vendors") opens the module on its dashboard.
+  const target = (moduleTarget(module, location.pathname) ?? module.home.path) + location.search
+  const targetRef = useRef(target)
+  useLayoutEffect(() => {
+    targetRef.current = target
+  }, [target])
+  // The iframe loads its first URL once; later URL changes are sent as `navigate`.
+  const [firstTarget] = useState(target)
 
   const send = useCallback((message: Message) => {
     const win = frame.current?.contentWindow
@@ -74,6 +80,15 @@ export function ModuleHost({ module }: { module: ShellModule }) {
         return
       }
       case 'title': {
+        // The first title of a load names the page the module opened on. If the admin picked another
+        // page while it loaded (top bar, sidebar, Back), the module is taken there, rather than the
+        // shell URL being moved back to the page the module started on.
+        const wanted = targetRef.current
+        if (modulePath.current === null && wanted !== firstTarget && message.payload.path !== wanted) {
+          modulePath.current = wanted
+          send(createMessage('navigate', { path: wanted }))
+          return
+        }
         modulePath.current = message.payload.path
         setTitle(message.payload.title)
         document.title = `${message.payload.title} · ${module.title} · Shazlo One`
@@ -98,14 +113,12 @@ export function ModuleHost({ module }: { module: ShellModule }) {
         if (message.payload.fatal) setState({ kind: 'failed' })
         return
     }
-  }, [module.basePath, module.title, navigate, notify, send, sendAuth, signOut])
+  }, [firstTarget, module.basePath, module.title, navigate, notify, send, sendAuth, signOut])
 
   // The listener is attached in a layout effect, before the iframe can run any script, so an early
   // `ready` is never missed (ADR 0001 §3.1).
   useLayoutEffect(() => listenAsShell({ origin: module.origin, source: () => frame.current?.contentWindow, onMessage }), [module.origin, onMessage])
 
-  // The iframe loads its first URL once per attempt; later URL changes are sent as `navigate`.
-  const [firstTarget] = useState(target)
   const src = useMemo(() => new URL(firstTarget.replace(/^\//, ''), module.url).toString(), [firstTarget, module.url])
 
   useEffect(() => {
@@ -113,7 +126,8 @@ export function ModuleHost({ module }: { module: ShellModule }) {
     return () => clearTimeout(timer)
   }, [attempt])
 
-  // A deep link picked in the shell (sidebar, back button) moves the module without reloading it.
+  // A deep link picked in the shell (sidebar, top bar, back button) moves the module without
+  // reloading it. One picked before the module's first title is sent from the title handler.
   useEffect(() => {
     if (state.kind !== 'ready' || modulePath.current === null || target === modulePath.current) return
     modulePath.current = target
@@ -125,6 +139,8 @@ export function ModuleHost({ module }: { module: ShellModule }) {
   }, [])
 
   const retry = () => {
+    // The reloaded module reports its page afresh, so its first title is a first title again.
+    modulePath.current = null
     setState({ kind: 'loading' })
     setAttempt((n) => n + 1)
   }
