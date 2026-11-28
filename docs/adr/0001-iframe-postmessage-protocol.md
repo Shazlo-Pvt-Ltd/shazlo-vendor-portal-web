@@ -177,9 +177,9 @@ Accepted on the strength of the shared package's contract tests (both ends over 
 hostile messages), the shell's and reference module's tests, and the browser tests of #259
 (`apps/shazlo-one/e2e`): forged messages from another origin and window are ignored, the module is refused by a
 framing page on another origin, no token appears in a URL, `Referer`, web storage or cookie, and the module keeps
-working across a token refresh. Those browser tests are written but had not yet been run against the real stack
-when this was accepted (their first run is the CI job `e2e-shazlo-one`). If one shows that a decision here is
-wrong, amend this ADR rather than the code alone.
+working across a token refresh. They run in the CI job `e2e-shazlo-one` against the real stack (first green on
+27 November 2026, with the shell as it stood before the stack's review fixes). If one shows that a decision here
+is wrong, amend this ADR rather than the code alone.
 
 ## Message flow
 
