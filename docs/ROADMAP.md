@@ -62,7 +62,7 @@ These are used as reference only. None of the code is reused.
 ## Phases
 Each phase matches a milestone in this repo. The bullets are the proposed scope; the actual issues are filed when the phase starts.
 
-Status (2026-11-19): Phases 0 to 4 are delivered, and Phase 5 (the vendor portal) is in progress (its sign-in, dashboard, brand page editor, products list, product form, bulk import, team and account pages, and submission status are merged; the end-to-end test and accessibility checks remain). Phase 6 (the Shazlo-One shell) is in progress (its scaffold is merged); Phases 7 and 8 have not started. One decision is still open from Phase 4: the central-app team has not signed off [ADR 0003](adr/0003-central-app-publishing-contract.md), so it is still `proposed` (issue #179).
+Status (2026-11-19): Phases 0 to 4 are delivered, and Phase 5 (the vendor portal) is in progress (its sign-in, dashboard, brand page editor, products list, product form, bulk import, team and account pages, and submission status are merged; the end-to-end test and accessibility checks remain). Phase 6 (the Shazlo-One shell) is built but not delivered (its scaffold, admin session, sign-in and protocol package are merged; the rest is open as pull requests, see Phase 6); Phases 7 and 8 have not started. One decision is still open from Phase 4: the central-app team has not signed off [ADR 0003](adr/0003-central-app-publishing-contract.md), so it is still `proposed` (issue #179).
 
 ### Phase 0: Foundation & security hygiene
 - Repo hygiene: untrack local env files and `node_modules`, fix `.gitignore`, and add `.env.example` files.
@@ -72,7 +72,7 @@ Status (2026-11-19): Phases 0 to 4 are delivered, and Phase 5 (the vendor portal
 - Shared `packages/ui` theme.
 - ADRs: iframe protocol, auth model, central-app publishing contract.
 
-Delivered. The iframe protocol ([0001](adr/0001-iframe-postmessage-protocol.md)) and publishing contract ([0003](adr/0003-central-app-publishing-contract.md)) ADRs are still `proposed`; the auth model ([0009](adr/0009-auth-model.md)) is accepted.
+Delivered. The publishing contract ADR ([0003](adr/0003-central-app-publishing-contract.md)) is still `proposed`; the auth model ([0009](adr/0009-auth-model.md)) is accepted, and so is the iframe protocol ([0001](adr/0001-iframe-postmessage-protocol.md)), in Phase 6 (#259).
 
 ### Phase 1: Identity API (Shazlo-One admins)
 - FastAPI scaffold: pydantic-settings, SQLAlchemy 2 + Alembic, structured logging, `/health` and `/ready`; Redis and identity-api in docker-compose.
@@ -153,7 +153,7 @@ Planned scope:
 - Team (owner only: invite, resend, disable and enable staff) and account (profile, password change).
 
 ### Phase 6: Shazlo-One shell
-Status (2026-11-24): built, not yet delivered. Every issue except the browser checks has a pull request: #248 is merged; the scaffold, session, sign-in, module registry, protocol package, reference module, iframe host, token refresh, page messages and admin management are open as a stack of PRs (#303 to #313). Still to do (#259): the end-to-end journey and axe checks against real services, which also decide whether this phase is "Delivered". `apps/shazlo-one/README.md` describes what the app does today.
+Status (2026-11-28): built, not yet delivered. Every issue except the browser checks has a pull request. Merged: identity-api's `openapi.json` (#248), the scaffold (PR #303), the admin session (PR #304), sign-in and the password change (PR #305) and the protocol package (PR #307). Open, as a stack of PRs: the module registry (PR #306), the reference module (PR #308), the iframe host (PR #309), token refresh (PR #311), the page messages (PR #312) and admin management (PR #313). Still to do (#259): the end-to-end journey and axe checks against real services, which also decide whether this phase is "Delivered". `apps/shazlo-one/README.md` describes what the app does today.
 
 - Scaffold, admin login against identity-api, and session handling.
 - Module registry and a nav that only shows the modules an admin's roles allow.

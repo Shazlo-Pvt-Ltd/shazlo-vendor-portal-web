@@ -4,12 +4,12 @@ One file per decision, named `NNNN-short-title.md`. Copy [0000-template.md](0000
 
 | ADR | Title | Status |
 |---|---|---|
-| [0001](0001-iframe-postmessage-protocol.md) | Iframe postMessage protocol between Shazlo-One and module UIs | proposed |
+| [0001](0001-iframe-postmessage-protocol.md) | Iframe postMessage protocol between Shazlo-One and module UIs | accepted |
 | [0003](0003-central-app-publishing-contract.md) | Central-app publishing contract | proposed |
 | [0009](0009-auth-model.md) | Auth model: RS256 JWTs, JWKS and roles | accepted |
 | [0010](0010-shared-security-package.md) | Share the security plumbing between identity-api and vendor-api; copy the glue | proposed |
 
-Status of the two `proposed` decisions that are already built: ADR 0003 waits for the central-app team to confirm its answers (issue #179; vendor-api and `central-stub` implement it), and ADR 0010 is implemented in `packages/py-security` but has not been marked accepted. ADR 0001 (iframe protocol) belongs to Phases 6 and 7, which have not started.
+Status of the two `proposed` decisions that are already built: ADR 0003 waits for the central-app team to confirm its answers (issue #179; vendor-api and `central-stub` implement it), and ADR 0010 is implemented in `packages/py-security` but has not been marked accepted. ADR 0001 (iframe protocol) was accepted in Phase 6 (#259), on the evidence of unit and contract tests; its browser checks are still to run.
 
 The earlier architecture ADRs (written 2026-10-19 and 2026-10-20, in the format of the design documents; see the [design docs index](../README.md)):
 

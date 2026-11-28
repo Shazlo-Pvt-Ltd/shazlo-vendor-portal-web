@@ -23,7 +23,7 @@ Where the code and the design documents use different names, the code is right:
 | The Vendor-admin service (FastAPI, `vendor-api.shazlo.store`): vendors, catalog authoring, moderation, publishing | `services/vendor-api`, with admin sign-in in `services/identity-api`. Fulfilment screens, statements, payouts and commission are not built |
 | Core (Django), the customer backend and the receiver of published events | A separate repository (`shazlo-server`). Here `services/central-stub` stands in for it, and [ADR 0003](adr/0003-central-app-publishing-contract.md) is the contract |
 | `outbox_events` and `outbox_publish` (every minute, a cron job) | The `outbox_events` table in vendor-api and its publisher worker (`python -m vendor_api.worker`); see [the publishing runbook](runbooks/central-publishing.md) |
-| The portal React app (`frontend/` in a portal repo) and admin pages | `apps/vendor-portal` (Phase 5, in progress: sign-in, dashboard, brand page editor, products list, product form, bulk import, team and account pages, and submission status are merged), `apps/shazlo-one` and `apps/vendor-admin` (Phases 6 and 7, not started) |
+| The portal React app (`frontend/` in a portal repo) and admin pages | `apps/vendor-portal` (Phase 5, in progress: sign-in, dashboard, brand page editor, products list, product form, bulk import, team and account pages, and submission status are merged), `apps/shazlo-one` (Phase 6, built, partly merged; see the [roadmap](ROADMAP.md)) and `apps/vendor-admin` (Phase 7, not started) |
 | `apps/vendor-admin` (this name) | The React review module, not the FastAPI service the documents call "vendor-admin" |
 
 ## Read in this order
@@ -37,7 +37,6 @@ Where the code and the design documents use different names, the code is right:
 | 04 | [Database design](04-database-design.md) | The list of all 58 tables and their indexes, in two databases |
 | 04b | [Database notes](04b-database-notes.md) | Design rules, cross-database references, vectors, migration from today's tables, Redis keys, personal data, MVP delta |
 | 05 | [API design](05-api-design.md) | GraphQL schema for the app, REST for vendor, public, admin and webhooks, errors, limits |
-| - | [How to build a module](how-to-build-a-module.md) | How to build a React admin module for the Shazlo-One shell (Phase 7 and later) |
 | 06 | [MVP slice and migration](06-mvp-slice-and-migration.md) | Exactly what is built by Oct 30 on today's backend, and how it migrates to the new server |
 | 07 | [Website audit and plan](07-website-audit-and-plan.md) | What is wrong with the marketing site, and what to fix |
 | 08 | [Service split](08-service-split.md) | Core and Vendor-admin: the boundary rule, what changed in the redraw, builder checklist |
@@ -45,6 +44,7 @@ Where the code and the design documents use different names, the code is right:
 | - | [Open questions](open-questions.md) | Decisions the team still has to make, each with a default |
 | - | [Decision records](adr/) | Why the big choices were made |
 | - | [Roadmap](ROADMAP.md) | The phases of this repository's rewrite and which are delivered |
+| - | [How to build a module](how-to-build-a-module.md) | How to build a React admin module for the Shazlo-One shell (Phase 7 and later) |
 | - | [Runbooks](runbooks/) | Rotating the JWT signing keys and the central-app signing key; running and repairing publishing |
 | - | [Test strategy](testing.md) | What is tested, how to run it, and the evidence recorded when it was written |
 
@@ -63,7 +63,7 @@ Where the code and the design documents use different names, the code is right:
 | [0009](adr/0009-auth-model.md) | Auth model: RS256 JWTs, JWKS and roles for Shazlo-One (identity-api) and the vendor API, each with its own issuer | Accepted; partly supersedes 0004-authentication.md |
 | [0010](adr/0010-shared-security-package.md) | Share the security plumbing between identity-api and vendor-api (`packages/py-security`); copy the glue | Proposed |
 
-The Phase 0 ADRs [0001-iframe-postmessage-protocol.md](adr/0001-iframe-postmessage-protocol.md) (proposed) and [0003-central-app-publishing-contract.md](adr/0003-central-app-publishing-contract.md) (proposed, waiting for the central-app team) reuse numbers from this table; [adr/README.md](adr/README.md) lists all ADRs.
+The Phase 0 ADRs [0001-iframe-postmessage-protocol.md](adr/0001-iframe-postmessage-protocol.md) (accepted) and [0003-central-app-publishing-contract.md](adr/0003-central-app-publishing-contract.md) (proposed, waiting for the central-app team) reuse numbers from this table; [adr/README.md](adr/README.md) lists all ADRs.
 
 ## Legend
 
