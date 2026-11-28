@@ -307,6 +307,41 @@ describe('#299 Home: names behind the activity', () => {
     expect(rows[3]).toHaveTextContent('by Rahul Desai')
   })
 
+  it('keeps the names it had when a later lookup fails, rather than calling everyone "a former admin"', async () => {
+    const { context } = await renderShell()
+    const list = await region('Recent decisions')
+    await waitFor(() => expect(within(list).getAllByRole('listitem')[0]).toHaveTextContent('by Priya Mehta'))
+    let asked = 0
+    server.use(
+      http.get('*/v1/admins/names', () => {
+        asked += 1
+        return HttpResponse.json({ error: { code: 'unavailable', message: 'down', request_id: 'r' } }, { status: 503 })
+      }),
+    )
+    vi.setSystemTime(new Date(NOW.getTime() + 6 * 60_000))
+    await act(() => context.queryClient.refetchQueries({ queryKey: ['module-summary', 'catalogue'] }))
+    expect(asked).toBe(1)
+    await waitFor(() => expect(within(list).getAllByRole('listitem')[0]).toHaveTextContent('by Priya Mehta'))
+  })
+
+  it('looks the names up once for the refreshes of the next five minutes', async () => {
+    let asked = 0
+    server.use(
+      http.get('*/v1/admins/names', () => {
+        asked += 1
+      }),
+    )
+    const { context } = await renderShell()
+    await within(await region('Recent decisions')).findAllByRole('listitem')
+    await waitFor(() => expect(asked).toBe(1))
+    vi.setSystemTime(new Date(NOW.getTime() + 60_000))
+    await act(() => context.queryClient.refetchQueries({ queryKey: ['module-summary', 'catalogue'] }))
+    expect(asked).toBe(1)
+    vi.setSystemTime(new Date(NOW.getTime() + 6 * 60_000))
+    await act(() => context.queryClient.refetchQueries({ queryKey: ['module-summary', 'catalogue'] }))
+    expect(asked).toBe(2)
+  })
+
   it('asks for each admin once, however many items they acted on', async () => {
     const asked: string[][] = []
     server.use(
