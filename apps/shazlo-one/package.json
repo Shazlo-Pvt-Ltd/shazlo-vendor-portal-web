@@ -5,39 +5,45 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:module": "vite --config dev-module/vite.config.ts --configLoader runner",
-    "dev:with-module": "node scripts/dev-with-module.mjs",
     "prebuild": "node scripts/write-vercel-headers.mjs",
     "build": "tsc -p tsconfig.json && vite build",
-    "preview": "vite preview",
+    "preview": "vite preview --strictPort",
+    "api:types": "openapi-typescript ../../services/identity-api/openapi.json -o src/api/identity.d.ts",
+    "api:check": "openapi-typescript ../../services/identity-api/openapi.json -o src/api/identity.d.ts --check",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "api:generate": "openapi-typescript ../../services/identity-api/openapi.json -o src/api/schema.d.ts",
-    "api:check": "openapi-typescript ../../services/identity-api/openapi.json -o src/api/schema.d.ts --check"
+    "headers:placeholder": "node scripts/write-vercel-headers.mjs --placeholder"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
+    "@hookform/resolvers": "^7.0.5",
     "@mui/material": "^9.5.0",
-    "@shazlo/shell-protocol": "*",
     "@shazlo/ui": "*",
-    "@tanstack/react-query": "^5.107.1",
+    "@tanstack/react-query": "^5.108.2",
+    "@tanstack/react-table": "^8.21.3",
+    "lucide-react": "^1.70.0",
     "openapi-fetch": "^0.17.0",
-    "openapi-react-query": "^0.5.4",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "react-router": "^8.5.1"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-hook-form": "^7.91.0",
+    "react-router": "^7.18.5",
+    "zod": "^4.6.7",
+    "@shazlo/shell-protocol": "*"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "^1.65.0",
     "@testing-library/dom": "^10.4.2",
-    "@testing-library/user-event": "^14.6.10",
-    "@types/node": "^26.6.6",
-    "@types/react": "^19.1.8",
-    "@types/react-dom": "^19.1.6",
-    "@vitejs/plugin-react": "^6.2.1",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.13",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "jsdom": "^26.1.0",
     "msw": "^3.0.5",
     "openapi-typescript": "^7.13.0",
-    "parse5": "^8.1.1",
-    "vite": "^8.3.6"
+    "vite": "^7.3.8"
   }
 }

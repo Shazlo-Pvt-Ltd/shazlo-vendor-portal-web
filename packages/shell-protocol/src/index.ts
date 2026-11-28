@@ -1,3 +1,7 @@
+// ADR 0001: the postMessage protocol between the Shazlo One shell and each module it frames. The
+// shell uses createShellChannel, a module createModuleClient; nothing else posts or reads
+// cross-frame messages (test/source-guard.test.ts fails if app code does). These files have no
+// runtime dependency.
 export {
   MAX_MESSAGE_BYTES,
   MAX_TOAST_MESSAGE_LENGTH,
@@ -17,6 +21,13 @@ export type { ReadyInfo, ShellChannel, ShellChannelOptions } from './shellChanne
 export { isWithinSizeLimit } from './size'
 export { isTrustedMessage } from './trust'
 export type * from './types'
-export { isEnvelope, isModulePath, parseModuleToShell, parseShellToModule } from './validate'
+export { isEnvelope, parseModuleToShell, parseShellToModule } from './validate'
 export type { ParseOptions } from './validate'
 export { negotiateVersion, shellSupportedVersions } from './version'
+export { isModulePath, MAX_MODULE_PATH } from './paths'
+
+// ADR 0011: the module registry (trust), each module's manifest (looks) and its summary (Home and
+// the badge). These are read from build files and over HTTP, not postMessage, and use zod.
+export * from './manifest'
+export * from './registry'
+export * from './summary'

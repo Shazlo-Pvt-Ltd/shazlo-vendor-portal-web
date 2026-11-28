@@ -45,9 +45,12 @@ class Settings(BaseSettings):
     database_url: str
     redis_url: str
 
-    # Origins allowed to call the API with credentials (the Shazlo-One shell).
-    # Comma separated in the environment.
-    cors_allowed_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
+    # Origins allowed to call the API with credentials (the Shazlo One shell: its dev server on 5192
+    # and `vite preview` on 4192). Comma separated in the environment.
+    cors_allowed_origins: Annotated[list[str], NoDecode] = [
+        "http://localhost:5192",
+        "http://localhost:4192",
+    ]
 
     # Refresh-token cookie. `Secure` is on by default; turn it off only for local dev.
     # SameSite=None requires Secure (browsers drop the cookie otherwise), so that pair is refused.

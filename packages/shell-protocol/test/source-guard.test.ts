@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { readdirSync, readFileSync, type Dirent } from 'node:fs'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -7,20 +7,34 @@ import { describe, expect, it } from 'vitest'
 const packageRoot = fileURLToPath(new URL('../', import.meta.url))
 const repoRoot = join(packageRoot, '../..')
 
+/**
+ * The entries of a folder, or none when it does not exist. The folder is read once, with each entry's
+ * type, rather than checked first and read after (a check-then-use race).
+ */
+function entries(dir: string): Dirent[] {
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT' || (error as NodeJS.ErrnoException).code === 'ENOTDIR') return []
+    throw error
+  }
+}
+
 /** Every non-test TypeScript source file under `dir`, with its text. */
 function sources(dir: string): Array<[string, string]> {
   const found: Array<[string, string]> = []
   const walk = (current: string) => {
-    for (const name of readdirSync(current)) {
+    for (const entry of entries(current)) {
+      const name = entry.name
       if (name === 'node_modules' || name === 'dist') continue
       const path = join(current, name)
-      if (statSync(path).isDirectory()) walk(path)
+      if (entry.isDirectory()) walk(path)
       else if (
+        entry.isFile() &&
         /\.(ts|tsx)$/.test(name) &&
         !/\.test\.(ts|tsx)$/.test(name) &&
-        !path.includes(join('src', 'test')) &&
-        // The reference module's test harness replaces postMessage on purpose, like this package's own.
-        !path.includes(join('dev-module', 'test'))
+        // Test harnesses replace postMessage on purpose, like this package's own.
+        !path.includes(join('src', 'test'))
       ) {
         found.push([relative(repoRoot, path).replaceAll('\\', '/'), readFileSync(path, 'utf8')])
       }
@@ -68,33 +82,45 @@ describe('the package', () => {
     }
   })
 
-  it('has no runtime dependency', () => {
-    const manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as Record<string, unknown>
-    expect(manifest.dependencies).toBeUndefined()
-    expect(manifest.peerDependencies).toBeUndefined()
+  // The postMessage half (ADR 0001) is hand-written and depends on nothing. The registry, manifest
+  // and summary (ADR 0011) are read from build files and over HTTP and use zod; the test helper uses msw.
+  const ADR_0011 = ['manifest.ts', 'registry.ts', 'summary.ts']
+
+  it('has no runtime dependency in the postMessage half, and only zod in the registry, manifest and summary', () => {
+    const manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as Record<string, Record<string, string>>
+    expect(Object.keys(manifest.dependencies ?? {})).toEqual(['zod'])
+    expect(Object.keys(manifest.peerDependencies ?? {})).toEqual(['msw'])
     for (const [path, text] of own) {
-      const imports = [...text.matchAll(/from\s+['"]([^'"]+)['"]/g)].map((match) => match[1]!)
-      expect(
-        imports.filter((specifier) => !specifier.startsWith('.')),
-        path,
-      ).toEqual([])
+      const name = path.split('/').pop()!
+      const imports = [...text.matchAll(/from\s+['"]([^'"]+)['"]/g)].map((match) => match[1]!).filter((specifier) => !specifier.startsWith('.'))
+      const allowed = name === 'testing.ts' ? ['msw'] : ADR_0011.includes(name) ? ['zod'] : []
+      expect(imports.filter((specifier) => !allowed.includes(specifier)), path).toEqual([])
+    }
+  })
+
+  it('keeps zod out of every file the postMessage half imports', () => {
+    for (const [path, text] of own) {
+      const name = path.split('/').pop()!
+      if (ADR_0011.includes(name) || name === 'testing.ts' || name === 'index.ts') continue
+      const local = [...text.matchAll(/from\s+['"]\.\/([^'"]+)['"]/g)].map((match) => `${match[1]!}.ts`)
+      expect(local.filter((file) => ADR_0011.includes(file) || file === 'testing.ts'), path).toEqual([])
     }
   })
 })
 
 describe('the apps', () => {
-  // Each app's `src`, and the reference module (`dev-module`), which must go through the package too.
-  const apps = readdirSync(join(repoRoot, 'apps')).flatMap((name) =>
-    ['src', 'dev-module']
-      .filter((folder) => existsSync(join(repoRoot, 'apps', name, folder)))
-      .flatMap((folder) => sources(join(repoRoot, 'apps', name, folder))),
-  )
+  // Each app's `src`: the shell and every module must go through the package.
+  // An app folder with no `src` gives no entries.
+  const apps = entries(join(repoRoot, 'apps'))
+    .filter((entry) => entry.isDirectory())
+    .flatMap((entry) => sources(join(repoRoot, 'apps', entry.name, 'src')))
 
   it('finds the apps’ source files', () => {
     expect(apps.length).toBeGreaterThan(20)
-    // The reference module is checked too (this would be a vacuous pass if its files were skipped).
-    expect(apps.some(([path]) => path.endsWith('dev-module/src/ReferenceModule.tsx'))).toBe(true)
-    expect(apps.some(([path]) => path.includes('dev-module/test/'))).toBe(false)
+    // The shell's host and the Vendors module's runtime are checked (a vacuous pass otherwise).
+    expect(apps.some(([path]) => path === 'apps/shazlo-one/src/shell/ModuleHost.tsx')).toBe(true)
+    expect(apps.some(([path]) => path === 'apps/vendor-admin/src/runtime/runtime.tsx')).toBe(true)
+    expect(apps.some(([path]) => path.includes('/src/test/'))).toBe(false)
   })
 
   it('post and read cross-frame messages only through @shazlo/shell-protocol', () => {

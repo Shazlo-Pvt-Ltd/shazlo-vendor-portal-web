@@ -1,40 +1,39 @@
 import { describe, expect, it } from 'vitest'
-import { safeReturnTo } from './returnTo'
+import { safeNext } from './returnTo'
 
-describe('safeReturnTo', () => {
-  it('keeps a path to a signed-in shell screen, with its query and hash', () => {
-    expect(safeReturnTo('/')).toBe('/')
-    expect(safeReturnTo('/?tab=1#top')).toBe('/?tab=1#top')
+// Sign-in links carry where to go next (`/sign-in?next=...`). Only places inside the shell are kept.
+describe('safeNext', () => {
+  it.each(['/', '/?tab=1#top', '/admins', '/admins?status=all&q=sneha', '/catalogue', '/catalogue/', '/catalogue/review/product/p1?tab=2#history', '/campaigns/drafts'])('keeps %s', (path) => {
+    expect(safeNext(path)).toBe(path)
   })
 
-  it.each(['/m/vendor-admin', '/m/vendor-admin/', '/m/vendor-admin/orders/9?tab=2#top', '/admins'])(
-    'keeps %s: a module and the rest of its path belong to the shell and the module',
-    (path) => {
-      expect(safeReturnTo(path)).toBe(path)
-    },
-  )
-
-  it.each(['/m', '/m/', '/mx/vendor-admin', '/admins/extra', '/m/vendor-admin/..\\evil'])(
-    'does not accept %s as a place inside the shell',
-    (path) => {
-      expect(safeReturnTo(path)).toBe('/')
-    },
-  )
+  it('keeps the path the router would get once "." and ".." segments are resolved', () => {
+    expect(safeNext('/catalogue/queue/../sellers')).toBe('/catalogue/sellers')
+    expect(safeNext('/catalogue/../admins')).toBe('/admins')
+  })
 
   it.each([
     ['nothing', null],
     ['an empty value', ''],
     ['another site', 'https://evil.example/'],
     ['a protocol-relative address', '//evil.example/'],
+    ['a backslash after the slash', '/\\evil.example'],
+    ['a backslash later on', '/catalogue/..\\evil'],
+    ['a backslash and a slash', '/\\/evil.example'],
+    ['an encoded backslash', '/%5Cevil.example'],
     ['a scheme', 'javascript:alert(1)'],
-    ['a backslash trick', '/\\evil.example'],
-    ['a control character', '/\n/evil.example'],
-    ['a relative path', 'login'],
-    ['the login screen (it is not a destination)', '/login'],
+    ['a data URL', 'data:text/html,hi'],
+    ['a tab', '/\t/evil.example'],
+    ['a line feed', '/\n/evil.example'],
+    ['a relative path', 'admins'],
+    ['the sign-in screen (not a destination)', '/sign-in'],
     ['the change-password screen', '/change-password'],
     ['a path the shell does not have', '/nowhere'],
+    ['a look-alike of a module', '/catalogueX/queue'],
+    ['a look-alike of a shell page', '/admins-old'],
+    ['a climb out to a page the shell does not have', '/catalogue/../../nowhere'],
     ['something absurdly long', `/${'a'.repeat(2500)}`],
-  ])('falls back to / for %s', (_name, value) => {
-    expect(safeReturnTo(value)).toBe('/')
+  ])('falls back to Home for %s', (_name, value) => {
+    expect(safeNext(value)).toBe('/')
   })
 })

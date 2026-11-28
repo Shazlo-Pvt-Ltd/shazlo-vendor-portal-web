@@ -1,7 +1,11 @@
-import { Box, Button, Link, Stack, Typography } from '@mui/material'
-import { useEffect } from 'react'
+import { Button, Link } from '@mui/material'
+import { Notice, PlainPage } from '../components/Notice'
+import { useDocumentTitle } from '../app/title'
 import { SUPPORT_EMAIL } from '../config/support'
+import { frameCopy } from '../copy/frame'
 import { useSession } from './AuthProvider'
+
+const copy = frameCopy.blocked
 
 /**
  * Shown for a vendor that is rejected or suspended. It explains and offers support; it never
@@ -9,30 +13,28 @@ import { useSession } from './AuthProvider'
  */
 export function BlockedPage() {
   const { logout } = useSession()
-  useEffect(() => {
-    document.title = 'Account unavailable · Shazlo Vendor Portal'
-  }, [])
+  useDocumentTitle(copy.pageTitle)
   return (
-    <Box component="main" sx={{ p: 3, maxWidth: 560, mx: 'auto', mt: 8 }}>
-      <Typography component="h1" variant="h4" gutterBottom>
-        This account can't use the portal
-      </Typography>
-      <Typography sx={{ mb: 2 }}>
-        Your vendor account was rejected or suspended, so you can't sign in right now. Nothing you
-        created has been deleted.
-      </Typography>
-      <Typography sx={{ mb: 3 }}>
-        To find out why or to ask for a review, contact support at{' '}
-        <Link href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</Link>.
-      </Typography>
-      <Stack direction="row" spacing={2}>
-        <Button variant="contained" component="a" href={`mailto:${SUPPORT_EMAIL}`}>
-          Contact support
-        </Button>
-        <Button variant="outlined" onClick={() => void logout()}>
-          Sign in with another account
-        </Button>
-      </Stack>
-    </Box>
+    <PlainPage>
+      <Notice
+        title={copy.title}
+        illustration="store"
+        actions={
+          <>
+            <Button variant="contained" component="a" href={`mailto:${SUPPORT_EMAIL}`}>
+              {copy.email}
+            </Button>
+            <Button variant="outlined" onClick={() => void logout()}>
+              {copy.otherAccount}
+            </Button>
+          </>
+        }
+      >
+        <p>{copy.body}</p>
+        <p>
+          {copy.ask} <Link href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</Link>
+        </p>
+      </Notice>
+    </PlainPage>
   )
 }

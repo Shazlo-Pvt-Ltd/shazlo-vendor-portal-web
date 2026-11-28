@@ -1,0 +1,11 @@
+[
+  {
+    "id": "vendor-admin",
+    "fallbackTitle": "Vendors",
+    "basePath": "/vendors",
+    "url": "http://localhost:5193/",
+    "roles": ["vendor_reviewer", "super_admin"],
+    "audience": "vendor-api",
+    "summaryUrl": "http://localhost:8004/v1/admin/module-summary"
+  }
+]

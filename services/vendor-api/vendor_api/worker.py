@@ -12,9 +12,12 @@ from datetime import time
 from types import FrameType
 
 from shazlo_security.signing import RequestSigner, SigningKey
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from vendor_api.core.logging import configure_logging
 from vendor_api.core.settings import Settings, get_settings
+from vendor_api.db.roles import POWER_SQL, power_problems
 from vendor_api.db.session import create_engine, create_sessionmaker
 from vendor_api.services.outbox import OutboxWriter
 from vendor_api.services.publisher import CentralClient, Publisher
@@ -39,6 +42,8 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
         )
     )
     engine = create_engine(settings.database_url)
+    if settings.env == "prod":
+        await refuse_a_powerful_login(engine)
     client = CentralClient(settings.central_api_url, signer)
     try:
         logger.info("publisher started", extra={"key_id": signer.key_id})
@@ -59,6 +64,20 @@ async def run(settings: Settings, stop: asyncio.Event) -> None:
         await client.close()
         await engine.dispose()
         logger.info("publisher stopped")
+
+
+async def refuse_a_powerful_login(engine: AsyncEngine) -> None:
+    """In production the worker logs in as its own user, with only its table rights (ADR 0011,
+    migration 0012); one that can do more, such as the owner of the tables, stops it here."""
+    async with engine.connect() as connection:
+        row = (await connection.execute(text(POWER_SQL))).mappings().one_or_none()
+    problems = power_problems(row) if row is not None else ["is not a known role"]
+    if problems:
+        raise RuntimeError(
+            "the worker's database login "
+            + ", ".join(problems)
+            + ": give it the vendor_worker login (python -m vendor_api.cli db-logins)"
+        )
 
 
 def install_signal_handlers(loop: asyncio.AbstractEventLoop, stop: asyncio.Event) -> None:

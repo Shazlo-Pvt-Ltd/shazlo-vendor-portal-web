@@ -1,0 +1,286 @@
+import { formatCount } from '../lib/format'
+import { catalogCopy } from './catalog'
+
+// Copy for the product editor (V-07). Option labels (genders, product types, colours, photo slots,
+// what a product needs before review) are in ./catalog.ts. One module per screen keeps a later Hindi
+// translation in one place.
+
+const photos = (n: number) => `${formatCount(n)} ${n === 1 ? 'photo' : 'photos'}`
+
+export const productEditorCopy = {
+  newTitle: 'New product',
+  productTitle: 'Product',
+  untitled: 'Untitled product',
+  newSubtitle: 'Start with a name. Everything saves as you go.',
+  loading: 'Loading product',
+  moreActions: 'More actions',
+  code: (code: string) => `Code ${code}`,
+
+  save: {
+    createFailed: 'We could not start this draft. Check your connection, then edit the name to try again.',
+  },
+
+  submit: {
+    draft: 'Send for review',
+    rejected: 'Send for review again',
+    approved: 'Send changes for review',
+    sending: 'Sending…',
+  },
+
+  // Phones: one section per screen (spec §7).
+  steps: {
+    of: (n: number, total: number) => `Step ${n} of ${total}`,
+    names: { photos: 'Photos', about: 'About the product', sizes: 'Sizes and stock', price: 'Price' },
+    next: 'Next',
+    back: 'Back',
+    toCheck: 'Check and send',
+  },
+
+  check: {
+    title: 'Check and send',
+    missingTitle: 'Still to do',
+    missingBody: 'Add these before sending for review. Everything you have added is saved.',
+    ready: 'Everything is ready to send',
+    readyBody: 'Our team usually decides within 24 hours.',
+    summaryLabel: 'Your product',
+    change: 'Change',
+    changeLabel: (step: string) => `Change ${step.toLowerCase()}`,
+    notAdded: 'Not added yet',
+    photos: (added: number, total: number) => `${formatCount(added)} of ${formatCount(total)} photos added`,
+    sizes: (count: number, stock: string) => `${formatCount(count)} ${count === 1 ? 'size' : 'sizes'} · ${stock} in stock`,
+  },
+
+  // The words of the confirmation are main's delete rules (copy/products.ts deleteDialog).
+  archive: {
+    menu: { removed: 'Delete product', archived: 'Archive product' },
+    cancel: 'Cancel',
+    working: 'Working…',
+  },
+
+  banners: {
+    reviewedBy: (when: string) => `Shazlo review team · ${when}`,
+    pending: 'This product is in review. You can edit it again once our team has decided.',
+    editInReview: 'Your changes are in review. The live version stays in the app until we approve them.',
+    archived: 'This product is archived, so shoppers cannot see it',
+    locked: 'This product is in review, so your last change was not saved. You can edit it again once our team has decided.',
+    // A save or send vendor-api refused because the product changed elsewhere.
+    archivedElsewhere: 'This product was archived, so your last change was not saved',
+    gone: 'This product is no longer in your products (deleted somewhere else), so your last change was not saved',
+    conflict: 'This product was changed somewhere else (another tab or someone on your team), so your last change was not saved',
+    reload: 'Load the latest',
+    inReviewNow: 'This product is already in review. You can edit it again once our team has decided.',
+    nothingSinceSentBack: 'Nothing has changed since it was sent back. Change what our team asked for, then send it again.',
+    nothingNew: 'Nothing has changed since it was last sent. Change something, then send it again.',
+    sent: 'Sent for review. We usually decide within 24 hours.',
+    changesSent: 'Changes sent for review. The live version stays in the app until we approve them.',
+    problems: catalogCopy.errors.product.submitProblems,
+    problem: (label: string, message: string) => `${label}: ${message}`,
+    unsaved: 'Your latest changes did not save, so we have not sent this for review. Check your connection and try again.',
+    retry: 'Try again',
+  },
+
+  photos: {
+    title: 'Photos',
+    added: (added: number, total: number) => `${formatCount(added)} of ${formatCount(total)} added`,
+    productGroup: 'Product photos',
+    productHint: 'Front, back, a close-up of the detail, and one being worn. Up to 4 extra.',
+    tryonGroup: 'Try-on photos',
+    tryonHint: 'Real people wearing it, so shoppers see the true fit',
+    main: 'Main photo',
+    extra: (n: number) => `Extra ${n}`,
+    tryon: (n: number) => `Try-on ${n}`,
+    choose: 'Choose photos',
+    chooseTryon: 'Choose try-on photos',
+    take: 'Take photo',
+    takeProduct: 'Take photo of the product',
+    takeTryon: 'Take photo for try-on',
+    inputs: {
+      product: 'Product photo files',
+      tryon: 'Try-on photo files',
+      productCamera: 'Camera for product photos',
+      tryonCamera: 'Camera for try-on photos',
+      slot: 'Photo file for the chosen slot',
+    },
+    addShort: 'Add',
+    add: (name: string) => `Add ${name.toLowerCase()}`,
+    addExtra: 'Add extra photos',
+    named: (label: string) => `${label} photo`,
+    extraName: (n: number) => `Extra photo ${n}`,
+    tryonName: (n: number) => `Try-on photo ${n}`,
+    options: (name: string) => `Options for ${name.toLowerCase()}`,
+    makeMain: 'Make main photo',
+    moveLeft: 'Move left',
+    moveRight: 'Move right',
+    replace: 'Replace photo',
+    remove: 'Remove photo',
+    missing: (name: string) => `${name} is missing.`,
+    needsName: 'Add a name first, then add photos.',
+    needsNameLink: 'Add a name',
+    empty: 'No photo',
+    states: { waiting: 'Waiting…', preparing: 'Getting it ready…', uploading: 'Uploading…' },
+    progress: (name: string) => `Uploading ${name.toLowerCase()}`,
+    failed: (reason: string) => (reason ? `Not added. ${reason}` : 'Not added.'),
+    retry: 'Try again',
+    retryLabel: (name: string) => `Try again: ${name.toLowerCase()}`,
+    discard: 'Cancel',
+    discardLabel: (name: string) => `Cancel ${name.toLowerCase()}`,
+    unreadable: 'We could not open this photo on this device. Save it as a JPG and try again.',
+    skipped: (n: number, reason: string) => `${photos(n)} ${n === 1 ? 'was' : 'were'} not added. ${reason}`,
+    removed: (name: string) => `${name} removed.`,
+    moved: 'Photos moved.',
+    actionFailed: (reason: string) => `That did not work. ${reason}`,
+    helper: 'Photos shrink to about 2000 px on your device before they upload, so they go quickly. JPG, PNG, WebP or iPhone photos.',
+  },
+
+  about: {
+    title: 'About the product',
+    name: 'Name',
+    nameHint: 'What it is, in a few words. For example: Relaxed Linen Shirt.',
+    gender: 'Gender',
+    type: 'Product type',
+    mainColour: catalogCopy.colours.main,
+    // Any colour: the listed ones are suggestions (owner's review, 22 Nov).
+    colourHint: 'Type a colour name or a hex code, choose one from the list, or pick a shade.',
+    pickShade: (colour: string) => `Pick a shade for ${colour.toLowerCase()}`,
+    otherColours: catalogCopy.colours.other,
+    otherHint: 'Up to 2, different from the main colour.',
+    otherColour: (n: number) => `Other colour ${n}`,
+    removeColour: (n: number) => `Remove other colour ${n}`,
+    addColour: 'Add another colour (up to 2)',
+    material: 'Material',
+    materialHint: 'For example: 100% linen',
+    description: 'Description',
+    descriptionHint: 'How it fits, how it is made and how to care for it.',
+  },
+
+  sizes: {
+    title: 'Sizes and stock',
+    chips: 'Sizes',
+    waist: catalogCopy.sizes.waist,
+    chipsHint: 'Tap each size you have, then type how many are in stock.',
+    noType: 'Choose a product type to see only its sizes.',
+    decrease: (size: string) => `One less in stock for ${size}`,
+    increase: (size: string) => `One more in stock for ${size}`,
+    stock: (size: string) => `Stock for ${size}`,
+    soldOut: 'Sold out',
+    total: (stock: string, count: number) => `${stock} in stock across ${count} ${count === 1 ? 'size' : 'sizes'}`,
+    none: 'No sizes yet. Tap the sizes you have.',
+  },
+
+  sizeChart: {
+    toggle: 'Size chart (optional)',
+    savedNote: 'Saved',
+    intro: 'Measurements in centimetres. Fill in what you know; every box is optional.',
+    noSizes: 'Tap your sizes above, then fill in their measurements here.',
+    size: 'Size',
+    cell: (measurement: string, size: string) => `${measurement} for ${size}, in cm`,
+    photoTitle: 'Or add a photo of your own size chart',
+    addPhoto: 'Add a photo',
+    replacePhoto: 'Change photo',
+    removePhoto: 'Remove photo',
+    photoAlt: 'Your size chart',
+    photoInput: 'Size chart photo file',
+    photoUploading: 'Uploading…',
+    save: 'Save size chart',
+    saving: 'Saving…',
+    saved: 'Size chart saved.',
+    fix: 'Check the highlighted measurements.',
+  },
+
+  price: {
+    title: 'Price',
+    selling: 'Selling price',
+    sellingHint: 'What shoppers pay, in rupees.',
+    mrp: 'MRP (optional)',
+    mrpHint: 'The price on the tag, if it has one.',
+    rule: 'Price rule: your price on Shazlo is never higher than anywhere else.',
+    // vendor-api keeps the price on each size, so a price needs a size before it can be saved.
+    waitsForSize: 'Add a size to save this price. It stays here until then.',
+    receive: (receive: string, percent: string, commission: string) => `You receive ${receive} after ${percent} commission (${commission})`,
+    receiveNoPrice: 'Add a selling price to see what you receive.',
+    receiveFixPrice: 'Fix the selling price to see what you receive.',
+    receivePending: 'You will see what you receive once your commission is agreed.',
+    commissionLink: 'Store details › Commission',
+    errors: {
+      format: 'Enter an amount in rupees, like 2,499.',
+      sellingZero: 'Enter a selling price above ₹0.',
+      mrpZero: 'Enter an MRP above ₹0.',
+      aboveMrp: catalogCopy.errors.product.priceAboveMrp,
+      liveNeedsPrice: 'This product is live, so it needs a selling price.',
+    },
+  },
+
+  returnsNote: {
+    title: 'Returns and delivery',
+    body: 'Returns and delivery come from your store details.',
+    policy: (days: number) => (days === 0 ? 'This store takes no returns.' : `This store takes returns within ${days} days.`),
+    link: 'Store details',
+  },
+
+  history: {
+    title: 'Review history',
+    events: {
+      created: 'Created as draft',
+      submitted: 'Sent for review',
+      rejected: 'Sent back',
+      approved: 'Approved',
+      archived: 'Archived',
+    } as Record<string, string>,
+  },
+
+  // Main's revision panel as a side card: what shoppers see now, beside the seller's changes. Every
+  // change to a live product, price and stock included, waits for review.
+  revision: {
+    title: 'Live in the app',
+    version: (n: number) => `Version ${formatCount(n)}`,
+    unchanged: 'Shoppers see this version. Changes you make here are checked by our team first; this version stays in the app until then.',
+    states: {
+      editing: 'Your changes, not sent yet',
+      in_review: 'Your changes, in review',
+      rejected: 'Your changes, sent back',
+      withdrawn: 'Your changes',
+    },
+    statesNote: {
+      editing: 'Send changes for review when you are ready. Shoppers see the live version until we approve them.',
+      in_review: 'Shoppers see the live version until we approve them.',
+      rejected: 'Fix what our team asked for, then send the changes again.',
+      withdrawn: 'Shoppers see the live version.',
+    },
+    columns: { live: 'Live', yours: 'Yours' },
+    labels: {
+      title: 'Name',
+      category: 'Product type',
+      gender: 'Gender',
+      colour: 'Main colour',
+      colours: 'Other colours',
+      material: 'Material',
+      description: 'Description',
+      sizes: 'Sizes and stock',
+      price: 'Selling price',
+      mrp: 'MRP',
+      photos: 'Photos',
+    },
+    none: 'None',
+    photos: (n: number) => `${photos(n)}`,
+    photosChanged: (n: number) => `${photos(n)}, changed`,
+  },
+
+  // Leaving with something not saved: photos on their way, a price waiting for a size, a failed save.
+  leave: {
+    title: 'Leave this product?',
+    photos: (n: number) => `${photos(n)} ${n === 1 ? 'is' : 'are'} not added yet.`,
+    price: 'The price is not saved yet: add a size first.',
+    notSaved: 'Your last change did not save.',
+    notStarted: 'This new product is not saved yet.',
+    lost: 'If you leave now, it is lost.',
+    stay: 'Stay',
+    leave: 'Leave anyway',
+  },
+
+  notFound: {
+    title: 'We could not find that product',
+    body: 'It may have been archived, or the link is old. Your other products are in Products.',
+    back: 'Back to products',
+  },
+  loadFailed: 'This product did not load',
+} as const

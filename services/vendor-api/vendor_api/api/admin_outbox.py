@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, JsonValue
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vendor_api.api.admin import Reviewer, reviewer_dependency
-from vendor_api.api.auth import no_store
+from vendor_api.api.common import no_store
 from vendor_api.db.models import OutboxEvent, OutboxEventLog
 from vendor_api.db.session import get_session
 from vendor_api.services.outbox_admin import (

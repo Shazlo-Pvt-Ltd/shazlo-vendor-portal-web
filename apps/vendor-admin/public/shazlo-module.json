@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "id": "vendor-admin",
+  "title": "Vendors",
+  "icon": "store",
+  "home": { "label": "Dashboard", "path": "/dashboard", "icon": "layout-dashboard" },
+  "links": [
+    { "label": "Review queue", "path": "/queue", "icon": "inbox", "also": ["/review"] },
+    { "label": "All vendors", "path": "/vendors", "icon": "building-2" },
+    { "label": "Publishing", "path": "/publishing", "icon": "send" }
+  ]
+}

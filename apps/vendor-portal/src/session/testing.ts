@@ -4,13 +4,15 @@ import { SessionStore, type SessionDeps } from './store'
 
 type SessionResponse = components['schemas']['SessionResponse']
 
-export function sessionBody(overrides: { role?: string; status?: string; token?: string; expires_in?: number } = {}): SessionResponse {
+export function sessionBody(
+  overrides: { role?: string; status?: string; token?: string; expires_in?: number; email?: string; vendorName?: string } = {},
+): SessionResponse {
   return {
     access_token: overrides.token ?? 'token-1',
     expires_in: overrides.expires_in ?? 900,
     token_type: 'Bearer',
-    user: { id: 'u1', email: 'owner@brand.test', role: overrides.role ?? 'owner', last_login_at: null },
-    vendor: { id: 'v1', name: 'Brand', slug: 'brand', status: overrides.status ?? 'approved' },
+    user: { id: 'u1', email: overrides.email ?? 'owner@brand.test', role: overrides.role ?? 'owner', last_login_at: null },
+    vendor: { id: 'v1', name: overrides.vendorName ?? 'Brand', slug: 'brand', status: overrides.status ?? 'approved' },
   } as SessionResponse
 }
 

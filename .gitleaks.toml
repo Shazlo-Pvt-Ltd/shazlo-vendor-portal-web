@@ -68,7 +68,7 @@ keywords = ["mongodb", "postgres", "mysql", "mariadb", "redis", "amqp"]
 description = "vendor-portal upload test fixture key"
 targetRules = ["generic-api-key"]
 condition = "AND"
-paths = ['''^apps/vendor-portal/src/features/uploads/testing\.ts$''']
+paths = ['''^apps/vendor-portal/src/api/uploads/testing\.ts$''']
 regexes = ['''^key-123456789012345$''']
 
 # The signing secret the publishing end-to-end test shares between vendor-api and central-stub.

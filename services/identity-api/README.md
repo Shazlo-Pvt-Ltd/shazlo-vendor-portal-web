@@ -71,7 +71,7 @@ The app refuses to start if `DATABASE_URL`, `REDIS_URL` or the JWT keys are miss
 
 - The **refresh token** is an `HttpOnly` cookie named `identity_refresh` on `/v1/auth` and is never in a response body (vendor-api uses `vendor_refresh`, so the two never share a cookie). The browser keeps it; JavaScript only ever holds the 15-minute access token.
 - **`COOKIE_SECURE=true`** (the default) works on `http://localhost` in Chrome and Firefox, which treat localhost as secure. Safari and curl do not, so set `COOKIE_SECURE=false` locally for them. Never in production: `ENV=prod` refuses `COOKIE_SECURE=false`.
-- **`SameSite=Strict`**: the shell (`http://localhost:5173`) and this API (`http://localhost:8001`) are the same site because ports do not count, so the cookie is sent. In production they share a parent domain, which also makes them the same site.
+- **`SameSite=Strict`**: the shell (`http://localhost:5192`, or `4192` for `vite preview`) and this API (`http://localhost:8001`) are the same site because ports do not count, so the cookie is sent. In production they share a parent domain, which also makes them the same site.
 - **Host-only:** the cookie has no `Domain` attribute, so the browser sends it back only to this API's own host, never to vendor-api or another service under the same parent domain. There is no setting for it.
 - **CORS**: the shell's exact origin must be in `CORS_ALLOWED_ORIGINS` (comma separated; no wildcard, because credentials are allowed), and its requests need `credentials: "include"` so the cookie is sent to `/v1/auth/refresh` and `/v1/auth/logout`.
 - Refresh from **one place** in the shell if you can. Two tabs that refresh with the same token at once do not end the session: the second request, within 10 seconds of the first use (`REFRESH_REUSE_GRACE_SECONDS`), gets `409 refresh_conflict`, and a retry works because the browser already holds the new cookie. A used token that comes back later revokes the whole family.
@@ -116,7 +116,7 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `REDIS_URL` | none (required) | `redis://` or `rediss://` |
 | `ENV` | `dev` | `dev`, `test` or `prod`; `prod` turns off `/docs` |
 | `LOG_LEVEL` | `INFO` | |
-| `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` | comma separated; credentials allowed for these only |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:5192,http://localhost:4192` | the Shazlo One shell (dev server, preview): comma separated; credentials allowed for these only; `X-Request-ID` and `Retry-After` are exposed to them |
 | `COOKIE_SECURE` / `COOKIE_SAMESITE` | `true` / `strict` | refresh-token cookie (always host-only: no `Domain` attribute) |
 | `JWT_ISSUER` | `http://localhost:8001` | `iss` claim. `ENV=prod` requires this service's public `https` URL (not the default, not localhost), and vendor-api's `IDENTITY_ISSUER` must be the same value |
 | `JWT_KEYS_DIR` / `JWT_KEYS` | none (one is required) | RS256 keys: a directory of `<kid>.pem` files and/or JSON `{"<kid>": "<PEM>"}`; the app refuses to start without a key, or (on Linux/macOS) with a private key file other users can read (looser than `0600`, or `0640` if owned by root) |
@@ -188,6 +188,7 @@ python -m identity_api.cli export-openapi --check    # fail if it is stale (CI c
 | `POST /v1/auth/logout` | Revokes the cookie's family and clears the cookie. Always `204`. |
 | `POST /v1/auth/token` | Bearer identity-api token plus `{"audience": "<service>"}`. Returns a 5-minute token for that one service (`{access_token, token_type, expires_in, audience}`), never outliving the asking token, with no refresh token. The token carries only the admin's roles that are listed for that service. `400 audience_not_exchangeable` for `identity-api` itself, `400 unknown_audience` if the service is not in `AUDIENCE_ROLES`, `403 audience_not_allowed` if none of the admin's roles is listed for it. |
 | `GET /v1/me` | The signed-in admin: id, email, display name, roles, `must_change_password`. Never hashes or tokens. |
+| `GET /v1/admins/names` | Any signed-in admin. `?ids=` repeated, 1 to 100 admin ids: `{items: [{id, display_name}]}` and nothing else. Unknown ids are left out; a deactivated admin keeps their name. For showing who made a decision that another service recorded by id. |
 | `GET /v1/roles` | `super_admin` only (like every endpoint below): the roles that exist, `[{name, description}]`. |
 | `GET /v1/admins` | Paged list `{items, total, limit, offset}`. Query: `limit` (1-100, default 25), `offset`, `q` (email or name contains), `role`, `is_active`. |
 | `POST /v1/admins` | `{email, display_name, password, roles}` creates an admin with `must_change_password` set. `201`, `409 email_taken` (any letter case), `422 weak_password` / `unknown_role`. |
