@@ -62,18 +62,23 @@ function HostedFrame({ entry, visible, onStatus }: FrameProps) {
   sessionRef.current = session
   const onStatusRef = useRef(onStatus)
   onStatusRef.current = onStatus
+  // Told when the admin's roles change, so the module gets a token for the new ones at once.
+  const onRolesChanged = useRef<(roles: string) => void>(undefined)
 
   useEffect(() => {
     const iframe = frame.current
     if (iframe === null) return
     let disposed = false
     let newest = 0
-    // The token the module holds now (the last one sent), the timers that keep it fresh, and how many
-    // refreshes in a row have failed.
+    // The token the module holds now (the last one sent), the roles it was sent with, the timers that
+    // keep it fresh, and how many refreshes in a row have failed.
     let held: ModuleToken | undefined
+    let heldRoles = ''
     let refreshTimer: ReturnType<typeof setTimeout> | undefined
     let expiryTimer: ReturnType<typeof setTimeout> | undefined
     let refreshing = false
+    // The roles changed while a refresh was under way (its token may be for the old ones): refresh again after it.
+    let refreshAgain = false
     let failures = 0
     let lastTokenRequest = Number.NEGATIVE_INFINITY
     const report = (status: Status) => {
@@ -95,6 +100,7 @@ function HostedFrame({ entry, visible, onStatus }: FrameProps) {
         replyTo === undefined ? {} : { replyTo },
       )
       if (!sent) return false
+      heldRoles = roles.join(' ')
       // The token it already holds (a `ready` replayed): its timers and the backoff carry on as they were,
       // so `ready` cannot be used to cut a backoff short or force an exchange.
       if (token === held) return true
@@ -138,7 +144,17 @@ function HostedFrame({ entry, visible, onStatus }: FrameProps) {
         failures += 1
       } finally {
         refreshing = false
+        if (refreshAgain && !disposed) {
+          refreshAgain = false
+          void refresh()
+        }
       }
+    }
+
+    onRolesChanged.current = (roles) => {
+      if (disposed || held === undefined || roles === heldRoles) return
+      if (refreshing) refreshAgain = true
+      else void refresh()
     }
 
     async function answer(info: ReadyInfo): Promise<void> {
@@ -191,6 +207,10 @@ function HostedFrame({ entry, visible, onStatus }: FrameProps) {
       sessionRef.current.dropModuleTokens(entry.id)
     }
   }, [entry])
+
+  // A renewal that changes the admin's roles: the token the module holds carries the old ones.
+  const roles = session.roles.join(' ')
+  useEffect(() => onRolesChanged.current?.(roles), [roles])
 
   return (
     <iframe

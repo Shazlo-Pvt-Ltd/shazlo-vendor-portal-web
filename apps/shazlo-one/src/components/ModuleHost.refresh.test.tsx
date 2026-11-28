@@ -433,6 +433,21 @@ describe('a module that sends `ready` again and again', () => {
   })
 })
 
+describe('when a renewal changes who the admin is or what they may do', () => {
+  it('new roles: the module gets a token for them at once, not at the next scheduled refresh', async () => {
+    let roles = ['vendor_reviewer']
+    const t = await open({ roles: () => roles })
+    await settle(60_000)
+    roles = ['vendor_reviewer', 'super_admin']
+    await act(async () => {
+      await t.store.renew()
+    })
+    await settle()
+    expect(t.exchange).toHaveBeenCalledTimes(2)
+    expect(t.module.auths.at(-1)).toMatchObject({ accessToken: 'mod-2', user: { roles: ['vendor_reviewer', 'super_admin'] } })
+  })
+})
+
 describe('the page while this happens', () => {
   it('keeps the shell’s chrome usable through a failing refresh', async () => {
     await open({ exchangeFails: (call) => (call >= 2 ? new NetworkError('network') : undefined) })
