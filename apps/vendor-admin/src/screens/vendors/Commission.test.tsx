@@ -88,6 +88,8 @@ describe('A-09 Commission card', { timeout: 30_000 }, () => {
     // vendor-api's `vendor_not_eligible` keeps its own message.
     expect(await screen.findByText('This application was rejected: there is no rate to agree.')).toBeInTheDocument()
     expect(vendorOf(db, 'v_kesariya').commission.agreed_bps).toBeNull()
+    // The page reads the vendor again: a rejected brand has no commission card to act on.
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Commission', hidden: true })).not.toBeInTheDocument())
   })
 
   it('sets a rate for a brand with none, with an optional note', async () => {

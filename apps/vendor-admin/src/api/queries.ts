@@ -184,8 +184,9 @@ export function useVendorAction(id: string) {
 
 export type CommissionAction = { step: 'approve'; proposed_bps: number } | { step: 'send-back'; body: { note: string } } | { step: 'set'; body: { commission_bps: number; note?: string } }
 
-// Codes that mean the vendor's commission is not what the card shows: read it again.
-const STALE_COMMISSION = new Set(['commission_changed', 'no_proposal'])
+// Codes that mean the vendor is not what the card shows (another proposal, none waiting, or the
+// application rejected meanwhile): read it again.
+const STALE_COMMISSION = new Set(['commission_changed', 'no_proposal', 'vendor_not_eligible'])
 
 // Approve a brand's proposed rate (the one the card shows), send it back with a note, or set the rate
 // directly. vendor-api answers with the brand's commission, which goes into the vendor the page holds;
