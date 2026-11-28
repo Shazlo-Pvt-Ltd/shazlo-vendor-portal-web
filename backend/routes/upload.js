@@ -7,7 +7,8 @@ import Product from "../models/Product.js";
 import { rateLimitOptions } from "../lib/rateLimits.js";
 import { isObjectIdString, isPlainObject } from "../lib/validation.js";
 
-dotenv.config();
+// quiet: dotenv 17+ otherwise logs a line to stderr each time it loads the file.
+dotenv.config({ quiet: true });
 
 // Configure Cloudinary
 cloudinary.config({

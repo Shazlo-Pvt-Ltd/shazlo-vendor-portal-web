@@ -197,12 +197,15 @@ describe('production HTTP application', () => {
     const { code, stderr } = await startServer({ dotenv: `TRUST_PROXY=true\nMONGODB_URI=${mongo.getUri('dotenv_tests')}\n` })
     expect(code).not.toBe(0)
     expect(stderr).toMatch(/TRUST_PROXY=true would trust a client-supplied X-Forwarded-For/)
+    // dotenv 17+ logs each file it loads unless told to be quiet; keep the service's stderr to errors.
+    expect(stderr).not.toMatch(/injected env|\.env/)
   })
 
   it('refuses to start on Render without TRUST_PROXY, rather than give every visitor one budget', async () => {
     const { code, stderr } = await startServer({ dotenv: `MONGODB_URI=${mongo.getUri('dotenv_tests')}\n`, env: { RENDER: 'true' } })
     expect(code).not.toBe(0)
     expect(stderr).toMatch(/TRUST_PROXY is not set/)
+    expect(stderr).not.toMatch(/injected env|\.env/)
   })
 
   it('serves health through the actual middleware stack', async () => {
