@@ -32,6 +32,7 @@ Plan, phases and decisions: [docs/ROADMAP.md](docs/ROADMAP.md). Architecture dec
 | `apps/shazlo-one/` | React + TS: admin shell (login, nav, iframe host) |
 | `apps/vendor-admin/` | React + TS: vendor review module, loaded in a Shazlo-One iframe |
 | `packages/ui/` | Shared MUI theme and tokens |
+| `packages/shell-protocol/` | The postMessage protocol between Shazlo-One and its framed modules: types, validators, both ends of the channel |
 | `packages/py-auth/` | Shared Python package: access-token verifier, JWKS client, FastAPI `require_role` |
 | `packages/py-security/` | Shared Python package: password hashing, rate limiter, client IP, refresh-token store, signing keys and token issuer, request signing (ADR 0010, ADR 0003) |
 | `docs/` | [Roadmap](docs/ROADMAP.md), design documents, [ADRs](docs/adr), [runbooks](docs/runbooks), [test strategy](docs/testing.md) |
@@ -39,7 +40,7 @@ Plan, phases and decisions: [docs/ROADMAP.md](docs/ROADMAP.md). Architecture dec
 | `test/contracts/` | JavaScript contract tests for the ADR 0003 schemas, the shared-package install files and the secret-file ignore rules |
 | `app/`, `backend/` | **Legacy** consumer landing/waitlist, Express + MongoDB. Untouched until Phase 8, apart from security fixes |
 
-The three Python services and the two Python packages are built. Of the web apps, `apps/shazlo-one/` and `apps/vendor-admin/` are placeholders until their phase starts, and `apps/vendor-portal/` is being built (Phase 5: sign-in, the dashboard, the brand page editor, the products list, the product form, the bulk import, the team and account pages and submission status are merged); see the roadmap and the app's README.
+The three Python services and the two Python packages are built. Of the web apps, `apps/vendor-admin/` is a placeholder until its phase starts, `apps/shazlo-one/` is scaffolded (Phase 6: it serves an empty shell with its settings check, typed API client and security headers), and `apps/vendor-portal/` is being built (Phase 5: sign-in, the dashboard, the brand page editor, the products list, the product form, the bulk import, the team and account pages and submission status are merged); see the roadmap and the app's README.
 
 ## Local development
 
