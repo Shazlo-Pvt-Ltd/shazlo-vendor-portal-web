@@ -114,6 +114,24 @@ jobs:
       - run: npm run build --workspace @shazlo/vendor-portal
         env:
           VITE_VENDOR_API_URL: https://api.example.com
+      # Shazlo One fails closed: a production build needs identity-api's https origin and a registry of
+      # exact https URLs (the example one here), and ships no mock unless VITE_MOCK_API=on.
+      - run: npm run build --workspace @shazlo/shazlo-one
+        env:
+          VITE_IDENTITY_API_URL: https://identity.example.com
+          VITE_SHELL_REGISTRY: registry/example.production.json
+      - name: Shazlo One's production build carries no mock and no demo password
+        run: |
+          if grep -rlE 'shazlo-one-2026|welcome-sneha-01|setupWorker|mockServiceWorker' apps/shazlo-one/dist; then
+            echo 'The production build of Shazlo One contains the browser mock.' >&2
+            exit 1
+          fi
+          test ! -e apps/shazlo-one/dist/mockServiceWorker.js
+      # The Vendors module: framed only by the shell's origin, calling only vendor-api's admin app.
+      - run: npm run build --workspace @shazlo/vendor-admin
+        env:
+          VITE_SHELL_ORIGIN: https://one.example.com
+          VITE_VENDOR_API_URL: https://vendor-admin-api.example.com
       - run: npm run build --prefix app
       - name: Retain test results and coverage
         if: always()
