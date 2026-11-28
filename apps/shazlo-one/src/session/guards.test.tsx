@@ -4,6 +4,7 @@ import { RouterProvider, createMemoryRouter, type RouteObject } from 'react-rout
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NetworkError } from '../api/errors'
 import { routes } from '../app/routes'
+import { ModuleRegistryProvider } from '../modules/ModuleRegistryProvider'
 import { AuthProvider } from './AuthProvider'
 import { RequireAuth, RequireRole } from './guards'
 import type { SessionStore } from './store'
@@ -16,9 +17,11 @@ async function open(path: string, store: SessionStore, tree: RouteObject[] = rou
   const queryClient = new QueryClient()
   render(
     <QueryClientProvider client={queryClient}>
-      <AuthProvider store={store}>
-        <RouterProvider router={router} />
-      </AuthProvider>
+      <ModuleRegistryProvider entries={[]}>
+        <AuthProvider store={store}>
+          <RouterProvider router={router} />
+        </AuthProvider>
+      </ModuleRegistryProvider>
     </QueryClientProvider>,
   )
   return router

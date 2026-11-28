@@ -307,7 +307,7 @@ export function isTrustedMessage(
 
 **Follow-ups**
 - ~~Create `packages/shell-protocol` with these types, runtime validators and a test harness (Phase 6).~~ Done (#253): [`packages/shell-protocol`](../../packages/shell-protocol/README.md), with hand-written validators (no `zod`; the package has no runtime dependency), `createShellChannel` and `createModuleClient`, and contract tests that run both ends over two jsdom windows. Two details the ADR left open: a module reads the shell's `error` at any `v` (so it can learn `version_unsupported` even when it speaks no common version), and the shell reads `ready` at any `v` for the same reason.
-- Decide where the module registry lives (shell config per environment is the proposal).
+- ~~Decide where the module registry lives.~~ Decided (Phase 6, #252): the shell's own typed configuration, one list per environment (`development`, `preview`, `production`), in `apps/shazlo-one/src/modules/registry.ts`. An entry holds `id`, `title`, `description`, `url`, `origin`, `roles`, `audience` and `supportedVersions`. It is checked when the shell builds and when it starts, and refused if an origin is a wildcard or pattern, is not https outside development, is not the origin of its `url`, repeats an id or origin, or has an empty role list. The CSP `frame-src` is generated from it, so adding a module is one entry. `super_admin` opens every module.
 
 ## Alternatives considered
 

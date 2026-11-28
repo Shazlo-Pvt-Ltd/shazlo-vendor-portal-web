@@ -60,13 +60,14 @@ export-openapi` in `services/identity-api`), then `api:generate` here, and commi
 ```
 src/
   main.tsx            entry: fonts, then <App />
-  App.tsx             checks the environment, then renders the router (or the misconfigured screen)
+  App.tsx             checks the environment and the module registry, then renders the router (or the misconfigured screen)
   app/                Providers (theme, error boundary, query cache), routes, router, query defaults
   api/                the typed client: client.ts, errors.ts, instance.ts, schema.d.ts (generated)
   config/env.ts       VITE_IDENTITY_API_URL, checked once at start
   session/            the admin session: store, AuthProvider, guards, return-to check
-  security/           headers.ts (every header, defined once), moduleOrigins.ts, sensitiveState.ts, and the tests
-  components/         ErrorBoundary, ErrorScreen, RouteError, NotFound, Misconfigured
+  modules/            registry.ts (the module list and its checks), loadRegistry, ModuleRegistryProvider
+  security/           headers.ts (every header, defined once), sensitiveState.ts, PasswordField.tsx, and the tests
+  components/         ShellLayout, NavList, AccountMenu, NoAccess (403), NotFound, ErrorBoundary, ErrorScreen, RouteError, Misconfigured, CountdownNotice
   hooks/              usePageTitle
   pages/              one file per route
   test/               test setup
@@ -128,6 +129,43 @@ on a `401` from anything but `/v1/auth/*`, renews the session once and repeats t
 - Session and token-exchange answers are checked: a non-empty token and a lifetime between 0 and a
   day, or the answer is refused.
 
+## Modules and the layout
+
+The module registry is `src/modules/registry.ts`: one list per environment (`development`,
+`preview`, `production`). **Adding a module is one entry** there, and the navigation, the routes and
+the Content-Security-Policy `frame-src` all follow:
+
+```ts
+{
+  id: 'vendor-admin',            // the address, /m/vendor-admin; lower case, digits, hyphens
+  title: 'Vendor admin',
+  description: 'Review vendor applications, products and brand pages.',
+  url: 'https://vendor-admin.shazlo.com/',
+  origin: 'https://vendor-admin.shazlo.com',   // exact; never a wildcard or a pattern
+  roles: ['vendor_reviewer'],    // an admin needs one of these; super_admin opens every module
+  audience: 'vendor-api',        // the token audience identity-api issues for it
+  supportedVersions: [1],
+}
+```
+
+The registry is checked when the shell builds (the Vite config and the Vercel prebuild step) and
+when it starts (a bad one shows the misconfiguration screen). It refuses a wildcard or pattern
+origin, a host with anything but letters, digits, dots and hyphens, a non-https origin outside development, a `url` that is not on its `origin`, duplicate ids
+or origins, and an empty role list; the message names the module and what to change. Which list a
+build uses: `development` for `npm run dev`, `preview` when `VITE_DEPLOY_ENV` (or Vercel's
+`VERCEL_ENV`) is `preview`, `production` otherwise. The file has no imports, so Node and Vite read
+it without loading the app.
+
+- **Layout:** a skip link, an app bar (Shazlo-One, account menu), a navigation drawer (permanent from
+  900 px, behind a menu button below), and one `<main>`. After each navigation the page heading
+  takes focus (not on the first page).
+- **Role filtering:** a module shows only if the admin holds one of its roles (`super_admin` sees
+  all). "Admins" is for `super_admin` only. The session reads `GET /v1/me` again on every renewal, so
+  a changed role shows without a new sign-in.
+- **Routes:** `/m/:moduleId/*` (the rest of the path belongs to the module). An unknown id is "Page
+  not found"; a module the roles do not allow is the 403 page. Neither renders a frame.
+- **Home:** a card for each module the admin may open, or an explanation when there is none.
+
 ## Security rules
 
 The shell is where admins sign in, so a script running on it could act as an admin. These rules are
@@ -138,7 +176,7 @@ enforced by tests and lint, not by review alone.
   rewrites it from `VITE_IDENTITY_API_URL`, and fails if that is not a plain https origin).
   The Content-Security-Policy has `script-src 'self'` (no inline script, no `eval`; development adds
   `'unsafe-inline'` for the React refresh preamble only), `connect-src` the identity API only,
-  `frame-src` only the registered module origins (`src/security/moduleOrigins.ts`; `'none'` while
+  `frame-src` only the registered module origins (from the module registry, `src/modules/registry.ts`; `'none'` while
   there are none), `frame-ancestors 'none'` (the shell is never framed), `object-src 'none'` and
   `base-uri 'self'`. Also `Referrer-Policy`, `X-Content-Type-Options`, `Permissions-Policy`, and
   HSTS in production. A module's own backend calls run inside its frame, under its own policy, so

@@ -19,7 +19,9 @@ export function safeReturnTo(value: string | null | undefined): string {
   if (url.origin !== 'https://shell.invalid') return '/'
   const known = shellPaths.some((route) => {
     if (route.access !== 'auth') return false
-    const pattern = new RegExp(`^${route.path.replace(/:[^/]+/g, '[^/]+')}$`)
+    // `:name` is one path segment; a trailing `/*` is the module's own part of the path (or nothing).
+    const source = route.path.replace(/:[^/]+/g, '[^/]+').replace(/\/\*$/, '(?:/.*)?')
+    const pattern = new RegExp(`^${source}$`)
     return pattern.test(url.pathname)
   })
   return known ? `${url.pathname}${url.search}${url.hash}` : '/'
