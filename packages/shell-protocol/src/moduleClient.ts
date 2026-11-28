@@ -1,11 +1,12 @@
 import { PROTOCOL_VERSION, TOKEN_REQUEST_INTERVAL_MS, TOKEN_SLACK_SECONDS } from './constants'
 import { createDropLogger, type DropLogger } from './logger'
-import { assertExactOrigin } from './origin'
+import { ProtocolConfigError, assertExactOrigin } from './origin'
 import { createEnvelope, newMessageId, postExact } from './post'
 import { isWithinSizeLimit } from './size'
 import { isTrustedMessage } from './trust'
 import type { AuthPayload, TokenRequestReason, ToastPayload, UserInfo } from './types'
 import { parseShellToModule, payloadChecks } from './validate'
+import { assertVersions } from './version'
 
 export interface ModuleClientOptions {
   /**
@@ -65,7 +66,13 @@ export function createModuleClient(options: ModuleClientOptions): ModuleClient {
   const development = options.development === true
   const shellOrigin = assertExactOrigin(options.shellOrigin, { development, name: 'The shell origin (SHELL_ORIGIN)' })
   const own = options.window ?? globalThis.window
-  const supported = options.supportedVersions ?? [PROTOCOL_VERSION]
+  const supported = assertVersions(options.supportedVersions ?? [PROTOCOL_VERSION], 'The module versions')
+  // `ready` is built from the set-up alone, so a bad module id or version fails here, at start, rather
+  // than as a `ready` the shell drops in silence.
+  const readyPayload = payloadChecks.ready({ module: options.module, supportedVersions: supported, moduleVersion: options.moduleVersion })
+  if (readyPayload === undefined) {
+    throw new ProtocolConfigError('The module id and version must be short plain text (at most 64 characters each).')
+  }
   const logger = options.logger ?? createDropLogger({ development })
   const newId = options.newId ?? newMessageId
   const now = options.now ?? (() => Date.now())
@@ -129,7 +136,7 @@ export function createModuleClient(options: ModuleClientOptions): ModuleClient {
   return {
     sendReady() {
       // `ready` names every version the module speaks; the envelope carries its highest.
-      return send('ready', { module: options.module, supportedVersions: [...supported], moduleVersion: options.moduleVersion })
+      return send('ready', readyPayload)
     },
     sendTitle(path, title) {
       const payload = checked(payloadChecks.title({ path, title }), 'title')

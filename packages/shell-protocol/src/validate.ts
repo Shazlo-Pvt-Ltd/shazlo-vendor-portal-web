@@ -59,6 +59,13 @@ export function isModulePath(value: unknown): value is string {
   )
 }
 
+/**
+ * `expiresAt` is epoch **seconds**. Anything past this (the year 2286) is a time in milliseconds sent
+ * by mistake: taken as seconds it would look valid for millennia, and the module, which ignores any
+ * later `auth` that expires earlier, would then refuse every correct one.
+ */
+const MAX_EXPIRES_AT_SECONDS = 10_000_000_000
+
 const positiveInteger = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value >= 1
 
 // --- payload checks ----------------------------------------------------------------------------
@@ -83,9 +90,10 @@ export const payloadChecks = {
     if (!isObject(value)) return undefined
     const accessToken = text(value.accessToken, 8192)
     const user = userInfo(value.user)
-    // Epoch seconds: a finite positive number, not a string or a date.
+    // Epoch seconds: a finite positive number, not a string, a date or milliseconds.
     if (accessToken === undefined || user === undefined) return undefined
     if (typeof value.expiresAt !== 'number' || !Number.isFinite(value.expiresAt) || value.expiresAt <= 0) return undefined
+    if (value.expiresAt > MAX_EXPIRES_AT_SECONDS) return undefined
     const result: AuthPayload = { accessToken, expiresAt: value.expiresAt, user }
     if (value.locale !== undefined) {
       const locale = text(value.locale, 35)
@@ -188,15 +196,11 @@ function fail(reason: DropReason, type?: unknown): { ok: false; reason: DropReas
  * `id`, an optional UUID `replyTo`, a numeric `sentAt` and a `payload`. It does not look at the payload.
  */
 export function isEnvelope(data: unknown): data is Envelope<string, unknown> {
-  if (!isObject(data)) return false
-  return (
-    data.protocol === PROTOCOL &&
-    typeof data.v === 'number' &&
-    typeof data.type === 'string' &&
-    typeof data.id === 'string' &&
-    typeof data.sentAt === 'number' &&
-    'payload' in data
-  )
+  try {
+    return readEnvelope(data).ok
+  } catch {
+    return false
+  }
 }
 
 function readEnvelope(data: unknown): { ok: true; envelope: RawEnvelope } | { ok: false; reason: DropReason; type?: string } {
