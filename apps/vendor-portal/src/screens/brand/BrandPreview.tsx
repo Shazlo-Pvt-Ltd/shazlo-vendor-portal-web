@@ -312,11 +312,6 @@ function Phone({ profile }: { profile: Profile }) {
             <Typography data-part="name" component="p" sx={{ ...emphasis.semibold, ...wrap, mt: u(10), fontSize: u(24), lineHeight: 1.2, letterSpacing: '-0.01em', color: neutral.ink }}>
               {profile.brand_name}
             </Typography>
-            {profile.tagline && (
-              <Typography data-part="tagline" component="p" sx={{ ...wrap, mt: u(4), fontSize: u(15), lineHeight: 1.4, color: neutral.inkSecondary }}>
-                {profile.tagline}
-              </Typography>
-            )}
             {hasMeta && (
               <Stack data-part="meta" direction="row" sx={{ flexWrap: 'wrap', columnGap: u(14), rowGap: u(6), mt: u(12), fontSize: u(13), lineHeight: 1.4, color: brand.brown }}>
                 {city && <Meta icon={MapPin}>{city}</Meta>}

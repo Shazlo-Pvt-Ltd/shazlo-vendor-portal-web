@@ -281,9 +281,13 @@ describe('store details, commission and the brand page', () => {
     expect(page.result.current.data).toMatchObject({ changed_fields: ['cover_url', 'story'], review: { state: 'approved' }, live: { based_in: 'Ahmedabad, Gujarat', instagram: '@kalki.studio' } })
     const save = renderHook(() => useSaveBrandDraft(), { wrapper })
     await act(async () => {
-      await save.result.current.mutateAsync({ ...page.result.current.data!.draft!, tagline: 'Indigo, always.' })
+      await save.result.current.mutateAsync({ ...page.result.current.data!.draft!, story: 'Indigo, always.' })
     })
-    expect(db().brands.values().next().value!.find((v) => v.state === 'draft')!.content.tagline).toBe('Indigo, always.')
+    const saved = db().brands.values().next().value!.find((v) => v.state === 'draft')!.content
+    expect(saved.about).toBe('Indigo, always.')
+    // The brand page has no tagline: a save clears the one the seed's draft still had.
+    expect(saved.tagline).toBeNull()
+    expect(page.result.current.data!.draft).not.toHaveProperty('tagline')
     const submit = renderHook(() => useSubmitBrandPage(), { wrapper })
     let after: Awaited<ReturnType<typeof submit.result.current.mutateAsync>> | undefined
     await act(async () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { dashboardCopy } from './dashboard'
 import { publishingCopy } from './publishing'
 import { queueCopy } from './queue'
 import { reviewCopy } from './review'
@@ -7,7 +8,7 @@ import { commissionCopy, rateErrors, sellsLabel, vendorActionsCopy, vendorDetail
 // The house rule: no full stop at the end of a heading, title, label, button, tab, chip or menu
 // item. Sentences (body text, hints, errors, toasts, banner messages) keep theirs.
 
-const COPY = { queueCopy, publishingCopy, reviewCopy, vendorsCopy, vendorActionsCopy, vendorDetailCopy, commissionCopy, rateErrors, sellsLabel, vendorTabs }
+const COPY = { dashboardCopy, queueCopy, publishingCopy, reviewCopy, vendorsCopy, vendorActionsCopy, vendorDetailCopy, commissionCopy, rateErrors, sellsLabel, vendorTabs }
 
 // The strings that are sentences, by where they sit in the copy.
 const SENTENCES = [

@@ -8,8 +8,12 @@ import type { BrandPage, BrandProfile, ReviewState } from '../model'
 import type { BrandProfileBody, BrandProfileOut, DraftOut, SubmissionOut } from '../wire'
 import { asArray, isoOrNull, textOrNull } from './common'
 
-/** The fields the editor lets a seller change (its `EDITABLE`), in the editor's order. */
-const EDITABLE: readonly (keyof BrandProfile)[] = ['logo_url', 'cover_url', 'based_in', 'tagline', 'story', 'instagram', 'website']
+/**
+ * The fields the editor lets a seller change (its `EDITABLE`), in the editor's order. The brand
+ * page has no tagline any more: vendor-api's `tagline` is never read, so an old one neither shows
+ * nor counts as a change.
+ */
+const EDITABLE: readonly (keyof BrandProfile)[] = ['logo_url', 'cover_url', 'based_in', 'story', 'instagram', 'website']
 
 const text = (value: unknown): string => (typeof value === 'string' ? value : '')
 
@@ -18,7 +22,6 @@ export function profileFromApi(p: BrandProfileOut | DraftOut): BrandProfile {
   return {
     brand_name: text(p.brand_name),
     based_in: text(p.based_in),
-    tagline: text(p.tagline),
     story: text(p.about),
     logo_url: textOrNull(p.logo_url),
     cover_url: textOrNull(p.banner_url),
@@ -85,12 +88,13 @@ function websiteUrl(value: string): string | null {
  * The PUT body for the editor's values. A PUT replaces the whole draft, so what the editor does
  * not show (categories, price range, the store name) is copied from the draft as the server has it.
  * Images go by asset id: `resolve` finds the id of an image uploaded in this session.
+ * The tagline is the exception: the brand page has none, so every save clears an old one.
  */
 export function draftBodyFromProfile(profile: BrandProfile, current: DraftOut, resolve: (url: string) => string | null): BrandProfileBody {
   return {
     brand_name: text(current.brand_name) || profile.brand_name,
     based_in: textOrNull(profile.based_in),
-    tagline: textOrNull(profile.tagline),
+    tagline: null,
     about: textOrNull(profile.story),
     logo_asset_id: imageId(profile.logo_url, current.logo_url, current.logo_asset_id, resolve),
     banner_asset_id: imageId(profile.cover_url, current.banner_url, current.banner_asset_id, resolve),
@@ -119,6 +123,19 @@ export function publishedAsBody(p: BrandProfileOut): BrandProfileBody {
   }
 }
 
+/**
+ * What the draft still needs before it goes for review, as the PUT body that gives it, or null when
+ * it needs nothing: the `categories` vendor-api asks for (passed when the draft has none), and no
+ * tagline. The brand page has no tagline any more and every editor save clears it, but a draft not
+ * saved since may still carry an old one, which must not go for review unseen.
+ */
+export function draftReadyForReview(draft: DraftOut, categories: string[] | null): BrandProfileBody | null {
+  const addCategories = categories !== null && categories.length > 0
+  const oldTagline = textOrNull(draft.tagline) !== null
+  if (!addCategories && !oldTagline) return null
+  return { ...publishedAsBody(draft), tagline: null, ...(addCategories ? { categories } : {}) }
+}
+
 const FIELD: Record<string, string> = {
   about: 'story',
   instagram_handle: 'instagram',
@@ -126,7 +143,6 @@ const FIELD: Record<string, string> = {
   logo_asset_id: 'logo_url',
   banner_asset_id: 'cover_url',
   based_in: 'based_in',
-  tagline: 'tagline',
   brand_name: 'brand_name',
 }
 

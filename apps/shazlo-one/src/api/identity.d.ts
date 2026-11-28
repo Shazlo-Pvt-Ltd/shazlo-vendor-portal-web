@@ -85,6 +85,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admins/names": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin Names
+         * @description The display names of the admins with these ids, for any signed-in admin.
+         */
+        get: operations["admin_names_v1_admins_names_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admins/{admin_id}": {
         parameters: {
             query?: never;
@@ -264,6 +284,21 @@ export interface components {
             offset: number;
             /** Total */
             total: number;
+        };
+        /** AdminName */
+        AdminName: {
+            /** Display Name */
+            display_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /** AdminNames */
+        AdminNames: {
+            /** Items */
+            items: components["schemas"]["AdminName"][];
         };
         /** AdminOut */
         AdminOut: {
@@ -599,6 +634,56 @@ export interface operations {
              *
              *     `validation_error`: The request does not match the schema; `details` lists the problems.
              */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    admin_names_v1_admins_names_get: {
+        parameters: {
+            query: {
+                /** @description Admin ids; repeat the parameter, at most 100 */
+                ids: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminNames"];
+                };
+            };
+            /** @description `unauthorized`: The access token is missing, invalid, expired, or its admin is deactivated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `password_change_required`: The admin must change the initial password first. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `validation_error`: The request does not match the schema; `details` lists the problems. */
             422: {
                 headers: {
                     [name: string]: unknown;

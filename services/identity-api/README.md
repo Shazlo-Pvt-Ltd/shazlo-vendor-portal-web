@@ -188,6 +188,7 @@ python -m identity_api.cli export-openapi --check    # fail if it is stale (CI c
 | `POST /v1/auth/logout` | Revokes the cookie's family and clears the cookie. Always `204`. |
 | `POST /v1/auth/token` | Bearer identity-api token plus `{"audience": "<service>"}`. Returns a 5-minute token for that one service (`{access_token, token_type, expires_in, audience}`), never outliving the asking token, with no refresh token. The token carries only the admin's roles that are listed for that service. `400 audience_not_exchangeable` for `identity-api` itself, `400 unknown_audience` if the service is not in `AUDIENCE_ROLES`, `403 audience_not_allowed` if none of the admin's roles is listed for it. |
 | `GET /v1/me` | The signed-in admin: id, email, display name, roles, `must_change_password`. Never hashes or tokens. |
+| `GET /v1/admins/names` | Any signed-in admin. `?ids=` repeated, 1 to 100 admin ids: `{items: [{id, display_name}]}` and nothing else. Unknown ids are left out; a deactivated admin keeps their name. For showing who made a decision that another service recorded by id. |
 | `GET /v1/roles` | `super_admin` only (like every endpoint below): the roles that exist, `[{name, description}]`. |
 | `GET /v1/admins` | Paged list `{items, total, limit, offset}`. Query: `limit` (1-100, default 25), `offset`, `q` (email or name contains), `role`, `is_active`. |
 | `POST /v1/admins` | `{email, display_name, password, roles}` creates an admin with `must_change_password` set. `201`, `409 email_taken` (any letter case), `422 weak_password` / `unknown_role`. |

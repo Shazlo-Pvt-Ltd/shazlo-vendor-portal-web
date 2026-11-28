@@ -6,16 +6,15 @@ import { Link as RouterLink, Outlet, useLocation, useMatches, useNavigate } from
 import { useVendorSummary } from '../api/queries'
 import { usePageCrumb, type RouteHandle } from '../app/crumbs'
 import { paths } from '../app/paths'
-import { modules } from '../app/registry'
+import { currentLink, isModuleHome, moduleFor, modules, type ShellModule } from '../app/registry'
 import { shellCopy as copy } from '../copy/shell'
 import { srOnly } from '../lib/a11y'
 import { useSession } from '../session/useSession'
+import { PHONE_CRUMBS, shellTop, TOP } from './metrics'
+import { ModuleNav } from './ModuleNav'
 import { PageFallback } from './PageFallback'
 
 const SIDEBAR = 256
-const TOP = 56
-// Phones stack the navy bar and a one-crumb bar; the module iframe fills what is left.
-const PHONE_CRUMBS = 44
 // Shazlo One's chrome is navy (design language: "Navy: Shazlo-One shell, sign-in and bulk actions").
 const NAVY_TEXT = 'rgba(255, 252, 227, 0.78)'
 const NAVY_LINE = 'rgba(255, 252, 227, 0.14)'
@@ -119,12 +118,15 @@ function Navigation({ touch, onNavigate }: { touch: boolean; onNavigate?: () => 
         {allowed.length > 0 && <SectionLabel>{copy.modules}</SectionLabel>}
         <List disablePadding>
           {allowed.map((m) => {
-            const inModule = pathname.startsWith(m.basePath)
+            // The module's row opens its dashboard and is the current page there; on one of its
+            // other pages it is the parent, and that page is current (the top bar agrees).
+            const home = isModuleHome(m, pathname)
+            const current = currentLink(m, pathname)
             return (
-              <NavLink key={m.id} {...link} to={m.basePath + m.links[0]!.path} label={m.title} icon={m.icon} active={false} parent={inModule} count={summary?.queue.all} countLabel={copy.waiting(summary?.queue.all ?? 0)}>
+              <NavLink key={m.id} {...link} to={m.basePath + m.home.path} label={m.title} icon={m.icon} active={home} parent={moduleFor(pathname) === m} count={summary?.queue.all} countLabel={copy.waiting(summary?.queue.all ?? 0)}>
                 <Box component="ul" sx={{ listStyle: 'none', m: 0, mb: 0.5, p: 0, ml: `${GUIDE_X}px`, pl: `${NESTED_PL}px`, borderLeft: `1px solid ${NAVY_GUIDE}` }}>
                   {m.links.map((l) => (
-                    <NavLink {...link} key={l.path} nested to={m.basePath + l.path} label={l.label} icon={l.icon} active={inModule && pathname.startsWith(m.basePath + l.path)} />
+                    <NavLink {...link} key={l.path} nested to={m.basePath + l.path} label={l.label} icon={l.icon} active={l === current} />
                   ))}
                 </Box>
               </NavLink>
@@ -203,17 +205,22 @@ function Crumbs({ lastOnly }: { lastOnly: boolean }) {
   )
 }
 
-function TopBar() {
+// The crumbs and, inside a module, a row with the module's pages under them. The row carries the
+// header's bottom rule when it is there.
+function TopBar({ module }: { module?: ShellModule }) {
   return (
-    <Stack component="header" direction="row" sx={{ alignItems: 'center', height: TOP, px: 5, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', position: 'sticky', top: 0, zIndex: 5 }}>
-      <Crumbs lastOnly={false} />
-    </Stack>
+    <Box component="header" sx={{ position: 'sticky', top: 0, zIndex: 5, bgcolor: 'background.paper' }}>
+      <Stack direction="row" sx={{ alignItems: 'center', height: TOP, px: 5, ...(module ? {} : { borderBottom: '1px solid', borderColor: 'divider' }) }}>
+        <Crumbs lastOnly={false} />
+      </Stack>
+      {module && <ModuleNav module={module} phone={false} />}
+    </Box>
   )
 }
 
-// Below 900 px: a navy bar with the menu button and brand mark, the current crumb under it, and the
-// sidebar's navigation in a temporary drawer.
-function PhoneBar() {
+// Below 900 px: a navy bar with the menu button and brand mark, the current crumb under it, inside a
+// module a scrolling row with its pages, and the sidebar's navigation in a temporary drawer.
+function PhoneBar({ module }: { module?: ShellModule }) {
   const location = useLocation()
   const drawerId = useId()
   // The drawer is open for the location it was opened on, so any navigation (a link, Back, the
@@ -232,9 +239,10 @@ function PhoneBar() {
             <Logo product={copy.product} height={26} tone="amber" />
           </Link>
         </Stack>
-        <Stack direction="row" sx={{ alignItems: 'center', height: PHONE_CRUMBS, px: { xs: 2, sm: 3 }, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
+        <Stack direction="row" sx={{ alignItems: 'center', height: PHONE_CRUMBS, px: { xs: 2, sm: 3 }, bgcolor: 'background.paper', ...(module ? {} : { borderBottom: '1px solid', borderColor: 'divider' }) }}>
           <Crumbs lastOnly />
         </Stack>
+        {module && <ModuleNav module={module} phone />}
       </Box>
       <Drawer
         open={open}
@@ -263,16 +271,20 @@ function PhoneBar() {
 // Signed-in layout. Module pages fill the content area edge to edge; shell pages get the usual gutter.
 export function ShellLayout() {
   const { pathname } = useLocation()
+  const { can } = useSession()
   const theme = useTheme()
   // noSsr reads the query on the first render, so a phone never flashes the desktop sidebar.
   const phone = useMediaQuery(theme.breakpoints.down('md'), { noSsr: true })
-  const inModule = modules.some((m) => pathname.startsWith(m.basePath))
+  const module = moduleFor(pathname)
+  const inModule = module !== undefined
+  // The top bar lists the module's pages only in a module this admin may open.
+  const navModule = module && can(module.roles) ? module : undefined
   return (
-    <Box sx={{ display: 'flex', minHeight: '100dvh', bgcolor: 'background.default', '--shell-top': `${phone ? TOP + PHONE_CRUMBS : TOP}px` }}>
+    <Box sx={{ display: 'flex', minHeight: '100dvh', bgcolor: 'background.default', '--shell-top': `${shellTop({ phone, moduleNav: navModule !== undefined })}px` }}>
       <Link href="#content" sx={{ position: 'absolute', left: 8, top: -48, zIndex: 50, bgcolor: 'background.paper', px: 2, py: 1, '&:focus': { top: 8 } }}>{copy.skip}</Link>
       {!phone && <Sidebar />}
       <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        {phone ? <PhoneBar /> : <TopBar />}
+        {phone ? <PhoneBar module={navModule} /> : <TopBar module={navModule} />}
         <Box component="main" id="content" tabIndex={-1} sx={{ flex: 1, minWidth: 0, outline: 'none', ...(inModule ? {} : { px: { xs: 2, sm: 3, md: 5 }, pt: { xs: 3, md: 4 }, pb: 8 }) }}>
           <Box sx={inModule ? { height: '100%' } : { maxWidth: 1200, mx: 'auto' }}>
             <Suspense fallback={<PageFallback />}>

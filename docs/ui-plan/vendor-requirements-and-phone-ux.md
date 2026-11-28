@@ -96,7 +96,8 @@ opens the same page as in sign-up, with Save instead of Continue. Payout numbers
 (•••• 4821). Missing required details show *To do* and block sending products for review
 ("Finish your store details first").
 
-**Brand page** keeps logo, cover, tagline, story, Instagram and website. Return and delivery are no longer
+**Brand page** keeps logo, cover, story, Instagram and website (no tagline: vendor-api keeps the optional
+field, but the seller portal neither shows nor sends one, and saving clears an old one). Return and delivery are no longer
 edited there; the preview reads them from store details.
 
 ## 6. Commission

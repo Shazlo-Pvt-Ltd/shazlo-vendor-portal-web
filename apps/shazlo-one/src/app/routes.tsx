@@ -33,7 +33,7 @@ export const routes: RouteObject[] = [
         children: [
           { index: true, element: <Home />, handle: crumbs({ label: 'Home' }) },
           { path: 'admins', element: <SuperAdminOnly><Admins /></SuperAdminOnly>, handle: crumbs({ label: 'Admins & roles' }) },
-          ...modules.map((m) => ({ path: `${m.basePath.slice(1)}/*`, element: <ModuleRoute module={m} />, handle: crumbs({ label: m.title, to: m.basePath + m.links[0]!.path }) })),
+          ...modules.map((m) => ({ path: `${m.basePath.slice(1)}/*`, element: <ModuleRoute module={m} />, handle: crumbs({ label: m.title, to: m.basePath + m.home.path }) })),
           { path: '*', element: <NotFound />, handle: crumbs({ label: 'Not found' }) },
         ],
       },
