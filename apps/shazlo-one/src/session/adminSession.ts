@@ -2,7 +2,7 @@ import { createApiClient } from '../api/client'
 import { ApiError } from '../api/errors'
 import { getApiClient } from '../api/instance'
 import { loadEnv } from '../config/env'
-import { SessionStore, isAdminProfile } from './store'
+import { SessionStore, isAdminProfile, isTokenResponse } from './store'
 
 function bad(): never {
   throw new ApiError({ status: 502, code: 'bad_session_response', message: 'The server sent an unexpected answer.' })
@@ -31,7 +31,7 @@ export function createAdminSessionStore(onCleared: () => void): SessionStore {
     },
     exchange: async (audience, token) => {
       const { data } = await bare(token).POST('/v1/auth/token', { body: { audience } })
-      return data ?? bad()
+      return isTokenResponse(data) ? data : bad()
     },
     logout: async () => {
       await getApiClient().POST('/v1/auth/logout')

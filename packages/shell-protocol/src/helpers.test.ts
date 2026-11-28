@@ -28,6 +28,16 @@ describe('the size limit', () => {
     expect(isWithinSizeLimit(undefined)).toBe(true)
     expect(isWithinSizeLimit('small')).toBe(true)
   })
+
+  it.each([
+    ['a Map', () => new Map([['k', 'x'.repeat(MAX_MESSAGE_BYTES)]])],
+    ['a Set', () => new Set(['x'.repeat(MAX_MESSAGE_BYTES)])],
+    ['an ArrayBuffer', () => new ArrayBuffer(MAX_MESSAGE_BYTES * 4)],
+    ['a Blob', () => new Blob(['x'.repeat(MAX_MESSAGE_BYTES)])],
+  ])('treats %s (which postMessage can clone but JSON writes as {}) as too large, however small it looks', (_name, make) => {
+    // JSON.stringify writes each of these as "{}", so without this they would slip past the limit.
+    expect(isWithinSizeLimit({ payload: { path: '/', extra: make() } })).toBe(false)
+  })
 })
 
 describe('isTrustedMessage', () => {

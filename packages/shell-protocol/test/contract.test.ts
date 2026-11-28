@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { MAX_MESSAGE_BYTES } from '../src/constants'
+import { MAX_MESSAGE_BYTES, MAX_TOAST_MESSAGE_LENGTH, PROTOCOL, PROTOCOL_VERSION, TOKEN_REQUEST_INTERVAL_MS } from '../src/constants'
 import { ProtocolConfigError } from '../src/origin'
 import { createModuleClient } from '../src/moduleClient'
 import { createShellChannel, type ReadyInfo } from '../src/shellChannel'
@@ -218,6 +218,8 @@ describe('everything the shell can say', () => {
     expect(t.shell.sendNavigate('//evil.example')).toBe(false)
     expect(t.shell.sendNavigate('https://evil.example')).toBe(false)
     expect(t.shell.sendAuth({ ...authPayload(), accessToken: '' } as unknown as AuthPayload)).toBe(false)
+    // Milliseconds by mistake: the module would hold it for millennia and refuse every later auth.
+    expect(t.shell.sendAuth({ ...authPayload(), expiresAt: 1_700_000_900_000 } as unknown as AuthPayload)).toBe(false)
     expect(t.shell.sendError('', 'x')).toBe(false)
     expect(t.posts.length).toBe(before)
   })
@@ -374,6 +376,18 @@ describe('hostile cases: a bad message from the right sender', () => {
     expect(t.lines.some((line) => line[0] === 'too_large')).toBe(true)
   })
 
+  it('drops a message that hides its bulk in something JSON cannot see (a Map, a buffer)', async () => {
+    const t = setup({ development: true })
+    await ready(t)
+    const padded = envelope('toast', { level: 'info', message: 'ok', padding: new Map([['k', 'x'.repeat(MAX_MESSAGE_BYTES)]]) })
+    t.toShell(structuredClone(padded), MODULE_ORIGIN, t.moduleWindow)
+    t.toModule(structuredClone(envelope('navigate', { path: '/', padding: new ArrayBuffer(MAX_MESSAGE_BYTES * 4) })), SHELL_ORIGIN, t.shellWindow)
+    await flush()
+    expect(t.seen.toasts).toEqual([])
+    expect(t.navigations).toEqual([])
+    expect(t.lines.filter((line) => line[0] === 'too_large')).toHaveLength(2)
+  })
+
   it('drops an oversize auth in the module too', async () => {
     const t = setup()
     t.toModule(envelope('auth', authPayload({ padding: 'x'.repeat(MAX_MESSAGE_BYTES) })), SHELL_ORIGIN, t.shellWindow)
@@ -486,6 +500,53 @@ describe('hostile cases: a bad message from the right sender', () => {
   })
 })
 
+describe('the wire format is the one ADR 0001 fixes', () => {
+  // Literal values from the ADR, not the package's constants: a change to a constant must fail here.
+  it('has the ADR constants', () => {
+    expect(PROTOCOL).toBe('shazlo-one')
+    expect(PROTOCOL_VERSION).toBe(1)
+    expect(MAX_MESSAGE_BYTES).toBe(65_536)
+    expect(MAX_TOAST_MESSAGE_LENGTH).toBe(280)
+    expect(TOKEN_REQUEST_INTERVAL_MS).toBe(30_000)
+  })
+
+  it('every message on the wire is exactly the envelope, with each type and payload as the catalogue names them', async () => {
+    const t = setup()
+    await t.handshake(authPayload({ locale: 'en-IN' }))
+    t.client.sendTitle('/orders/42', 'Order 42')
+    t.client.requestToken('expired')
+    t.client.sendLogout()
+    t.client.sendToast({ level: 'warning', message: 'Check this.', durationMs: 4000 })
+    t.client.sendError('render_failed', 'Broken.', false)
+    t.shell.sendNavigate('/orders/42')
+    t.shell.sendError('session_ending', 'Ending.')
+    await flush()
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    const ids = new Set<string>()
+    for (const { data } of t.posts) {
+      const message = data as Record<string, unknown>
+      const keys = message.type === 'auth' ? ['id', 'payload', 'protocol', 'replyTo', 'sentAt', 'type', 'v'] : ['id', 'payload', 'protocol', 'sentAt', 'type', 'v']
+      expect(Object.keys(message).sort()).toEqual(keys)
+      expect(message).toMatchObject({ protocol: 'shazlo-one', v: 1, sentAt: 1_700_000_000_000 })
+      expect(message.id).toMatch(uuid)
+      ids.add(message.id as string)
+    }
+    expect(ids.size).toBe(t.posts.length)
+    expect(t.posts.map(({ from, data }) => [from, (data as { type: string }).type, (data as { payload: unknown }).payload])).toEqual([
+      ['module', 'ready', { module: 'vendor-admin', supportedVersions: [1], moduleVersion: '1.0.0' }],
+      ['shell', 'auth', { accessToken: 'token-1', expiresAt: 2_000_000_000, user: USER, locale: 'en-IN' }],
+      ['module', 'title', { path: '/orders/42', title: 'Order 42' }],
+      ['module', 'token:request', { reason: 'expired' }],
+      ['module', 'logout', {}],
+      ['module', 'toast', { level: 'warning', message: 'Check this.', durationMs: 4000 }],
+      ['module', 'error', { code: 'render_failed', message: 'Broken.', fatal: false }],
+      ['shell', 'navigate', { path: '/orders/42' }],
+      ['shell', 'error', { code: 'session_ending', message: 'Ending.' }],
+    ])
+    expect((t.posts[1]!.data as { replyTo: string }).replyTo).toBe((t.posts[0]!.data as { id: string }).id)
+  })
+})
+
 describe('no message is ever posted to *', () => {
   it('across a whole session, every post names an exact origin', async () => {
     const t = setup({ development: true })
@@ -544,6 +605,33 @@ describe('no message is ever posted to *', () => {
       development: true,
     })
     dev.dispose()
+  })
+})
+
+describe('a bad set-up fails at start, not as a silent handshake', () => {
+  it.each([[[]], [[0]], [[1.5]], [['1']], [Array.from({ length: 21 }, (_, i) => i + 1)]])(
+    'neither end can be set up with the versions %j',
+    (versions) => {
+      const frames = createFrames()
+      const base = { shellOrigin: SHELL_ORIGIN, window: frames.moduleWindow, module: 'm', moduleVersion: '1' }
+      expect(() => createModuleClient({ ...base, supportedVersions: versions as number[] })).toThrow(ProtocolConfigError)
+      expect(() =>
+        createShellChannel({ iframe: frames.moduleFrame, origin: MODULE_ORIGIN, window: frames.shellWindow, supportedVersions: versions as number[] }),
+      ).toThrow(ProtocolConfigError)
+      expect(frames.posts).toEqual([])
+    },
+  )
+
+  it.each([
+    ['an empty module id', { module: '' }],
+    ['a module id over 64 characters', { module: 'm'.repeat(65) }],
+    ['an empty module version', { moduleVersion: '' }],
+    ['a module version with a control character', { moduleVersion: '1\u0000' }],
+  ])('a module cannot be set up with %s (the shell would drop its ready)', (_name, overrides) => {
+    const frames = createFrames()
+    expect(() =>
+      createModuleClient({ shellOrigin: SHELL_ORIGIN, window: frames.moduleWindow, module: 'm', moduleVersion: '1', ...overrides }),
+    ).toThrow(ProtocolConfigError)
   })
 })
 

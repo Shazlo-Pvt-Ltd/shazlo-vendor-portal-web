@@ -1,4 +1,5 @@
 import { Box, Button, Stack, Typography } from '@mui/material'
+import { usePageTitle } from '../hooks/usePageTitle'
 
 interface Props {
   onRetry?: () => void
@@ -6,6 +7,7 @@ interface Props {
 
 /** What an admin sees when something broke: no details, a way to try again, a way out. */
 export function ErrorScreen({ onRetry }: Props) {
+  usePageTitle('Something went wrong')
   return (
     <Box component="main" sx={{ p: 3, maxWidth: 560, mx: 'auto', mt: 8 }}>
       <Typography component="h1" variant="h4" gutterBottom>
