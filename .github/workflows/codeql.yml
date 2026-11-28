@@ -4,27 +4,33 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    # New queries and advisories reach main weekly, not only when someone pushes.
+    - cron: "30 3 * * 1"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: codeql-${{ github.ref }}
-  cancel-in-progress: true
+  group: codeql-${{ github.event_name }}-${{ github.ref }}
+  # Only PR runs are superseded; every main push and the weekly run keep their own analysis.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   analyze:
+    # The `Analyze (...)` names are required status checks: keep them.
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
-      security-events: write
+      security-events: write # uploads the analysis to code scanning
     strategy:
       fail-fast: false
       matrix:
-        language: [javascript-typescript, python]
+        # `actions` analyses the workflow files in .github/workflows.
+        language: [actions, javascript-typescript, python]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -35,6 +41,9 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: none
+          # The default queries plus the lower-precision security ones (log injection, partial
+          # SSRF, workflow code injection, ...). See docs/security-scanning.md.
+          queries: security-extended
       - name: Analyze and upload results
         uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
