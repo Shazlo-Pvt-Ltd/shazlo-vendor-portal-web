@@ -41,7 +41,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   return (
     <ConfirmContext.Provider value={api}>
       {children}
-      <Dialog open={options !== undefined} onClose={() => answer(false)} aria-labelledby={titleId} aria-describedby={messageId} fullWidth maxWidth="xs">
+      <Dialog open={options !== undefined} onClose={() => answer(false)} aria-labelledby={titleId} aria-describedby={messageId} fullWidth maxWidth="xs" slotProps={{ paper: { sx: { overflowWrap: 'anywhere' } } }}>
         <DialogTitle id={titleId}>{options?.title}</DialogTitle>
         <DialogContent>
           <DialogContentText id={messageId} component="div">

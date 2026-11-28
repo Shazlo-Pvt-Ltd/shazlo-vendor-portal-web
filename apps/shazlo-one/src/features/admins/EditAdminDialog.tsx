@@ -139,7 +139,7 @@ export function EditAdminDialog({ admin, roles, isSelf, onClose, onChanged, onSt
 
   return (
     <>
-      <Dialog open onClose={patch.isPending ? undefined : onClose} fullWidth maxWidth="sm" aria-labelledby={`${formId}-title`}>
+      <Dialog open onClose={patch.isPending ? undefined : onClose} fullWidth maxWidth="sm" aria-labelledby={`${formId}-title`} slotProps={{ paper: { sx: { overflowWrap: 'anywhere' } } }}>
         <DialogTitle id={`${formId}-title`}>Edit {admin.display_name}</DialogTitle>
         <DialogContent>
           <Typography color="text.secondary" sx={{ mb: 2, overflowWrap: 'anywhere' }}>

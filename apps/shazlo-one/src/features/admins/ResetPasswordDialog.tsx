@@ -81,7 +81,7 @@ export function ResetPasswordDialog({ admin, onClose, onDone, onStale }: Props) 
   }
 
   return (
-    <Dialog open onClose={reset.isPending ? undefined : onClose} fullWidth maxWidth="sm" aria-labelledby={`${formId}-title`}>
+    <Dialog open onClose={reset.isPending ? undefined : onClose} fullWidth maxWidth="sm" aria-labelledby={`${formId}-title`} slotProps={{ paper: { sx: { overflowWrap: 'anywhere' } } }}>
       <DialogTitle id={`${formId}-title`}>Reset the password of {admin.display_name}</DialogTitle>
       <DialogContent>
         <DialogContentText sx={{ mb: 2 }}>

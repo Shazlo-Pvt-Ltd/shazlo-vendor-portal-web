@@ -99,7 +99,7 @@ function AdminsContent() {
       </Typography>
 
       {notice ? (
-        <Alert severity="success" role="status" onClose={() => setNotice(undefined)} sx={{ mb: 2 }}>
+        <Alert severity="success" role="status" onClose={() => setNotice(undefined)} sx={{ mb: 2, overflowWrap: 'anywhere' }}>
           {notice}
         </Alert>
       ) : null}

@@ -444,6 +444,29 @@ describe('editing yourself', () => {
   })
 })
 
+describe('very long names and email addresses', () => {
+  const longName = 'N'.repeat(200)
+  const longEmail = `${'e'.repeat(300)}@shazlo.test`
+  const wraps = (element: Element) => expect(getComputedStyle(element).overflowWrap).toBe('anywhere')
+
+  it('wrap inside the edit, reset and confirmation dialogs and the notice instead of running off the side', async () => {
+    const t = setup({ admins: [me, admin({ id: 'l1', display_name: longName, email: longEmail })] })
+    const edit = await openEdit(t, longName)
+    wraps(edit)
+    await t.user.click(within(edit).getByRole('button', { name: 'Deactivate' }))
+    const confirm = await screen.findByRole('dialog', { name: `Deactivate ${longName}?` })
+    wraps(confirm)
+    await t.user.click(within(confirm).getByRole('button', { name: 'Cancel' }))
+    await t.user.click(await within(edit).findByRole('button', { name: 'Reset password…' }))
+    const reset = await screen.findByRole('dialog', { name: new RegExp(`Reset the password of ${longName}`) })
+    wraps(reset)
+    await t.user.click(within(reset).getByRole('button', { name: 'Cancel' }))
+    await t.user.click(await within(edit).findByRole('checkbox', { name: 'super admin' }))
+    await t.user.click(within(edit).getByRole('button', { name: 'Save changes' }))
+    wraps(await notice())
+  })
+})
+
 describe('losing the super admin role while the page is open (identity-api checks the roles in its database)', () => {
   const demote = (t: Setup) => {
     t.backend.find(ME)!.roles = ['vendor_reviewer']
