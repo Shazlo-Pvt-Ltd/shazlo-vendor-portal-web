@@ -64,7 +64,7 @@ These are used as reference only. None of the code is reused.
 ## Phases
 Each phase matches a milestone in this repo. The bullets are the proposed scope; the actual issues are filed when the phase starts.
 
-Status (2026-11-19): Phases 0 to 4 are delivered, and Phase 5 (the vendor portal) is in progress (its sign-in, dashboard, brand page editor, products list, product form, bulk import, team and account pages, and submission status are merged; the end-to-end test and accessibility checks remain). Phase 6 (the Shazlo-One shell) is in progress (its scaffold is merged); Phases 7 and 8 have not started. One decision is still open from Phase 4: the central-app team has not signed off [ADR 0003](adr/0003-central-app-publishing-contract.md), so it is still `proposed` (issue #179).
+Status (2026-11-19): Phases 0 to 4 are delivered, and Phase 5 (the vendor portal) is in progress (its sign-in, dashboard, brand page editor, products list, product form, bulk import, team and account pages, and submission status are merged; the end-to-end test and accessibility checks remain). Phase 6 (the Shazlo One shell) and Phase 7 (its Vendors module) are built (#301); Phase 8 has not started. One decision is still open from Phase 4: the central-app team has not signed off [ADR 0003](adr/0003-central-app-publishing-contract.md), so it is still `proposed` (issue #179).
 
 ### Phase 0: Foundation & security hygiene
 - Repo hygiene: untrack local env files and `node_modules`, fix `.gitignore`, and add `.env.example` files.
@@ -155,7 +155,7 @@ Planned scope:
 - Team (owner only: invite, resend, disable and enable staff) and account (profile, password change).
 
 ### Phase 6: Shazlo-One shell
-Status (2026-11-20): in progress. Merged so far: identity-api's committed `openapi.json` (checked by its tests), and the Shazlo-One scaffold (Vite, the typed identity-api client, the security headers and checks). `apps/shazlo-one/README.md` describes what the app does today.
+Status (2026-11-28): built. The shell in `apps/shazlo-one` is the one from Build 2 (#301), which replaced the first Phase 6 shell (#303 to #311 and #313) at the owner's choice; that shell's audited hardening (the session store, the module host's token handling, the protocol channel, the security headers and fail-closed settings, the return-to check, admin management) was ported into it. [ADR 0001](adr/0001-iframe-postmessage-protocol.md) records the decision. `apps/shazlo-one/README.md` describes what the app does today. Still to do: browser (Playwright) tests for the shell.
 
 - Scaffold, admin login against identity-api, and session handling.
 - Module registry and a nav that only shows the modules an admin's roles allow.
@@ -167,7 +167,7 @@ Status (2026-11-20): in progress. Merged so far: identity-api's committed `opena
 - Admin user management UI.
 
 ### Phase 7: Vendor admin module
-Status: not started (`apps/vendor-admin` holds only a README). The API it needs is partly there: reviews, vendor accounts and the outbox are served under `/v1/admin/*` by vendor-api.
+Status (2026-11-28): built (#301; #318 to #320, #327 and #328 in Build 2). The module runs only inside Shazlo One (frame-ancestors names the shell, its token comes only through the ADR 0001 protocol) and calls vendor-api's admin app ([ADR 0011](adr/0011-vendor-portal-and-vendors-module-as-microservices.md)). Some screens still use proposed routes that only the mock serves, until #294 to #298 move them to `/v1/admin/*`. The Playwright smoke test is still to do.
 
 - Scaffold. It accepts auth only through postMessage from the Shazlo-One origin and sets `Content-Security-Policy: frame-ancestors`.
 - Review queue with stats and filters.
