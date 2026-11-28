@@ -24,6 +24,9 @@ import { isValidAccountNumber, normaliseAccountNumber } from '../../../lib/valid
 
 export type Topic = StoreSection
 
+/** Topics vendor-api lets only the owner change (its OWNER_ONLY_SECTIONS): staff get a 403. */
+export const OWNER_ONLY_TOPICS: ReadonlySet<Topic> = new Set<Topic>(['payout', 'business'])
+
 export type BrandAnswers = { brand_name: string; sells: Schemas['Sells'] | ''; city: string; instagram_or_website: string }
 export type ContactAnswers = { name: string; phone: string; email: string }
 export type DeliveryAnswers = {

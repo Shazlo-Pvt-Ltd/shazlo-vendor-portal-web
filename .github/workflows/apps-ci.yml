@@ -94,6 +94,8 @@ jobs:
       - run: npm run lint
       # Fails when services/vendor-api/openapi.json changed and the portal's types were not regenerated.
       - run: npm run api:check --workspace @shazlo/vendor-portal
+      # The portal's proposed routes (openapi/proposed.yaml) against their generated types.
+      - run: npm run api:proposed:check --workspace @shazlo/vendor-portal
       # The same for the admin module, and for its proposed routes.
       - run: npm run api:check --workspace @shazlo/vendor-admin
       - run: npm run api:proposed:check --workspace @shazlo/vendor-admin
@@ -113,7 +115,6 @@ jobs:
         env:
           VITE_VENDOR_API_URL: https://api.example.com
       - run: npm run build --prefix app
-      - run: npm run build --workspace @shazlo/vendor-portal
       - name: Retain test results and coverage
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
