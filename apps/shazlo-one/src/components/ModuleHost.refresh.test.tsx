@@ -434,6 +434,23 @@ describe('a module that sends `ready` again and again', () => {
 })
 
 describe('when a renewal changes who the admin is or what they may do', () => {
+  it('another admin: the frame is replaced, so the module keeps nothing of the previous admin', async () => {
+    let adminId = 'a1'
+    const t = await open({ adminId: () => adminId })
+    const first = document.querySelector('iframe')
+    adminId = 'a2'
+    await act(async () => {
+      await t.store.renew()
+    })
+    await settle()
+    expect(t.store.getSnapshot().admin?.id).toBe('a2')
+    expect(document.querySelector('iframe')).not.toBe(first)
+    // The old frame was told nothing more, and the new admin's session is not ended by the old token's expiry.
+    expect(t.module.auths).toHaveLength(1)
+    await settle(400_000)
+    expect(t.store.getSnapshot().status).toBe('signedIn')
+  })
+
   it('new roles: the module gets a token for them at once, not at the next scheduled refresh', async () => {
     let roles = ['vendor_reviewer']
     const t = await open({ roles: () => roles })

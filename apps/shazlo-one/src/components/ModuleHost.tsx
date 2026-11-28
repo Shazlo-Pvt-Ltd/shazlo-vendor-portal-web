@@ -247,6 +247,15 @@ export function ModuleHost({ entry }: { entry: ModuleEntry }) {
   const [attempt, setAttempt] = useState(0)
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
   const failures = useRef(0)
+  // A renewal that says another admin now holds the cookie (another tab signed out and in, and this one
+  // missed it): the frame is replaced, so nothing the module was given for the previous admin survives.
+  const adminId = useSession().admin?.id
+  const [frameAdmin, setFrameAdmin] = useState(adminId)
+  if (frameAdmin !== adminId) {
+    setFrameAdmin(adminId)
+    setStatus({ kind: 'loading' })
+    setAttempt((value) => value + 1)
+  }
   usePageTitle(status.kind === 'forbidden' ? "You don't have access" : entry.title)
 
   const handle = useCallback(
