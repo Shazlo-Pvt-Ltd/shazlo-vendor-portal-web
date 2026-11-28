@@ -17,8 +17,8 @@ const font = (el: HTMLElement) => {
   return { family: style.fontFamily, weight: style.fontWeight }
 }
 
-async function openSignIn() {
-  const view = await renderShell({ route: '/sign-in', as: null })
+async function openSignIn(route = '/sign-in') {
+  const view = await renderShell({ route, as: null })
   await screen.findByRole('heading', { level: 1, name: 'Sign in to Shazlo One' })
   return view
 }
@@ -83,8 +83,8 @@ describe('A-01 sign in: the form', () => {
 })
 
 describe('A-01 sign in: against identity-api', () => {
-  async function submit(email: string, password: string) {
-    const view = await openSignIn()
+  async function submit(email: string, password: string, route?: string) {
+    const view = await openSignIn(route)
     await view.user.type(screen.getByLabelText('Work email'), email)
     await view.user.type(screen.getByLabelText('Password', { selector: 'input' }), password)
     await view.user.click(screen.getByRole('button', { name: 'Sign in' }))
@@ -93,6 +93,17 @@ describe('A-01 sign in: against identity-api', () => {
 
   it('signs in and lands on Home', async () => {
     const { router } = await submit(DEMO_ADMIN.email, DEMO_ADMIN.password)
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+  })
+
+  it('goes on to the page the sign-in link names, inside the shell', async () => {
+    const { router } = await submit(DEMO_ADMIN.email, DEMO_ADMIN.password, `/sign-in?next=${encodeURIComponent('/admins?status=all')}`)
+    await waitFor(() => expect(router.state.location.pathname).toBe('/admins'))
+    expect(router.state.location.search).toBe('?status=all')
+  })
+
+  it.each(['/%5Cevil.example', '%2F%5Cevil.example', '%2F%2Fevil.example', 'https%3A%2F%2Fevil.example', '%2Fsign-in'])('lands on Home when the link names %s', async (next) => {
+    const { router } = await submit(DEMO_ADMIN.email, DEMO_ADMIN.password, `/sign-in?next=${next}`)
     await waitFor(() => expect(router.state.location.pathname).toBe('/'))
   })
 

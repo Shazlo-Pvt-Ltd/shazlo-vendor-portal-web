@@ -46,7 +46,3 @@ export function GuestOnly({ children }: { children: ReactNode }) {
   if (status === 'signed_in') return <Navigate to={paths.home} replace />
   return <>{children}</>
 }
-
-export function safeNext(next: string | null) {
-  return next && next.startsWith('/') && !next.startsWith('//') ? next : paths.home
-}
