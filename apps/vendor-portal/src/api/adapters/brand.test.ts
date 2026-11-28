@@ -22,7 +22,7 @@ const published: BrandProfileOut = {
   price_max_paise: 0,
   submitted_at: '2026-10-01T10:00:00Z',
   published_at: '2026-10-02T10:00:00Z',
-  review: { status: 'approved', reason: null, decided_at: '2026-10-02T10:00:00Z', submitted_at: '2026-10-01T10:00:00Z' },
+  review: { status: 'approved', reason: null, reason_code: null, decided_at: '2026-10-02T10:00:00Z', submitted_at: '2026-10-01T10:00:00Z' },
   updated_at: '2026-10-02T10:00:00Z',
 }
 
@@ -42,7 +42,7 @@ const draft: DraftOut = {
 }
 
 function submission(overrides: Partial<SubmissionOut>): SubmissionOut {
-  return { subject: 'brand_profile', id: 'r-1', sku: null, title: null, version: 1, status: 'approved', reason: null, submitted_at: '2026-10-01T10:00:00Z', decided_at: '2026-10-02T10:00:00Z', ...overrides }
+  return { subject: 'brand_profile', id: 'r-1', sku: null, title: null, version: 1, status: 'approved', reason: null, reason_code: null, submitted_at: '2026-10-01T10:00:00Z', decided_at: '2026-10-02T10:00:00Z', ...overrides }
 }
 
 describe('profileFromApi', () => {
