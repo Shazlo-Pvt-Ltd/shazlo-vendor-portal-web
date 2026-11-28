@@ -509,12 +509,16 @@ describe('catalog upload and moderation persistence (routes mounted with LEGACY_
   })
 
   it('persists approval status, reviewer and decision time, then rejection', async () => {
+    // Mongoose 9 deprecates the `new` option of findOneAndUpdate; the routes ask for the updated
+    // document with returnDocument instead, so moderation does not log a warning per request.
+    const warn = vi.spyOn(process, 'emitWarning')
     const seller = await Brand.create(brandInput())
     const reviewer = new mongoose.Types.ObjectId()
     const product = await Product.create(productInput({ sellerId: seller.id }))
     const earliest = Date.now()
     const response = await legacyRequest(`/api/admin/products/${product.id}/approve`, { method: 'PUT', body: { adminId: reviewer.toString() } })
     expect(response.status).toBe(200)
+    expect(json(response).product.status).toBe('approved')
     const approved = await Product.findById(product.id).lean()
     expect(approved.status).toBe('approved')
     expect(String(approved.approvedBy)).toBe(reviewer.toString())
@@ -522,7 +526,9 @@ describe('catalog upload and moderation persistence (routes mounted with LEGACY_
     expect(approved.approvedAt.getTime()).toBeLessThanOrEqual(Date.now())
     const rejection = await legacyRequest(`/api/admin/products/${product.id}/reject`, { method: 'PUT' })
     expect(rejection.status).toBe(200)
+    expect(json(rejection).product.status).toBe('rejected')
     expect((await Product.findById(product.id).lean()).status).toBe('rejected')
+    expect(warn.mock.calls.map(([message]) => String(message)).filter((message) => message.includes('deprecated'))).toEqual([])
   })
 
   it.each(['approve', 'reject'])('returns 404 for %s of a missing product without creating one', async (action) => {
