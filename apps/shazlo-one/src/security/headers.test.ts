@@ -41,8 +41,16 @@ describe('the production Content-Security-Policy', () => {
     expect(policy.get('connect-src')).toEqual([API])
   })
 
-  it('loads images only from the app itself', () => {
+  it('loads images and fonts only from the app itself', () => {
     expect(policy.get('img-src')).toEqual(["'self'"])
+    expect(policy.get('font-src')).toEqual(["'self'"])
+  })
+
+  it('never lets anything frame the shell, in any mode and with modules registered', () => {
+    for (const mode of ['production', 'preview', 'development'] as const) {
+      const text = contentSecurityPolicy({ apiOrigin: API, mode, moduleOrigins: [MODULE] })
+      expect(directives(text).get('frame-ancestors')).toEqual(["'none'"])
+    }
   })
 
   it('is never framed, and allows no plugin, new <base> or form post elsewhere', () => {
@@ -158,7 +166,7 @@ describe('the Vercel prebuild step', () => {
     })
   })
 
-  it.each(['', 'http://identity.real.test', 'https://user:pw@identity.real.test', 'https://identity.real.test/v1', 'nonsense'])(
+  it.each(['', 'http://identity.real.test', 'https://user:pw@identity.real.test', 'https://identity.real.test/v1', 'https://identity.real.test;sandbox', 'nonsense'])(
     'on Vercel, fails the build for VITE_IDENTITY_API_URL=%j',
     (value) => {
       inTemporaryCopy((dir) => {
