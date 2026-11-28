@@ -4,14 +4,14 @@ import { History, Store } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link as RouterLink } from 'react-router'
 import { useQueue } from '../../../api/queries'
-import type { components } from '../../../api/schema'
+import type * as M from '../../../api/model'
 import { modulePaths } from '../../../app/routes'
 import { CardTitle } from '../../../components/CardTitle'
 import { vendorDetailCopy } from '../../../copy/vendors'
 import { formatDate, formatStamp } from '../../../lib/format'
 
 const copy = vendorDetailCopy
-type Vendor = components['schemas']['VendorDetail']
+type Vendor = M.VendorDetail
 
 // Whether a page is live comes with the vendor; a waiting draft is an item in the review queue.
 export function BrandTab({ vendor }: { vendor: Vendor }) {

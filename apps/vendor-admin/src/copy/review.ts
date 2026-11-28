@@ -1,10 +1,9 @@
-import type { components } from '../api/schema'
+import type * as M from '../api/model'
 
-type S = components['schemas']
-export type ReasonCode = S['RejectBody']['reason_code']
-export type Slot = S['ProductPhoto']['slot']
-export type Gender = S['ProductVersion']['gender']
-type Event = S['History'][number]['event']
+export type ReasonCode = M.RejectBody['reason_code']
+export type Slot = M.ProductPhoto['slot']
+export type Gender = M.ProductVersion['gender']
+type Event = M.History[number]['event']
 
 const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1)
 
@@ -232,7 +231,7 @@ export const reviewCopy = {
       dispatch_time: 'Dispatch time',
       instagram: 'Instagram',
       website: 'Website',
-    } satisfies Record<keyof S['BrandProfile'], string>,
+    } satisfies Record<keyof M.BrandProfile, string>,
     returnPolicies: { no_returns: 'No returns', '7_day': '7-day returns', '14_day': '14-day returns' } as Record<string, string>,
     dispatchTimes: { '1_2_days': 'Ships in 1–2 days', '2_3_days': 'Ships in 2–3 days', '3_5_days': 'Ships in 3–5 days', '5_7_days': 'Ships in 5–7 days' } as Record<string, string>,
   },

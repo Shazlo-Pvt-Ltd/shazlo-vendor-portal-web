@@ -84,7 +84,7 @@ function trackQueueRequests() {
   const seen: URLSearchParams[] = []
   const listener = ({ request }: { request: Request }) => {
     const url = new URL(request.url)
-    if (url.pathname === '/api/v1/admin/queue') seen.push(url.searchParams)
+    if (url.pathname === '/v1/admin/queue') seen.push(url.searchParams)
   }
   server.events.on('request:start', listener)
   onTestFinished(() => {
@@ -235,6 +235,17 @@ describe('A-04 Review queue', { timeout: 40_000 }, () => {
     expect(params(router).get('q')).toBeNull()
   })
 
+  it('cuts a search longer than the server accepts instead of failing the queue', async () => {
+    const seen = trackQueueRequests()
+    renderModule({ route: `/queue?q=${'x'.repeat(250)}` })
+    const box = await screen.findByRole('textbox', { name: 'Search item, vendor or SKU' }, { timeout: 10_000 })
+    expect(box).toHaveAttribute('maxlength', '200')
+    await waitFor(() => expect(seen.some((s) => s.get('q'))).toBe(true))
+    expect(seen.filter((s) => s.get('q')).every((s) => s.get('q')!.length === 200)).toBe(true)
+    expect(await screen.findByRole('heading', { name: 'No items match these filters' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   it('filters by vendor, submitted time and resubmissions, and sorts', async () => {
     const { user, router } = renderModule({ route: '/queue' })
     await waitForTitles(OLDEST_FIRST)
@@ -320,6 +331,129 @@ describe('A-04 Review queue', { timeout: 40_000 }, () => {
     expect(lines[1]).toMatch(/^Handloom Cotton Shirt — Rust,KS-HCS-003,Edit to live product,Kalki Studio,\d{4}-\d{2}-\d{2}T/)
   })
 
+  describe('a long queue', () => {
+    const vendor = { id: 'v_many', name: 'Many Looms' }
+    // `count` items, oldest first, served like vendor-api does: a page at a time, counts for the whole queue.
+    function serveQueue(count: number, seen: URLSearchParams[] = [], overrides: (offset: number) => Response | undefined = () => undefined) {
+      const all = Array.from({ length: count }, (_, n) => ({
+        id: `r${String(n).padStart(4, '0')}`, kind: 'product', subject_id: `p${n}`, title: `Item ${n + 1}`, detail: `SKU-${n + 1}`, vendor,
+        submitted_at: new Date(Date.UTC(2026, 10, 1) + n * 60_000).toISOString(), change: 'new', resubmission: 0, thumbnail_url: null,
+      }))
+      server.use(http.get('*/v1/admin/queue', ({ request }) => {
+        const q = new URL(request.url).searchParams
+        seen.push(q)
+        const limit = Number(q.get('limit') ?? 50)
+        const offset = Number(q.get('offset') ?? 0)
+        const bad = overrides(offset)
+        if (bad) return bad
+        return HttpResponse.json({ items: all.slice(offset, offset + limit), total: count, limit, offset, counts: { all: count, product: count, brand_page: 0, application: 0 }, vendors: count ? [vendor] : [] })
+      }))
+      return all
+    }
+    const rowCount = async () => rows(await queueTable()).length
+
+    it('shows the first page, then loads more on request', async () => {
+      const seen: URLSearchParams[] = []
+      serveQueue(120, seen)
+      const { user } = renderModule({ route: '/queue' })
+      await waitFor(async () => expect(await rowCount()).toBe(50), { timeout: 10_000 })
+      expect(screen.getByText('Showing 50 of 120')).toBeInTheDocument()
+      expect(seen[0]!.get('limit')).toBe('50')
+
+      await user.click(screen.getByRole('button', { name: 'Show more' }))
+      await waitFor(async () => expect(await rowCount()).toBe(100))
+      expect(screen.getByText('Showing 100 of 120')).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Show more' }))
+      await waitFor(async () => expect(await rowCount()).toBe(120))
+      // Everything is on screen: nothing more to ask for.
+      expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull()
+      expect(screen.queryByText(/^Showing /)).toBeNull()
+    })
+
+    it('shows nothing more to load when the whole queue fits one page', async () => {
+      serveQueue(3)
+      renderModule({ route: '/queue' })
+      await waitFor(async () => expect(await rowCount()).toBe(3), { timeout: 10_000 })
+      expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull()
+    })
+
+    it('starts over from the first page when a filter changes', async () => {
+      const seen: URLSearchParams[] = []
+      serveQueue(120, seen)
+      const { user } = renderModule({ route: '/queue' })
+      await waitFor(async () => expect(await rowCount()).toBe(50), { timeout: 10_000 })
+      await user.click(screen.getByRole('button', { name: 'Show more' }))
+      await waitFor(async () => expect(await rowCount()).toBe(100))
+      seen.length = 0
+      await choose(user, 'Sort', 'Newest first')
+      await waitFor(() => expect(seen.length).toBeGreaterThan(0))
+      // A changed filter asks for page one again, and only page one.
+      expect(seen.map((q) => [q.get('sort'), q.get('offset') ?? '0'])).toEqual([['newest', '0']])
+      await waitFor(async () => expect(await rowCount()).toBe(50))
+      expect(screen.getByText('Showing 50 of 120')).toBeInTheDocument()
+    })
+
+    it('exports every page, not only the ones on screen', async () => {
+      const seen: URLSearchParams[] = []
+      serveQueue(230, seen)
+      const blobs: Blob[] = []
+      const create = vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => {
+        blobs.push(blob as Blob)
+        return 'blob:all'
+      })
+      const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+      onTestFinished(() => {
+        create.mockRestore()
+        click.mockRestore()
+      })
+      const { user, shell } = renderModule({ route: '/queue' })
+      await waitFor(async () => expect(await rowCount()).toBe(50), { timeout: 10_000 })
+      seen.length = 0
+      await user.click(screen.getByRole('button', { name: 'Export CSV' }))
+      await waitFor(() => expect(shell.toasts()).toContainEqual({ level: 'success', message: 'Exported 230 rows' }), { timeout: 10_000 })
+      // 230 items at the server's largest page size: three requests, one after another.
+      expect(seen.map((q) => [q.get('limit'), q.get('offset')])).toEqual([['100', '0'], ['100', '100'], ['100', '200']])
+      const text = await new Promise<string>((resolve) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result))
+        reader.readAsText(blobs[0]!)
+      })
+      expect(text.replace(/^\uFEFF/, '').trim().split('\r\n')).toHaveLength(231)
+    })
+
+    it('says so when the export fails part way, and downloads nothing', async () => {
+      serveQueue(230, [], (offset) => (offset === 100 ? HttpResponse.json({ error: { code: 'internal_error', message: 'Boom', request_id: 'r' } }, { status: 500 }) : undefined))
+      const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:none')
+      onTestFinished(() => create.mockRestore())
+      const { user, shell } = renderModule({ route: '/queue' })
+      await waitFor(async () => expect(await rowCount()).toBe(50), { timeout: 10_000 })
+      await user.click(screen.getByRole('button', { name: 'Export CSV' }))
+      await waitFor(() => expect(shell.toasts()).toContainEqual({ level: 'error', message: 'The export did not finish. Try again.' }), { timeout: 10_000 })
+      expect(create).not.toHaveBeenCalled()
+      expect(screen.getByRole('button', { name: 'Export CSV' })).toBeEnabled()
+    })
+
+    it('leaves out an item of a kind it does not know instead of breaking the list', async () => {
+      server.use(http.get('*/v1/admin/queue', () => HttpResponse.json({
+        items: [
+          { id: 'a', kind: 'product', subject_id: 'p1', title: 'Known', detail: 'K-1', vendor, submitted_at: '2026-11-01T00:00:00Z', change: 'new', resubmission: 0, thumbnail_url: null },
+          { id: 'b', kind: 'bundle', subject_id: 'p2', title: 'From the future', detail: 'F-1', vendor, submitted_at: '2026-11-01T01:00:00Z', change: 'new', resubmission: 0, thumbnail_url: null },
+        ],
+        total: 2, limit: 50, offset: 0, counts: { all: 2, product: 2, brand_page: 0, application: 0 }, vendors: [vendor],
+      })))
+      renderModule({ route: '/queue' })
+      await waitForTitles(['Known'])
+    })
+
+    it('keeps the tabs and the vendor choices complete while a filter is on', async () => {
+      const { user } = renderModule({ route: '/queue?kind=application' })
+      await waitForTitles(['Kaaya Ethnic', 'Rann Weaves', 'Saanjh Label'])
+      expect(screen.getByRole('tab', { name: /Products/ })).toHaveTextContent('9')
+      await user.click(screen.getByRole('combobox', { name: 'Vendor' }))
+      expect((await screen.findAllByRole('option')).length).toBeGreaterThan(2)
+    })
+  })
+
   it('says when nothing is waiting', async () => {
     const { db } = renderModule({ route: '/queue' })
     for (const p of db.products) p.status = 'approved'
@@ -341,7 +475,7 @@ describe('A-04 Review queue', { timeout: 40_000 }, () => {
   })
 
   it('shows a load error with a way to try again', async () => {
-    server.use(http.get('*/api/v1/admin/queue', () => HttpResponse.json({ message: 'The queue is not available to your role.', extra: { code: 'forbidden' } }, { status: 403 })))
+    server.use(http.get('*/v1/admin/queue', () => HttpResponse.json({ error: { code: 'forbidden', message: 'The queue is not available to your role.', request_id: 'r' } }, { status: 403 })))
     const { user } = renderModule({ route: '/queue' })
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('The review queue did not load')

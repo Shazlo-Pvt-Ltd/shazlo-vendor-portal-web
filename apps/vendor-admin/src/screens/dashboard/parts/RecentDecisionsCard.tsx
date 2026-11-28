@@ -3,7 +3,7 @@ import { emphasis, EmptyState, SectionCard, StatusPill } from '@shazlo/ui'
 import { ClipboardCheck } from 'lucide-react'
 import { Link as RouterLink } from 'react-router'
 import { useSummary } from '../../../api/queries'
-import type { components } from '../../../api/schema'
+import type * as M from '../../../api/model'
 import { CardTitle } from '../../../components/CardTitle'
 import { RowChevron } from '../../../components/rows'
 import { dashboardCopy } from '../../../copy/dashboard'
@@ -12,7 +12,7 @@ import { decisionPill } from '../../../lib/status'
 import { inset, Loaded, rowLinkSx, rowSx, RowSkeletons } from './common'
 import { dashboardLinks as links } from './links'
 
-type Decision = components['schemas']['Summary']['recent'][number]
+type Decision = M.Summary['recent'][number]
 const copy = dashboardCopy.decisions
 
 // One link per decision: what was decided, for which brand, the outcome, and who decided when. On a

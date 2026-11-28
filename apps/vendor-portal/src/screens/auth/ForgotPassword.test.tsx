@@ -2,6 +2,7 @@ import { cleanup, screen } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { DEMO_LOGIN } from '../../mocks/db'
+import { countdownClock } from '../../test/countdown'
 import { renderApp } from '../../test/render'
 import { setupMockApi } from '../../test/server'
 
@@ -103,8 +104,9 @@ describe('Forgot password', () => {
     server.use(http.post('*/v1/auth/forgot-password', () => HttpResponse.json({ error: { code: 'rate_limited', message: 'x' } }, { status: 429, headers: { 'Retry-After': '120' } }), { once: true }))
     const { user } = await open()
     await user.type(screen.getByLabelText('Work email'), DEMO_LOGIN.email)
+    const countdown = countdownClock(120)
     await user.click(screen.getByRole('button', { name: 'Send reset link' }))
-    expect(await screen.findByText(/Too many attempts. Try again in (120|119) s\./)).toBeInTheDocument()
+    countdown((await screen.findByText(/Too many attempts. Try again in \d+ s\./)).textContent, /Try again in (\d+) s\./)
     expect(screen.getByRole('button', { name: 'Send reset link' })).toBeDisabled()
   })
 })

@@ -331,7 +331,7 @@ describe('A-09 Approving several products at once', { timeout: 40_000 }, () => {
     const { user, db } = await openProducts('v_kalki', 'Kalki Studio')
     await user.click(tickFor(AJRAKH))
     await user.click(tickFor(POCHAMPALLY))
-    server.use(http.post(ROUTE, () => HttpResponse.json({ message: 'Something went wrong on our side. Try again in a moment.', extra: { code: 'server_error' } }, { status: 500 })))
+    server.use(http.post(ROUTE, () => HttpResponse.json({ error: { code: 'server_error', message: 'Something went wrong on our side. Try again in a moment.', request_id: 'req-test' } }, { status: 500 })))
     const dialog = await openDialog(user, 2)
     await user.click(within(dialog).getByRole('button', { name: 'Approve 2 products' }))
 
@@ -345,7 +345,7 @@ describe('A-09 Approving several products at once', { timeout: 40_000 }, () => {
     expect(within(toolbar(true)).getByText('2 selected')).toBeInTheDocument()
 
     // A validation error from the API is shown the same way.
-    server.use(http.post(ROUTE, () => HttpResponse.json({ message: 'Approve up to 50 products at a time.', extra: { code: 'validation_error', fields: { products: 'Approve up to 50 products at a time.' } } }, { status: 422 })))
+    server.use(http.post(ROUTE, () => HttpResponse.json({ error: { code: 'validation_error', message: 'Approve up to 50 products at a time.', request_id: 'req-test', details: [{ loc: ['body', 'products'], msg: 'Approve up to 50 products at a time.', type: 'value_error' }] } }, { status: 422 })))
     await user.click(within(dialog).getByRole('button', { name: 'Approve 2 products' }))
     expect(await within(dialog).findByText('Approve up to 50 products at a time.')).toBeInTheDocument()
 

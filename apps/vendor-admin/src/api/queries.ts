@@ -1,11 +1,13 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRuntime } from '../runtime/runtime'
-import type { components } from './schema'
+import type { Api } from './http'
+import type { ApiPaths } from './client'
+import { joinSlices, nextOffset, QUEUE_MAX_PAGE_SIZE, QUEUE_PAGE_SIZE, toQueueSlice, type QueueSlice } from './adapters/queue'
+import type * as M from './model'
 
-type S = components['schemas']
 
-export type QueueFilters = { kind?: S['ItemKind']; vendor?: string; q?: string; submitted?: 'today' | '24h' | 'older'; resubmissions?: boolean; sort?: 'oldest' | 'newest' }
-export type VendorFilters = { status?: S['VendorStatus']; q?: string; city?: string; sort?: 'name' | 'newest' | 'products'; commission?: S['CommissionState'] }
+export type QueueFilters = { kind?: M.ItemKind; vendor?: string; q?: string; submitted?: 'today' | '24h' | 'older'; resubmissions?: boolean; sort?: 'oldest' | 'newest' }
+export type VendorFilters = { status?: M.VendorStatus; q?: string; city?: string; sort?: 'name' | 'newest' | 'products'; commission?: M.CommissionState }
 
 export const keys = {
   summary: ['summary'] as const,
@@ -17,7 +19,7 @@ export const keys = {
   vendors: (f: VendorFilters) => ['vendors', f] as const,
   allVendors: ['vendors'] as const,
   vendor: (id: string) => ['vendor', id] as const,
-  outbox: (status?: S['OutboxStatus']) => ['outbox', status ?? 'all'] as const,
+  outbox: (status?: M.OutboxStatus) => ['outbox', status ?? 'all'] as const,
   allOutbox: ['outbox'] as const,
 }
 
@@ -34,9 +36,36 @@ export function useSummary() {
   return useQuery({ queryKey: keys.summary, queryFn: () => api.call((c) => c.GET('/api/v1/admin/summary')) })
 }
 
+async function fetchQueueSlice(api: Api<ApiPaths>, filters: QueueFilters, offset: number, limit: number): Promise<QueueSlice> {
+  const wire = await api.call((c) => c.GET('/v1/admin/queue', { params: { query: { ...filters, limit, offset } } }))
+  return toQueueSlice(wire)
+}
+
+// The queue a page at a time, joined into one list as "Show more" loads the next. `counts`, `vendors`
+// and `total` describe the whole waiting queue as of the newest request.
 export function useQueue(filters: QueueFilters) {
   const { api } = useRuntime()
-  return useQuery({ queryKey: keys.queue(filters), queryFn: () => api.call((c) => c.GET('/api/v1/admin/queue', { params: { query: filters } })), placeholderData: keepPreviousData })
+  return useInfiniteQuery({
+    queryKey: keys.queue(filters),
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => fetchQueueSlice(api, filters, pageParam, QUEUE_PAGE_SIZE),
+    getNextPageParam: nextOffset,
+    select: (data) => joinSlices(data.pages),
+    placeholderData: keepPreviousData,
+  })
+}
+
+// Every item that matches the filters, not just the pages on screen: the CSV export. Pages are
+// fetched one after another at the server's largest size.
+export async function fetchEveryQueueItem(api: Api<ApiPaths>, filters: QueueFilters): Promise<M.QueueItem[]> {
+  const slices: QueueSlice[] = []
+  let offset: number | undefined = 0
+  while (offset !== undefined) {
+    const slice: QueueSlice = await fetchQueueSlice(api, filters, offset, QUEUE_MAX_PAGE_SIZE)
+    slices.push(slice)
+    offset = nextOffset(slice)
+  }
+  return joinSlices(slices).items
 }
 
 export function useProductReview(id: string) {
@@ -62,7 +91,7 @@ export function useRejectProduct(id: string) {
   const invalidate = useInvalidateAfterDecision()
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: S['RejectBody']) => api.call((c) => c.POST('/api/v1/admin/products/{id}/reject', { params: { path: { id } }, body })),
+    mutationFn: (body: M.RejectBody) => api.call((c) => c.POST('/api/v1/admin/products/{id}/reject', { params: { path: { id } }, body })),
     onSuccess: () => {
       invalidate()
       void qc.invalidateQueries({ queryKey: keys.product(id) })
@@ -93,7 +122,7 @@ export function useRejectBrand(vendorId: string) {
   const invalidate = useInvalidateAfterDecision()
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: S['RejectBody']) => api.call((c) => c.POST('/api/v1/admin/brand-pages/{vendor_id}/reject', { params: { path: { vendor_id: vendorId } }, body })),
+    mutationFn: (body: M.RejectBody) => api.call((c) => c.POST('/api/v1/admin/brand-pages/{vendor_id}/reject', { params: { path: { vendor_id: vendorId } }, body })),
     onSuccess: () => {
       invalidate()
       void qc.invalidateQueries({ queryKey: keys.brand(vendorId) })
@@ -178,7 +207,7 @@ export function useApproveProducts(vendorId: string) {
   const invalidate = useInvalidateAfterDecision()
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: S['ApproveProductsBody']) => api.call((c) => c.POST('/api/v1/admin/vendors/{id}/products/approve', { params: { path: { id: vendorId } }, body })),
+    mutationFn: (body: M.ApproveProductsBody) => api.call((c) => c.POST('/api/v1/admin/vendors/{id}/products/approve', { params: { path: { id: vendorId } }, body })),
     onSuccess: () => {
       invalidate()
       void qc.invalidateQueries({ queryKey: keys.vendor(vendorId) })
@@ -187,7 +216,7 @@ export function useApproveProducts(vendorId: string) {
   })
 }
 
-export function useOutbox(status?: S['OutboxStatus']) {
+export function useOutbox(status?: M.OutboxStatus) {
   const { api } = useRuntime()
   return useQuery({ queryKey: keys.outbox(status), queryFn: () => api.call((c) => c.GET('/api/v1/admin/outbox', { params: { query: { status } } })), placeholderData: keepPreviousData, refetchInterval: 30_000 })
 }

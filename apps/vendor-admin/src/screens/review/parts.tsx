@@ -3,7 +3,7 @@ import { Banner, brand, EmptyState, neutral, radius, SectionCard } from '@shazlo
 import { ArrowLeft, ChevronLeft, ChevronRight, History as HistoryIcon, Info } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link as RouterLink } from 'react-router'
-import type { components } from '../../api/schema'
+import type * as M from '../../api/model'
 import { modulePaths } from '../../app/routes'
 import { CardTitle } from '../../components/CardTitle'
 import { reviewCopy as copy } from '../../copy/review'
@@ -12,7 +12,7 @@ import { touchIcon } from '../../lib/responsive'
 import { formatWait } from '../../lib/status'
 import type { Outcome } from './useDecision'
 
-type History = components['schemas']['History']
+type History = M.History
 
 // Queue neighbours are product ids or vendor ids; a vendor id means a brand page.
 export function reviewPath(id: string): string {

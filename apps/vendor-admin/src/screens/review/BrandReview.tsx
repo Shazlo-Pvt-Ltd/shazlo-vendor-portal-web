@@ -5,7 +5,7 @@ import { useState, type ReactNode } from 'react'
 import { useParams } from 'react-router'
 import { ApiError } from '../../api/http'
 import { useApproveBrand, useBrandReview, useRejectBrand } from '../../api/queries'
-import type { components } from '../../api/schema'
+import type * as M from '../../api/model'
 import { CardTitle } from '../../components/CardTitle'
 import { reviewCopy } from '../../copy/review'
 import { usePhone } from '../../lib/responsive'
@@ -19,7 +19,7 @@ import { SendBackDialog } from './SendBackDialog'
 import { useDecision } from './useDecision'
 
 const copy = reviewCopy.brand
-type Profile = components['schemas']['BrandProfile']
+type Profile = M.BrandProfile
 type Field = keyof Profile
 // Returns and delivery now live in the seller's store details, so the brand page no longer changes them.
 const FIELDS = (Object.keys(copy.fields) as Field[]).filter((f) => f !== 'return_policy' && f !== 'dispatch_time')

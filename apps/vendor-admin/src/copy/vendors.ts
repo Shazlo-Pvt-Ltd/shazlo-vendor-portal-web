@@ -1,8 +1,7 @@
 // Copy for A-08 Vendors and A-09 Vendor detail. One module per screen family, so Hindi can follow.
-import type { components } from '../api/schema'
+import type * as M from '../api/model'
 
-type S = components['schemas']
-type HistoryEvent = S['History'][number]['event']
+type HistoryEvent = M.History[number]['event']
 
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString('en-IN')} ${n === 1 ? one : many}`
 const productCount = (n: number) => plural(n, 'product', 'products')
@@ -12,7 +11,7 @@ export type VendorSort = (typeof SORTS)[number]
 
 // The list's tabs: every status, and the brands whose proposed rate waits for Shazlo.
 export const RATE_TAB = 'rate_to_review'
-export type VendorTabKey = 'all' | S['VendorStatus'] | typeof RATE_TAB
+export type VendorTabKey = 'all' | M.VendorStatus | typeof RATE_TAB
 export const vendorTabs: { key: VendorTabKey; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'applied', label: 'Applied' },
@@ -23,7 +22,7 @@ export const vendorTabs: { key: VendorTabKey; label: string }[] = [
   { key: 'suspended', label: 'Suspended' },
 ]
 
-export const sellsLabel: Record<S['Sells'], string> = { women: 'Women', men: 'Men', both: 'Women and men' }
+export const sellsLabel: Record<M.Sells, string> = { women: 'Women', men: 'Men', both: 'Women and men' }
 
 export const REASON_MIN = 10
 
@@ -171,12 +170,12 @@ export const vendorDetailCopy = {
     areas: 'Areas they deliver to',
     allIndia: 'All of India',
     deliveryTime: 'Delivery time',
-    days: { '1_2': '1–2 days', '2_3': '2–3 days', '3_5': '3–5 days', '5_7': '5–7 days' } satisfies Record<Extract<S['Delivery'], { by: 'own' }>['days'], string>,
+    days: { '1_2': '1–2 days', '2_3': '2–3 days', '3_5': '3–5 days', '5_7': '5–7 days' } satisfies Record<Extract<M.Delivery, { by: 'own' }>['days'], string>,
     returnWindow: 'Return window',
     noReturns: 'No returns',
     windowDays: (n: number) => `${n} days`,
     condition: 'Conditions',
-    conditions: { unworn_with_tags: 'Unworn with tags', any_reason: 'Any reason', damaged_or_wrong: 'Only damaged or wrong items' } satisfies Record<NonNullable<S['Returns']['condition']>, string>,
+    conditions: { unworn_with_tags: 'Unworn with tags', any_reason: 'Any reason', damaged_or_wrong: 'Only damaged or wrong items' } satisfies Record<NonNullable<M.Returns['condition']>, string>,
     refund: 'Refund time',
     refundDays: (n: number) => `${n} working days after pickup`,
     takes: 'Takes',
@@ -311,7 +310,7 @@ export const vendorDetailCopy = {
         not_pending: 'Someone already decided it.',
         changed: 'The brand changed it since you looked. Open it to review the new version.',
         not_found: 'We could not find it for this brand. It may have been removed.',
-      } satisfies Record<S['ApproveProductsResult']['failed'][number]['code'], string>,
+      } satisfies Record<M.ApproveProductsResult['failed'][number]['code'], string>,
     },
   },
   brand: {

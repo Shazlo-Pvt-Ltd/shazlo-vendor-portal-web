@@ -1,11 +1,11 @@
 import { useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router'
 import type { VendorFilters } from '../../../api/queries'
-import type { components } from '../../../api/schema'
+import type * as M from '../../../api/model'
 import { RATE_TAB, SORTS, vendorTabs, type VendorSort, type VendorTabKey } from '../../../copy/vendors'
 
-type Status = components['schemas']['VendorStatus']
-type CommissionState = components['schemas']['CommissionState']
+type Status = M.VendorStatus
+type CommissionState = M.CommissionState
 
 export const DEFAULT_SORT: VendorSort = 'name'
 

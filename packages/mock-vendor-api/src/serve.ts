@@ -32,7 +32,7 @@ createServer(async (req, res) => {
     body: req.method === 'GET' || req.method === 'HEAD' ? undefined : Buffer.concat(chunks),
   })
   const response = await getResponse(handlers, request)
-  if (!response) return void res.writeHead(404, { 'Content-Type': 'application/json' }).end(JSON.stringify({ message: 'Not found', extra: { code: 'not_found' } }))
+  if (!response) return void res.writeHead(404, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: { code: 'not_found', message: 'Not found', request_id: 'none' } }))
   res.writeHead(response.status, Object.fromEntries(response.headers))
   res.end(Buffer.from(await response.arrayBuffer()))
 }).listen(PORT, () => console.log(`mock vendor-api on http://localhost:${PORT}`))

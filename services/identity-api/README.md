@@ -168,6 +168,17 @@ In a container: `docker compose exec identity-api alembic upgrade head`.
 
 The live reference is the OpenAPI document at `/docs` (dev). Every error is `{"error": {"code", "message", "request_id"}}`.
 
+### The committed OpenAPI document
+
+`openapi.json` (next to this README) is generated from the app and committed. The Shazlo-One shell (#249, not built yet) is to build its typed client from it with `openapi-typescript`, with a CI check that fails when that client is stale. Committing the file means a change that breaks the shell shows up in the pull request that makes it, and the file is the reference in production too, where `/openapi.json` is not served.
+
+```sh
+python -m identity_api.cli export-openapi            # rewrite openapi.json
+python -m identity_api.cli export-openapi --check    # fail if it is stale (CI checks this through pytest)
+```
+
+`tests/test_openapi.py` fails when the file differs from what the app produces, and says how to regenerate it. The output is deterministic (sorted keys, no secrets: the signing key used to start the app is thrown away), and `.gitattributes` keeps it LF on every OS. Every endpoint lists the error codes it can answer, with a description of each, in its `responses`. A new code goes into `ERROR_CODES` in `identity_api/core/errors.py`, into the `error_responses(...)` of the endpoints that can answer it, and into `DOCUMENTED_ERRORS` in `tests/test_openapi.py`, which pins each endpoint's codes so one cannot vanish or move unnoticed; then regenerate the file.
+
 | Endpoint | Notes |
 |---|---|
 | `GET /health` / `GET /ready` | Liveness; readiness (Postgres and Redis). |

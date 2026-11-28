@@ -222,7 +222,7 @@ describe('A-09 Vendor detail', { timeout: 40_000 }, () => {
   it('puts field errors from the API on the matching fields', async () => {
     server.use(
       http.post('*/api/v1/admin/vendors/:id/approve', () =>
-        HttpResponse.json({ message: 'Check the commission.', extra: { code: 'validation_error', fields: { commission_bps: 'Commission for this category is capped at 20%.' } } }, { status: 422 }),
+        HttpResponse.json({ error: { code: 'validation_error', message: 'Request validation failed', request_id: 'r', details: [{ loc: ['body', 'commission_bps'], msg: 'Commission for this category is capped at 20%.', type: 'value_error' }] } }, { status: 422 }),
       ),
     )
     const { user } = renderModule({ route: '/vendors/v_rann' })
@@ -236,13 +236,13 @@ describe('A-09 Vendor detail', { timeout: 40_000 }, () => {
   })
 
   it('shows a 409 from the API in an error banner', async () => {
-    server.use(http.post('*/api/v1/admin/vendors/:id/approve', () => HttpResponse.json({ message: 'Only applications can be approved.', extra: { code: 'invalid_transition' } }, { status: 409 })))
+    server.use(http.post('*/api/v1/admin/vendors/:id/approve', () => HttpResponse.json({ error: { code: 'invalid_status_transition', message: 'Only applications can be approved.', request_id: 'r' } }, { status: 409 })))
     const { user } = renderModule({ route: '/vendors/v_saanjh' })
     await heading('Saanjh Label')
     await user.click(screen.getByRole('checkbox', { name: 'Vendor agreement signed (offline)' }))
     await user.click(screen.getByRole('button', { name: 'Approve and invite' }))
     const alert = await screen.findByRole('alert')
-    expect(within(alert).getByText('Only applications can be approved.')).toBeInTheDocument()
+    expect(within(alert).getByText('This vendor’s status changed. Reload and try again.')).toBeInTheDocument()
   })
 
   it('asks the applicant for more information', async () => {

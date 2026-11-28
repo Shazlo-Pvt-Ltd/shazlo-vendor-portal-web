@@ -33,7 +33,7 @@ export function useCreateAdmin() {
   const { identity } = useAppContext()
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: S['CreateAdmin']) => identity.call((c) => c.POST('/v1/admins', { body })),
+    mutationFn: (body: S['CreateAdminRequest']) => identity.call((c) => c.POST('/v1/admins', { body })),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.allAdmins }),
   })
 }
@@ -42,7 +42,7 @@ export function useUpdateAdmin() {
   const { identity } = useAppContext()
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...body }: S['UpdateAdmin'] & { id: string }) => identity.call((c) => c.PATCH('/v1/admins/{admin_id}', { params: { path: { admin_id: id } }, body })),
+    mutationFn: ({ id, ...body }: S['UpdateAdminRequest'] & { id: string }) => identity.call((c) => c.PATCH('/v1/admins/{admin_id}', { params: { path: { admin_id: id } }, body })),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.allAdmins }),
   })
 }

@@ -2,14 +2,14 @@ import { Box, Button, Card, IconButton, Stack, Typography } from '@mui/material'
 import { Banner, fontFamily, neutral, radius, StatusPill } from '@shazlo/ui'
 import { Copy, RefreshCw, X } from 'lucide-react'
 import { useId, type ReactNode } from 'react'
-import type { components } from '../../../api/schema'
+import type * as M from '../../../api/model'
 import { publishingCopy } from '../../../copy/publishing'
 import { formatCount, formatRelative, formatStamp } from '../../../lib/format'
 import { outboxPill } from '../../../lib/status'
 import { formatUntil } from './when'
 
 const copy = publishingCopy.details
-type OutboxEvent = components['schemas']['OutboxEvent']
+type OutboxEvent = M.OutboxEvent
 
 const icon = { size: 18, strokeWidth: 1.75, 'aria-hidden': true } as const
 

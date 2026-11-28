@@ -19,7 +19,7 @@ async function approve(vendorId: string, body: unknown, { auth = true } = {}) {
     headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: `Bearer ${token()}` } : {}) },
     body: typeof body === 'string' ? body : JSON.stringify(body),
   })
-  return { status: response.status, body: (await response.json()) as Record<string, unknown> & { extra?: { code: string; fields?: Record<string, string> } } }
+  return { status: response.status, body: (await response.json()) as Record<string, unknown> & { error?: { code: string; message: string; request_id: string; details?: { loc: string[]; msg: string }[] } } }
 }
 
 const product = (id: string) => db.products.find((p) => p.id === id)!
@@ -81,7 +81,7 @@ describe('mock vendor-api: approve several products', () => {
     const decisions = db.decisions.length
     const { status, body } = await approve('v_kalki', { products: [seen('p_ajrakh')] })
     expect(status).toBe(409)
-    expect(body.extra?.code).toBe('invalid_transition')
+    expect(body.error?.code).toBe('invalid_status_transition')
     expect(product('p_ajrakh').status).toBe('pending_review')
     expect(db.decisions).toHaveLength(decisions)
   })
@@ -111,7 +111,7 @@ describe('mock vendor-api: approve several products', () => {
   it('answers 404 for an unknown vendor', async () => {
     const { status, body } = await approve('v_nope', { products: [seen('p_ajrakh')] })
     expect(status).toBe(404)
-    expect(body.extra?.code).toBe('not_found')
+    expect(body.error?.code).toBe('not_found')
     expect(product('p_ajrakh').status).toBe('pending_review')
   })
 
@@ -132,7 +132,7 @@ describe('mock vendor-api: approve several products', () => {
     const decisions = db.decisions.length
     const { status, body: answer } = await approve('v_kalki', body())
     expect(status).toBe(422)
-    expect(answer.extra).toMatchObject({ code: 'validation_error', fields: { products: expect.any(String) } })
+    expect(answer.error).toMatchObject({ code: 'validation_error', details: [{ loc: ['body', 'products'], msg: expect.any(String) }] })
     expect(waiting()).toEqual(before)
     expect(db.decisions).toHaveLength(decisions)
   })

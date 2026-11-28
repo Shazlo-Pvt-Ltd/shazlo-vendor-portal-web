@@ -3,7 +3,7 @@ import { QueryClient } from '@tanstack/react-query'
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { ApiError, createApi, type Api } from '../api/http'
-import type { paths } from '../api/schema'
+import type { ApiPaths } from '../api/client'
 
 declare const __SHELL_ORIGIN__: string | undefined
 export const MODULE_ID = 'vendor-admin'
@@ -37,11 +37,11 @@ class ModuleSession {
   private auth: AuthPayload | null = null
   private waiters: ((ok: boolean) => void)[] = []
   private lastRequest = 0
-  readonly api: Api<paths>
+  readonly api: Api<ApiPaths>
   readonly queryClient: QueryClient
 
   constructor(private host: Host, apiUrl: string) {
-    this.api = createApi<paths>({ baseUrl: apiUrl, getToken: () => this.auth?.accessToken ?? null, renew: () => this.requestToken('unauthorized') })
+    this.api = createApi<ApiPaths>({ baseUrl: apiUrl, getToken: () => this.auth?.accessToken ?? null, renew: () => this.requestToken('unauthorized') })
     this.queryClient = new QueryClient({
       defaultOptions: {
         queries: { staleTime: 15_000, refetchOnWindowFocus: false, retry: (n, e) => n < 2 && e instanceof ApiError && (e.status === 0 || e.status >= 500) },
@@ -86,7 +86,7 @@ type Status = 'standalone' | 'waiting' | 'ready' | 'ended'
 interface Runtime {
   status: Status
   user: AuthPayload['user'] | null
-  api: Api<paths>
+  api: Api<ApiPaths>
   queryClient: QueryClient
   toast: (level: 'info' | 'success' | 'warning' | 'error', message: string) => void
   setTitle: (path: string, title: string) => void

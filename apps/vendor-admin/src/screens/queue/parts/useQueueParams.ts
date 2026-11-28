@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router'
+import { QUEUE_MAX_SEARCH } from '../../../api/adapters/queue'
 import type { QueueFilters } from '../../../api/queries'
 import { queueCopy, type KindKey, type SortKey, type SubmittedKey } from '../../../copy/queue'
 
@@ -29,7 +30,8 @@ function oneOf<T extends string>(list: readonly T[], value: string | null): T | 
 export function parseQueueParams(search: URLSearchParams): QueueParams {
   return {
     kind: oneOf(KINDS, search.get('kind')),
-    q: search.get('q')?.trim() ?? '',
+    // A longer link (pasted, hand-edited) is cut to what the server accepts instead of failing the queue.
+    q: (search.get('q')?.trim() ?? '').slice(0, QUEUE_MAX_SEARCH).trim(),
     vendor: search.get('vendor') ?? '',
     submitted: oneOf(SUBMITTED, search.get('submitted')),
     resubmissions: search.get('resubmissions') === 'true',

@@ -2,7 +2,7 @@ import { Box, Button, Table, TableBody, TableCell, TableHead, TableRow, Typograp
 import { emphasis, fontFamily, neutral, radius, SectionCard, status, StatusPill } from '@shazlo/ui'
 import { GitCompareArrows, IndianRupee, Ruler, Shirt, Tags } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
-import type { components } from '../../api/schema'
+import type * as M from '../../api/model'
 import { CardTitle } from '../../components/CardTitle'
 import { reviewCopy } from '../../copy/review'
 import { formatCount, formatINR } from '../../lib/format'
@@ -10,8 +10,7 @@ import { usePhone } from '../../lib/responsive'
 import { photoNames } from './ProductPhotos'
 
 const copy = reviewCopy.product
-type S = components['schemas']
-type Version = S['ProductVersion']
+type Version = M.ProductVersion
 const CLIP = 80
 
 const num = { textAlign: 'right', fontVariantNumeric: 'tabular-nums' } as const
@@ -207,7 +206,7 @@ const dlSx = { display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '160px 1fr
 // Multicolour has no single colour: four solid quarters, never a gradient.
 const MULTI = ['#8C2F25', '#C99A2E', '#2E3F6E', '#5C6B4E']
 
-function Swatch({ colour }: { colour: S['Colour'] }) {
+function Swatch({ colour }: { colour: M.Colour }) {
   const ring = { width: 14, height: 14, borderRadius: '50%', border: `1px solid ${neutral.lineStrong}`, flexShrink: 0, display: 'inline-block', overflow: 'hidden' } as const
   if (colour.hex == null) {
     return (
@@ -221,7 +220,7 @@ function Swatch({ colour }: { colour: S['Colour'] }) {
   return <Box component="span" aria-hidden="true" data-swatch={colour.hex} sx={{ ...ring, bgcolor: colour.hex }} />
 }
 
-function Colour({ colour }: { colour: S['Colour'] }) {
+function Colour({ colour }: { colour: M.Colour }) {
   return (
     <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75, whiteSpace: 'nowrap' }}>
       <Swatch colour={colour} />

@@ -1,8 +1,6 @@
 // The Vendor dashboard: the module's landing page, what is going on on the vendor side at a glance.
 // All of the screen's words, so Hindi can be added later.
-import type { components } from '../api/schema'
-
-type ItemKind = components['schemas']['ItemKind']
+import type { ItemKind } from '../api/model'
 
 const count = (n: number) => n.toLocaleString('en-IN')
 const plural = (n: number, one: string, many: string) => `${count(n)} ${n === 1 ? one : many}`

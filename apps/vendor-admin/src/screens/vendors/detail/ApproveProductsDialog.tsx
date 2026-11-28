@@ -1,13 +1,13 @@
 import { Box, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Stack, Typography } from '@mui/material'
 import { Banner, emphasis, neutral, status } from '@shazlo/ui'
 import { useId } from 'react'
-import type { components } from '../../../api/schema'
+import type * as M from '../../../api/model'
 import { vendorActionsCopy, vendorDetailCopy } from '../../../copy/vendors'
 import { formatINR } from '../../../lib/format'
 import { usePhone } from '../../../lib/responsive'
 
 const copy = vendorDetailCopy.products.bulk.dialog
-type Product = components['schemas']['VendorDetail']['products'][number]
+type Product = M.VendorDetail['products'][number]
 
 type Props = {
   open: boolean

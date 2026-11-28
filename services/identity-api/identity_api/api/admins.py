@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from identity_api.api.auth import no_store
 from identity_api.api.deps import require_role
+from identity_api.core.errors import error_responses
 from identity_api.db.models import SUPER_ADMIN, Admin, Role
 from identity_api.db.session import get_session
 from identity_api.services.admins import AdminService
@@ -17,6 +18,8 @@ from identity_api.services.admins import AdminService
 # Every endpoint here is for super_admin only (ADR 0009). One dependency object, so FastAPI
 # runs the check once per request even where an endpoint also asks for the acting admin.
 super_admin = require_role(SUPER_ADMIN)
+# What every endpoint here can answer, on top of its own errors.
+COMMON = ((401, ("unauthorized",)), (403, ("password_change_required", "forbidden")))
 router = APIRouter(tags=["admins"], dependencies=[Depends(super_admin)])
 
 Db = Annotated[AsyncSession, Depends(get_session)]
@@ -99,13 +102,13 @@ def role_out(role: Role) -> RoleOut:
     return RoleOut(name=role.name, description=role.description)
 
 
-@router.get("/roles")
+@router.get("/roles", responses=error_responses(*COMMON))
 async def list_roles(response: Response, db: Db, service: Service) -> list[RoleOut]:
     no_store(response)
     return [role_out(role) for role in await service.list_roles(db)]
 
 
-@router.get("/admins")
+@router.get("/admins", responses=error_responses(*COMMON, (422, ("validation_error",))))
 async def list_admins(
     response: Response,
     db: Db,
@@ -128,7 +131,15 @@ async def list_admins(
     )
 
 
-@router.post("/admins", status_code=201)
+@router.post(
+    "/admins",
+    status_code=201,
+    responses=error_responses(
+        *COMMON,
+        (409, ("email_taken",)),
+        (422, ("weak_password", "unknown_role", "validation_error")),
+    ),
+)
 async def create_admin(
     body: CreateAdminRequest, response: Response, db: Db, service: Service
 ) -> AdminOut:
@@ -145,13 +156,24 @@ async def create_admin(
     return admin_out(admin)
 
 
-@router.get("/admins/{admin_id}")
+@router.get(
+    "/admins/{admin_id}",
+    responses=error_responses(*COMMON, (404, ("admin_not_found",)), (422, ("validation_error",))),
+)
 async def get_admin(admin_id: uuid.UUID, response: Response, db: Db, service: Service) -> AdminOut:
     no_store(response)
     return admin_out(await service.get_admin(db, admin_id))
 
 
-@router.patch("/admins/{admin_id}")
+@router.patch(
+    "/admins/{admin_id}",
+    responses=error_responses(
+        *COMMON,
+        (404, ("admin_not_found",)),
+        (409, ("cannot_deactivate_self", "last_super_admin")),
+        (422, ("unknown_role", "validation_error")),
+    ),
+)
 async def update_admin(
     admin_id: uuid.UUID,
     body: UpdateAdminRequest,
@@ -172,7 +194,15 @@ async def update_admin(
     return admin_out(admin)
 
 
-@router.post("/admins/{admin_id}/reset-password", status_code=204)
+@router.post(
+    "/admins/{admin_id}/reset-password",
+    status_code=204,
+    responses=error_responses(
+        *COMMON,
+        (404, ("admin_not_found",)),
+        (422, ("weak_password", "validation_error")),
+    ),
+)
 async def reset_password(
     admin_id: uuid.UUID, body: ResetPasswordRequest, db: Db, service: Service
 ) -> Response:

@@ -6,7 +6,7 @@ import { useWatch } from 'react-hook-form'
 import { Link as RouterLink, useParams, useSearchParams } from 'react-router'
 import { ApiError } from '../../api/http'
 import { useVendor, useVendorAction } from '../../api/queries'
-import type { components } from '../../api/schema'
+import type * as M from '../../api/model'
 import { modulePaths } from '../../app/routes'
 import { TabLabel, tabSx, tabsSx } from '../../components/tabs'
 import { vendorActionsCopy, vendorDetailCopy as copy } from '../../copy/vendors'
@@ -21,7 +21,7 @@ import { ProductsTab, type ProductsOutcome } from './detail/ProductsTab'
 import { VendorActionDialog, type DialogKind } from './dialogs'
 import { isApplication } from './list/VendorTable'
 
-type Vendor = components['schemas']['VendorDetail']
+type Vendor = M.VendorDetail
 // What the last action did. A warning says what went through and lists what did not (in `body`).
 type Outcome = { tone: 'success' | 'warning' | 'error'; text: string; body?: ReactNode }
 

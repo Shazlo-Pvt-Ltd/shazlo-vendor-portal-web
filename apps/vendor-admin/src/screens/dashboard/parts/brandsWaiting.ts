@@ -1,14 +1,12 @@
 import { useMemo } from 'react'
 import { useQueue } from '../../../api/queries'
-import type { components } from '../../../api/schema'
+import type * as S from '../../../api/model'
 
-type S = components['schemas']
-
-export type BrandWaiting = { vendor: S['VendorRef']; count: number; oldest: string }
+export type BrandWaiting = { vendor: S.VendorRef; count: number; oldest: string }
 
 // One entry per brand whose products wait for review: most products first, then the brand whose
 // oldest product has waited longest, then by name so the order never jumps between loads.
-export function groupByBrand(items: readonly S['QueueItem'][]): BrandWaiting[] {
+export function groupByBrand(items: readonly S.QueueItem[]): BrandWaiting[] {
   const byVendor = new Map<string, BrandWaiting>()
   for (const item of items) {
     if (item.kind !== 'product') continue

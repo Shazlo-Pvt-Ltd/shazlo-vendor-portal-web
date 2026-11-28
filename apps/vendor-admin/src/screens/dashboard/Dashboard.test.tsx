@@ -2,7 +2,7 @@ import { mockModuleToken } from '@shazlo/mock-vendor-api'
 import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
-import type { components } from '../../api/schema'
+import type * as S from '../../api/model'
 import { dashboardCopy } from '../../copy/dashboard'
 import { formatRelative } from '../../lib/format'
 import { isOutboxStatus } from '../../lib/status'
@@ -13,7 +13,6 @@ import { parseVendorParams } from '../vendors/list/useVendorParams'
 import { groupByBrand } from './parts/brandsWaiting'
 import { MAX_BRAND_ROWS } from './parts/BrandsWaitingCard'
 
-type S = components['schemas']
 type Db = ReturnType<typeof renderModule>['db']
 
 // The figures come from the seed in packages/mock-vendor-api. Vendor counts are read off the mock's
@@ -24,7 +23,7 @@ async function adminGet<T>(path: string): Promise<T> {
   return (await response.json()) as T
 }
 
-const forbidden = (message: string) => HttpResponse.json({ message, extra: { code: 'forbidden' } }, { status: 403 })
+const forbidden = (message: string) => HttpResponse.json({ error: { code: 'forbidden', message, request_id: 'req-test' } }, { status: 403 })
 
 async function onDashboard() {
   // The first visit compiles the screen's chunk; give it room on a busy machine.
@@ -74,7 +73,7 @@ describe('Vendor dashboard', { timeout: 40_000 }, () => {
     const { db } = renderModule({ route: '/dashboard' })
     await onDashboard()
     const group = await figures('Vendors', 'Vendor figures')
-    const withStatus = (status: S['VendorStatus']) => db.vendors.filter((v) => v.status === status).length
+    const withStatus = (status: S.VendorStatus) => db.vendors.filter((v) => v.status === status).length
     const applied = withStatus('applied')
     const asked = withStatus('under_review')
     expect(withStatus('approved')).toBeGreaterThan(0)
@@ -92,7 +91,7 @@ describe('Vendor dashboard', { timeout: 40_000 }, () => {
     const { db } = renderModule({ route: '/dashboard' })
     await onDashboard()
     const group = await figures('Review queue', 'Review queue figures')
-    const summary = await adminGet<S['Summary']>('/summary')
+    const summary = await adminGet<S.Summary>('/summary')
     expect(summary.queue.product).toBe(pendingProducts(db).length)
     expect(summary.queue.brand_page).toBe(db.brands.filter((b) => b.status === 'pending_review').length)
 
@@ -183,7 +182,7 @@ describe('Vendor dashboard', { timeout: 40_000 }, () => {
     renderModule({ route: '/dashboard' })
     await onDashboard()
     const group = await figures('Publishing to the app', 'Publishing figures')
-    const { publishing } = await adminGet<S['Summary']>('/summary')
+    const { publishing } = await adminGet<S.Summary>('/summary')
     expect(publishing.failed).toBeGreaterThan(0)
 
     expectFigure(group, 'Delivered in the last 24 h', publishing.delivered_24h, '/publishing?status=delivered')
@@ -211,7 +210,7 @@ describe('Vendor dashboard', { timeout: 40_000 }, () => {
     renderModule({ route: '/dashboard' })
     await onDashboard()
     const list = await screen.findByRole('list', { name: 'Recent decisions' }, { timeout: 10_000 })
-    const { recent } = await adminGet<S['Summary']>('/summary')
+    const { recent } = await adminGet<S.Summary>('/summary')
     expect(new Set(recent.map((d) => d.kind))).toEqual(new Set(['product', 'brand_page', 'application']))
     const rows = within(list).getAllByRole('listitem')
     expect(rows).toHaveLength(recent.length)
@@ -253,7 +252,7 @@ describe('Vendor dashboard', { timeout: 40_000 }, () => {
   })
 
   it('keeps the rest of the page when the product queue fails, and retries it', async () => {
-    server.use(http.get('*/api/v1/admin/queue', () => forbidden('The queue is not available to your role.'), { once: true }))
+    server.use(http.get('*/v1/admin/queue', () => forbidden('The queue is not available to your role.'), { once: true }))
     const { user } = renderModule({ route: '/dashboard' })
     await onDashboard()
     const card = region('Brands with products waiting')
@@ -292,7 +291,7 @@ describe('Vendor dashboard', { timeout: 40_000 }, () => {
       // its data is stale, so it loads again.
       server.use(
         http.get('*/api/v1/admin/summary', () => forbidden('The summary is not available to your role.')),
-        http.get('*/api/v1/admin/queue', () => forbidden('The queue is not available to your role.')),
+        http.get('*/v1/admin/queue', () => forbidden('The queue is not available to your role.')),
       )
       shell.navigate('/vendors')
       await screen.findByRole('heading', { level: 1, name: 'Vendors' }, { timeout: 10_000 })
@@ -380,7 +379,7 @@ describe('Vendor dashboard', { timeout: 40_000 }, () => {
 })
 
 describe('groupByBrand', () => {
-  const item = (id: string, vendor: string, hoursAgo: number, kind: S['ItemKind'] = 'product'): S['QueueItem'] => ({
+  const item = (id: string, vendor: string, hoursAgo: number, kind: S.ItemKind = 'product'): S.QueueItem => ({
     id,
     kind,
     subject_id: id,

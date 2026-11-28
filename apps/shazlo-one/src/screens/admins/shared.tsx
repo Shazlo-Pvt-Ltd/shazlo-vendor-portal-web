@@ -5,8 +5,8 @@ import { useCallback, useId, type Ref } from 'react'
 import type { components } from '../../api/identity'
 import { adminsCopy as copy } from '../../copy/admins'
 
-export type Admin = components['schemas']['Admin']
-export type Role = components['schemas']['Role']
+export type Admin = components['schemas']['AdminOut']
+export type Role = components['schemas']['RoleOut']
 
 export const roleName = (role: string) => copy.roleNames[role] ?? role
 

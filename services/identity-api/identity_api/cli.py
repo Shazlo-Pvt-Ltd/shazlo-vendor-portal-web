@@ -1,4 +1,4 @@
-"""Operator commands: `python -m identity_api.cli seed` and `generate-key`."""
+"""Operator commands: `python -m identity_api.cli seed`, `generate-key` and `export-openapi`."""
 
 import argparse
 import asyncio
@@ -18,6 +18,7 @@ from identity_api.core.security import password_config
 from identity_api.core.settings import Settings, get_settings
 from identity_api.db.models import SUPER_ADMIN, VENDOR_REVIEWER, Admin, Role
 from identity_api.db.session import create_engine, create_sessionmaker
+from identity_api.openapi import OPENAPI_PATH, build_openapi
 
 logger = logging.getLogger("identity_api.cli")
 
@@ -125,6 +126,20 @@ def _generate_key(directory: Path, kid: str | None) -> None:
     print(f"Set JWT_KEYS_DIR={directory} and JWT_SIGNING_KID={kid} to sign with it.")
 
 
+def _export_openapi(check: bool, path: Path) -> None:
+    text = build_openapi()
+    if check:
+        current = path.read_bytes().decode("utf-8").replace("\r\n", "\n") if path.exists() else ""
+        if current != text:
+            raise SeedError(
+                f"{path} is stale. Regenerate it: python -m identity_api.cli export-openapi"
+            )
+        print(f"{path} is up to date.")
+        return
+    path.write_bytes(text.encode("utf-8"))
+    print(f"Wrote {path}.")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="identity_api.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -132,9 +147,16 @@ def main(argv: list[str] | None = None) -> int:
     keygen = commands.add_parser("generate-key", help="create an RS256 signing key for local dev")
     keygen.add_argument("--dir", type=Path, default=Path(".keys"), help="default: ./.keys")
     keygen.add_argument("--kid", help="key ID; default is the date plus a random suffix")
+    export = commands.add_parser(
+        "export-openapi", help="write openapi.json (or, with --check, fail if it is stale)"
+    )
+    export.add_argument("--check", action="store_true", help="do not write; fail if stale")
+    export.add_argument("--out", type=Path, default=OPENAPI_PATH)
     args = parser.parse_args(argv)
     try:
-        if args.command == "generate-key":
+        if args.command == "export-openapi":
+            _export_openapi(args.check, args.out)
+        elif args.command == "generate-key":
             _generate_key(args.dir, args.kid)
         else:
             asyncio.run(_run_seed(get_settings()))

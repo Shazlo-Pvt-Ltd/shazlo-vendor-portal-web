@@ -8,6 +8,7 @@ import { App } from '../../App'
 import { routes } from '../../app/routes'
 import { DEMO_INVITED, DEMO_LOGIN } from '../../mocks/db'
 import { clearSensitiveState } from '../../security/sensitiveState'
+import { countdownClock } from '../../test/countdown'
 import { renderApp } from '../../test/render'
 import { setupMockApi } from '../../test/server'
 import { typeFast } from '../../test/typeFast'
@@ -193,8 +194,9 @@ describe('Set your password', () => {
   it('counts down after too many attempts', async () => {
     server.use(http.post('*/v1/auth/set-password', () => HttpResponse.json({ error: { code: 'rate_limited', message: 'x' } }, { status: 429, headers: { 'Retry-After': '30' } }), { once: true }))
     const { user } = await open(`/accept-invite#token=${INVITE}`)
+    const countdown = countdownClock(30)
     await fill(user)
-    expect(await screen.findByText(/Too many attempts. Try again in (30|29) s\./)).toBeInTheDocument()
+    countdown((await screen.findByText(/Too many attempts. Try again in \d+ s\./)).textContent, /Try again in (\d+) s\./)
     expect(screen.getByRole('button', { name: 'Save password' })).toBeDisabled()
   })
 

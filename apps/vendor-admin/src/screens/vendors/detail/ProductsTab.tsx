@@ -3,7 +3,7 @@ import { emphasis, EmptyState, neutral, StatusPill, type PillStatus } from '@sha
 import { useId, useRef, useState, type ReactNode } from 'react'
 import { Link as RouterLink } from 'react-router'
 import { useApproveProducts } from '../../../api/queries'
-import type { components } from '../../../api/schema'
+import type * as S from '../../../api/model'
 import { modulePaths } from '../../../app/routes'
 import { ProductThumb } from '../../../components/ProductThumb'
 import { focusRing, RowChevron } from '../../../components/rows'
@@ -12,8 +12,7 @@ import { formatINR } from '../../../lib/format'
 import { ApproveProductsDialog } from './ApproveProductsDialog'
 
 const copy = vendorDetailCopy.products
-type S = components['schemas']
-type Vendor = S['VendorDetail']
+type Vendor = S.VendorDetail
 type Product = Vendor['products'][number]
 
 // What the vendor page's banner says after approving several products; `body` lists the ones that
@@ -118,7 +117,7 @@ function BulkToolbar({ waiting, selected, onAll, onApprove }: ToolbarProps) {
 }
 
 // The banner and toast for the answer: all approved, or the count that were and each that was not.
-function outcomeOf(result: S['ApproveProductsResult'], sent: Product[], brand: string): [ProductsOutcome, string] {
+function outcomeOf(result: S.ApproveProductsResult, sent: Product[], brand: string): [ProductsOutcome, string] {
   const b = copy.bulk
   const approved = result.approved.length
   if (result.failed.length === 0) return [{ tone: 'success', text: b.done.banner(approved, brand) }, b.done.toast(approved, brand)]

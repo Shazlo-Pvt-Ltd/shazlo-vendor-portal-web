@@ -32,7 +32,7 @@ function expectWholeCardLink(item: HTMLElement) {
 
 describe('Phone layout', { timeout: 40_000 }, () => {
   it('shows the dashboard’s brands as whole-row links and puts each banner’s button under its message', async () => {
-    server.use(http.get('*/api/v1/admin/vendors', () => HttpResponse.json({ message: 'Vendors are not available to your role.', extra: { code: 'forbidden' } }, { status: 403 }), { once: true }))
+    server.use(http.get('*/api/v1/admin/vendors', () => HttpResponse.json({ error: { code: 'forbidden', message: 'Vendors are not available to your role.', request_id: 'req-test' } }, { status: 403 }), { once: true }))
     const { user } = renderModule({ route: '/dashboard' })
     await screen.findByRole('heading', { level: 1, name: 'Vendor dashboard' }, { timeout: 10_000 })
 

@@ -1,6 +1,7 @@
 import { createMessage } from '@shazlo/shell-protocol'
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ADMIN_ID } from '../mocks/identity'
 import { renderShell } from '../test/render'
 
 const MODULE_ORIGIN = 'http://localhost:5193'
@@ -156,7 +157,7 @@ describe('module host (ADR 0001)', () => {
     const [auth, origin] = post.mock.calls[0]!
     expect(origin).toBe(MODULE_ORIGIN)
     expect(auth).toMatchObject({ protocol: 'shazlo-one', type: 'auth', replyTo: msg.id, payload: { user: { email: 'naman@shazlo.store', roles: ['super_admin'] } } })
-    expect((auth as { payload: { accessToken: string } }).payload.accessToken).toMatch(/^mock\.vendor-api\.a_naman\./)
+    expect((auth as { payload: { accessToken: string } }).payload.accessToken).toMatch(new RegExp(`^mock\\.vendor-api\\.${ADMIN_ID.naman}\\.`))
     await waitFor(() => expect(screen.queryByRole('status', { name: 'Loading Vendors' })).toBeNull())
   })
 
