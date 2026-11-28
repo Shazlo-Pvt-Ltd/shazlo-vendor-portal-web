@@ -7,6 +7,7 @@ import {
   UnknownAudienceError,
   isAdminProfile,
   isSessionResponse,
+  isTokenResponse,
 } from './store'
 import { adminProfile, apiError, fakeChannels, makeStore, sessionBody } from './testing'
 
@@ -295,7 +296,7 @@ describe('renewal', () => {
 
   it('never schedules a renewal sooner than a second, whatever expires_in says', async () => {
     vi.useFakeTimers()
-    const refresh = vi.fn(async () => sessionBody({ expires_in: 0 }))
+    const refresh = vi.fn(async () => sessionBody({ expires_in: 1 }))
     const { store } = makeStore({ refresh })
     await store.start()
     await vi.advanceTimersByTimeAsync(999)
@@ -329,6 +330,143 @@ describe('signing out', () => {
     await store.start()
     await store.logout()
     expect(store.getSnapshot().status).toBe('signedOut')
+    store.close()
+  })
+})
+
+describe('a sign-out while a renewal is under way', () => {
+  type Body = ReturnType<typeof sessionBody>
+
+  it('is not undone when the refresh answers afterwards', async () => {
+    let answer: (value: Body) => void = () => {}
+    let calls = 0
+    const refresh = () => {
+      calls += 1
+      if (calls === 1) return Promise.resolve(sessionBody({ token: 't1' }))
+      return new Promise<Body>((resolve) => {
+        answer = resolve
+      })
+    }
+    const { store } = makeStore({ refresh })
+    await store.start()
+    const renewing = store.renew()
+    await store.logout()
+    answer(sessionBody({ token: 'too-late' }))
+    expect(await renewing).toBe(false)
+    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', signedOutByUser: true })
+    expect(store.getAccessToken()).toBeNull()
+    store.close()
+  })
+
+  it('is not undone when /v1/me answers afterwards', async () => {
+    let answer: (value: ReturnType<typeof adminProfile>) => void = () => {}
+    let calls = 0
+    const fetchMe = () => {
+      calls += 1
+      if (calls === 1) return Promise.resolve(adminProfile())
+      return new Promise<ReturnType<typeof adminProfile>>((resolve) => {
+        answer = resolve
+      })
+    }
+    const { store } = makeStore({ fetchMe })
+    await store.start()
+    const renewing = store.renew()
+    await vi.waitFor(() => expect(calls).toBe(2))
+    await store.logout()
+    answer(adminProfile())
+    expect(await renewing).toBe(false)
+    expect(store.getSnapshot().status).toBe('signedOut')
+    expect(store.getAccessToken()).toBeNull()
+    store.close()
+  })
+
+  it('from another tab wins over this tab’s renewal', async () => {
+    const channels = fakeChannels()
+    let answer: (value: Body) => void = () => {}
+    let calls = 0
+    const refresh = () => {
+      calls += 1
+      if (calls === 1) return Promise.resolve(sessionBody())
+      return new Promise<Body>((resolve) => {
+        answer = resolve
+      })
+    }
+    const a = makeStore({ channel: channels() }).store
+    const b = makeStore({ channel: channels(), refresh }).store
+    await Promise.all([a.start(), b.start()])
+    const renewing = b.renew()
+    await a.logout()
+    answer(sessionBody({ token: 'too-late' }))
+    await renewing
+    expect(b.getSnapshot().status).toBe('signedOut')
+    expect(b.getAccessToken()).toBeNull()
+    a.close()
+    b.close()
+  })
+
+  it('keeps the admin’s choice when the refresh then fails with a 401', async () => {
+    let fail: (error: unknown) => void = () => {}
+    let calls = 0
+    const refresh = () => {
+      calls += 1
+      if (calls === 1) return Promise.resolve(sessionBody())
+      return new Promise<Body>((_resolve, reject) => {
+        fail = reject
+      })
+    }
+    const { store } = makeStore({ refresh })
+    await store.start()
+    const renewing = store.renew()
+    await store.logout()
+    fail(apiError(401, 'invalid_refresh_token'))
+    await renewing
+    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', signedOutByUser: true, expired: false })
+    store.close()
+  })
+
+  it('still restores this tab when another tab signs in again before the old renewal answers', async () => {
+    const channels = fakeChannels()
+    let answer: (value: Body) => void = () => {}
+    let calls = 0
+    const refresh = () => {
+      calls += 1
+      if (calls === 2) {
+        return new Promise<Body>((resolve) => {
+          answer = resolve
+        })
+      }
+      return Promise.resolve(sessionBody({ token: `t${calls}` }))
+    }
+    const a = makeStore({ channel: channels() }).store
+    const b = makeStore({ channel: channels(), refresh }).store
+    await Promise.all([a.start(), b.start()])
+    const renewing = b.renew()
+    await a.logout()
+    a.signIn(sessionBody({ token: 'a-again' }))
+    // The new refresh waits for the old one, so the two never race for the cookie.
+    expect(calls).toBe(2)
+    answer(sessionBody({ token: 'stale' }))
+    expect(await renewing).toBe(false)
+    await vi.waitFor(() => expect(b.getSnapshot().status).toBe('signedIn'))
+    expect(b.getAccessToken()).toBe('t3')
+    a.close()
+    b.close()
+  })
+
+  it('a stray 401 after the admin signed out does not turn it into an expiry', async () => {
+    let signedOut = false
+    const refresh = async () => {
+      if (signedOut) throw apiError(401, 'invalid_refresh_token')
+      return sessionBody()
+    }
+    const onCleared = vi.fn()
+    const { store } = makeStore({ refresh, onCleared })
+    await store.start()
+    await store.logout()
+    signedOut = true
+    expect(await store.renew()).toBe(false)
+    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', signedOutByUser: true, expired: false })
+    expect(onCleared).toHaveBeenCalledOnce()
     store.close()
   })
 })
@@ -540,6 +678,99 @@ describe('module tokens', () => {
     store.close()
   })
 
+  it('drops the previous admin’s caches and module tokens when a renewal brings another admin', async () => {
+    const onCleared = vi.fn()
+    const reset = vi.fn()
+    const undo = registerSensitiveReset(reset)
+    let n = 0
+    const exchange = vi.fn(async (audience: string, token: string) => ({
+      access_token: `m-for-${token}`,
+      token_type: 'Bearer',
+      expires_in: 300,
+      audience,
+    }))
+    const { store } = makeStore({
+      onCleared,
+      exchange,
+      refresh: async () => sessionBody({ token: `t${(n += 1)}` }),
+      fetchMe: async () => (n === 1 ? adminProfile({ id: 'a1' }) : adminProfile({ id: 'b2', email: 'b@shazlo.test' })),
+    })
+    await store.start()
+    expect((await store.getModuleToken('m')).accessToken).toBe('m-for-t1')
+    await store.renew()
+    expect(store.getSnapshot().admin?.id).toBe('b2')
+    expect(onCleared).toHaveBeenCalledOnce()
+    expect(reset).toHaveBeenCalledOnce()
+    expect((await store.getModuleToken('m')).accessToken).toBe('m-for-t2')
+    undo()
+    store.close()
+  })
+
+  it('keeps the caches when a renewal brings the same admin', async () => {
+    const onCleared = vi.fn()
+    const exchange = vi.fn(async (audience: string) => ({ access_token: 'm', token_type: 'Bearer', expires_in: 300, audience }))
+    const { store } = makeStore({ onCleared, exchange })
+    await store.start()
+    await store.getModuleToken('m')
+    await store.renew()
+    await store.getModuleToken('m')
+    expect(onCleared).not.toHaveBeenCalled()
+    expect(exchange).toHaveBeenCalledOnce()
+    store.close()
+  })
+
+  it('exchanges again when a renewal changes the admin’s roles', async () => {
+    let n = 0
+    const exchange = vi.fn(async (audience: string) => ({ access_token: 'm', token_type: 'Bearer', expires_in: 300, audience }))
+    const { store } = makeStore({
+      exchange,
+      fetchMe: async () => adminProfile({ roles: (n += 1) === 1 ? ['super_admin'] : ['vendor_reviewer'] }),
+    })
+    await store.start()
+    await store.getModuleToken('m')
+    await store.renew()
+    await store.getModuleToken('m')
+    expect(exchange).toHaveBeenCalledTimes(2)
+    store.close()
+  })
+
+  it('hands out no cached module token once a renewal says the password must change', async () => {
+    let n = 0
+    const { store } = makeStore({ refresh: async () => sessionBody({ must_change_password: (n += 1) > 1 }) })
+    await store.start()
+    await store.getModuleToken('m')
+    await store.renew()
+    expect(store.getSnapshot().status).toBe('passwordChangeRequired')
+    await expect(store.getModuleToken('m')).rejects.toBeInstanceOf(NotSignedInError)
+    store.close()
+  })
+
+  it('an exchange from an ended session does not stop the next session’s callers sharing theirs', async () => {
+    const releases: Array<() => void> = []
+    const exchange = vi.fn(
+      (audience: string, token: string) =>
+        new Promise<{ access_token: string; token_type: string; expires_in: number; audience: string }>((resolve) => {
+          releases.push(() => resolve({ access_token: `m-${token}`, token_type: 'Bearer', expires_in: 300, audience }))
+        }),
+    )
+    const { store } = makeStore({ exchange })
+    await store.start()
+    const old = store.getModuleToken('m').catch((error: unknown) => error)
+    await vi.waitFor(() => expect(exchange).toHaveBeenCalledTimes(1))
+    await store.logout()
+    store.signIn(sessionBody({ token: 'next' }))
+    const first = store.getModuleToken('m')
+    await vi.waitFor(() => expect(exchange).toHaveBeenCalledTimes(2))
+    releases[0]?.()
+    expect(await old).toBeInstanceOf(NotSignedInError)
+    const second = store.getModuleToken('m')
+    // Before the fix the old exchange's clean-up removed the new one, so this started a third.
+    for (const release of releases.slice(1)) release()
+    await Promise.all([first, second])
+    expect(exchange).toHaveBeenCalledTimes(2)
+    store.close()
+  })
+
   it('drops a token whose exchange finishes after the session ended', async () => {
     let release: () => void = () => {}
     const exchange = vi.fn(
@@ -567,8 +798,20 @@ describe('isSessionResponse and isAdminProfile', () => {
     ['no flag', { access_token: 'a', expires_in: 1, admin: adminProfile() }],
     ['a numeric token', { ...sessionBody(), access_token: 1 }],
     ['roles that are not strings', { ...sessionBody(), admin: { ...adminProfile(), roles: [1] } }],
+    ['an empty token', { ...sessionBody(), access_token: '' }],
+    ['a zero lifetime', { ...sessionBody(), expires_in: 0 }],
+    ['a negative lifetime', { ...sessionBody(), expires_in: -5 }],
+    ['a lifetime setTimeout cannot hold', { ...sessionBody(), expires_in: 1e12 }],
   ])('rejects %s', (_name, value) => {
     expect(isSessionResponse(value)).toBe(false)
+  })
+
+  it('checks the token exchange answer the same way', () => {
+    const good = { access_token: 'm', token_type: 'Bearer', expires_in: 300, audience: 'vendor-api' }
+    expect(isTokenResponse(good)).toBe(true)
+    expect(isTokenResponse({ ...good, access_token: '' })).toBe(false)
+    expect(isTokenResponse({ ...good, expires_in: undefined })).toBe(false)
+    expect(isTokenResponse(null)).toBe(false)
   })
 
   it('accepts a real session and profile', () => {

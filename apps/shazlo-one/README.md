@@ -69,7 +69,7 @@ src/
   session/            the admin session: store, AuthProvider, guards, return-to check
   modules/            registry.ts (the module list and its checks), loadRegistry, ModuleRegistryProvider
   security/           headers.ts (every header, defined once), sensitiveState.ts, PasswordField.tsx, and the tests
-  components/         ErrorBoundary, ErrorScreen, RouteError, NotFound, Misconfigured
+  components/         ShellLayout, NavList, AccountMenu, NoAccess (403), NotFound, ErrorBoundary, ErrorScreen, RouteError, Misconfigured, CountdownNotice
   hooks/              usePageTitle
   pages/              one file per route
   test/               test setup
@@ -119,11 +119,17 @@ on a `401` from anything but `/v1/auth/*`, renews the session once and repeats t
   state as soon as it is sent and from the query cache when the call ends) and `/change-password`.
   An admin who must change their password sees "Choose your password", can reach nothing else, and
   then continues to `return-to`; any other admin reaches "Change your password" from the account
-  menu. The API ends every other session and returns a new one, which the shell adopts. The account
+  menu. The API ends every other session and returns a new one, which the shell adopts; a `401`
+  from it makes the shell check the session again (login if it has ended). The account
   menu shows the admin's name, email and roles, and signs out (every tab follows). Password inputs
   go through `PasswordField` only (a test enforces it).
 - Ending the session clears the query cache, the sensitive forms (`registerSensitiveReset`) and every
   module token.
+  A renewal that comes back with another admin does the same; one that comes back with new roles
+  drops the cached module tokens. A sign-out (in any tab) while a renewal is under way wins: the
+  renewal's answer is thrown away.
+- Session and token-exchange answers are checked: a non-empty token and a lifetime between 0 and a
+  day, or the answer is refused.
 
 ## Modules and the layout
 
@@ -146,7 +152,7 @@ the Content-Security-Policy `frame-src` all follow:
 
 The registry is checked when the shell builds (the Vite config and the Vercel prebuild step) and
 when it starts (a bad one shows the misconfiguration screen). It refuses a wildcard or pattern
-origin, a non-https origin outside development, a `url` that is not on its `origin`, duplicate ids
+origin, a host with anything but letters, digits, dots and hyphens, a non-https origin outside development, a `url` that is not on its `origin`, duplicate ids
 or origins, and an empty role list; the message names the module and what to change. Which list a
 build uses: `development` for `npm run dev`, `preview` when `VITE_DEPLOY_ENV` (or Vercel's
 `VERCEL_ENV`) is `preview`, `production` otherwise. The file has no imports, so Node and Vite read
