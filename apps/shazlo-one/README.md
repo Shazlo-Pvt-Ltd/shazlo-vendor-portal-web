@@ -170,7 +170,8 @@ built on `createShellChannel` from `@shazlo/shell-protocol`).
 
 - **The frame:** `title`, `sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"` (no top
   navigation, popups or modals), `referrerpolicy="no-referrer"`, `allow=""`. Its `src` is exactly the
-  registry's `url`: a token is never in an address.
+  registry's `url`: a token is never in an address. `allow-scripts` with `allow-same-origin` is safe only because
+  a module has an origin of its own, so the host refuses (no frame, no token) a module whose origin is the shell's.
 - **Order:** the channel (and so the `message` listener) is created first, then `src` is set, so an early
   `ready` is never missed.
 - **On `ready`** (from the module's exact origin **and** its frame window, nothing else is read): the shell
@@ -178,7 +179,7 @@ built on `createShellChannel` from `@shazlo/shell-protocol`).
   `ready` (the module reloaded) gets the current `auth` again, from the cache while the token is good. With no
   common version the shell sends `error` `version_unsupported` and shows a panel naming the module and its version.
 - **Tokens** are kept per module (its id), never shared (two modules on `vendor-api` get a token each), and
-  dropped when the page is left, when the frame is reloaded, and when the session ends.
+  dropped when the page is left, when Retry builds a new frame, and when the session ends.
 - **Exchange failures:** `403 audience_not_allowed` (the admin lost the role) is the 403 page, with no frame.
   A network error, a 5xx, an unknown audience or an ended session is an error panel with **Retry**.
 - **No `ready` in 10 seconds** (also what a CSP or framing refusal looks like, because the parent cannot see
@@ -186,7 +187,8 @@ built on `createShellChannel` from `@shazlo/shell-protocol`).
   offers no more Retry and calls the failure reporter once (`setModuleFailureReporter` in
   `src/modules/moduleFailure.ts`; nothing is wired up by default). A module that answers resets the count.
 - **While it starts** the page shows a loading state; the shell's navigation and account menu stay usable
-  throughout, and leaving the page removes the frame and its listener.
+  throughout, and leaving the page removes the frame and its listener. Focus moves to the page heading when the
+  admin opens a module (or another one), not when the path changes inside the same module.
 
 Not here yet: pushing a fresh `auth` before the token ends and answering `token:request` (token refresh and
 session end across the frame), title and deep-link sync, toasts, and a module's `logout` and `error`
