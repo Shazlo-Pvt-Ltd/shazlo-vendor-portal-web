@@ -50,6 +50,13 @@ describe('toApiError (vendor-api envelope)', () => {
     expect(toApiError(res(409), envelope('no_proposal', 'x')).message).toBe('There is no proposed rate waiting.')
   })
 
+  it('shows the server message for codes that are Object.prototype names', () => {
+    for (const code of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+      const e = toApiError(res(409), envelope(code, 'Server wording'))
+      expect(e.message).toBe('Server wording')
+    }
+  })
+
   it('reads Retry-After on 429', () => {
     expect(toApiError(res(429, { 'Retry-After': '42' }), envelope('rate_limited', 'Too many requests. Try again later.')).retryAfter).toBe(42)
     expect(toApiError(res(429), envelope('rate_limited', 'x')).retryAfter).toBeUndefined()

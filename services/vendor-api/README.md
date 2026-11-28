@@ -678,7 +678,7 @@ alembic check                                    # fails if models and migration
 ## Behaviour worth knowing
 
 - `GET /health` is liveness only. `GET /ready` checks Postgres and Redis (2 second timeout each) and returns 503 if either fails; it also carries the outbox counts (`outbox`), which never change the verdict.
-- Every response has an `X-Request-ID` header. A sane incoming value is reused; it is also in every log line.
+- Every response has an `X-Request-ID` header. A sane incoming value is reused; it is also in every log line. CORS exposes it and `Retry-After` (on a 429) to the allowed origins.
 - Logs are one JSON object per line on stdout.
 - Errors always look like `{"error": {"code", "message", "request_id", "details"?}}`. Unhandled errors return a generic message; details go to the log only.
 
