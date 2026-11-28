@@ -67,11 +67,18 @@ Messages larger than **64 KB** are dropped.
 2. The module sends `ready` to the shell origin (`window.parent.postMessage(msg, SHELL_ORIGIN)`).
 3. The shell checks the message (section 4), picks the highest version both sides support, and answers with `auth`.
 4. The module keeps the token **in memory only** and sends it as `Authorization: Bearer` to its own API. Its API validates the token with the identity service's JWKS, as decided in [ADR 0009](0009-auth-model.md).
-5. The shell refreshes the token itself and pushes a new `auth` when about **80% of the lifetime** has passed, or at least 30 seconds before expiry. The module replaces its token and keeps working.
-6. If an API call returns 401, the module sends `token:request` at most **once every 30 seconds**. The shell answers with a fresh `auth`, or signs the user out when it cannot get one.
+5. The shell keeps each open module supplied with a token. For each one it schedules a refresh from that token's own `expiresAt`: at **80% of the token's life**, or **30 seconds before it ends**, whichever comes first (the lead time never exceeds half the token's life, so a very short token is replaced at its half-life, not the moment it was issued). It then exchanges a new token (not the cached one) and pushes a new `auth`. The module replaces its token and keeps working. Before it exchanges, the shell renews its own identity token if that would end before a new module token should (see the lifetimes below).
+6. If an API call returns 401, the module sends `token:request` at most **once every 30 seconds**. The shell accepts at most one per 30 seconds per module whatever the module sends, and answers with a fresh `auth`, or ends the session when no token can be had.
 7. The module ignores any `auth` whose `expiresAt` is earlier than the token it already holds.
 
-The token's audience, lifetime and claims come from [ADR 0009](0009-auth-model.md): an access token that lasts 15 minutes, an `aud` that names the module's backend, and `roles` claims. The shell gets each module's token from identity-api's token exchange, not by refreshing the module token itself.
+The token's audience, lifetime and claims come from [ADR 0009](0009-auth-model.md). There are two lifetimes, and an earlier draft of this ADR assumed the first for both:
+
+| Token | Lifetime | Setting |
+| --- | --- | --- |
+| The shell's identity token | **15 minutes** | `ACCESS_TOKEN_TTL_SECONDS` (900) |
+| A module's token (an exchanged one, `aud` names the module's backend, carries the roles allowed for it) | **5 minutes**, never past the identity token that asked for it | `EXCHANGED_TOKEN_TTL_SECONDS` (300; 30 to 900) |
+
+The shell gets each module's token from identity-api's token exchange, not by refreshing the module token itself. A module token is cut short when the identity token behind it is about to end, so before a refresh the shell renews the identity token first if that would end before a new module token should (when it would help, that is, when the identity token lives longer than a module token). If that renewal cannot be done now, the exchange goes ahead with the identity token the shell has, the module token is shorter, and it is refreshed again sooner.
 
 ### 4. Origin allow-listing
 
@@ -134,12 +141,14 @@ The iframe element:
 | The module never sends `ready` | After 10 seconds the shell shows an error panel with **Retry**, which reloads the iframe. After 3 failed retries it shows "module unavailable" and reports the failure |
 | The module is blocked by a CSP or framing error | The parent cannot see this. It looks the same as "no `ready`" and uses the same timeout |
 | The module reloads (or hot-reloads) and sends `ready` again | The shell answers with the current `auth`. The handshake is idempotent |
-| The shell cannot refresh the token | It keeps the current token until it expires and retries with backoff (5 s, 15 s, 30 s). At expiry it removes the iframe, shows "session expired" and goes to login |
-| The module gets a 401 | `token:request` once per 30 seconds. The shell answers with `auth`, or signs the user out |
+| The shell cannot refresh the token (the network, a 5xx) | It keeps the current token until it expires and retries with backoff (5 s, 15 s, then every 30 s). At expiry it removes the iframe, ends the session as expired (without calling the server, which may be what is down) and goes to login, with `return-to` set to the module's path. A retry that works resets the backoff |
+| The admin lost the role (`403 audience_not_allowed` on a refresh or a request) | The shell closes that module and shows the 403 page. It does not retry |
+| The session ends from anywhere (sign-out here or in another tab, a revoked refresh family, a deactivated admin) | Every module's frame is removed at once and its tokens are dropped, so no module keeps a usable token; the admin goes to login |
+| The module gets a 401 | `token:request` once per 30 seconds per module. The shell answers with `auth`, or ends the session when no token can be had |
 | The module's `logout` message | The shell ends the session, revokes the refresh token and removes the iframe |
 | The shell navigates away or unmounts | The module notices no `auth` refresh for more than twice the refresh interval and shows "session ended" |
 | Unknown type, wrong origin, oversize or malformed message | Dropped silently. A development build logs a warning |
-| Clock difference between the shell and the module | `expiresAt` is set by the shell. The module allows 30 seconds of slack |
+| Clock difference between the shell and the module | `expiresAt` is set by the shell, and both frames read the same browser clock. The 30 seconds of slack is the module's early warning: `needsToken()` is true from 30 seconds before `expiresAt`, while `getAccessToken()` returns the token until `expiresAt` itself. The shell replaces a token at least 30 seconds before it ends (60 seconds before, for a 5-minute token), except a token that lives under a minute, which it replaces at half its life |
 
 ### 8. Security notes
 
@@ -308,6 +317,13 @@ export function isTrustedMessage(
 **Follow-ups**
 - ~~Create `packages/shell-protocol` with these types, runtime validators and a test harness (Phase 6).~~ Done (#253): [`packages/shell-protocol`](../../packages/shell-protocol/README.md), with hand-written validators (no `zod`; the package has no runtime dependency), `createShellChannel` and `createModuleClient`, and contract tests that run both ends over two jsdom windows. Two details the ADR left open: a module reads the shell's `error` at any `v` (so it can learn `version_unsupported` even when it speaks no common version), and the shell reads `ready` at any `v` for the same reason.
 - ~~Decide where the module registry lives.~~ Decided (Phase 6, #252): the shell's own typed configuration, one list per environment (`development`, `preview`, `production`), in `apps/shazlo-one/src/modules/registry.ts`. An entry holds `id`, `title`, `description`, `url`, `origin`, `roles`, `audience` and `supportedVersions`. It is checked when the shell builds and when it starts, and refused if an origin is a wildcard or pattern, is not https outside development, is not the origin of its `url`, repeats an id or origin, or has an empty role list. The CSP `frame-src` is generated from it, so adding a module is one entry. `super_admin` opens every module.
+
+**Decided in #255 (the shell's host)**
+- A module's tokens are kept per module (its registry id), not per audience, so two modules that share an audience never share a token, and they are dropped when the module's page is left, Retry builds a new frame or the session ends. A module that reloads itself and sends `ready` again gets the token already kept for it.
+- The sandbox keeps `allow-scripts` with `allow-same-origin`, which is safe only for a module on an origin of its own; the host refuses to frame a module whose origin is the shell's.
+- The 10-second wait is cleared by the module's `ready` (it is alive); a slow token exchange is bounded by the API client's own timeout. A retry builds a new frame and a new listener. "3 failed retries" means the first load plus three retries, so four loads, then "unavailable"; a module that answers resets the count.
+- A version mismatch and an exchange failure each get their own panel with Retry, which does not count against the no-`ready` budget. `403 audience_not_allowed` is the 403 page.
+- "Unavailable" is reported through one hook (`setModuleFailureReporter`) that does nothing until a service is wired to it, which leaves the open item about production telemetry for later.
 
 ## Alternatives considered
 

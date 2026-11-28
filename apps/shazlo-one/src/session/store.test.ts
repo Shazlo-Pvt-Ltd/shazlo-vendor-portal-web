@@ -820,3 +820,260 @@ describe('isSessionResponse and isAdminProfile', () => {
     expect(isAdminProfile({ ...adminProfile(), email: 3 })).toBe(false)
   })
 })
+
+describe('module tokens per module', () => {
+  const tokenFor = (counter: { n: number }) =>
+    vi.fn(async (audience: string) => {
+      counter.n += 1
+      return { access_token: `t${counter.n}`, token_type: 'Bearer', expires_in: 300, audience }
+    })
+
+  it('keeps a token for each module, even when two share an audience, and reuses a module’s own', async () => {
+    const counter = { n: 0 }
+    const exchange = tokenFor(counter)
+    const { store } = makeStore({ exchange })
+    await store.start()
+    const a = await store.getModuleToken('vendor-api', 'module-a')
+    const b = await store.getModuleToken('vendor-api', 'module-b')
+    expect(a.accessToken).not.toBe(b.accessToken)
+    expect(await store.getModuleToken('vendor-api', 'module-a')).toBe(a)
+    expect(await store.getModuleToken('vendor-api', 'module-b')).toBe(b)
+    expect(exchange).toHaveBeenCalledTimes(2)
+    store.close()
+  })
+
+  it('defaults the scope to the audience, as before', async () => {
+    const counter = { n: 0 }
+    const exchange = tokenFor(counter)
+    const { store } = makeStore({ exchange })
+    await store.start()
+    expect(await store.getModuleToken('vendor-api')).toBe(await store.getModuleToken('vendor-api'))
+    expect(exchange).toHaveBeenCalledOnce()
+    store.close()
+  })
+
+  it('drops one module’s tokens and leaves another module’s alone', async () => {
+    const counter = { n: 0 }
+    const exchange = tokenFor(counter)
+    const { store } = makeStore({ exchange })
+    await store.start()
+    const a = await store.getModuleToken('vendor-api', 'module-a')
+    const b = await store.getModuleToken('vendor-api', 'module-b')
+    store.dropModuleTokens('module-a')
+    expect(await store.getModuleToken('vendor-api', 'module-b')).toBe(b)
+    const again = await store.getModuleToken('vendor-api', 'module-a')
+    expect(again.accessToken).not.toBe(a.accessToken)
+    expect(exchange).toHaveBeenCalledTimes(3)
+    store.close()
+  })
+
+  it('does not drop a scope that merely starts with another’s name', async () => {
+    const counter = { n: 0 }
+    const { store } = makeStore({ exchange: tokenFor(counter) })
+    await store.start()
+    const long = await store.getModuleToken('vendor-api', 'vendor-admin')
+    store.dropModuleTokens('vendor')
+    expect(await store.getModuleToken('vendor-api', 'vendor-admin')).toBe(long)
+    store.close()
+  })
+
+  it('hands a token still being exchanged to the caller that asked, but does not keep it after a drop', async () => {
+    let release: () => void = () => {}
+    let calls = 0
+    const exchange = vi.fn(
+      (audience: string) =>
+        new Promise<{ access_token: string; token_type: string; expires_in: number; audience: string }>((resolve) => {
+          calls += 1
+          const token = `late-${calls}`
+          release = () => resolve({ access_token: token, token_type: 'Bearer', expires_in: 300, audience })
+        }),
+    )
+    const { store } = makeStore({ exchange })
+    await store.start()
+    const pending = store.getModuleToken('vendor-api', 'module-a')
+    await vi.waitFor(() => expect(exchange).toHaveBeenCalledOnce())
+    store.dropModuleTokens('module-a')
+    release()
+    expect((await pending).accessToken).toBe('late-1')
+    // Nothing was kept: the next call exchanges again.
+    const next = store.getModuleToken('vendor-api', 'module-a')
+    await vi.waitFor(() => expect(exchange).toHaveBeenCalledTimes(2))
+    release()
+    expect((await next).accessToken).toBe('late-2')
+    store.close()
+  })
+
+  it('forgets every module’s tokens when the session ends, whatever their scope', async () => {
+    const counter = { n: 0 }
+    const exchange = tokenFor(counter)
+    const { store } = makeStore({ exchange })
+    await store.start()
+    await store.getModuleToken('vendor-api', 'module-a')
+    await store.logout()
+    store.signIn(sessionBody({ token: 'next-admin' }))
+    const next = await store.getModuleToken('vendor-api', 'module-a')
+    expect(next.accessToken).toBe('t2')
+    store.close()
+  })
+})
+
+describe('what the host needs to keep module tokens fresh', () => {
+  const exchangeOf = () => {
+    const calls: Array<{ audience: string; identityToken: string }> = []
+    const exchange = vi.fn(async (audience: string, identityToken: string) => {
+      calls.push({ audience, identityToken })
+      return { access_token: `m${calls.length}`, token_type: 'Bearer', expires_in: 300, audience }
+    })
+    return { exchange, calls }
+  }
+  /** An identity refresh that gives each token its own name and the lifetime asked for. */
+  const refreshOf = (expiresIn: number, fails?: (call: number) => unknown) => {
+    let calls = 0
+    const refresh = vi.fn(async () => {
+      calls += 1
+      const failure = fails?.(calls)
+      if (failure) throw failure
+      return sessionBody({ token: `id-${calls}`, expires_in: expiresIn })
+    })
+    return refresh
+  }
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('records when a module token was issued, with its end never past the identity token’s', async () => {
+    vi.useFakeTimers()
+    const { exchange } = exchangeOf()
+    const { store } = makeStore({ exchange, refresh: refreshOf(200) })
+    await store.start()
+    const issuedAt = Date.now()
+    const token = await store.getModuleToken('vendor-api', 'm')
+    expect(token.issuedAt).toBe(issuedAt)
+    // The identity token has 200 seconds; the module token would have 300.
+    expect(token.expiresAt).toBe(issuedAt + 200_000)
+    store.close()
+  })
+
+  it('with fresh, asks for a new token while a good one is kept, and keeps the new one', async () => {
+    const { exchange } = exchangeOf()
+    const { store } = makeStore({ exchange })
+    await store.start()
+    const first = await store.getModuleToken('vendor-api', 'm')
+    expect(await store.getModuleToken('vendor-api', 'm')).toBe(first)
+    const second = await store.getModuleToken('vendor-api', 'm', { fresh: true })
+    expect(second.accessToken).not.toBe(first.accessToken)
+    expect(exchange).toHaveBeenCalledTimes(2)
+    expect(await store.getModuleToken('vendor-api', 'm')).toBe(second)
+    expect(exchange).toHaveBeenCalledTimes(2)
+    store.close()
+  })
+
+  it('renews the identity token first when it would end before a new module token should', async () => {
+    vi.useFakeTimers()
+    const { exchange, calls } = exchangeOf()
+    const refresh = refreshOf(400)
+    const { store } = makeStore({ exchange, refresh })
+    await store.start()
+    await vi.advanceTimersByTimeAsync(101_000) // 299 s left on a 400 s identity token, under the 300 s a module token needs
+    await store.getModuleToken('vendor-api', 'm')
+    expect(refresh).toHaveBeenCalledTimes(2)
+    expect(calls[0]!.identityToken).toBe('id-2')
+    store.close()
+  })
+
+  it('does not renew first when the identity token has plenty of life left', async () => {
+    vi.useFakeTimers()
+    const { exchange } = exchangeOf()
+    const refresh = refreshOf(900)
+    const { store } = makeStore({ exchange, refresh })
+    await store.start()
+    await vi.advanceTimersByTimeAsync(100_000)
+    await store.getModuleToken('vendor-api', 'm')
+    expect(refresh).toHaveBeenCalledTimes(1)
+    store.close()
+  })
+
+  it('does not renew first when renewing could not help: the identity token is shorter than a module token anyway', async () => {
+    vi.useFakeTimers()
+    const { exchange } = exchangeOf()
+    const refresh = refreshOf(200)
+    const { store } = makeStore({ exchange, refresh })
+    await store.start()
+    await vi.advanceTimersByTimeAsync(50_000)
+    await store.getModuleToken('vendor-api', 'm')
+    expect(refresh).toHaveBeenCalledTimes(1)
+    store.close()
+  })
+
+  it('goes ahead with the identity token it has when that renewal cannot be done now', async () => {
+    vi.useFakeTimers()
+    const { exchange, calls } = exchangeOf()
+    const refresh = refreshOf(400, (call) => (call >= 2 ? new NetworkError('network') : undefined))
+    const { store } = makeStore({ exchange, refresh })
+    await store.start()
+    await vi.advanceTimersByTimeAsync(150_000)
+    const token = await store.getModuleToken('vendor-api', 'm')
+    expect(calls[0]!.identityToken).toBe('id-1')
+    // Cut short at the identity token's end (250 s from now), not 300.
+    expect(token.expiresAt - Date.now()).toBe(250_000)
+    expect(store.getSnapshot().status).toBe('signedIn')
+    store.close()
+  })
+
+  it('stops with NotSignedInError when the renewal ends the session', async () => {
+    vi.useFakeTimers()
+    const { exchange } = exchangeOf()
+    const refresh = refreshOf(400, (call) => (call >= 2 ? apiError(401, 'unauthorized') : undefined))
+    const { store } = makeStore({ exchange, refresh })
+    await store.start()
+    await vi.advanceTimersByTimeAsync(150_000)
+    await expect(store.getModuleToken('vendor-api', 'm')).rejects.toBeInstanceOf(NotSignedInError)
+    expect(exchange).not.toHaveBeenCalled()
+    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', expired: true })
+    store.close()
+  })
+})
+
+describe('expiring the session', () => {
+  it('ends it as expired without telling the server or the other tabs, and clears everything', async () => {
+    const logout = vi.fn(async () => {})
+    const post = vi.fn()
+    const onCleared = vi.fn()
+    const reset = vi.fn()
+    const undo = registerSensitiveReset(reset)
+    const channel = { onmessage: null as ((event: MessageEvent) => void) | null, postMessage: post, close: () => {} }
+    const { store } = makeStore({ logout, channel, onCleared })
+    await store.start()
+    await store.getModuleToken('vendor-api', 'm')
+    store.expire()
+    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', expired: true, signedOutByUser: false, admin: null, roles: [] })
+    expect(store.getAccessToken()).toBeNull()
+    expect(logout).not.toHaveBeenCalled()
+    expect(post).not.toHaveBeenCalled()
+    expect(onCleared).toHaveBeenCalledOnce()
+    expect(reset).toHaveBeenCalledOnce()
+    await expect(store.getModuleToken('vendor-api', 'm')).rejects.toBeInstanceOf(NotSignedInError)
+    undo()
+    store.close()
+  })
+
+  it('does nothing when there is no session', async () => {
+    const onCleared = vi.fn()
+    const { store } = makeStore({ refresh: async () => { throw apiError(401, 'unauthorized') }, onCleared })
+    await store.start()
+    expect(onCleared).toHaveBeenCalledOnce()
+    store.expire()
+    expect(onCleared).toHaveBeenCalledOnce()
+    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', expired: false })
+    store.close()
+  })
+
+  it('also ends a session that is only waiting for a new password', async () => {
+    const { store } = makeStore({ refresh: async () => sessionBody({ must_change_password: true }) })
+    await store.start()
+    store.expire()
+    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', expired: true })
+    store.close()
+  })
+})
