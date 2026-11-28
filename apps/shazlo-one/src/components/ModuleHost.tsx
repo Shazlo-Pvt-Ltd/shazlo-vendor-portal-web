@@ -137,9 +137,9 @@ function HostedFrame({ entry, visible, onStatus }: FrameProps) {
         const status = statusForExchangeError(error)
         // The admin lost the role: this module closes, with the 403 page.
         if (status.kind === 'forbidden') return report(status)
-        // The session ended meanwhile: the guards are already removing the page.
-        if (error instanceof NotSignedInError) return
-        // Anything else (network, a server error): keep what we hold until it ends, and try again soon.
+        // Anything else (network, a server error, an identity token too old to exchange with that cannot be
+        // renewed yet): keep what we hold until it ends, and try again soon. If the session has ended, the
+        // guards remove the page and its cleanup clears this timer; a retry before then asks no server.
         refreshTimer = setTimeout(() => void refresh(), backoffDelay(failures))
         failures += 1
       } finally {

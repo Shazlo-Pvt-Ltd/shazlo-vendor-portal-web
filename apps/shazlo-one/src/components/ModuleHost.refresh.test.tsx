@@ -288,6 +288,23 @@ describe('when a refresh fails', () => {
     expect(frames()).toBe(1)
   })
 
+  it('keeps trying when the identity token is too old to exchange with and cannot be renewed yet, and recovers when it can', async () => {
+    // identity-api cannot be reached from 700 to 893 s: the identity token (900 s) cannot be renewed, so the
+    // module tokens are cut short to its end, until it is too old to exchange with at all.
+    let first: number | undefined
+    const t = await open({
+      refreshFails: () => {
+        first ??= Date.now()
+        const at = (Date.now() - first) / 1000
+        return at >= 700 && at < 893 ? new NetworkError('network') : undefined
+      },
+    })
+    await settle(905_000)
+    expect(t.store.getSnapshot().status).toBe('signedIn')
+    expect(frames()).toBe(1)
+    expect(t.module.auths.at(-1)!.expiresAt * 1000).toBeGreaterThan(Date.now())
+  })
+
   it('does not end the session when a retry works in the last seconds before expiry', async () => {
     // Calls at 240, 245 and 260 fail; the one at 290 works, ten seconds before the token ends.
     const t = await open({ exchangeFails: (call) => (call >= 2 && call <= 4 ? new NetworkError('network') : undefined) })
