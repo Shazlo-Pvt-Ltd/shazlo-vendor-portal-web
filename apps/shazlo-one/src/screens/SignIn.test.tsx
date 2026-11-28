@@ -1,6 +1,9 @@
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
+import { DEMO_ADMIN, INVITED_ADMIN } from '../mocks/identity'
 import { renderShell } from '../test/render'
+import { server } from '../test/server'
 
 const PITCH = 'One place to run Shazlo'
 const POINTS = [
@@ -76,5 +79,37 @@ describe('A-01 sign in: the form', () => {
     expect(font(question)).toEqual({ family: expect.stringContaining('Bodoni Moda'), weight: '600' })
     expect(question.parentElement).toHaveTextContent('Forgot your password? A super admin can reset it.')
     expect(screen.queryByText(/Admins & roles/)).toBeNull()
+  })
+})
+
+describe('A-01 sign in: against identity-api', () => {
+  async function submit(email: string, password: string) {
+    const view = await openSignIn()
+    await view.user.type(screen.getByLabelText('Work email'), email)
+    await view.user.type(screen.getByLabelText('Password', { selector: 'input' }), password)
+    await view.user.click(screen.getByRole('button', { name: 'Sign in' }))
+    return view
+  }
+
+  it('signs in and lands on Home', async () => {
+    const { router } = await submit(DEMO_ADMIN.email, DEMO_ADMIN.password)
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+  })
+
+  it('sends an admin with a temporary password to change it first', async () => {
+    const { router } = await submit(INVITED_ADMIN.email, INVITED_ADMIN.password)
+    await waitFor(() => expect(router.state.location.pathname).toBe('/change-password'))
+  })
+
+  it('shows identity-api’s message for a wrong password', async () => {
+    await submit(DEMO_ADMIN.email, 'not-the-password')
+    expect(await screen.findByText('That email and password do not match. Check both and try again.')).toBeInTheDocument()
+  })
+
+  it('shows the rate-limit answer on 429', async () => {
+    server.use(http.post('*/v1/auth/login', () => HttpResponse.json({ error: { code: 'rate_limited', message: 'Too many requests. Try again later.', request_id: 'r' } }, { status: 429, headers: { 'Retry-After': '60' } })))
+    const { router } = await submit(DEMO_ADMIN.email, DEMO_ADMIN.password)
+    expect(await screen.findByText('Too many requests. Try again later.')).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/sign-in')
   })
 })
