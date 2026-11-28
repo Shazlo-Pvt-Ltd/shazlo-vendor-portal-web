@@ -28,6 +28,15 @@ const MIN_DURATION_MS = 3000
 const MAX_DURATION_MS = 15_000
 /** The most toasts on screen at once; a newer one pushes the oldest off. A sender cannot fill the page. */
 export const MAX_VISIBLE_TOASTS = 3
+/** The most lines a toast keeps; the rest are joined onto the last one, so a toast cannot cover the screen. */
+export const MAX_TOAST_LINES = 3
+
+/** The message with its blank lines dropped and at most {@link MAX_TOAST_LINES} lines. */
+function fewLines(message: string): string {
+  const lines = message.split('\n').filter((line) => line.trim() !== '')
+  if (lines.length <= MAX_TOAST_LINES) return lines.join('\n')
+  return [...lines.slice(0, MAX_TOAST_LINES - 1), lines.slice(MAX_TOAST_LINES - 1).join(' ')].join('\n')
+}
 
 function ToastItem({ toast, onClose }: { toast: Toast; onClose: (id: number) => void }) {
   const duration = Math.min(Math.max(toast.durationMs ?? DEFAULT_DURATION_MS[toast.level], MIN_DURATION_MS), MAX_DURATION_MS)
@@ -53,7 +62,7 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: (id: number) => 
       ) : null}
       {/* A text node: whatever the message contains is shown, not interpreted. */}
       <Typography component="span" sx={{ display: 'block', overflowWrap: 'anywhere', whiteSpace: 'pre-line' }}>
-        {toast.message}
+        {fewLines(toast.message)}
       </Typography>
     </Alert>
   )

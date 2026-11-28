@@ -41,6 +41,13 @@ describe('the lint rules that protect admins', () => {
     expect(await messagesFor('export const f = (e: unknown) => { console.error(e) }\n')).toEqual([])
   })
 
+  it('cover the reference module too, which holds a real admin token', async () => {
+    const [result] = await eslint.lintText('export const f = (t: string) => { localStorage.setItem("token", t); console.log(t) }\n', {
+      filePath: `${repoRoot}apps/shazlo-one/dev-module/src/x.tsx`,
+    })
+    expect(result!.messages.map((m) => m.ruleId)).toEqual(expect.arrayContaining(['no-restricted-globals', 'no-console']))
+  })
+
   it('does not apply to tests, which read storage to prove nothing is written', async () => {
     expect(await messagesFor('export const f = () => localStorage.length\n', 'thing.test.ts')).toEqual([])
   })

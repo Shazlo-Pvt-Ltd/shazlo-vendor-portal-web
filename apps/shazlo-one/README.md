@@ -111,7 +111,7 @@ src/
   session/            the admin session: store, AuthProvider, guards, return-to check
   modules/            registry.ts (the module list and its checks), loadRegistry, ModuleRegistryProvider
   security/           headers.ts (every header, defined once), sensitiveState.ts, PasswordField.tsx, and the tests
-  components/         ErrorBoundary, ErrorScreen, RouteError, NotFound, Misconfigured
+  components/         ShellLayout, NavList, AccountMenu, ModuleHost, ToastProvider, NoAccess (403), NotFound, ErrorBoundary, ErrorScreen, RouteError, Misconfigured, CountdownNotice
   hooks/              usePageTitle
   pages/              one file per route
   test/               test setup
@@ -195,7 +195,7 @@ the Content-Security-Policy `frame-src` all follow:
 
 The registry is checked when the shell builds (the Vite config and the Vercel prebuild step) and
 when it starts (a bad one shows the misconfiguration screen). It refuses a wildcard or pattern
-origin, a non-https origin outside development, a `url` that is not on its `origin`, duplicate ids
+origin, a host with anything but letters, digits, dots and hyphens, a non-https origin outside development, a `url` that is not on its `origin`, duplicate ids
 or origins, and an empty role list; the message names the module and what to change. Which list a
 build uses: `development` for `npm run dev`, `preview` when `VITE_DEPLOY_ENV` (or Vercel's
 `VERCEL_ENV`) is `preview`, `production` otherwise. The file has no imports, so Node and Vite read
@@ -211,6 +211,34 @@ it without loading the app.
   not found"; a module the roles do not allow is the 403 page. Neither renders a frame.
 - **Home:** a card for each module the admin may open, or an explanation when there is none.
 
+## Admin management
+
+`/admins` (the "Admins" section, `src/pages/AdminsPage.tsx` and `src/features/admins/`) is for `super_admin` only:
+the route guard, the navigation and identity-api (on every call) each check it, and everyone else gets the 403 page
+without the admins being asked for at all.
+
+- **List:** name, email, roles, active or deactivated, and whether they must still change their password. The
+  search (name or email), the role and status filters and the page are in the address (`?q=&role=&status=&page=`):
+  shareable, they survive a reload and the back button steps through them. Typing replaces the address entry
+  rather than adding one; choosing a filter or a page adds one; a filter goes back to page 1.
+- **Create:** email, name, roles (from `GET /v1/roles`, each with its description) and a temporary password. The
+  dialog says they must change it at their first sign-in and that it must be handed over in person or through a
+  secure channel: it is never emailed. "Generate a password" makes a random 20-character one (no look-alike
+  characters) and shows it, because it has to be read once.
+- **Edit:** the name and the roles; deactivate and reactivate (a confirmation says their sessions end at once);
+  reset the password (a confirmation says the sessions end and they must choose a new password). You cannot
+  deactivate yourself, and the button says why.
+- **Refusals** are plain words next to the control they are about: `email_taken` by the email, `weak_password` by
+  the password, `unknown_role` by the roles, `cannot_deactivate_self` and `last_super_admin` by the control that
+  asked for it (the last super admin cannot be deactivated or lose the role, and the screen says why),
+  `admin_not_found` above the form (the list reloads), and a `403` means your own super admin role was removed
+  (your session is read again and the page becomes the 403 page).
+- **Roles take effect** at the admin's next token, within 15 minutes, and the dialog says so. A super admin who
+  edits their **own** roles has their session refreshed at once, so they see them.
+- **Temporary passwords:** the field is emptied the moment the call is sent (success or not), the mutation keeps
+  no copy, nothing is written to web storage, and a half-typed one is emptied when the session ends. Tests check
+  the form, the mutation cache, the query cache and the page.
+
 ## The module host
 
 `/m/:moduleId` puts the module in a frame and does the handshake of ADR 0001 (`src/components/ModuleHost.tsx`,
@@ -218,7 +246,8 @@ built on `createShellChannel` from `@shazlo/shell-protocol`).
 
 - **The frame:** `title`, `sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"` (no top
   navigation, popups or modals), `referrerpolicy="no-referrer"`, `allow=""`. Its `src` is exactly the
-  registry's `url`: a token is never in an address.
+  registry's `url`: a token is never in an address. `allow-scripts` with `allow-same-origin` is safe only because
+  a module has an origin of its own, so the host refuses (no frame, no token) a module whose origin is the shell's.
 - **Order:** the channel (and so the `message` listener) is created first, then `src` is set, so an early
   `ready` is never missed.
 - **On `ready`** (from the module's exact origin **and** its frame window, nothing else is read): the shell
@@ -226,7 +255,7 @@ built on `createShellChannel` from `@shazlo/shell-protocol`).
   `ready` (the module reloaded) gets the current `auth` again, from the cache while the token is good. With no
   common version the shell sends `error` `version_unsupported` and shows a panel naming the module and its version.
 - **Tokens** are kept per module (its id), never shared (two modules on `vendor-api` get a token each), and
-  dropped when the page is left, when the frame is reloaded, and when the session ends.
+  dropped when the page is left, when Retry builds a new frame, and when the session ends.
 - **Exchange failures:** `403 audience_not_allowed` (the admin lost the role) is the 403 page, with no frame.
   A network error, a 5xx, an unknown audience or an ended session is an error panel with **Retry**.
 - **No `ready` in 10 seconds** (also what a CSP or framing refusal looks like, because the parent cannot see
@@ -234,7 +263,8 @@ built on `createShellChannel` from `@shazlo/shell-protocol`).
   offers no more Retry and calls the failure reporter once (`setModuleFailureReporter` in
   `src/modules/moduleFailure.ts`; nothing is wired up by default). A module that answers resets the count.
 - **While it starts** the page shows a loading state; the shell's navigation and account menu stay usable
-  throughout, and leaving the page removes the frame and its listener.
+  throughout, and leaving the page removes the frame and its listener. Focus moves to the page heading when the
+  admin opens a module (or another one), not when the path changes inside the same module.
 
 ### Keeping the module supplied
 
@@ -242,8 +272,8 @@ A module's token lasts **5 minutes** (identity-api's `EXCHANGED_TOKEN_TTL_SECOND
 (`ModuleHost.tsx`, with the maths in `src/modules/refreshSchedule.ts`) keeps the module's token fresh:
 
 - **Schedule:** from each token's own life, a new token is exchanged and sent as `auth` at 80% of its life or 30
-  seconds before it ends, whichever is first (never earlier than its half-life). A reload resumes from the token
-  the module was last given.
+  seconds before it ends, whichever is first (never earlier than its half-life). A reload (a second `ready`) gets
+  the token the module was last given, with no exchange, and its schedule and any backoff carry on unchanged.
 - **Identity first:** if the identity token would end before a new module token should, it is renewed before the
   exchange, so the module token gets its whole life. If that renewal cannot be done now, the exchange goes on with
   what the shell holds and the module token is cut short.
@@ -253,6 +283,9 @@ A module's token lasts **5 minutes** (identity-api's `EXCHANGED_TOKEN_TTL_SECOND
   as *expired* (no server call) and the admin goes to login, back to `/m/<id>` afterwards.
 - **A role removed** (`403 audience_not_allowed` on a refresh or request): the module closes and the 403 page shows.
   A role removed from the admin's own session (read again on renewal) does the same through the page's role check.
+- **A renewal that changes the roles** sends the module a token for the new ones at once; **one that names another
+  admin** (another tab signed out and in, and this one missed it) replaces the frame, so nothing given for the
+  previous admin survives.
 - **The session ending anywhere** (sign-out here or in another tab, a revoked refresh family, a deactivated admin)
   removes the frame and drops every token at once: the guards unmount the page, which clears its timers, closes the
   channel and drops the module's tokens.
@@ -262,16 +295,18 @@ A module's token lasts **5 minutes** (identity-api's `EXCHANGED_TOKEN_TTL_SECOND
 - **`title`**: the breadcrumb, the tab title and the shell address (`/m/<id>/<path>`) follow the module. The address
   is **replaced**, not pushed, so a module's own navigation does not fill the history. The shell checks the path
   beyond the protocol (`src/modules/shellPath.ts`): after dot segments and encoded dots it must stay inside
-  `/m/<id>`, so `/../admins` or another site is ignored. At most 20 titles per 10 seconds.
+  `/m/<id>`, so `/../admins` or another site is ignored. At most 20 titles per 10 seconds. The page heading takes
+  focus only when the admin goes to another screen or module, never for a module's own page change.
 - **Deep links**: opening `/m/<id>/<path>` sends `navigate { path }` once the module has its token, again when it
   reloads (`ready`), and when the address changes under it (the browser's back and forward). A path the module
   reported itself is never sent back. A copied shell address reopens the same module page.
 - **`toast`**: shown by the shell's own component (`ToastProvider`), as text, labelled with the module's name.
   Markup is refused by the protocol, at most 280 characters, each level is the alert severity of that name, the
-  region announces politely, at most 3 are visible, at most 5 are taken per 10 seconds per module, and the
-  duration is held to 3 to 15 seconds.
-- **`logout`**: ends the session like the account menu does (the refresh token is revoked), removes the frame and
-  goes to sign in.
+  region announces politely, at most 3 are visible, each keeps at most 3 lines, at most 5 are taken per 10 seconds
+  per module, and the duration is held to 3 to 15 seconds.
+- **`logout`**: ends the session like the account menu does (the refresh token is revoked), removes the frame at
+  once (not when the server answers) and goes to sign in. Only the first counts, and nothing the module sends
+  after it, or after a fatal `error`, is acted on.
 - **`error`**: a non-fatal one is logged in development and shows a notice; `fatal: true` replaces the module with
   the shell's error panel, whose Retry reloads it.
 
@@ -293,6 +328,7 @@ npm run dev:with-module -w @shazlo/shazlo-one   # shell on 5173, module on 5175
   when the token expires (never the token).
 - It calls vendor-api's `GET /v1/admin/me` with that token (`aud=vendor-api`) and shows the answer. A `401`
   makes it send `token:request` (at most once every 30 seconds) and repeat the call when the shell answers.
+  An expired token is never sent: the module sends `token:request` with `expired` instead, then calls.
 - Buttons send every module-to-shell message: `title` (in-module pages), a `toast` of each level, `logout`,
   and a non-fatal and a fatal `error`, and the shell acts on each (see "The module host"). The shell's
   `navigate` and `error` are shown.
@@ -308,9 +344,6 @@ npm run dev:with-module -w @shazlo/shazlo-one   # shell on 5173, module on 5175
   `--configLoader runner` (the scripts above do that).
 
 ## Admin management
-
-This section arrives with #258 (PR #313), which is not merged yet: until it is, it describes code that is not on
-this branch.
 
 `/admins` (the "Admins" section, `src/pages/AdminsPage.tsx` and `src/features/admins/`) is for `super_admin` only:
 the route guard, the navigation and identity-api (on every call) each check it, and everyone else gets the 403 page

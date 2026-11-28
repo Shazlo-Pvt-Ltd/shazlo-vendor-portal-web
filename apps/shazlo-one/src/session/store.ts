@@ -97,16 +97,6 @@ export const SESSION_CHANNEL = 'shazlo-one-session'
 const MODULE_TOKEN_SKEW_MS = 10_000
 
 /**
- * Longest token life accepted, in seconds (identity-api allows at most an hour). A longer one would
- * overflow `setTimeout`, which then fires at once and refreshes in a loop.
- */
-const MAX_TOKEN_LIFE_S = 24 * 60 * 60
-
-function isLifetime(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= MAX_TOKEN_LIFE_S
-}
-
-/**
  * How long identity-api's exchanged tokens last by default (`EXCHANGED_TOKEN_TTL_SECONDS`, 300). Used
  * until the first exchange says otherwise, to renew the identity token before a module token would
  * outlive it.
@@ -115,6 +105,16 @@ const DEFAULT_MODULE_TOKEN_TTL_MS = 300_000
 
 /** Between a module's id and an audience in a cache key; module ids cannot contain it. */
 const SCOPE_SEPARATOR = '|'
+
+/**
+ * Longest token life accepted, in seconds (identity-api allows at most an hour). A longer one would
+ * overflow `setTimeout`, which then fires at once and refreshes in a loop.
+ */
+const MAX_TOKEN_LIFE_S = 24 * 60 * 60
+
+function isLifetime(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= MAX_TOKEN_LIFE_S
+}
 
 /** The session body, checked: do not trust the answer blindly. */
 export function isSessionResponse(value: unknown): value is SessionResponse {
@@ -419,7 +419,7 @@ export class SessionStore {
    * an identity token 15), the identity token is renewed first, so the module token is not cut short.
    */
   getModuleToken(audience: string, scope: string = audience, options: { fresh?: boolean } = {}): Promise<ModuleToken> {
-    // Only a signed-in admin has roles to exchange; a password-change token gets nothing.
+    // Only a signed-in admin has roles to exchange; a password-change token gets nothing, not even a kept one.
     if (this.state.status !== 'signedIn') return Promise.reject(new NotSignedInError())
     const key = this.moduleKey(scope, audience)
     const cached = this.moduleTokens.get(key)
@@ -428,7 +428,7 @@ export class SessionStore {
     let pending = this.moduleRequests.get(key)
     if (!pending) {
       const request: Promise<ModuleToken> = this.exchangeFor(audience, scope).finally(() => {
-        // Only the entry this call made: a drop or a session that ended may have replaced it.
+        // Only the entry this call made: a drop, or a session that ended, may have started a newer one.
         if (this.moduleRequests.get(key) === request) this.moduleRequests.delete(key)
       })
       pending = request

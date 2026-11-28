@@ -9,10 +9,20 @@ export const DRAWER_WIDTH = 240
 export const MAIN_ID = 'main-content'
 
 /**
+ * Which page an address is, for moving focus: every path of one module (`/m/<id>/...`) is that
+ * module's one page, so navigation inside a module never pulls focus out of its frame.
+ */
+export function pageOf(pathname: string): string {
+  const module = /^\/m\/([^/]+)/.exec(pathname)
+  return module ? `/m/${module[1]}` : pathname
+}
+
+/**
  * The frame of every signed-in screen. A skip link first; an app bar with Shazlo-One and the
  * account menu; the navigation (always visible from `md` up, in a drawer behind a menu button on a
- * phone); and the page in the one `<main>`. After each navigation the page heading takes focus, so a
- * screen reader announces where the admin went.
+ * phone); and the page in the one `<main>`. After each move to another page (another module counts,
+ * a path inside the same module does not) the page heading takes focus, so a screen reader
+ * announces where the admin went.
  */
 export function ShellLayout() {
   const theme = useTheme()
@@ -21,7 +31,7 @@ export function ShellLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const navId = useId()
   const main = useRef<HTMLElement>(null)
-  const lastPath = useRef(location.pathname)
+  const lastPage = useRef(pageOf(location.pathname))
 
   // The drawer is only for phones: close it when the screen grows past that.
   useEffect(() => {
@@ -29,10 +39,11 @@ export function ShellLayout() {
   }, [wide])
 
   // Not on the first page (that would hide the skip link behind a focused heading), only after
-  // the admin moves to another one.
+  // the admin moves to another one. A move inside one module is not a new page.
   useEffect(() => {
-    if (lastPath.current === location.pathname) return
-    lastPath.current = location.pathname
+    const page = pageOf(location.pathname)
+    if (lastPage.current === page) return
+    lastPage.current = page
     main.current?.querySelector<HTMLElement>('h1')?.focus()
   }, [location.pathname])
 

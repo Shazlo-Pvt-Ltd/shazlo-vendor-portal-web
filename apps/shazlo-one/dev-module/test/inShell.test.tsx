@@ -107,7 +107,8 @@ describe('the reference module’s messages, in the shell', () => {
     await waitFor(() => expect(t.frameWindow.document.body.textContent).toMatch(/vendor-api answered 200/))
     fireEvent.click(t.page.getByRole('button', { name: /Orders \(example\)/ }))
     await waitFor(() => expect(t.router.state.location.pathname).toBe('/m/reference/pages/orders'))
-    expect(document.title).toBe('Orders (example) · Reference module · Shazlo-One')
+    // The tab title is set by an effect after the address changes: wait for it rather than race it on a loaded machine.
+    await waitFor(() => expect(document.title).toBe('Orders (example) · Reference module · Shazlo-One'))
     expect(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByText('Orders (example)')).toBeTruthy()
     // It replaced the entry rather than adding one.
     expect(t.router.state.historyAction).toBe('REPLACE')
