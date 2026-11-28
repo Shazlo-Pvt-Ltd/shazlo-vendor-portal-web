@@ -1,5 +1,5 @@
 import { actorIds, badgeOf, manifestUrl, parseManifest, parseSummary, type ModuleManifest, type ModuleSummary, type RegistryEntry } from '@shazlo/shell-protocol'
-import { useQuery, type QueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { shellCopy } from '../copy/shell'
 import { useAppContext, type AppContext, type SessionStore } from './context'
 import { ApiError, toApiError } from './http'
@@ -13,12 +13,12 @@ const copy = shellCopy.module
 export const moduleKeys = {
   manifest: (id: string) => ['module-manifest', id] as const,
   summary: (id: string) => ['module-summary', id] as const,
-  // The names of the admins the summaries name, shared by every module.
+  // One cache of admin names for every module's activity.
   adminNames: ['admin-names'] as const,
 }
 
 // Names change rarely: one lookup serves the summaries' refreshes for five minutes.
-export const NAMES_FRESH_MS = 5 * 60_000
+const NAMES_FRESH_MS = 5 * 60_000
 // An admin id to its display name; null when identity-api answered that it knows no such admin.
 type KnownNames = Record<string, string | null>
 
@@ -97,13 +97,11 @@ export function useModuleManifest(entry: RegistryEntry, enabled = true) {
 }
 
 /**
- * The display names of these identity-api admins. An id identity-api does not know reads "a former
- * admin". The figures matter more than the names, so this never fails: a lookup that fails keeps the
- * names of the last one that worked (an admin is not called "former" because identity-api blinked),
- * and with none, every admin reads "a former admin". One answer serves for five minutes unless it
- * lacks someone.
+ * The names behind a summary's activity, from identity-api. An id identity-api does not know reads "a
+ * former admin". A lookup that fails keeps the names of the last one that worked (an admin is not
+ * called "former" because identity-api blinked) and never fails the figures.
  */
-export async function lookUpAdminNames(queryClient: QueryClient, identity: AppContext['identity'], ids: string[]): Promise<Record<string, string>> {
+export async function lookUpAdminNames({ identity, queryClient }: Pick<AppContext, 'identity' | 'queryClient'>, ids: string[]): Promise<Record<string, string>> {
   const known = queryClient.getQueryData<KnownNames>(moduleKeys.adminNames)
   const covered = known !== undefined && ids.every((id) => id in known)
   let found: KnownNames | undefined
@@ -112,12 +110,13 @@ export async function lookUpAdminNames(queryClient: QueryClient, identity: AppCo
       queryKey: moduleKeys.adminNames,
       queryFn: async () => {
         const answer = await identity.call((c) => c.GET('/v1/admins/names', { params: { query: { ids } } }))
-        // Kept with what other modules' summaries asked for, so they do not ask again.
-        const next: KnownNames = { ...queryClient.getQueryData<KnownNames>(moduleKeys.adminNames), ...Object.fromEntries(ids.map((id) => [id, null])) }
+        // Added to what earlier lookups found, so two modules' summaries do not undo each other's names.
+        const next: KnownNames = { ...queryClient.getQueryData<KnownNames>(moduleKeys.adminNames) }
+        for (const id of ids) next[id] = null
         for (const admin of answer.items) next[admin.id] = admin.display_name
         return next
       },
-      // Someone new in the list is looked up at once; otherwise the last answer serves.
+      // An admin not looked up yet is asked about at once; otherwise the last answer serves.
       staleTime: covered ? NAMES_FRESH_MS : 0,
       // Kept until sign-out clears the cache, so a failed lookup has something to fall back on.
       gcTime: Infinity,
@@ -132,11 +131,11 @@ export async function lookUpAdminNames(queryClient: QueryClient, identity: AppCo
 
 /** The module's summary with the module's own token, every minute. Disabled for a module with none. */
 export function useModuleSummary(entry: RegistryEntry, enabled = true) {
-  const { session, identity, queryClient } = useAppContext()
+  const context = useAppContext()
   const { summaryUrl } = entry
   return useQuery({
     queryKey: moduleKeys.summary(entry.id),
-    queryFn: () => fetchSummary({ ...entry, summaryUrl: summaryUrl! }, session, (ids) => lookUpAdminNames(queryClient, identity, ids)),
+    queryFn: () => fetchSummary({ ...entry, summaryUrl: summaryUrl! }, context.session, (ids) => lookUpAdminNames(context, ids)),
     enabled: enabled && Boolean(summaryUrl),
     refetchInterval: 60_000,
     // Once more when the module did not answer; an answer it gave (4xx, invalid) stands.

@@ -2,6 +2,7 @@ import type { ModuleSummary } from '@shazlo/shell-protocol'
 import { act, screen, waitFor, within } from '@testing-library/react'
 import { delay, http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { moduleKeys, type LoadedSummary } from '../api/modules'
 import { ADMIN_ID } from '../mocks/identity'
 import { campaigns, catalogue, catalogueSummary } from '../test/modules'
 import { renderShell } from '../test/render'
@@ -319,8 +320,9 @@ describe('#299 Home: names behind the activity', () => {
       }),
     )
     vi.setSystemTime(new Date(NOW.getTime() + 6 * 60_000))
-    await act(() => context.queryClient.refetchQueries({ queryKey: ['module-summary', 'catalogue'] }))
+    await act(() => context.queryClient.refetchQueries({ queryKey: moduleKeys.summary(catalogue.entry.id) }))
     expect(asked).toBe(1)
+    expect(context.queryClient.getQueryData<LoadedSummary>(moduleKeys.summary(catalogue.entry.id))!.names[ADMIN_ID.priya]).toBe('Priya Mehta')
     await waitFor(() => expect(within(list).getAllByRole('listitem')[0]).toHaveTextContent('by Priya Mehta'))
   })
 
@@ -335,10 +337,10 @@ describe('#299 Home: names behind the activity', () => {
     await within(await region('Recent decisions')).findAllByRole('listitem')
     await waitFor(() => expect(asked).toBe(1))
     vi.setSystemTime(new Date(NOW.getTime() + 60_000))
-    await act(() => context.queryClient.refetchQueries({ queryKey: ['module-summary', 'catalogue'] }))
+    await act(() => context.queryClient.refetchQueries({ queryKey: moduleKeys.summary(catalogue.entry.id) }))
     expect(asked).toBe(1)
     vi.setSystemTime(new Date(NOW.getTime() + 6 * 60_000))
-    await act(() => context.queryClient.refetchQueries({ queryKey: ['module-summary', 'catalogue'] }))
+    await act(() => context.queryClient.refetchQueries({ queryKey: moduleKeys.summary(catalogue.entry.id) }))
     expect(asked).toBe(2)
   })
 
