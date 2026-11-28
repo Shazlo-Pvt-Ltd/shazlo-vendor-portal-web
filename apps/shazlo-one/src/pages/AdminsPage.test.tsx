@@ -216,6 +216,24 @@ describe('paging', () => {
     await waitFor(() => expect(t.router.state.location.search).toBe('?status=active'))
   })
 
+  it('moves to the last page when the page in the address is past the end, instead of saying there are no admins', async () => {
+    const t = setup(many, '/admins?page=9')
+    expect((await names()).length).toBe(11)
+    expect(screen.getByText('61 admins, page 3 of 3')).toBeTruthy()
+    expect(t.router.state.location.search).toBe('?page=3')
+    expect(screen.queryByText('There are no admins yet')).toBeNull()
+  })
+
+  it('moves back a page when the last one empties under a filter (the list changed behind it)', async () => {
+    const t = setup(many, '/admins?status=active&page=3')
+    await table()
+    t.backend.admins = t.backend.admins.slice(0, 50)
+    await t.queryClient.invalidateQueries()
+    expect(await screen.findByText('50 admins, page 2 of 2')).toBeTruthy()
+    expect(t.router.state.location.search).toBe('?status=active&page=2')
+    expect(screen.queryByText('No admin matches these filters')).toBeNull()
+  })
+
   it('shows no pager when everything fits', async () => {
     setup()
     await table()

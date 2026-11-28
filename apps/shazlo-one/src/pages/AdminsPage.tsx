@@ -19,7 +19,7 @@ import {
   Typography,
 } from '@mui/material'
 import { useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api, apiQueryKey } from '../api'
 import type { components } from '../api'
 import { friendlyError } from '../api/friendlyError'
@@ -64,6 +64,11 @@ function AdminsContent() {
   const total = admins.data?.total ?? 0
   const pages = pageCount(total)
   const filtered = hasActiveFilters(filters)
+  // A page past the end (a stale link, or the last page emptied behind us): go to the last page that has admins.
+  const pastTheEnd = admins.isSuccess && items.length === 0 && total > 0 && filters.page > pages
+  useEffect(() => {
+    if (pastTheEnd) apply({ page: pages }, { replace: true })
+  }, [pastTheEnd, pages, apply])
 
   return (
     <Box>
@@ -133,7 +138,7 @@ function AdminsContent() {
         </Stack>
       </Box>
 
-      {admins.isPending ? (
+      {admins.isPending || pastTheEnd ? (
         <Typography role="status">Loading admins…</Typography>
       ) : admins.isError ? (
         <Alert severity="error" role="alert" action={<Button color="inherit" onClick={() => void admins.refetch()}>Retry</Button>}>
