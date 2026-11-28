@@ -85,6 +85,20 @@ describe('registry validation', () => {
     expect(problems([entry({ origin })])).not.toEqual([])
   })
 
+  it.each([
+    ['a semicolon, which would end the frame-src directive', 'https://vendor-admin.shazlo.test;script-src'],
+    ['a comma, which would start a second policy', 'https://vendor-admin.shazlo.test,x'],
+    ['a quote, which would read as a CSP keyword', "https://vendor-admin.shazlo.test'x"],
+  ])('refuses an origin whose host holds %s (the browser accepts it as an origin)', (_name, origin) => {
+    expect(new URL(origin).origin).toBe(origin)
+    const found = problems([entry({ origin, url: `${origin}/` })])
+    expect(found.join('\n')).toMatch(/origin host may hold only letters, digits, dots and hyphens/)
+  })
+
+  it('still accepts an IPv4 address and a port', () => {
+    expect(problems([entry({ origin: 'https://10.0.0.5:8443', url: 'https://10.0.0.5:8443/' })])).toEqual([])
+  })
+
   it('refuses duplicate ids', () => {
     const found = problems([entry(), entry({ origin: 'https://other.shazlo.test', url: 'https://other.shazlo.test/' })])
     expect(found.join('\n')).toMatch(/id is used by another module/)

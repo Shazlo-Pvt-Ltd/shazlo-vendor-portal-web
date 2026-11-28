@@ -53,6 +53,16 @@ describe('readEnv', () => {
     expect(problems('https://api.example.com/#x')).toHaveLength(1)
   })
 
+  it('refuses a host that could change the Content-Security-Policy it is written into', () => {
+    // The URL parser accepts ";" and "," in a host name; in the policy ";" starts a new directive.
+    expect(problems('https://api.example.com;sandbox', prod)).toEqual([
+      'VITE_IDENTITY_API_URL has a host name with characters a host name cannot have.',
+    ])
+    expect(problems('https://a.example.com,b.example.com', prod)).toHaveLength(1)
+    expect(problems('https://xn--bcher-kva.example', prod)).toEqual([])
+    expect(problems('http://[::1]:8001', dev)).toEqual([])
+  })
+
   it('never repeats the value in a problem', () => {
     const all = [
       ...problems('https://user:topsecret@api.example.com/v1?key=abc#frag'),

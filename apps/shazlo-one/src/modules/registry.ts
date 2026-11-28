@@ -59,6 +59,10 @@ export const MODULES: ModuleRegistry = {
 const ID_PATTERN = /^[a-z][a-z0-9-]{0,31}$/
 // Anything that only makes sense in a pattern: an origin containing one is not an exact origin.
 const PATTERN_CHARACTERS = /[*?^$|()[\]{}\\]/
+// A host name the browser accepts can still hold `;`, `,` or quotes, which would end the CSP
+// directive (or the whole policy) the origin is written into. Only letters, digits, dots and
+// hyphens may be a module host (an IPv6 address is already refused for its brackets).
+const HOST = /^[a-z0-9-]+(?:\.[a-z0-9-]+)*$/
 
 /** Why an origin is not acceptable, or undefined when it is. */
 function originProblem(origin: unknown, environment: ModuleEnvironment): string | undefined {
@@ -74,6 +78,7 @@ function originProblem(origin: unknown, environment: ModuleEnvironment): string 
   if (parsed.protocol === 'http:' && environment !== 'development') {
     return `origin must use https outside development (this is the ${environment} registry).`
   }
+  if (!HOST.test(parsed.hostname)) return 'origin host may hold only letters, digits, dots and hyphens.'
   if (parsed.origin !== origin) {
     return 'origin must be only the scheme, host and port, in lower case, with no path, user name or trailing slash (for example https://vendor-admin.shazlo.com).'
   }

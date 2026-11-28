@@ -94,16 +94,34 @@ export const SESSION_CHANNEL = 'shazlo-one-session'
 /** A module token this close to its end is replaced rather than handed out. */
 const MODULE_TOKEN_SKEW_MS = 10_000
 
+/**
+ * Longest token life accepted, in seconds (identity-api allows at most an hour). A longer one would
+ * overflow `setTimeout`, which then fires at once and refreshes in a loop.
+ */
+const MAX_TOKEN_LIFE_S = 24 * 60 * 60
+
+function isLifetime(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= MAX_TOKEN_LIFE_S
+}
+
 /** The session body, checked: do not trust the answer blindly. */
 export function isSessionResponse(value: unknown): value is SessionResponse {
   if (typeof value !== 'object' || value === null) return false
   const v = value as Partial<SessionResponse>
   return (
     typeof v.access_token === 'string' &&
-    typeof v.expires_in === 'number' &&
+    v.access_token !== '' &&
+    isLifetime(v.expires_in) &&
     typeof v.must_change_password === 'boolean' &&
     isAdminProfile(v.admin)
   )
+}
+
+/** The `POST /v1/auth/token` body, checked. */
+export function isTokenResponse(value: unknown): value is TokenResponse {
+  if (typeof value !== 'object' || value === null) return false
+  const v = value as Partial<TokenResponse>
+  return typeof v.access_token === 'string' && v.access_token !== '' && isLifetime(v.expires_in)
 }
 
 export function isAdminProfile(value: unknown): value is AdminProfile {
@@ -131,11 +149,19 @@ export class SessionStore {
   private tokenExpiresAt = 0
   private listeners = new Set<() => void>()
   private renewTimer: ReturnType<typeof setTimeout> | undefined
-  private inFlight: Promise<boolean> | undefined
+  private inFlight: { promise: Promise<boolean>; endings: number } | undefined
   private started: Promise<void> | undefined
   private closed = true
-  /** Bumped whenever a session ends, so an answer that arrives later knows it is stale. */
+  /**
+   * Bumped whenever a session ends or passes to another admin (or to a password-change token), so
+   * a module-token exchange that answers later knows it is stale.
+   */
   private generation = 0
+  /**
+   * Bumped only when a session ends (sign-out here or in another tab, a refused refresh), not on
+   * {@link close}: a renewal under way at that moment must not sign the tab back in.
+   */
+  private endings = 0
   private moduleTokens = new Map<string, ModuleToken>()
   private moduleRequests = new Map<string, Promise<ModuleToken>>()
 
@@ -222,27 +248,35 @@ export class SessionStore {
    * requests that find the token expired cause one refresh). Resolves true when there is a session.
    */
   renew = (): Promise<boolean> => {
-    this.inFlight ??= this.doRenew().finally(() => {
-      this.inFlight = undefined
+    if (this.inFlight && this.inFlight.endings === this.endings) return this.inFlight.promise
+    // One started before the session ended throws its answer away (another tab may sign in right
+    // after signing out): queue a fresh one behind it, so two refreshes never race for the cookie.
+    const before = this.inFlight?.promise
+    const promise: Promise<boolean> = (before ? before.then(() => this.doRenew()) : this.doRenew()).finally(() => {
+      if (this.inFlight?.promise === promise) this.inFlight = undefined
     })
-    return this.inFlight
+    this.inFlight = { promise, endings: this.endings }
+    return promise
   }
 
   private async doRenew(): Promise<boolean> {
     const hadSession = this.hasSession()
+    const endings = this.endings
+    const stale = () => this.closed || endings !== this.endings
     try {
       const session = await this.refreshWithConflictRetry()
-      if (this.closed) return false
+      if (stale()) return false
       // An admin who must change their password has a token with no roles, which `/v1/me` refuses:
       // the answer to refresh already says who they are.
       const profile = session.must_change_password ? session.admin : await this.deps.fetchMe(session.access_token)
-      if (this.closed) return false
+      if (stale()) return false
       this.adopt(session, profile)
       return true
     } catch (error) {
-      if (this.closed) return false
+      if (stale()) return false
       if (error instanceof ApiError && error.status === 401) {
-        this.end({ expired: hadSession })
+        // Already signed out (a stray 401 after sign-out): keep why the session ended.
+        if (this.state.status !== 'signedOut') this.end({ expired: hadSession })
       } else if (error instanceof NetworkError || error instanceof ApiError) {
         // The server is unreachable or failing: the session may still be good, so do not sign out.
         if (this.state.status === 'loading') this.set({ ...this.state, status: 'unavailable' })
@@ -276,13 +310,28 @@ export class SessionStore {
 
   private adopt(session: SessionResponse, profile: AdminProfile): void {
     const mustChange = session.must_change_password
+    const roles = mustChange ? [] : [...profile.roles]
+    const previous = this.state.admin
+    if (previous !== null && previous.id !== profile.id) {
+      // The cookie now belongs to another admin (another tab signed out and in while this one
+      // missed the messages): nothing of the previous admin may carry over.
+      this.forgetModuleTokens()
+      clearSensitiveState()
+      this.deps.onCleared()
+    } else if (mustChange) {
+      // A password-change token gets no module tokens at all.
+      this.forgetModuleTokens()
+    } else if (roles.length !== this.state.roles.length || roles.some((role, i) => role !== this.state.roles[i])) {
+      // The cached module tokens were issued for the old roles.
+      this.moduleTokens.clear()
+    }
     this.token = session.access_token
     this.tokenExpiresAt = Date.now() + session.expires_in * 1000
     this.set({
       status: mustChange ? 'passwordChangeRequired' : 'signedIn',
       admin: profile,
       // No roles until the password is changed, whatever the profile says.
-      roles: mustChange ? [] : [...profile.roles],
+      roles,
       expired: false,
       signedOutByUser: false,
     })
@@ -300,6 +349,7 @@ export class SessionStore {
   }
 
   private end(options: { expired: boolean; byUser?: boolean }): void {
+    this.endings += 1
     this.clearToken()
     // Typed passwords and half-filled sensitive forms never survive the session, expired or not.
     clearSensitiveState()
@@ -310,10 +360,15 @@ export class SessionStore {
   private clearToken(): void {
     this.token = null
     this.tokenExpiresAt = 0
+    this.forgetModuleTokens()
+    clearTimeout(this.renewTimer)
+  }
+
+  /** Drops every module token, and makes an exchange under way throw away its answer. */
+  private forgetModuleTokens(): void {
     this.generation += 1
     this.moduleTokens.clear()
     this.moduleRequests.clear()
-    clearTimeout(this.renewTimer)
   }
 
   // --- module tokens ---------------------------------------------------------------------------
@@ -325,21 +380,23 @@ export class SessionStore {
    * {@link NotSignedInError}; other failures are the API client's own errors.
    */
   getModuleToken(audience: string): Promise<ModuleToken> {
+    // Only a signed-in admin has roles to exchange; a password-change token gets nothing.
+    if (this.state.status !== 'signedIn') return Promise.reject(new NotSignedInError())
     const cached = this.moduleTokens.get(audience)
     if (cached && cached.expiresAt - Date.now() > MODULE_TOKEN_SKEW_MS) return Promise.resolve(cached)
     let pending = this.moduleRequests.get(audience)
     if (!pending) {
-      pending = this.exchangeFor(audience).finally(() => {
-        this.moduleRequests.delete(audience)
+      const request: Promise<ModuleToken> = this.exchangeFor(audience).finally(() => {
+        // Only its own entry: a session that ended meanwhile may have started a newer exchange.
+        if (this.moduleRequests.get(audience) === request) this.moduleRequests.delete(audience)
       })
+      pending = request
       this.moduleRequests.set(audience, pending)
     }
     return pending
   }
 
   private async exchangeFor(audience: string): Promise<ModuleToken> {
-    // Only a signed-in admin has roles to exchange; a password-change token gets nothing.
-    if (this.state.status !== 'signedIn') throw new NotSignedInError()
     const generation = this.generation
     if (this.tokenExpiresAt - Date.now() <= MODULE_TOKEN_SKEW_MS && !(await this.renew())) {
       throw new NotSignedInError()
