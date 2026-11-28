@@ -305,8 +305,9 @@ describe('A-09 Vendor detail', { timeout: 40_000 }, () => {
     expect(new URLSearchParams(router.state.location.search).get('tab')).toBe('products')
     const list = screen.getByRole('list', { name: 'Products from this vendor' })
     expect(within(list).getAllByRole('listitem')).toHaveLength(4)
-    const ajrakh = within(list).getByRole('link', { name: /Ajrakh Block-Print Kurta/ })
-    expect(ajrakh).toHaveAttribute('href', '/review/product/p_ajrakh')
+    // Its review page is keyed by the review's id, found in the queue.
+    const ajrakh = await within(list).findByRole('link', { name: /Ajrakh Block-Print Kurta/ })
+    expect(ajrakh).toHaveAttribute('href', '/review/product/rev_p_ajrakh')
     expect(within(ajrakh).getByText('Pending review')).toBeInTheDocument()
     expect(within(ajrakh).getByText('₹2,499')).toBeInTheDocument()
     // Only a product waiting for review opens; it says so with a chevron. Names in semibold.
@@ -370,7 +371,7 @@ describe('A-09 Vendor detail', { timeout: 40_000 }, () => {
     const { user } = renderModule({ route: '/vendors/v_nila' })
     await heading('Nila Handloom')
     await openTab(user, /^Brand page/)
-    expect(await screen.findByRole('link', { name: 'Review the submitted brand page' })).toHaveAttribute('href', '/review/brand/v_nila')
+    expect(await screen.findByRole('link', { name: 'Review the submitted brand page' })).toHaveAttribute('href', '/review/brand/rev_brand_v_nila')
     expect(screen.getByText('Their brand page is live in the app.')).toBeInTheDocument()
   })
 

@@ -74,7 +74,7 @@ describe('Phone layout', { timeout: 40_000 }, () => {
       expect(within(item).queryByRole('button')).toBeNull()
     }
     const ajrakh = card(list, 'Ajrakh Block-Print Kurta')
-    expect(within(ajrakh).getByRole('link', { name: 'Ajrakh Block-Print Kurta' })).toHaveAttribute('href', '/review/product/p_ajrakh')
+    expect(within(ajrakh).getByRole('link', { name: 'Ajrakh Block-Print Kurta' })).toHaveAttribute('href', '/review/product/rev_p_ajrakh')
     expect(within(ajrakh).getByText('KS-AJR-014')).toBeInTheDocument()
     expect(isSecondary(within(ajrakh).getByText('KS-AJR-014'))).toBe(true)
     expect(isSecondary(within(card(list, 'Kaaya Ethnic')).getByText('Vendor application · Hyderabad, Telangana'))).toBe(true)
@@ -82,7 +82,7 @@ describe('Phone layout', { timeout: 40_000 }, () => {
     expect(within(ajrakh).getByText('Resubmission #1')).toBeInTheDocument()
     expect(within(ajrakh).getByText('2 h')).toBeInTheDocument()
     expect(within(card(list, 'Patola Silk Stole')).getByText('34 h')).toHaveAttribute('data-overdue', 'true')
-    expect(within(list).getByRole('link', { name: 'Nila Handloom brand page' })).toHaveAttribute('href', '/review/brand/v_nila')
+    expect(within(list).getByRole('link', { name: 'Nila Handloom brand page' })).toHaveAttribute('href', '/review/brand/rev_brand_v_nila')
     expect(within(list).getByRole('link', { name: 'Kaaya Ethnic' })).toHaveAttribute('href', '/vendors/v_kaaya')
 
     // The figures and filters are still there, the tabs scroll.
@@ -90,7 +90,7 @@ describe('Phone layout', { timeout: 40_000 }, () => {
     expect(screen.getByRole('textbox', { name: 'Search item, vendor or SKU' })).toBeInTheDocument()
 
     await user.click(within(list).getByRole('link', { name: 'Ajrakh Block-Print Kurta' }))
-    await waitFor(() => expect(router.state.location.pathname).toBe('/review/product/p_ajrakh'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/review/product/rev_p_ajrakh'))
   })
 
   it('shows vendors as cards with status, owner and the row actions', async () => {
@@ -169,7 +169,7 @@ describe('Phone layout', { timeout: 40_000 }, () => {
   })
 
   it('keeps the review decision in a bar at the bottom of a product review', async () => {
-    const { user } = renderModule({ route: '/review/product/p_ajrakh' })
+    const { user } = renderModule({ route: '/review/product/rev_p_ajrakh' })
     await screen.findByRole('heading', { level: 1, name: 'Ajrakh Block-Print Kurta' }, { timeout: 10_000 })
     const bar = screen.getByRole('region', { name: 'Decision' })
     const approve = within(bar).getByRole('button', { name: 'Approve and publish' })

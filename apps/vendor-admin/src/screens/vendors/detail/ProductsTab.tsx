@@ -2,7 +2,7 @@ import { Box, Button, Card, Checkbox, Link, Stack, Typography } from '@mui/mater
 import { emphasis, EmptyState, neutral, StatusPill, type PillStatus } from '@shazlo/ui'
 import { useId, useRef, useState, type ReactNode } from 'react'
 import { Link as RouterLink } from 'react-router'
-import { useApproveProducts } from '../../../api/queries'
+import { useApproveProducts, useEveryQueueItem } from '../../../api/queries'
 import type * as S from '../../../api/model'
 import { modulePaths } from '../../../app/routes'
 import { ProductThumb } from '../../../components/ProductThumb'
@@ -32,10 +32,15 @@ const tickBox = { p: { xs: '10px', md: '9px' } } as const
 // The most products one approval sends (ApproveProductsBody maxItems).
 const BULK_MAX = 50
 
-type RowProps = { product: Product; ticks: boolean; checked: boolean; onTick: (on: boolean) => void }
+// A product's review page is keyed by its waiting review's id (the queue item's), not the product's.
+type ReviewOf = (productId: string) => string | undefined
 
-function ProductRow({ product, ticks, checked, onTick }: RowProps) {
+type RowProps = { product: Product; reviewId: string | undefined; ticks: boolean; checked: boolean; onTick: (on: boolean) => void }
+
+function ProductRow({ product, reviewId, ticks, checked, onTick }: RowProps) {
   const pending = product.status === 'pending_review'
+  // It opens once its review is found in the queue.
+  const opens = pending && reviewId !== undefined
   const row: ReactNode = (
     <Stack direction="row" spacing={{ xs: ticks ? 1.5 : 2, sm: 2 }} sx={{ alignItems: 'center', minHeight: 64, pl: ticks ? { xs: 0.5, sm: 1 } : { xs: 2, sm: 3 }, pr: { xs: 2, sm: 3 }, py: 1 }}>
       <ProductThumb src={product.thumbnail_url} size={40} />
@@ -50,7 +55,7 @@ function ProductRow({ product, ticks, checked, onTick }: RowProps) {
         {formatINR(product.price_paise)}
       </Typography>
       {/* A row that opens ends in a chevron; the others keep its room, so the prices line up. */}
-      <Box sx={{ width: 20, display: 'flex', flexShrink: 0 }}>{pending && <RowChevron />}</Box>
+      <Box sx={{ width: 20, display: 'flex', flexShrink: 0 }}>{opens && <RowChevron />}</Box>
     </Stack>
   )
   return (
@@ -61,10 +66,10 @@ function ProductRow({ product, ticks, checked, onTick }: RowProps) {
           {pending && <Checkbox checked={checked} onChange={(_, on) => onTick(on)} sx={tickBox} slotProps={{ input: { 'aria-label': copy.bulk.select(product.title) } as object }} />}
         </Box>
       )}
-      {pending ? (
+      {opens ? (
         <Link
           component={RouterLink}
-          to={modulePaths.product(product.id)}
+          to={modulePaths.product(reviewId)}
           underline="none"
           sx={{ display: 'block', flex: 1, minWidth: 0, color: 'inherit', cursor: 'pointer', '@media (hover: hover)': { '&:hover [data-chevron]': { color: neutral.ink } }, '&:focus-visible': focusRing }}
         >
@@ -117,7 +122,7 @@ function BulkToolbar({ waiting, selected, onAll, onApprove }: ToolbarProps) {
 }
 
 // The banner and toast for the answer: all approved, or the count that were and each that was not.
-function outcomeOf(result: S.ApproveProductsResult, sent: Product[], brand: string): [ProductsOutcome, string] {
+function outcomeOf(result: S.ApproveProductsResult, sent: Product[], brand: string, reviewOf: ReviewOf): [ProductsOutcome, string] {
   const b = copy.bulk
   const approved = result.approved.length
   if (result.failed.length === 0) return [{ tone: 'success', text: b.done.banner(approved, brand) }, b.done.toast(approved, brand)]
@@ -126,21 +131,24 @@ function outcomeOf(result: S.ApproveProductsResult, sent: Product[], brand: stri
     <>
       {b.partial.intro(result.failed.length)}
       <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
-        {result.failed.map((f) => (
+        {result.failed.map((f) => {
+          // One that still waits opens, so the reviewer can see what happened to it.
+          const reviewId = f.code === 'not_found' ? undefined : reviewOf(f.id)
+          return (
           <li key={f.id}>
-            {/* One that still exists opens, so the reviewer can see what happened to it. */}
-            {f.code === 'not_found' ? (
+            {reviewId === undefined ? (
               <Box component="span" sx={emphasis.semibold}>
                 {titleOf(f.id)}
               </Box>
             ) : (
-              <Link component={RouterLink} to={modulePaths.product(f.id)} sx={emphasis.semibold}>
+              <Link component={RouterLink} to={modulePaths.product(reviewId)} sx={emphasis.semibold}>
                 {titleOf(f.id)}
               </Link>
             )}
             {`: ${b.errors[f.code]}`}
           </li>
-        ))}
+          )
+        })}
       </Box>
     </>
   )
@@ -156,6 +164,9 @@ type Props = {
 // brand, can be ticked and approved together, each with the version the reviewer saw.
 export function ProductsTab({ vendor, onProductsApproved }: Props) {
   const approve = useApproveProducts(vendor.id)
+  // Every product of this vendor waiting in the queue, for the review id each one's page opens by.
+  const queued = useEveryQueueItem({ kind: 'product', vendor: vendor.id }).data
+  const reviewOf: ReviewOf = (productId) => queued?.find((item) => item.subject_id === productId)?.id
   const [ticked, setTicked] = useState<ReadonlySet<string>>(() => new Set())
   // Kept after closing (open: false) so the dialog keeps its words while it fades out.
   const [dialog, setDialog] = useState<{ open: boolean; products: Product[] } | null>(null)
@@ -210,7 +221,7 @@ export function ProductsTab({ vendor, onProductsApproved }: Props) {
       close()
       // Every ticked product was sent and has an answer now; the banner says which went live.
       setTicked(new Set())
-      const [banner, message] = outcomeOf(result, sent, vendor.brand_name)
+      const [banner, message] = outcomeOf(result, sent, vendor.brand_name, reviewOf)
       onProductsApproved(banner, message)
       focusList.current = true
     } catch (error) {
@@ -224,7 +235,7 @@ export function ProductsTab({ vendor, onProductsApproved }: Props) {
       {ticks && <BulkToolbar waiting={waiting.length} selected={selected.length} onAll={tickAll} onApprove={ask} />}
       <Box component="ul" ref={listRef} tabIndex={-1} aria-label={copy.label} sx={{ listStyle: 'none', p: 0, m: 0, '&:focus': { outline: 'none' } }}>
         {vendor.products.map((product) => (
-          <ProductRow key={product.id} product={product} ticks={ticks} checked={ticked.has(versionKey(product))} onTick={(on) => tick(product, on)} />
+          <ProductRow key={product.id} product={product} reviewId={reviewOf(product.id)} ticks={ticks} checked={ticked.has(versionKey(product))} onTick={(on) => tick(product, on)} />
         ))}
       </Box>
       {dialog && <ApproveProductsDialog open={dialog.open} brand={vendor.brand_name} products={dialog.products} sending={approve.isPending} failure={failure} onCancel={close} onConfirm={() => void confirm()} onExited={afterClose} />}

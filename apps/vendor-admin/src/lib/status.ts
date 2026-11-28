@@ -31,9 +31,10 @@ export function queuePill(item: Pick<M.QueueItem, 'kind' | 'change' | 'resubmiss
   return { status: 'pending', label: item.kind === 'brand_page' ? 'First brand page' : 'New product' }
 }
 
-export const decisionPill: Record<'approved' | 'rejected', Pill> = {
+export const decisionPill: Record<'approved' | 'rejected' | 'withdrawn', Pill> = {
   approved: { status: 'live', label: 'Approved' },
   rejected: { status: 'sentBack', label: 'Sent back' },
+  withdrawn: { status: 'archived', label: 'Withdrawn' },
 }
 
 // "5 h 20 m", "34 h", "2 d 3 h": how long something has waited.

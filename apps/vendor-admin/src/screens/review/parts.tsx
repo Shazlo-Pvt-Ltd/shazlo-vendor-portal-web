@@ -14,9 +14,9 @@ import type { Outcome } from './useDecision'
 
 type History = M.History
 
-// Queue neighbours are product ids or vendor ids; a vendor id means a brand page.
-export function reviewPath(id: string): string {
-  return id.startsWith('v_') ? modulePaths.brand(id) : modulePaths.product(id)
+// Where an item of the queue is reviewed: the review's id, on the page for its kind.
+export function reviewPath(ref: M.ReviewRef): string {
+  return ref.kind === 'brand_page' ? modulePaths.brand(ref.id) : modulePaths.product(ref.id)
 }
 
 export function newestFirst(history: History): History {
@@ -31,12 +31,14 @@ export function submitterOf(history: History, fallback: string): string {
 // The latest decision, when it is newer than the latest submission.
 export function lastDecision(history: History): History[number] | null {
   const latest = newestFirst(history)[0]
-  return latest && (latest.event === 'approved' || latest.event === 'rejected') ? latest : null
+  return latest && (latest.event === 'approved' || latest.event === 'rejected' || latest.event === 'withdrawn') ? latest : null
 }
 
-export function decisionIn(history: History): 'approved' | 'rejected' | null {
-  const latest = lastDecision(history)?.event
-  return latest === 'approved' || latest === 'rejected' ? latest : null
+export type Decided = 'approved' | 'rejected' | 'withdrawn'
+
+// A review that is not waiting any more, whoever ended it; null while it waits.
+export function decidedOf(status: M.ProductReview['status']): Decided | null {
+  return status === 'pending_review' ? null : status
 }
 
 export function submittedLine(iso: string): string {
@@ -44,11 +46,11 @@ export function submittedLine(iso: string): string {
   return copy.submitted(formatStamp(iso), formatWait(Date.now() - Date.parse(iso)).replace(/ /g, '\u00a0'))
 }
 
-function NavButton({ id, label, empty, icon }: { id: string | null; label: string; empty: string; icon: ReactNode }) {
-  if (id) {
+function NavButton({ to, label, empty, icon }: { to: M.ReviewRef | null; label: string; empty: string; icon: ReactNode }) {
+  if (to) {
     return (
       <Tooltip title={label}>
-        <IconButton component={RouterLink} to={reviewPath(id)} aria-label={label} sx={{ ...touchIcon, color: neutral.ink }}>
+        <IconButton component={RouterLink} to={reviewPath(to)} aria-label={label} sx={{ ...touchIcon, color: neutral.ink }}>
           {icon}
         </IconButton>
       </Tooltip>
@@ -66,7 +68,7 @@ function NavButton({ id, label, empty, icon }: { id: string | null; label: strin
 }
 
 // Back to the queue on the left; the previous and next items in the queue on the right.
-export function QueueNav({ prevId, nextId }: { prevId: string | null; nextId: string | null }) {
+export function QueueNav({ prev, next }: { prev: M.ReviewRef | null; next: M.ReviewRef | null }) {
   return (
     <Stack component="nav" aria-label={copy.nav.back} direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 2, gap: 2 }}>
       <Link component={RouterLink} to={modulePaths.queue} underline="hover" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75, color: neutral.inkSecondary, typography: 'body2', minHeight: { xs: 44, md: 36 } }}>
@@ -74,8 +76,8 @@ export function QueueNav({ prevId, nextId }: { prevId: string | null; nextId: st
         {copy.nav.back}
       </Link>
       <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
-        <NavButton id={prevId} label={copy.nav.prev} empty={copy.nav.noPrev} icon={<ChevronLeft size={20} strokeWidth={1.75} aria-hidden="true" />} />
-        <NavButton id={nextId} label={copy.nav.next} empty={copy.nav.noNext} icon={<ChevronRight size={20} strokeWidth={1.75} aria-hidden="true" />} />
+        <NavButton to={prev} label={copy.nav.prev} empty={copy.nav.noPrev} icon={<ChevronLeft size={20} strokeWidth={1.75} aria-hidden="true" />} />
+        <NavButton to={next} label={copy.nav.next} empty={copy.nav.noNext} icon={<ChevronRight size={20} strokeWidth={1.75} aria-hidden="true" />} />
       </Stack>
     </Stack>
   )
@@ -140,30 +142,32 @@ export function HistoryCard({ history }: { history: History }) {
 }
 
 // The page's state after a decision: the reviewer's own outcome, or who decided before them.
-export function OutcomeBanner({ decided, decision, history, nextId, seller, where }: { decided: 'approved' | 'rejected' | null; decision: { outcome: Outcome | null; conflict: boolean }; history: History; nextId: string | null; seller: string; where: 'product' | 'brand page' }) {
+export function OutcomeBanner({ decided, decision, history, next, seller, where }: { decided: Decided | null; decision: { outcome: Outcome | null; conflict: boolean }; history: History; next: M.ReviewRef | null; seller: string; where: 'product' | 'brand page' }) {
   const { outcome, conflict } = decision
   if (outcome) {
-    return <DecidedBanner tone="success" title={outcome.decision === 'approved' ? copy.decided.approved : copy.decided.sentBack(seller, where)} nextId={outcome.nextId} />
+    return <DecidedBanner tone="success" title={outcome.decision === 'approved' ? copy.decided.approved : copy.decided.sentBack(seller, where)} next={outcome.next} />
   }
   if (decided) {
     const previous = lastDecision(history)
     const by = previous?.by ?? '—'
     const when = previous ? formatStamp(previous.at) : '—'
-    const title = decided === 'approved' ? copy.decided.alreadyApproved(by, when) : copy.decided.alreadySentBack(by, when)
-    return <DecidedBanner tone="info" title={title} body={conflict ? copy.decided.conflict : copy.decided.alreadyBody} nextId={nextId} />
+    const title = decided === 'approved' ? copy.decided.alreadyApproved(by, when) : decided === 'withdrawn' ? copy.decided.withdrawn(by, when) : copy.decided.alreadySentBack(by, when)
+    const body = decided === 'withdrawn' ? copy.decided.withdrawnBody : conflict ? copy.decided.conflict : copy.decided.alreadyBody
+    return <DecidedBanner tone="info" title={title} body={body} next={next} />
   }
-  return conflict ? <Banner tone="warning" title={copy.decided.conflict} /> : null
+  // Refused as stale but still waiting: the seller edited it, and what is on screen is the new version.
+  return conflict ? <Banner tone="warning" title={copy.decided.changed} /> : null
 }
 
-function DecidedBanner({ tone, title, body, nextId }: { tone: 'success' | 'info'; title: string; body?: string; nextId: string | null }) {
+function DecidedBanner({ tone, title, body, next }: { tone: 'success' | 'info'; title: string; body?: string; next: M.ReviewRef | null }) {
   return (
     <Banner
       tone={tone}
       title={title}
       action={
         <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {nextId && (
-            <Button variant="contained" component={RouterLink} to={reviewPath(nextId)}>
+          {next && (
+            <Button variant="contained" component={RouterLink} to={reviewPath(next)}>
               {copy.nextItem}
             </Button>
           )}

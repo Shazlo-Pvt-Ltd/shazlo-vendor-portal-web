@@ -11,6 +11,7 @@ function submission(overrides: Partial<SubmissionOut> = {}): SubmissionOut {
     version: 1,
     status: 'rejected',
     reason: 'Back photo is missing.',
+    reason_code: 'photos',
     submitted_at: '2026-11-01T10:00:00Z',
     decided_at: '2026-11-02T10:00:00Z',
     ...overrides,

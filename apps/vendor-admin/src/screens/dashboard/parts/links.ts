@@ -15,10 +15,12 @@ export const dashboardLinks = {
   publishingWith: (status: S.OutboxStatus) => `${modulePaths.publishing}?status=${status}`,
   // The vendor page's Products tab, where a brand's waiting products can be approved together.
   vendorProducts: (vendorId: string) => `${modulePaths.vendor(vendorId)}?tab=products`,
-  // Brand pages and applications are keyed by their vendor and open directly. A product decision
-  // opens the queue, as on Shazlo One's home.
+  // The review pages are keyed by the review's id, which this summary does not carry (vendor-api's
+  // `GET /v1/admin/summary` does, as `review_id`). Until the dashboard reads it, a brand page decision
+  // opens the vendor's Brand tab, an application the vendor, and a product decision the queue, as on
+  // Shazlo One's home.
   decision: (d: Decision) => {
-    if (d.kind === 'brand_page') return modulePaths.brand(d.vendor.id)
+    if (d.kind === 'brand_page') return `${modulePaths.vendor(d.vendor.id)}?tab=brand`
     if (d.kind === 'application') return modulePaths.vendor(d.vendor.id)
     return modulePaths.queue
   },

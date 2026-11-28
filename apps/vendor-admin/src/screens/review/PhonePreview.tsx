@@ -68,8 +68,8 @@ export function PhonePreview({ heading, brandName, profile, note }: { heading: s
             )}
             <Stack direction="row" sx={{ flexWrap: 'wrap', columnGap: 1.5, rowGap: 0.5, mt: 1.5, color: brand.brown }}>
               {city && <Meta icon={MapPin}>{city}</Meta>}
-              <Meta icon={Clock}>{dispatchLabel(profile.dispatch_time)}</Meta>
-              <Meta icon={RotateCcw}>{returnsLabel(profile.return_policy)}</Meta>
+              {profile.dispatch_time && <Meta icon={Clock}>{dispatchLabel(profile.dispatch_time)}</Meta>}
+              {profile.return_policy && <Meta icon={RotateCcw}>{returnsLabel(profile.return_policy)}</Meta>}
             </Stack>
             {profile.story && (
               <Typography variant="body2" sx={{ mt: 1.5, whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>

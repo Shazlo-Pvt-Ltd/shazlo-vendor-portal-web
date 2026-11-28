@@ -18,7 +18,8 @@ export const modulePaths = {
   dashboard: '/dashboard',
   queue: '/queue',
   product: (id: string) => `/review/product/${id}`,
-  brand: (vendorId: string) => `/review/brand/${vendorId}`,
+  // Both take the review's id (a queue item's `id`), not the product's or the vendor's.
+  brand: (reviewId: string) => `/review/brand/${reviewId}`,
   vendors: '/vendors',
   vendor: (id: string) => `/vendors/${id}`,
   // Vendors whose proposed commission waits for Shazlo.
@@ -46,7 +47,7 @@ export const routes: RouteObject[] = [
       { path: 'dashboard', element: <Dashboard /> },
       { path: 'queue', element: <ReviewQueue /> },
       { path: 'review/product/:id', element: <ProductReview /> },
-      { path: 'review/brand/:vendorId', element: <BrandReview /> },
+      { path: 'review/brand/:id', element: <BrandReview /> },
       { path: 'vendors', element: <VendorList /> },
       { path: 'vendors/:id', element: <VendorDetail /> },
       { path: 'publishing', element: <Publishing /> },

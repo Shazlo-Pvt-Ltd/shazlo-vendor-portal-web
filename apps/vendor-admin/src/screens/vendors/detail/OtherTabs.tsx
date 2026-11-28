@@ -25,7 +25,7 @@ export function BrandTab({ vendor }: { vendor: Vendor }) {
       <Stack spacing={1}>
         <Typography variant="body1">{copy.brand.waiting(formatDate(waiting.submitted_at))}</Typography>
         <Box>
-          <Link component={RouterLink} to={modulePaths.brand(vendor.id)}>
+          <Link component={RouterLink} to={modulePaths.brand(waiting.id)}>
             {copy.brand.review}
           </Link>
         </Box>

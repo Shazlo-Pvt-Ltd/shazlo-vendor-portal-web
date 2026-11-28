@@ -1,10 +1,9 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { neutral } from '@shazlo/ui'
 import { renderModule, VENDOR_API_URL } from '../../test/render'
 import { server } from '../../test/server'
-import { isBold, isSecondary, isSemibold, rgb } from '../../test/style'
+
 
 // Monday 9 Nov 2026, 13:40 IST. The seed is built relative to it: the Ajrakh kurta came in at 11:40.
 const NOW = new Date('2026-11-09T13:40:00+05:30')
@@ -19,8 +18,11 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+// A review is keyed by its own id; the mock names a product's `rev_<product id>`.
+const rev = (productId: string) => `rev_${productId}`
+
 async function open(id: string, title: string) {
-  const view = renderModule({ route: `/review/product/${id}` })
+  const view = renderModule({ route: `/review/product/${rev(id)}` })
   // The first screen in a file compiles on demand; give it room.
   await screen.findByRole('heading', { level: 1, name: title }, { timeout: 10_000 })
   return view
@@ -29,16 +31,6 @@ async function open(id: string, title: string) {
 const compareTable = () => within(screen.getByRole('region', { name: /^Compared with the/ })).getByRole('table')
 const rowOf = (table: HTMLElement, field: RegExp) => within(table).getByRole('rowheader', { name: field }).closest('tr')!
 const cells = (row: HTMLElement) => within(row).getAllByRole('cell').map((c) => c.textContent)
-
-// A reference table's header row: semibold on the muted fill, over a firm rule.
-function expectHeaderRow(table: HTMLElement) {
-  for (const th of within(table).getAllByRole('columnheader')) {
-    expect(isSemibold(th)).toBe(true)
-    expect(getComputedStyle(th).backgroundColor).toBe(rgb(neutral.muted))
-    expect(getComputedStyle(th).borderBottomWidth).toBe('2px')
-    expect(getComputedStyle(th).borderBottomColor).toBe(rgb(neutral.lineStrong))
-  }
-}
 
 async function tickAll(user: ReturnType<typeof renderModule>['user']) {
   for (const name of CHECKS) await user.click(screen.getByRole('checkbox', { name }))
@@ -51,73 +43,12 @@ describe('A-05 Product review: a resubmission', { timeout: 40_000 }, () => {
     expect(screen.getByText('Resubmission #1')).toBeInTheDocument()
     expect(screen.getByText('Kalki Studio · KS-AJR-014 · submitted today, 11:40 · waiting 2 h')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Review queue' })).toHaveAttribute('href', '/queue')
-    await waitFor(() => expect(shell.titles()).toContainEqual({ path: '/review/product/p_ajrakh', title: AJRAKH }))
+    await waitFor(() => expect(shell.titles()).toContainEqual({ path: `/review/product/${rev('p_ajrakh')}`, title: AJRAKH }))
   })
 
-  it('compares with the sent-back version and marks the rows that changed', async () => {
+  it('offers no comparison with the version sent back: vendor-api compares with the live version only', async () => {
     await open('p_ajrakh', AJRAKH)
-    const table = compareTable()
-    expect(within(table).getAllByRole('columnheader').map((c) => c.textContent)).toEqual(['Field', 'Sent-back version', 'This submission'])
-    expect(within(table).getAllByText('Changed')).toHaveLength(3)
-
-    const photos = rowOf(table, /^Product photos/)
-    expect(within(photos).getByText('Changed')).toBeInTheDocument()
-    expect(cells(photos)).toEqual(['Front, detail, worn, extra', 'Front, back, detail, worn, extra'])
-    const tryOn = rowOf(table, /^Try-on photos/)
-    expect(within(tryOn).getByText('Changed')).toBeInTheDocument()
-    expect(cells(tryOn)).toEqual(['3 photos', '5 photos'])
-
-    const sizes = rowOf(table, /^Sizes and stock/)
-    expect(within(sizes).getByText('Changed')).toBeInTheDocument()
-    expect(cells(sizes)).toEqual(['XS 4 · S 8 · M 10 · L 6 · XL 0', 'XS 4 · S 8 · M 10 · L 6 · XL 3'])
-
-    expect(cells(rowOf(table, /^Title/))).toEqual([AJRAKH, 'Same'])
-    expect(cells(rowOf(table, /^Selling price/))).toEqual(['₹2,499 / ₹2,999', 'Same'])
-    expect(cells(rowOf(table, /^Gender · product type/))).toEqual(['Women · Kurtas', 'Same'])
-    expect(cells(rowOf(table, /^Colours/))).toEqual(['Indigo, also Madder red', 'Same'])
-    expect(cells(rowOf(table, /^Material/))).toEqual(['Cotton (mul)', 'Same'])
-    expect(within(rowOf(table, /^Title/)).queryByText('Changed')).toBeNull()
-  })
-
-  it('truncates the description in the comparison until asked', async () => {
-    const { user } = await open('p_ajrakh', AJRAKH)
-    const row = rowOf(compareTable(), /^Description/)
-    expect(cells(row)[0]).toMatch(/…$/)
-    await user.click(within(row).getByRole('button', { name: 'Show full description' }))
-    expect(cells(row)[0]).toBe('Ajrakh Block-Print Kurta in hand block-printed cotton, dyed with natural colours. Hand wash cold.')
-    expect(within(row).getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true')
-  })
-
-  it('shows the product photos and the try-on photos by name, tags new ones and switches the main photo', async () => {
-    const { user } = await open('p_ajrakh', AJRAKH)
-    const photos = screen.getByRole('region', { name: 'Photos' })
-    expect(within(photos).getByRole('img', { name: `Front photo of ${AJRAKH}` })).toBeInTheDocument()
-
-    const product = within(photos).getByRole('group', { name: 'Product photos' })
-    expect(within(product).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Show front photo', 'Show back photo', 'Show detail photo', 'Show worn photo', 'Show extra photo'])
-    expect(within(product).getByText('4 of 4 · 1 extra')).toBeInTheDocument()
-    const front = within(product).getByRole('button', { name: 'Show front photo' })
-    const back = within(product).getByRole('button', { name: 'Show back photo' })
-    expect(front).toHaveAttribute('aria-pressed', 'true')
-    expect(back).toHaveAccessibleDescription('New in this submission')
-    expect(within(back).getByText('New')).toBeInTheDocument()
-    expect(within(product).getByRole('button', { name: 'Show detail photo' })).not.toHaveAccessibleDescription()
-
-    const tryOn = within(photos).getByRole('group', { name: 'Try-on photos' })
-    expect(within(tryOn).getByText('Real people wearing it, so shoppers see the true fit.')).toBeInTheDocument()
-    expect(within(tryOn).getByText('5 of 5')).toBeInTheDocument()
-    expect(within(tryOn).getAllByRole('button')).toHaveLength(5)
-    expect(within(tryOn).getByRole('button', { name: 'Show try-on 3 photo' })).not.toHaveAccessibleDescription()
-    expect(within(tryOn).getByRole('button', { name: 'Show try-on 4 photo' })).toHaveAccessibleDescription('New in this submission')
-    expect(within(photos).queryByText(/missing/)).toBeNull()
-
-    await user.click(back)
-    expect(within(photos).getByRole('img', { name: `Back photo of ${AJRAKH}` })).toBeInTheDocument()
-    expect(back).toHaveAttribute('aria-pressed', 'true')
-    expect(front).toHaveAttribute('aria-pressed', 'false')
-    await user.click(within(tryOn).getByRole('button', { name: 'Show try-on 2 photo' }))
-    expect(within(photos).getByRole('img', { name: `Try-on 2 photo of ${AJRAKH}` })).toBeInTheDocument()
-    expect(back).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.queryByRole('region', { name: /^Compared with the/ })).toBeNull()
   })
 
   it('shows what the product is: gender, type, colours with swatches, material and description', async () => {
@@ -153,83 +84,34 @@ describe('A-05 Product review: a resubmission', { timeout: 40_000 }, () => {
     expect(within(price).getByText('Shoppers see ₹2,499, the lower of the two.')).toBeInTheDocument()
   })
 
-  it('shows the size chart the brand saved for kurtas, in cm', async () => {
-    await open('p_ajrakh', AJRAKH)
-    const chart = screen.getByRole('region', { name: 'Size chart' })
-    expect(within(chart).getByText('Used for all their kurtas. Measurements in cm.')).toBeInTheDocument()
-    const table = within(chart).getByRole('table')
-    // Each measurement column names its unit.
-    expect(within(table).getAllByRole('columnheader').map((c) => c.textContent)).toEqual(['Size', 'Chest (cm)', 'Waist (cm)', 'Length (cm)', 'Shoulder (cm)'])
-    const xs = within(table).getByRole('rowheader', { name: 'XS' }).closest('tr')!
-    expect(within(xs).getAllByRole('cell').map((c) => c.textContent)).toEqual(['86', '76', '104', '—'])
-    const m = within(table).getByRole('rowheader', { name: 'M' }).closest('tr')!
-    expect(within(m).getAllByRole('cell').map((c) => c.textContent)).toEqual(['96', '86', '106', '36.5'])
-  })
-
-  it('sets the size chart apart: a muted header row, size labels in semibold, a rule between columns', async () => {
-    await open('p_ajrakh', AJRAKH)
-    const table = within(screen.getByRole('region', { name: 'Size chart' })).getByRole('table')
-    expectHeaderRow(table)
-    const chest = within(table).getByRole('columnheader', { name: 'Chest (cm)' })
-    expect(isSecondary(within(chest).getByText('(cm)'))).toBe(true)
-    const m = within(table).getByRole('rowheader', { name: 'M' })
-    expect(isSemibold(m)).toBe(true)
-    // A rule under every row but the last, and between the columns.
-    const lastRow = within(table).getAllByRole('row').at(-1)
-    for (const cell of within(m.closest('tr')!).getAllByRole('cell')) {
-      expect(getComputedStyle(cell).borderBottomColor).toBe(rgb(neutral.line))
-      expect(getComputedStyle(cell).borderLeftColor).toBe(rgb(neutral.line))
-      expect(getComputedStyle(cell).textAlign).toBe('right')
-    }
-    expect(getComputedStyle(within(lastRow!).getAllByRole('cell')[0]!).borderBottomWidth).toMatch(/^0(px)?$/)
-  })
-
-  it('shows a size chart photo, or says there is none', async () => {
-    await open('p_handloom', 'Handloom Cotton Shirt — Rust')
-    const chart = screen.getByRole('region', { name: 'Size chart' })
-    expect(within(chart).getByRole('img', { name: 'The brand’s size chart for shirts' })).toBeInTheDocument()
-    expect(within(chart).getByText('Used for all their shirts. A photo of their own chart.')).toBeInTheDocument()
-  })
-
-  it('sets the sizes table apart: a muted header row, semibold sizes, mono codes, right-aligned stock and a bold total', async () => {
-    await open('p_ajrakh', AJRAKH)
-    const table = within(screen.getByRole('region', { name: 'Sizes and stock' })).getByRole('table')
-    expectHeaderRow(table)
-    expect(within(table).getAllByRole('columnheader').map((c) => c.textContent)).toEqual(['Size', 'Code', 'Stock'])
-    expect(getComputedStyle(within(table).getByRole('columnheader', { name: 'Stock' })).textAlign).toBe('right')
-
-    const xl = within(table).getByRole('rowheader', { name: 'XL' })
-    expect(isSemibold(xl)).toBe(true)
-    const [code, stock] = within(xl.closest('tr')!).getAllByRole('cell')
-    expect(getComputedStyle(code!).fontFamily).toMatch(/monospace/)
-    expect(isSecondary(code!)).toBe(true)
-    expect(getComputedStyle(stock!).textAlign).toBe('right')
-    expect(getComputedStyle(xl).borderBottomColor).toBe(rgb(neutral.line))
-
-    // The total reads as a total: bold, over a firm rule.
-    const total = within(table).getByRole('rowheader', { name: 'Total' })
-    const totalRow = total.closest('tr')!
-    expect(totalRow).toHaveAttribute('data-total')
-    expect(within(totalRow).getAllByRole('cell').map((c) => c.textContent)).toEqual(['', '31'])
-    for (const cell of [total, ...within(totalRow).getAllByRole('cell')]) {
-      expect(getComputedStyle(cell).borderTopWidth).toBe('2px')
-      expect(getComputedStyle(cell).borderTopColor).toBe(rgb(neutral.lineStrong))
-    }
-    expect(isBold(total)).toBe(true)
-    expect(isBold(within(totalRow).getByText('31'))).toBe(true)
-  })
-
-  it('lists sizes and stock, and the history with the reason quoted', async () => {
+  it('lists the sizes without stock (vendor-api keeps none yet), and the history with the reason quoted', async () => {
     await open('p_ajrakh', AJRAKH)
     const sizes = screen.getByRole('region', { name: 'Sizes and stock' })
-    const xl = within(sizes).getByRole('rowheader', { name: 'XL' }).closest('tr')!
-    expect(within(xl).getAllByRole('cell').map((c) => c.textContent)).toEqual(['KS-AJR-014-XL', '3'])
+    expect(within(sizes).getAllByRole('columnheader').map((c) => c.textContent)).toEqual(['Size', 'Code'])
+    expect(within(sizes).queryByRole('rowheader', { name: 'Total' })).toBeNull()
+    // One row per size and colour: the second colour has its own codes.
+    const codes = within(sizes).getAllByRole('rowheader', { name: 'XL' }).map((h) => within(h.closest('tr')!).getAllByRole('cell')[0]!.textContent)
+    expect(codes).toEqual(['KS-AJR-014-XL', 'KS-AJR-014-XL-MAD'])
 
     const history = screen.getByRole('region', { name: 'History' })
     const items = within(history).getAllByRole('listitem')
-    expect(items[0]).toHaveTextContent('Submitted by Kiran Shah · Today, 11:40')
-    expect(items[1]).toHaveTextContent('Sent back by Priya Mehta · Today, 03:40')
+    expect(items[0]).toHaveTextContent('Submitted by kiran@kalkistudio.in · Today, 11:40')
+    expect(items[1]).toHaveTextContent('Sent back by Reviewer · Today, 03:40')
     expect(within(items[1]!).getByText('The back photo is missing and there are only 3 try-on photos. Add the back photo and 5 try-on photos so shoppers can see the print and the fit.').closest('blockquote')).not.toBeNull()
+  })
+
+  it('lists the photos in order, without slot names, and reports nothing missing', async () => {
+    const { user } = await open('p_ajrakh', AJRAKH)
+    const photos = screen.getByRole('region', { name: 'Photos' })
+    expect(within(photos).getByRole('img', { name: `Photo 1 of ${AJRAKH}` })).toBeInTheDocument()
+    const product = within(photos).getByRole('group', { name: 'Product photos' })
+    expect(within(product).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Show photo 1', 'Show photo 2', 'Show photo 3', 'Show photo 4', 'Show photo 5'])
+    expect(within(product).getByText('5 photos')).toBeInTheDocument()
+    // vendor-api has no try-on photos or named slots yet: nothing is reported missing.
+    expect(within(photos).queryByRole('group', { name: 'Try-on photos' })).toBeNull()
+    expect(within(photos).queryByText(/missing/i)).toBeNull()
+    await user.click(within(product).getByRole('button', { name: 'Show photo 3' }))
+    expect(within(photos).getByRole('img', { name: `Photo 3 of ${AJRAKH}` })).toBeInTheDocument()
   })
 })
 
@@ -247,19 +129,28 @@ describe('A-05 Product review: approving', () => {
     expect(screen.getByRole('button', { name: 'Send back' })).toBeEnabled()
   })
 
-  it('approves: the product is approved, an event is queued, the shell gets a toast and the next item is offered', async () => {
+  it('approves the version it showed: the product is approved, an event is queued, the shell gets a toast', async () => {
+    const approvals: unknown[] = []
+    server.use(
+      http.post(`${VENDOR_API_URL}/v1/admin/reviews/:id/approve`, async ({ request }) => {
+        approvals.push(await request.clone().json())
+        return undefined
+      }),
+    )
     const { user, db, shell } = await open('p_ajrakh', AJRAKH)
     const events = db.outbox.length
     await tickAll(user)
     await user.click(screen.getByRole('button', { name: 'Approve and publish' }))
 
     expect(await screen.findByText('Approved. Publishing to the app.')).toBeInTheDocument()
+    // The decision names the version the reviewer looked at (a resubmission is version 2).
+    expect(approvals).toEqual([{ version: 2 }])
     expect(db.products.find((p) => p.id === 'p_ajrakh')!.status).toBe('approved')
     expect(db.outbox).toHaveLength(events + 1)
     expect(db.outbox[0]).toMatchObject({ event: 'product.published', subject: AJRAKH, status: 'waiting' })
     expect(shell.toasts()).toContainEqual({ level: 'success', message: `Approved ${AJRAKH}. Publishing to the app.` })
-    // The oldest item still waiting comes next.
-    expect(screen.getByRole('link', { name: 'Next item' })).toHaveAttribute('href', '/review/product/p_patola')
+    // Last in the queue, so the next item offered is the oldest one still waiting.
+    expect(screen.getByRole('link', { name: 'Next item' })).toHaveAttribute('href', `/review/product/${rev('p_patola')}`)
     expect(screen.getByRole('link', { name: 'Back to the queue' })).toHaveAttribute('href', '/queue')
     expect(screen.queryByRole('checkbox')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Approve and publish' })).toBeNull()
@@ -269,17 +160,17 @@ describe('A-05 Product review: approving', () => {
   })
 
   it('goes to the next item from the outcome', async () => {
-    const { user, router } = await open('p_ajrakh', AJRAKH)
+    const { user, router } = await open('p_handloom', 'Handloom Cotton Shirt — Rust')
     await tickAll(user)
     await user.click(screen.getByRole('button', { name: 'Approve and publish' }))
     await user.click(await screen.findByRole('link', { name: 'Next item' }))
-    expect(await screen.findByRole('heading', { level: 1, name: 'Patola Silk Stole' })).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe('/review/product/p_patola')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Dabu Print Wrap Skirt' })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe(`/review/product/${rev('p_dabu_skirt')}`)
     // A fresh item starts with a fresh checklist.
     expect(screen.getByRole('checkbox', { name: CHECKS[0] })).not.toBeChecked()
   })
 
-  it('shows the decided state when someone else decided first (409)', async () => {
+  it('shows the decided state when someone else decided first (409 review_already_decided)', async () => {
     const { user, db } = await open('p_ajrakh', AJRAKH)
     const p = db.products.find((x) => x.id === 'p_ajrakh')!
     p.status = 'approved'
@@ -288,23 +179,67 @@ describe('A-05 Product review: approving', () => {
     await user.click(screen.getByRole('button', { name: 'Approve and publish' }))
     // The page first says "someone else decided" alone, then again with who and when once it has
     // reloaded the item: wait for the settled page, or the first message can be swapped out from under the check.
-    expect(await screen.findByText('Already approved by Rahul Desai · Today, 13:35')).toBeInTheDocument()
+    expect(await screen.findByText('Already approved by Reviewer · Today, 13:35')).toBeInTheDocument()
     expect(screen.getByText('Someone else decided this while you were reviewing.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Approve and publish' })).toBeNull()
   })
 
+  it('shows the new version when the seller edited it while it was open (409 stale_review), with the checks to do again', async () => {
+    const { user, db } = await open('p_ajrakh', AJRAKH)
+    await tickAll(user)
+    // The seller sent the item back to themselves and resubmitted: the same review, a newer version.
+    const p = db.products.find((x) => x.id === 'p_ajrakh')!
+    p.resubmission += 1
+    p.submitted.title = 'Ajrakh Block-Print Kurta (new cut)'
+    await user.click(screen.getByRole('button', { name: 'Approve and publish' }))
+
+    expect(await screen.findByText('The seller changed this while you were reviewing. Check what is new, then decide again.')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Ajrakh Block-Print Kurta (new cut)' })).toBeInTheDocument()
+    expect(p.status).toBe('pending_review')
+    // What was ticked was for the old version.
+    for (const name of CHECKS) expect(screen.getByRole('checkbox', { name })).not.toBeChecked()
+    expect(screen.getByRole('button', { name: 'Approve and publish' })).toBeDisabled()
+    await tickAll(user)
+    await user.click(screen.getByRole('button', { name: 'Approve and publish' }))
+    expect(await screen.findByText('Approved. Publishing to the app.')).toBeInTheDocument()
+    expect(p.status).toBe('approved')
+  })
+
   it('shows an error and keeps the decision open when approving fails', async () => {
-    server.use(http.post(`${VENDOR_API_URL}/api/v1/admin/products/:id/approve`, () => HttpResponse.json({ error: { code: 'internal_error', message: 'Something went wrong on our side.', request_id: 'r' } }, { status: 500 })))
+    server.use(http.post(`${VENDOR_API_URL}/v1/admin/reviews/:id/approve`, () => HttpResponse.json({ error: { code: 'internal_error', message: 'Something went wrong on our side.', request_id: 'r' } }, { status: 500 })))
     const { user } = await open('p_ajrakh', AJRAKH)
     await tickAll(user)
     await user.click(screen.getByRole('button', { name: 'Approve and publish' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong on our side.')
     expect(screen.getByRole('button', { name: 'Approve and publish' })).toBeEnabled()
   })
+
+  it('does not decide twice when Approve is clicked twice', async () => {
+    let approvals = 0
+    server.use(
+      http.post(`${VENDOR_API_URL}/v1/admin/reviews/:id/approve`, () => {
+        approvals += 1
+        return undefined
+      }),
+    )
+    const { user } = await open('p_ajrakh', AJRAKH)
+    await tickAll(user)
+    const approve = screen.getByRole('button', { name: 'Approve and publish' })
+    await user.dblClick(approve)
+    expect(await screen.findByText('Approved. Publishing to the app.')).toBeInTheDocument()
+    expect(approvals).toBe(1)
+  })
 })
 
 describe('A-06 Send back', () => {
-  it('fills the message from a template, keeps edits and records the note', async () => {
+  it('fills the message from a template, keeps edits, and sends the reason with its category and the version', async () => {
+    const rejections: unknown[] = []
+    server.use(
+      http.post(`${VENDOR_API_URL}/v1/admin/reviews/:id/reject`, async ({ request }) => {
+        rejections.push(await request.clone().json())
+        return undefined
+      }),
+    )
     const { user, db, shell } = await open('p_ajrakh', AJRAKH)
     await user.click(screen.getByRole('button', { name: 'Send back' }))
     const dialog = await screen.findByRole('dialog', { name: `Send back ${AJRAKH}` })
@@ -323,12 +258,13 @@ describe('A-06 Send back', () => {
     expect(within(dialog).getByText(`${template.length + 27} / 600`)).toBeInTheDocument()
     await user.click(within(dialog).getByRole('button', { name: 'Send back to seller' }))
 
-    expect(await screen.findByText('Sent back. Kiran Shah will see your message on the product.')).toBeInTheDocument()
+    expect(await screen.findByText('Sent back. kiran@kalkistudio.in will see your message on the product.')).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(rejections).toEqual([{ version: 2, reason_code: 'photos', reason: `${template} The back photo is blurred.` }])
     const p = db.products.find((x) => x.id === 'p_ajrakh')!
     expect(p.status).toBe('rejected')
     expect(p.history[0]).toMatchObject({ event: 'rejected', by: 'Priya Mehta', note: `${template} The back photo is blurred.` })
-    expect(shell.toasts()).toContainEqual({ level: 'success', message: `Sent back ${AJRAKH}. Kiran Shah will see your message.` })
+    expect(shell.toasts()).toContainEqual({ level: 'success', message: `Sent back ${AJRAKH}. kiran@kalkistudio.in will see your message.` })
     expect(screen.getByText('Sent back', { selector: '[data-status]' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Send back' })).toBeNull()
   })
@@ -353,7 +289,7 @@ describe('A-06 Send back', () => {
   })
 
   it('shows the server’s field errors on the fields', async () => {
-    server.use(http.post(`${VENDOR_API_URL}/api/v1/admin/products/:id/reject`, () => HttpResponse.json({ error: { code: 'validation_error', message: 'Request validation failed', request_id: 'r', details: [{ loc: ['body', 'reason'], msg: 'Say which photo is missing.', type: 'value_error' }] } }, { status: 422 })))
+    server.use(http.post(`${VENDOR_API_URL}/v1/admin/reviews/:id/reject`, () => HttpResponse.json({ error: { code: 'validation_error', message: 'Request validation failed', request_id: 'r', details: [{ loc: ['body', 'reason'], msg: 'Say which photo is missing.', type: 'value_error' }] } }, { status: 422 })))
     const { user } = await open('p_ajrakh', AJRAKH)
     await user.click(screen.getByRole('button', { name: 'Send back' }))
     const dialog = await screen.findByRole('dialog')
@@ -361,6 +297,19 @@ describe('A-06 Send back', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Send back to seller' }))
     expect(await within(dialog).findByText('Say which photo is missing.')).toBeInTheDocument()
     expect(within(dialog).getByRole('textbox', { name: 'Message to the seller' })).toHaveFocus()
+  })
+
+  it('shows the decided state when someone else sent it back first', async () => {
+    const { user, db } = await open('p_ajrakh', AJRAKH)
+    const p = db.products.find((x) => x.id === 'p_ajrakh')!
+    p.status = 'rejected'
+    p.history.unshift({ at: new Date(NOW.getTime() - 5 * 60_000).toISOString(), event: 'rejected', by: 'Rahul Desai', note: 'Blurry.' })
+    await user.click(screen.getByRole('button', { name: 'Send back' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('radio', { name: 'Product photos' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Send back to seller' }))
+    expect(await screen.findByText('Already sent back by Reviewer · Today, 13:35')).toBeInTheDocument()
+    expect(screen.getByText('Someone else decided this while you were reviewing.')).toBeInTheDocument()
   })
 
   it('closes without sending on Cancel', async () => {
@@ -380,10 +329,25 @@ describe('A-05 Product review: other kinds of submission', () => {
     expect(screen.queryByText(/Resubmission/)).toBeNull()
     expect(screen.getByRole('heading', { name: 'Compared with the live version' })).toBeInTheDocument()
     const table = compareTable()
-    expect(within(table).getByRole('columnheader', { name: 'Live version' })).toBeInTheDocument()
+    expect(within(table).getAllByRole('columnheader').map((c) => c.textContent)).toEqual(['Field', 'Live version', 'This submission'])
     expect(cells(rowOf(table, /^Selling price/))).toEqual(['₹1,299 / ₹1,499', '₹1,199 / ₹1,499'])
     expect(within(rowOf(table, /^Selling price/)).getByText('Changed')).toBeInTheDocument()
     expect(within(rowOf(table, /^Description/)).getByText('Changed')).toBeInTheDocument()
+    // No try-on photos are kept yet, so there is no row to compare them in.
+    expect(within(table).queryByRole('rowheader', { name: /^Try-on photos/ })).toBeNull()
+  })
+
+  it('truncates the description in the comparison until asked', async () => {
+    const view = renderModule({ route: `/review/product/${rev('p_handloom')}` })
+    const long = 'Handloom cotton shirt in rust, woven on a pit loom in Kutch and finished by hand. Soft after the first wash and made to last. Wash cold, dry in the shade.'
+    view.db.products.find((p) => p.id === 'p_handloom')!.submitted.description = long
+    await screen.findByRole('heading', { level: 1, name: 'Handloom Cotton Shirt — Rust' }, { timeout: 10_000 })
+    const { user } = view
+    const row = rowOf(compareTable(), /^Description/)
+    expect(cells(row)[1]).toMatch(/…$/)
+    await user.click(within(row).getByRole('button', { name: 'Show full description' }))
+    expect(cells(row)[1]).toBe(long)
+    expect(within(row).getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true')
   })
 
   it('hides the comparison for a first submission', async () => {
@@ -396,34 +360,12 @@ describe('A-05 Product review: other kinds of submission', () => {
     expect(screen.getByRole('region', { name: 'Price' })).toHaveTextContent('Shoppers see ₹1,450, the lower of the two.')
   })
 
-  it('flags a missing required photo', async () => {
-    const view = renderModule({ route: '/review/product/p_dabu_skirt' })
-    const p = view.db.products.find((x) => x.id === 'p_dabu_skirt')!
-    p.submitted.photos = p.submitted.photos.filter((i) => i.slot !== 'back')
-    await screen.findByRole('heading', { level: 1, name: 'Dabu Print Wrap Skirt' })
-    const photos = screen.getByRole('region', { name: 'Photos' })
-    expect(within(photos).getByText('Back photo missing')).toBeInTheDocument()
-    expect(within(photos).getByText('3 of 4')).toBeInTheDocument()
-    expect(within(photos).getByText('Missing back photo. Every product needs front, back, detail and worn photos.')).toBeInTheDocument()
-  })
-
-  it('flags missing try-on photos', async () => {
-    await open('p_dabu_set', 'Indigo Dabu Kurta Set')
-    const tryOn = within(screen.getByRole('region', { name: 'Photos' })).getByRole('group', { name: 'Try-on photos' })
-    expect(within(tryOn).getByText('2 of 5')).toBeInTheDocument()
-    expect(within(tryOn).getAllByRole('button')).toHaveLength(2)
-    for (const n of [3, 4, 5]) expect(within(tryOn).getByText(`Try-on ${n} photo missing`)).toBeInTheDocument()
-    expect(within(tryOn).getByText('3 of 5 try-on photos missing. Every product needs 5 photos of real people wearing it.')).toBeInTheDocument()
-  })
-
-  it('says when the selling price is above the MRP, and shows a missing MRP', async () => {
-    const view = renderModule({ route: '/review/product/p_patola' })
+  it('says when the selling price is above the MRP', async () => {
+    const view = renderModule({ route: `/review/product/${rev('p_patola')}` })
     view.db.products.find((x) => x.id === 'p_patola')!.submitted.price_paise = 5999_00
     await screen.findByRole('heading', { level: 1, name: 'Patola Silk Stole' }, { timeout: 10_000 })
     const price = screen.getByRole('region', { name: 'Price' })
     expect(within(price).getByText('The selling price is above the MRP. The app shows the lower price, ₹5,499.')).toBeInTheDocument()
-    expect(cells(rowOf(compareTable(), /^Selling price/))).toEqual(['₹5,999 / ₹5,499', 'Same'])
-    expect(cells(rowOf(compareTable(), /^Material/))).toEqual(['Silk', 'Pure silk, double ikat'])
   })
 
   it('shows an MRP that was not given', async () => {
@@ -434,54 +376,114 @@ describe('A-05 Product review: other kinds of submission', () => {
   })
 
   it('shows a decided product read-only', async () => {
-    const view = renderModule({ route: '/review/product/p_potli' })
+    const view = renderModule({ route: `/review/product/${rev('p_potli')}` })
     const p = view.db.products.find((x) => x.id === 'p_potli')!
     p.status = 'rejected'
     p.history.unshift({ at: new Date(NOW.getTime() - 30 * 60_000).toISOString(), event: 'rejected', by: 'Rahul Desai', note: 'Price is above the MRP.' })
     await screen.findByRole('heading', { level: 1, name: 'Mirror-Work Potli Bag' })
-    expect(await screen.findByText('Already sent back by Rahul Desai · Today, 13:10')).toBeInTheDocument()
+    expect(await screen.findByText('Already sent back by Reviewer · Today, 13:10')).toBeInTheDocument()
     expect(screen.getByText('Sent back', { selector: '[data-status]' })).toBeInTheDocument()
     expect(screen.queryByRole('checkbox')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Approve and publish' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Send back' })).toBeNull()
+  })
+
+  it('shows a review the seller withdrew as such, with nothing to decide', async () => {
+    const wire = (action: string, created_at: string) => ({ action, actor_type: 'vendor', actor_id: null, reason: null, detail: null, created_at })
+    server.use(
+      http.get(`${VENDOR_API_URL}/v1/admin/reviews/:id`, () =>
+        HttpResponse.json({
+          id: 'rev_w', subject: 'product', status: 'withdrawn', vendor: { id: 'v_kalki', name: 'Kalki Studio', slug: 'kalki-studio', status: 'approved' }, submitted_by: 'u1', submitted_by_email: 'kiran@kalkistudio.in', submitted_at: '2026-11-09T05:00:00Z', version: 1, title: 'Withdrawn Kurta', product_id: 'p_w', sku: 'KS-W-1', reviewer_id: null, decided_at: '2026-11-09T07:00:00Z', reason: null, reason_code: null,
+          events: [wire('submitted', '2026-11-09T05:00:00Z'), wire('withdrawn', '2026-11-09T07:00:00Z')], content: { version: 1, published_at: null, content: { title: 'Withdrawn Kurta', description: 'x', category: 'Clothing', gender: 'women', variants: [], images: [] } }, base: null, changes: [], resubmission: 0,
+        }),
+      ),
+    )
+    renderModule({ route: '/review/product/rev_w' })
+    await screen.findByRole('heading', { level: 1, name: 'Withdrawn Kurta' })
+    expect(await screen.findByText('Withdrawn by The seller · Today, 12:30')).toBeInTheDocument()
+    expect(screen.getByText('The seller took this back, so there is nothing to decide.')).toBeInTheDocument()
+    expect(screen.getByText('Withdrawn', { selector: '[data-status]' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Approve and publish' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Send back' })).toBeNull()
+  })
+
+  it('shows 13 photos and a very long description without breaking the page', async () => {
+    const view = renderModule({ route: `/review/product/${rev('p_potli')}` })
+    const p = view.db.products.find((x) => x.id === 'p_potli')!
+    const first = p.submitted.photos[0]!
+    p.submitted.photos = Array.from({ length: 13 }, (_, n) => ({ ...first, id: `ph-${n}`, slot: 'extra' as const }))
+    p.submitted.description = 'Hand-mirrored, ' + 'very '.repeat(2000) + 'pretty.'
+    await screen.findByRole('heading', { level: 1, name: 'Mirror-Work Potli Bag' }, { timeout: 10_000 })
+    const product = within(screen.getByRole('region', { name: 'Photos' })).getByRole('group', { name: 'Product photos' })
+    expect(within(product).getAllByRole('button')).toHaveLength(13)
+    expect(within(product).getByText('13 photos')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'About the product' })).toHaveTextContent('Hand-mirrored, very very')
+  })
+
+  it('shows a submission with no photos, and one whose photo address is gone', async () => {
+    const view = renderModule({ route: `/review/product/${rev('p_potli')}` })
+    const p = view.db.products.find((x) => x.id === 'p_potli')!
+    p.submitted.photos = []
+    await screen.findByRole('heading', { level: 1, name: 'Mirror-Work Potli Bag' }, { timeout: 10_000 })
+    expect(within(screen.getByRole('region', { name: 'Photos' })).getByText('No photos in this submission.')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Photos' })).getByText('0 photos')).toBeInTheDocument()
+  })
+
+  it('opens for a vendor that was suspended after it submitted', async () => {
+    const view = renderModule({ route: `/review/product/${rev('p_ajrakh')}` })
+    view.db.vendors.find((v) => v.id === 'v_kalki')!.status = 'suspended'
+    await screen.findByRole('heading', { level: 1, name: AJRAKH }, { timeout: 10_000 })
+    expect(screen.getByText('Kalki Studio · KS-AJR-014 · submitted today, 11:40 · waiting 2 h')).toBeInTheDocument()
   })
 })
 
 describe('A-05 Product review: moving through the queue', () => {
   it('links to the previous and next items, which can be brand pages', async () => {
     const { user, router } = await open('p_handloom', 'Handloom Cotton Shirt — Rust')
-    expect(screen.getByRole('link', { name: 'Previous item in the queue' })).toHaveAttribute('href', '/review/brand/v_morpankh')
+    expect(screen.getByRole('link', { name: 'Previous item in the queue' })).toHaveAttribute('href', '/review/brand/rev_brand_v_morpankh')
     await user.click(screen.getByRole('link', { name: 'Next item in the queue' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Dabu Print Wrap Skirt' })).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe('/review/product/p_dabu_skirt')
+    expect(router.state.location.pathname).toBe(`/review/product/${rev('p_dabu_skirt')}`)
   })
 
   it('disables Next at the end of the queue', async () => {
     const { user } = await open('p_ajrakh', AJRAKH)
-    expect(screen.getByRole('link', { name: 'Previous item in the queue' })).toHaveAttribute('href', '/review/product/p_dabu_set')
+    expect(screen.getByRole('link', { name: 'Previous item in the queue' })).toHaveAttribute('href', `/review/product/${rev('p_dabu_set')}`)
     const next = screen.getByRole('button', { name: 'Next item in the queue' })
     expect(next).toBeDisabled()
     await user.hover(next.parentElement!)
     expect(await screen.findByRole('tooltip')).toHaveTextContent('This is the last item in the queue')
   })
 
-  it('says when the product does not exist', async () => {
-    const { shell } = renderModule({ route: '/review/product/p_missing' })
+  it('still opens, with no neighbours, when the queue cannot be read', async () => {
+    server.use(http.get(`${VENDOR_API_URL}/v1/admin/queue`, () => HttpResponse.json({ error: { code: 'internal_error', message: 'Down', request_id: 'r' } }, { status: 500 })))
+    await open('p_handloom', 'Handloom Cotton Shirt — Rust')
+    expect(screen.getByRole('button', { name: 'Previous item in the queue' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Next item in the queue' })).toBeDisabled()
+  })
+
+  it('says when the review does not exist', async () => {
+    const { shell } = renderModule({ route: '/review/product/rev_missing' })
     expect(await screen.findByRole('heading', { name: 'We could not find this product' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Back to the queue' })).toHaveAttribute('href', '/queue')
-    await waitFor(() => expect(shell.titles()).toContainEqual({ path: '/review/product/p_missing', title: 'Product not found' }))
+    await waitFor(() => expect(shell.titles()).toContainEqual({ path: '/review/product/rev_missing', title: 'Product not found' }))
+  })
+
+  it('says the same for a brand page review opened as a product', async () => {
+    renderModule({ route: '/review/product/rev_brand_v_morpankh' })
+    expect(await screen.findByRole('heading', { name: 'We could not find this product' })).toBeInTheDocument()
   })
 
   it('offers Try again when loading fails', async () => {
     let calls = 0
     server.use(
-      http.get(`${VENDOR_API_URL}/api/v1/admin/products/:id/review`, () => {
+      http.get(`${VENDOR_API_URL}/v1/admin/reviews/:id`, () => {
         calls += 1
         if (calls === 1) return HttpResponse.json({ error: { code: 'bad_request', message: 'Down', request_id: 'r' } }, { status: 400 })
         return undefined
       }),
     )
-    const { user } = renderModule({ route: '/review/product/p_ajrakh' })
+    const { user } = renderModule({ route: `/review/product/${rev('p_ajrakh')}` })
     expect(await screen.findByText('We could not load this submission')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Try again' }))
     expect(await screen.findByRole('heading', { level: 1, name: AJRAKH })).toBeInTheDocument()

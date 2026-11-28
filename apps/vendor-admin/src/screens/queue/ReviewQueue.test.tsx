@@ -160,8 +160,8 @@ describe('A-04 Review queue', { timeout: 40_000 }, () => {
       expect(getComputedStyle(r).cursor).toBe('pointer')
       expect(r.querySelector('[data-chevron]')!.closest('[aria-hidden="true"]')).not.toBeNull()
     }
-    expect(within(table).getByRole('link', { name: 'Ajrakh Block-Print Kurta' })).toHaveAttribute('href', '/review/product/p_ajrakh')
-    expect(within(table).getByRole('link', { name: 'Nila Handloom brand page' })).toHaveAttribute('href', '/review/brand/v_nila')
+    expect(within(table).getByRole('link', { name: 'Ajrakh Block-Print Kurta' })).toHaveAttribute('href', '/review/product/rev_p_ajrakh')
+    expect(within(table).getByRole('link', { name: 'Nila Handloom brand page' })).toHaveAttribute('href', '/review/brand/rev_brand_v_nila')
     expect(within(table).getByRole('link', { name: 'Kaaya Ethnic' })).toHaveAttribute('href', '/vendors/v_kaaya')
   })
 
@@ -284,13 +284,13 @@ describe('A-04 Review queue', { timeout: 40_000 }, () => {
     // A click anywhere on the row opens the item (jsdom draws no cover, so this is the fallback).
     await user.click(within(row(table, 'Ajrakh Block-Print Kurta')).getByText('Kalki Studio'))
     await onPage('Ajrakh Block-Print Kurta')
-    expect(router.state.location.pathname).toBe('/review/product/p_ajrakh')
+    expect(router.state.location.pathname).toBe('/review/product/rev_p_ajrakh')
     expect(router.state.historyAction).toBe('PUSH')
     const again = await backToQueue(router)
 
     await user.click(within(again).getByRole('link', { name: 'Nila Handloom brand page' }))
     await onPage('Nila Handloom · brand page')
-    expect(router.state.location.pathname).toBe('/review/brand/v_nila')
+    expect(router.state.location.pathname).toBe('/review/brand/rev_brand_v_nila')
     // One click, one history entry: back returns to the queue.
     const third = await backToQueue(router)
 

@@ -210,6 +210,17 @@
             ],
             "title": "Reason"
           },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
           "reviewer_id": {
             "anyOf": [
               {
@@ -281,7 +292,8 @@
           "sku",
           "reviewer_id",
           "decided_at",
-          "reason"
+          "reason",
+          "reason_code"
         ],
         "title": "AdminReviewOut",
         "type": "object"
@@ -1440,6 +1452,7 @@
         "examples": [
           {
             "reason": "The logo is too small to read. Upload a larger one.",
+            "reason_code": "brand_images",
             "version": 3
           }
         ],
@@ -1449,6 +1462,16 @@
             "minLength": 1,
             "title": "Reason",
             "type": "string"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewReasonCode"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "version": {
             "minimum": 1.0,
@@ -1532,6 +1555,21 @@
             ],
             "title": "Reason"
           },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "resubmission": {
+            "title": "Resubmission",
+            "type": "integer"
+          },
           "reviewer_id": {
             "anyOf": [
               {
@@ -1604,10 +1642,12 @@
           "reviewer_id",
           "decided_at",
           "reason",
+          "reason_code",
           "events",
           "content",
           "base",
-          "changes"
+          "changes",
+          "resubmission"
         ],
         "title": "ReviewDetailOut",
         "type": "object"
@@ -1642,6 +1682,22 @@
         ],
         "title": "ReviewPageOut",
         "type": "object"
+      },
+      "ReviewReasonCode": {
+        "description": "Why a reviewer sent something back, picked from a list beside the free-text reason.",
+        "enum": [
+          "photos",
+          "try_on_photos",
+          "price",
+          "category",
+          "prohibited",
+          "description",
+          "brand_images",
+          "contact_details",
+          "other"
+        ],
+        "title": "ReviewReasonCode",
+        "type": "string"
       },
       "ReviewSubject": {
         "enum": [

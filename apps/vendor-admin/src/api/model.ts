@@ -173,10 +173,10 @@ export type ProductPhoto = {
     id: string;
     url: string;
     /**
-     * @description Four named slots are required; up to four extras
-     * @enum {string}
+     * @description Four named slots are required; up to four extras. null when the server keeps the photos in order only (no named slots yet, #288): they are shown as "Photo 1", "Photo 2" and nothing is reported missing.
+     * @enum {string|null}
      */
-    slot: "front" | "back" | "detail" | "worn" | "extra";
+    slot: "front" | "back" | "detail" | "worn" | "extra" | null;
 };
 
 /** @description Real people wearing it, so shoppers see the true fit. Five are required. */
@@ -222,18 +222,29 @@ export type ProductVersion = {
         size: string;
         /** @description Automatic product code */
         sku: string;
-        stock: number;
+        /** @description null when the server keeps no stock yet (#288): shown as a dash, and no total */
+        stock: number | null;
     }[];
     photos: ProductPhoto[];
-    try_on_photos: TryOnPhoto[];
+    /** @description null when the server keeps none yet (#288): the screen leaves the group out instead of reporting five missing. */
+    try_on_photos: TryOnPhoto[] | null;
     size_chart: SizeChart | null;
 };
 
-export type ProductReview = {
+/** @description An item in the review queue, as a link: the review's id and what kind of page opens it. */
+export type ReviewRef = {
+    kind: "product" | "brand_page";
     id: string;
+};
+
+export type ProductReview = {
+    /** @description The review's id (what the URL and the decision use) */
+    id: string;
+    /** @description The submitted version's number; a decision names it so it never approves something the reviewer did not see */
+    version: number;
     sku: string;
     /** @enum {string} */
-    status: "pending_review" | "approved" | "rejected";
+    status: "pending_review" | "approved" | "rejected" | "withdrawn";
     vendor: VendorRef;
     /** Format: date-time */
     submitted_at: string;
@@ -243,15 +254,15 @@ export type ProductReview = {
     /** @enum {string|null} */
     compare_label: "sent_back" | "live" | null;
     history: History;
-    prev_id: string | null;
-    next_id: string | null;
+    prev: ReviewRef | null;
+    next: ReviewRef | null;
 };
 
 export type History = {
     /** Format: date-time */
     at: string;
     /** @enum {string} */
-    event: "submitted" | "approved" | "rejected" | "published" | "applied" | "info_requested" | "suspended" | "reactivated" | "invited" | "commission_proposed" | "commission_approved" | "commission_sent_back" | "commission_set";
+    event: "submitted" | "approved" | "rejected" | "withdrawn" | "published" | "applied" | "info_requested" | "suspended" | "reactivated" | "invited" | "commission_proposed" | "commission_approved" | "commission_sent_back" | "commission_set";
     by: string;
     note?: string;
 }[];
@@ -269,6 +280,11 @@ export type BrandProfile = {
 };
 
 export type BrandReview = {
+    /** @description The review's id (what the URL and the decision use) */
+    id: string;
+    version: number;
+    /** @enum {string} */
+    status: "pending_review" | "approved" | "rejected" | "withdrawn";
     vendor: VendorRef;
     /** Format: date-time */
     submitted_at: string;
@@ -276,8 +292,8 @@ export type BrandReview = {
     draft: BrandProfile;
     changed_fields: string[];
     history: History;
-    prev_id: string | null;
-    next_id: string | null;
+    prev: ReviewRef | null;
+    next: ReviewRef | null;
 };
 
 export type RejectBody = {
@@ -292,8 +308,8 @@ export type Decision = {
     decision: "approved" | "rejected";
     /** Format: date-time */
     at: string;
-    /** @description The next item waiting in the queue */
-    next_id: string | null;
+    /** @description The next item waiting in the queue, when the page knew one */
+    next: ReviewRef | null;
 };
 
 export type VendorSummary = {

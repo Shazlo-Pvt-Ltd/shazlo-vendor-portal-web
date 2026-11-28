@@ -90,7 +90,7 @@ export interface RevisionRecord {
   state: RevisionState
   content: ContentRecord
   submitted_at: string | null
-  review: { status: 'pending' | 'approved' | 'rejected'; reason: string | null; decided_at: string | null } | null
+  review: { status: 'pending' | 'approved' | 'rejected'; reason: string | null; reason_code: string | null; decided_at: string | null } | null
   updated_at: string
 }
 
@@ -135,6 +135,8 @@ export interface SubmissionRecord {
   version: number
   status: 'pending' | 'approved' | 'rejected' | 'withdrawn'
   reason: string | null
+  /** What kind of problem the reviewer picked, beside the reason; absent is none. */
+  reason_code?: string | null
   submitted_at: string
   decided_at: string | null
 }
@@ -405,11 +407,11 @@ function seedProduct(db: MockDb, vendorId: string, [title, sku, category, rupees
     submitted_at: state === 'editing' ? null : submitted,
     review:
       state === 'live'
-        ? { status: 'approved', reason: null, decided_at: decided }
+        ? { status: 'approved', reason: null, reason_code: null, decided_at: decided }
         : state === 'rejected'
-          ? { status: 'rejected', reason: REASONS[sku] ?? 'Photos need a plain background.', decided_at: decided }
+          ? { status: 'rejected', reason: REASONS[sku] ?? 'Photos need a plain background.', reason_code: 'photos', decided_at: decided }
           : state === 'in_review'
-            ? { status: 'pending', reason: null, decided_at: null }
+            ? { status: 'pending', reason: null, reason_code: null, decided_at: null }
             : null,
     updated_at: updated,
   })
@@ -433,6 +435,7 @@ function seedProduct(db: MockDb, vendorId: string, [title, sku, category, rupees
       version: 1,
       status: status === 'approved' ? 'approved' : status === 'rejected' ? 'rejected' : 'pending',
       reason: status === 'rejected' ? (REASONS[sku] ?? 'Photos need a plain background.') : null,
+      reason_code: status === 'rejected' ? 'photos' : null,
       submitted_at: submitted,
       decided_at: decided,
     })
@@ -443,8 +446,8 @@ function seedProduct(db: MockDb, vendorId: string, [title, sku, category, rupees
     const changeAt = at(20 * H)
     const changed = structuredClone(record.live.content)
     changed.variants = changed.variants.map((v) => ({ ...v, price_paise: 1199 * 100 }))
-    record.working = { id: nextId(db), version: 2, state: 'in_review', content: changed, submitted_at: changeAt, review: { status: 'pending', reason: null, decided_at: null }, updated_at: changeAt }
-    db.submissions.push({ id: nextId(db), vendor_id: vendorId, subject: 'product', product_id: id, was_live: true, sku, title, version: 2, status: 'pending', reason: null, submitted_at: changeAt, decided_at: null })
+    record.working = { id: nextId(db), version: 2, state: 'in_review', content: changed, submitted_at: changeAt, review: { status: 'pending', reason: null, reason_code: null, decided_at: null }, updated_at: changeAt }
+    db.submissions.push({ id: nextId(db), vendor_id: vendorId, subject: 'product', product_id: id, was_live: true, sku, title, version: 2, status: 'pending', reason: null, reason_code: null, submitted_at: changeAt, decided_at: null })
   }
 }
 
@@ -539,7 +542,7 @@ export function createDb({ now = () => new Date() }: { now?: () => Date } = {}):
     { id: nextId(db), version: 1, state: 'published', content: live, submitted_at: at(12 * D), published_at: at(11 * D), updated_at: at(11 * D) },
     { id: nextId(db), version: 2, state: 'draft', content: { ...live, banner_asset_id: coverDraft.id, about: `${live.about} Small batches, made to last.` }, submitted_at: null, published_at: null, updated_at: at(40 * 60_000) },
   ])
-  db.submissions.push({ id: nextId(db), vendor_id: kalki.id, subject: 'brand_profile', product_id: null, was_live: false, sku: null, title: null, version: 1, status: 'approved', reason: null, submitted_at: at(12 * D), decided_at: at(11 * D) })
+  db.submissions.push({ id: nextId(db), vendor_id: kalki.id, subject: 'brand_profile', product_id: null, was_live: false, sku: null, title: null, version: 1, status: 'approved', reason: null, reason_code: null, submitted_at: at(12 * D), decided_at: at(11 * D) })
 
   db.sizeCharts.set(kalki.id, {
     dresses: {

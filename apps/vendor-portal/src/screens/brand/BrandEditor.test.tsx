@@ -50,7 +50,7 @@ function sendDraftForReview(d: MockDb) {
   const at = d.now().toISOString()
   const draft = versions(d).find((v) => v.state === 'draft')!
   Object.assign(draft, { state: 'pending_review', submitted_at: at })
-  d.submissions.push({ id: nextId(d), vendor_id: kalki().id, subject: 'brand_profile', product_id: null, was_live: false, sku: null, title: null, version: draft.version, status: 'pending', reason: null, submitted_at: at, decided_at: null })
+  d.submissions.push({ id: nextId(d), vendor_id: kalki().id, subject: 'brand_profile', product_id: null, was_live: false, sku: null, title: null, version: draft.version, status: 'pending', reason: null, reason_code: null, submitted_at: at, decided_at: null })
 }
 
 const preview = () => screen.getByRole('region', { name: 'Preview in the Shazlo app' })

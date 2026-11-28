@@ -17,7 +17,9 @@ const THUMB = { width: 72, height: 90 } as const
 // "Front", "Back", "Extra", "Extra 2": a name per photo, numbering repeated slots.
 export function photoNames(photos: Version['photos']): string[] {
   const seen = new Map<Slot, number>()
-  return photos.map((photo) => {
+  return photos.map((photo, i) => {
+    // Photos the server keeps in order only have no slot to name them by.
+    if (photo.slot === null) return copy.plain(i + 1)
     const n = (seen.get(photo.slot) ?? 0) + 1
     seen.set(photo.slot, n)
     return n > 1 ? `${copy.slot[photo.slot]} ${n}` : copy.slot[photo.slot]
@@ -32,7 +34,8 @@ function shownPhotos(version: Version, compareTo: Version | null) {
   const names = photoNames(version.photos)
   const before = new Set(compareTo ? photoNames(compareTo.photos) : [])
   const product: Shown[] = version.photos.map((p, i) => ({ key: `p-${p.id}`, url: p.url, name: names[i]!, isNew: compareTo !== null && !before.has(names[i]!) }))
-  const tryOn: Shown[] = version.try_on_photos.map((p, i) => ({ key: `t-${p.id}`, url: p.url, name: copy.tryOnName(i + 1), isNew: compareTo !== null && i >= compareTo.try_on_photos.length }))
+  const beforeTryOn = compareTo?.try_on_photos?.length ?? 0
+  const tryOn: Shown[] = (version.try_on_photos ?? []).map((p, i) => ({ key: `t-${p.id}`, url: p.url, name: copy.tryOnName(i + 1), isNew: compareTo !== null && i >= beforeTryOn }))
   return { product, tryOn }
 }
 
@@ -120,10 +123,13 @@ export function ProductPhotos({ title, version, compareTo }: { title: string; ve
   const [selected, setSelected] = useState(all[0]?.key ?? '')
   const current = all.find((p) => p.key === selected) ?? all[0]
 
+  // Named slots only exist when the server keeps them; without, photos are just listed.
+  const slotted = version.photos.some((p) => p.slot !== null)
   const present = new Set(version.photos.map((p) => p.slot))
-  const missing = REQUIRED.filter((slot) => !present.has(slot))
+  const missing = slotted ? REQUIRED.filter((slot) => !present.has(slot)) : []
   const extras = version.photos.filter((p) => p.slot === 'extra').length
-  const tryOnCount = Math.min(version.try_on_photos.length, TRY_ONS)
+  const tryOnPhotos = version.try_on_photos
+  const tryOnCount = Math.min(tryOnPhotos?.length ?? 0, TRY_ONS)
   const tryOnMissing = TRY_ONS - tryOnCount
 
   return (
@@ -139,7 +145,7 @@ export function ProductPhotos({ title, version, compareTo }: { title: string; ve
         <Stack spacing={3} sx={{ minWidth: 0 }}>
           <PhotoGroup
             title={copy.product}
-            count={`${copy.count(REQUIRED.length - missing.length, REQUIRED.length)}${extras ? copy.extras(extras) : ''}`}
+            count={slotted ? `${copy.count(REQUIRED.length - missing.length, REQUIRED.length)}${extras ? copy.extras(extras) : ''}` : copy.plainCount(version.photos.length)}
             note={missing.length ? copy.missingProduct(missing.map((slot) => copy.slot[slot])) : null}
           >
             {product.map((photo) => (
@@ -149,14 +155,16 @@ export function ProductPhotos({ title, version, compareTo }: { title: string; ve
               <MissingSlot key={slot} name={copy.slot[slot]} />
             ))}
           </PhotoGroup>
-          <PhotoGroup title={copy.tryOn} count={copy.count(tryOnCount, TRY_ONS)} hint={copy.tryOnHint} note={tryOnMissing ? copy.missingTryOn(tryOnMissing) : null}>
-            {tryOn.map((photo) => (
-              <Thumb key={photo.key} photo={photo} selected={photo.key === current?.key} onSelect={() => setSelected(photo.key)} />
-            ))}
-            {Array.from({ length: tryOnMissing }, (_, i) => (
-              <MissingSlot key={i} name={copy.tryOnName(tryOnCount + i + 1)} />
-            ))}
-          </PhotoGroup>
+          {tryOnPhotos !== null && (
+            <PhotoGroup title={copy.tryOn} count={copy.count(tryOnCount, TRY_ONS)} hint={copy.tryOnHint} note={tryOnMissing ? copy.missingTryOn(tryOnMissing) : null}>
+              {tryOn.map((photo) => (
+                <Thumb key={photo.key} photo={photo} selected={photo.key === current?.key} onSelect={() => setSelected(photo.key)} />
+              ))}
+              {Array.from({ length: tryOnMissing }, (_, i) => (
+                <MissingSlot key={i} name={copy.tryOnName(tryOnCount + i + 1)} />
+              ))}
+            </PhotoGroup>
+          )}
         </Stack>
       </Stack>
     </SectionCard>

@@ -514,6 +514,17 @@
             ],
             "title": "Reason"
           },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -527,6 +538,7 @@
         "required": [
           "status",
           "reason",
+          "reason_code",
           "decided_at",
           "submitted_at"
         ],
@@ -1804,6 +1816,17 @@
             ],
             "title": "Reason"
           },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -1812,6 +1835,7 @@
         "required": [
           "status",
           "reason",
+          "reason_code",
           "decided_at"
         ],
         "title": "ProductReviewOut",
@@ -2677,6 +2701,17 @@
             ],
             "title": "Reason"
           },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
           "sku": {
             "anyOf": [
               {
@@ -2735,6 +2770,7 @@
           "version",
           "status",
           "reason",
+          "reason_code",
           "submitted_at",
           "decided_at"
         ],
@@ -2749,6 +2785,7 @@
                 "decided_at": "2026-11-11T12:00:00Z",
                 "id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
                 "reason": "The photos are too dark to see the print.",
+                "reason_code": "photos",
                 "sku": "KRT-001",
                 "status": "rejected",
                 "subject": "product",

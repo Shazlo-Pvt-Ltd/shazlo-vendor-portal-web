@@ -231,7 +231,7 @@ describe('Vendor dashboard', { timeout: 40_000 }, () => {
     const rows = within(list).getAllByRole('listitem')
     expect(rows).toHaveLength(recent.length)
 
-    const where = (d: (typeof recent)[number]) => (d.kind === 'brand_page' ? `/review/brand/${d.vendor.id}` : d.kind === 'application' ? `/vendors/${d.vendor.id}` : '/queue')
+    const where = (d: (typeof recent)[number]) => (d.kind === 'brand_page' ? `/vendors/${d.vendor.id}?tab=brand` : d.kind === 'application' ? `/vendors/${d.vendor.id}` : '/queue')
     recent.forEach((d, i) => {
       const row = rows[i]!
       expect(within(row).getAllByRole('link')).toHaveLength(1)
