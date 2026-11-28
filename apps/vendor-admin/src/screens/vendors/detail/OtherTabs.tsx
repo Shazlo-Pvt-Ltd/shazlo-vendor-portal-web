@@ -18,8 +18,9 @@ type Product = Vendor['products'][number]
 
 const productPill: Record<string, PillStatus> = { pending_review: 'pending', approved: 'live', rejected: 'sentBack' }
 
-function ProductRow({ product }: { product: Product }) {
-  const pending = product.status === 'pending_review'
+// `reviewId` is the product's waiting review, which is what its review page is keyed by.
+function ProductRow({ product, reviewId }: { product: Product; reviewId: string | undefined }) {
+  const pending = product.status === 'pending_review' && reviewId !== undefined
   const row: ReactNode = (
     <Stack direction="row" spacing={2} sx={{ alignItems: 'center', minHeight: 64, px: { xs: 2, sm: 3 }, py: 1 }}>
       <ProductThumb src={product.thumbnail_url} size={40} />
@@ -42,7 +43,7 @@ function ProductRow({ product }: { product: Product }) {
       {pending ? (
         <Link
           component={RouterLink}
-          to={modulePaths.product(product.id)}
+          to={modulePaths.product(reviewId)}
           underline="none"
           sx={{ display: 'block', color: 'inherit', cursor: 'pointer', '@media (hover: hover)': { '&:hover': { bgcolor: 'action.hover' }, '&:hover [data-chevron]': { color: neutral.ink } }, '&:focus-visible': focusRing }}
         >
@@ -56,6 +57,8 @@ function ProductRow({ product }: { product: Product }) {
 }
 
 export function ProductsTab({ vendor }: { vendor: Vendor }) {
+  // The review of a product waiting for a decision is found in the queue, by the product's id.
+  const waiting = useQueue({ kind: 'product', vendor: vendor.id }).data?.items
   if (vendor.products.length === 0) {
     return (
       <Card>
@@ -67,7 +70,7 @@ export function ProductsTab({ vendor }: { vendor: Vendor }) {
     <Card>
       <Box component="ul" aria-label={copy.products.label} sx={{ listStyle: 'none', p: 0, m: 0 }}>
         {vendor.products.map((product) => (
-          <ProductRow key={product.id} product={product} />
+          <ProductRow key={product.id} product={product} reviewId={waiting?.find((item) => item.subject_id === product.id)?.id} />
         ))}
       </Box>
     </Card>
@@ -86,7 +89,7 @@ export function BrandTab({ vendor }: { vendor: Vendor }) {
       <Stack spacing={1}>
         <Typography variant="body1">{copy.brand.waiting(formatDate(waiting.submitted_at))}</Typography>
         <Box>
-          <Link component={RouterLink} to={modulePaths.brand(vendor.id)}>
+          <Link component={RouterLink} to={modulePaths.brand(waiting.id)}>
             {copy.brand.review}
           </Link>
         </Box>

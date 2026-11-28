@@ -300,6 +300,7 @@ export const vendorDetailCopy = {
       commission_approved: 'Approved the proposed commission',
       commission_sent_back: 'Sent the proposed commission back',
       commission_set: 'Set the commission',
+      withdrawn: 'Took the submission back',
     } satisfies Record<HistoryEvent, string>,
     by: (name: string) => `by ${name}`,
     empty: 'Nothing has happened yet.',

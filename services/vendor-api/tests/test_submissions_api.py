@@ -43,7 +43,11 @@ async def build(session: AsyncSession, tenants: Tenants) -> dict[str, Any]:
     rejected = await profile(session, a, 2, "rejected")
     await profile_review(session, a, approved, 1, **decision("approved", 2))
     rejected_review = await profile_review(
-        session, a, rejected, 3, **decision("rejected", 4, reason="The banner is blurry")
+        session,
+        a,
+        rejected,
+        3,
+        **decision("rejected", 4, reason="The banner is blurry", reason_code="brand_images"),
     )
     product, revision = await submitted_product(session, a, "KURTA-01", 5)
     await product_review(session, a, revision, 5)
@@ -77,6 +81,7 @@ async def test_one_call_lists_everything_submitted_newest_first(
     assert product["decided_at"] is None and product["reason"] is None
     assert rejected["id"] == str(built["rejected"].id)
     assert rejected["reason"] == "The banner is blurry"
+    assert rejected["reason_code"] == "brand_images" and product["reason_code"] is None
     assert rejected["sku"] is None and rejected["title"] is None
     assert approved["decided_at"] is not None
 
@@ -202,7 +207,13 @@ async def test_a_brand_version_carries_the_review_of_that_version(
     assert published["id"] == str(built["approved"].id)
     assert published["review"]["status"] == "approved"
     assert published["review"]["reason"] is None
-    assert set(published["review"]) == {"status", "reason", "decided_at", "submitted_at"}
+    assert set(published["review"]) == {
+        "status",
+        "reason",
+        "reason_code",
+        "decided_at",
+        "submitted_at",
+    }  # never who decided
     assert draft["review"] is None
 
 

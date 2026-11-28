@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from vendor_api.api.admin import AdminRequest, Reviewer, reviewer_dependency
 from vendor_api.api.auth import no_store
 from vendor_api.core.validation import DatabaseText
-from vendor_api.db.models import Review, ReviewEvent, ReviewStatus, ReviewSubject
+from vendor_api.db.models import Review, ReviewEvent, ReviewReasonCode, ReviewStatus, ReviewSubject
 from vendor_api.db.session import get_session
 from vendor_api.services.review_decisions import ReviewDecisionService
 from vendor_api.services.review_queue import (
@@ -62,13 +62,19 @@ class RejectReviewRequest(ApproveReviewRequest):
     model_config = ConfigDict(
         json_schema_extra={
             "examples": [
-                {"version": 3, "reason": "The logo is too small to read. Upload a larger one."}
+                {
+                    "version": 3,
+                    "reason": "The logo is too small to read. Upload a larger one.",
+                    "reason_code": "brand_images",
+                }
             ]
         }
     )
 
     # Why. The vendor sees it. Required: a blank or whitespace-only reason is a 422.
     reason: DatabaseText = Field(min_length=1, max_length=2000)
+    # What kind of problem it is, from a fixed list. Optional; the vendor sees it with the reason.
+    reason_code: ReviewReasonCode | None = None
 
     @field_validator("reason", mode="before")
     @classmethod
@@ -101,6 +107,8 @@ class AdminReviewOut(BaseModel):
     reviewer_id: uuid.UUID | None
     decided_at: datetime | None
     reason: str | None
+    # The kind of problem, when the reviewer picked one.
+    reason_code: str | None
 
 
 class ReviewPageOut(BaseModel):
@@ -144,6 +152,9 @@ class ReviewDetailOut(AdminReviewOut):
     base: VersionOut | None
     # Exactly the fields that differ between `base` and `content`; unchanged fields are absent.
     changes: list[ChangeOut]
+    # How many reviews of the same product (or the vendor's brand page) were rejected before this
+    # one was submitted; 0 for a first submission.
+    resubmission: int
 
 
 def review_out(row: ReviewRow) -> dict[str, Any]:
@@ -168,6 +179,7 @@ def review_out(row: ReviewRow) -> dict[str, Any]:
         "reviewer_id": review.reviewer_id,
         "decided_at": review.decided_at,
         "reason": review.reason,
+        "reason_code": review.reason_code,
     }
 
 
@@ -195,6 +207,7 @@ def detail_out(detail: ReviewDetail) -> ReviewDetailOut:
         content=_version(detail.content),
         base=_version(detail.base) if detail.base is not None else None,
         changes=[ChangeOut(field=c.field, before=c.before, after=c.after) for c in detail.changes],
+        resubmission=detail.resubmission,
     )
 
 
@@ -275,5 +288,5 @@ async def reject_review(
     Same `409`s as approving. A live product stays live: only the rejected revision is turned
     down."""
     no_store(response)
-    await decisions.reject(db, review_id, admin.id, body.version, body.reason)
+    await decisions.reject(db, review_id, admin.id, body.version, body.reason, body.reason_code)
     return detail_out(await queue.get_review(db, review_id))

@@ -4,7 +4,7 @@ import { GitCompareArrows, Smartphone } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { useParams } from 'react-router'
 import { ApiError } from '../../api/http'
-import { useApproveBrand, useBrandReview, useRejectBrand } from '../../api/queries'
+import { useApproveReview, useBrandReview, useRejectReview } from '../../api/queries'
 import type * as M from '../../api/model'
 import { CardTitle } from '../../components/CardTitle'
 import { reviewCopy } from '../../copy/review'
@@ -13,7 +13,7 @@ import { decisionPill, queuePill } from '../../lib/status'
 import { useModuleTitle } from '../../runtime/runtime'
 import { DecisionBar, DecisionCard, useChecklist } from './DecisionCard'
 import { StackedCompare } from './ProductDetails'
-import { decisionIn, HistoryCard, LoadError, NotFound, OutcomeBanner, QueueNav, ReviewColumns, ReviewSkeleton, submittedLine, submitterOf } from './parts'
+import { decidedOf, HistoryCard, LoadError, NotFound, OutcomeBanner, QueueNav, ReviewColumns, ReviewSkeleton, submittedLine, submitterOf } from './parts'
 import { PhonePreview } from './PhonePreview'
 import { SendBackDialog } from './SendBackDialog'
 import { useDecision } from './useDecision'
@@ -27,8 +27,9 @@ const isField = (key: string): key is Field => (FIELDS as string[]).includes(key
 
 // A-07: a brand page submission beside the live page, with what changed, the checklist and the decision.
 export default function BrandReview() {
-  const { vendorId = '' } = useParams()
-  return <Review key={vendorId} vendorId={vendorId} />
+  const { id = '' } = useParams()
+  // The id is the review's (the queue's item id), not the vendor's.
+  return <Review key={id} id={id} />
 }
 
 function Thumb({ url, alt }: { url: string | null; alt: string }) {
@@ -110,8 +111,8 @@ function ChangesCard({ live, draft, changed }: { live: Profile; draft: Profile; 
   )
 }
 
-function Review({ vendorId }: { vendorId: string }) {
-  const review = useBrandReview(vendorId)
+function Review({ id }: { id: string }) {
+  const review = useBrandReview(id)
   const data = review.data
   const notFound = review.error instanceof ApiError && review.error.status === 404
   const vendor = data?.vendor.name ?? ''
@@ -119,21 +120,20 @@ function Review({ vendorId }: { vendorId: string }) {
 
   const seller = data ? submitterOf(data.history, vendor) : ''
   const decision = useDecision({
-    approve: useApproveBrand(vendorId),
-    reject: useRejectBrand(vendorId),
+    approve: useApproveReview(id, data?.version),
+    reject: useRejectReview(id, data?.version),
     reload: () => void review.refetch(),
     toasts: { approved: copy.toast.approved(vendor), sentBack: copy.toast.sentBack(vendor, seller) },
   })
   const [sending, setSending] = useState(false)
-  const checklist = useChecklist(copy.checks)
+  const checklist = useChecklist(copy.checks, data?.version)
   const phone = usePhone()
 
   if (review.isPending) return <ReviewSkeleton />
   if (notFound) return <NotFound title={copy.notFound} body={copy.notFoundBody} />
   if (review.isError || !data) return <LoadError onRetry={() => void review.refetch()} />
 
-  // The review has no status of its own; a decision newer than the last submission means it was decided.
-  const decided = decision.outcome?.decision ?? decisionIn(data.history)
+  const decided = decision.outcome?.decision ?? decidedOf(data.status)
   const kind = queuePill({ kind: 'brand_page', change: data.live ? 'edit' : 'new', resubmission: 0 })
   const pills = decided ? (
     <StatusPill {...decisionPill[decided]} />
@@ -147,10 +147,10 @@ function Review({ vendorId }: { vendorId: string }) {
 
   return (
     <>
-      <QueueNav prevId={data.prev_id} nextId={data.next_id} />
+      <QueueNav prev={data.prev} next={data.next} />
       <PageHeader title={copy.heading(vendor)} status={pills} subtitle={`${vendor} · ${submittedLine(data.submitted_at)}`} />
       <Stack spacing={3}>
-        <OutcomeBanner decided={decided} decision={decision} history={data.history} nextId={data.next_id} seller={seller} where="brand page" />
+        <OutcomeBanner decided={decided} decision={decision} history={data.history} next={data.next} seller={seller} where="brand page" />
         {decision.failure && <Banner tone="error" title={decision.failure} />}
         <ReviewColumns
           main={

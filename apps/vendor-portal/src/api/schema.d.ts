@@ -1301,6 +1301,8 @@ export interface components {
             product_id: string | null;
             /** Reason */
             reason: string | null;
+            /** Reason Code */
+            reason_code: string | null;
             /** Reviewer Id */
             reviewer_id: string | null;
             /** Sku */
@@ -1524,6 +1526,8 @@ export interface components {
             decided_at: string | null;
             /** Reason */
             reason: string | null;
+            /** Reason Code */
+            reason_code: string | null;
             /** Status */
             status: string;
             /**
@@ -2206,6 +2210,8 @@ export interface components {
             decided_at: string | null;
             /** Reason */
             reason: string | null;
+            /** Reason Code */
+            reason_code: string | null;
             /** Status */
             status: string;
         };
@@ -2342,12 +2348,14 @@ export interface components {
          * RejectReviewRequest
          * @example {
          *       "reason": "The logo is too small to read. Upload a larger one.",
+         *       "reason_code": "brand_images",
          *       "version": 3
          *     }
          */
         RejectReviewRequest: {
             /** Reason */
             reason: string;
+            reason_code?: components["schemas"]["ReviewReasonCode"] | null;
             /** Version */
             version: number;
         };
@@ -2384,6 +2392,10 @@ export interface components {
             product_id: string | null;
             /** Reason */
             reason: string | null;
+            /** Reason Code */
+            reason_code: string | null;
+            /** Resubmission */
+            resubmission: number;
             /** Reviewer Id */
             reviewer_id: string | null;
             /** Sku */
@@ -2421,6 +2433,12 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * ReviewReasonCode
+         * @description Why a reviewer sent something back, picked from a list beside the free-text reason.
+         * @enum {string}
+         */
+        ReviewReasonCode: "photos" | "try_on_photos" | "price" | "category" | "prohibited" | "description" | "brand_images" | "contact_details" | "other";
         /**
          * ReviewSubject
          * @enum {string}
@@ -2728,6 +2746,8 @@ export interface components {
             id: string;
             /** Reason */
             reason: string | null;
+            /** Reason Code */
+            reason_code: string | null;
             /** Sku */
             sku: string | null;
             /**
@@ -2758,6 +2778,7 @@ export interface components {
          *           "decided_at": "2026-11-11T12:00:00Z",
          *           "id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
          *           "reason": "The photos are too dark to see the print.",
+         *           "reason_code": "photos",
          *           "sku": "KRT-001",
          *           "status": "rejected",
          *           "subject": "product",

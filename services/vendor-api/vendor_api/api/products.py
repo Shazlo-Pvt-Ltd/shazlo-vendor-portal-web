@@ -269,6 +269,7 @@ class ImageOut(BaseModel):
 class ProductReviewOut(BaseModel):
     status: str
     reason: str | None
+    reason_code: str | None
     decided_at: datetime | None
 
 
@@ -345,7 +346,10 @@ def _revision_out(view: RevisionView, state: str | None = None) -> RevisionOut:
         submitted_at=revision.submitted_at,
         review=(
             ProductReviewOut(
-                status=review.status, reason=review.reason, decided_at=review.decided_at
+                status=review.status,
+                reason=review.reason,
+                reason_code=review.reason_code,
+                decided_at=review.decided_at,
             )
             if review is not None
             else None

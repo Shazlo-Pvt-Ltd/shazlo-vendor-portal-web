@@ -65,6 +65,17 @@
             ],
             "title": "Reason"
           },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
           "reviewer_id": {
             "anyOf": [
               {
@@ -136,7 +147,8 @@
           "sku",
           "reviewer_id",
           "decided_at",
-          "reason"
+          "reason",
+          "reason_code"
         ],
         "title": "AdminReviewOut",
         "type": "object"
@@ -722,6 +734,17 @@
             ],
             "title": "Reason"
           },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -735,6 +758,7 @@
         "required": [
           "status",
           "reason",
+          "reason_code",
           "decided_at",
           "submitted_at"
         ],
@@ -2490,6 +2514,17 @@
             ],
             "title": "Reason"
           },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -2498,6 +2533,7 @@
         "required": [
           "status",
           "reason",
+          "reason_code",
           "decided_at"
         ],
         "title": "ProductReviewOut",
@@ -2789,6 +2825,7 @@
         "examples": [
           {
             "reason": "The logo is too small to read. Upload a larger one.",
+            "reason_code": "brand_images",
             "version": 3
           }
         ],
@@ -2798,6 +2835,16 @@
             "minLength": 1,
             "title": "Reason",
             "type": "string"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewReasonCode"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "version": {
             "minimum": 1.0,
@@ -2935,6 +2982,21 @@
             ],
             "title": "Reason"
           },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "resubmission": {
+            "title": "Resubmission",
+            "type": "integer"
+          },
           "reviewer_id": {
             "anyOf": [
               {
@@ -3007,10 +3069,12 @@
           "reviewer_id",
           "decided_at",
           "reason",
+          "reason_code",
           "events",
           "content",
           "base",
-          "changes"
+          "changes",
+          "resubmission"
         ],
         "title": "ReviewDetailOut",
         "type": "object"
@@ -3045,6 +3109,22 @@
         ],
         "title": "ReviewPageOut",
         "type": "object"
+      },
+      "ReviewReasonCode": {
+        "description": "Why a reviewer sent something back, picked from a list beside the free-text reason.",
+        "enum": [
+          "photos",
+          "try_on_photos",
+          "price",
+          "category",
+          "prohibited",
+          "description",
+          "brand_images",
+          "contact_details",
+          "other"
+        ],
+        "title": "ReviewReasonCode",
+        "type": "string"
       },
       "ReviewSubject": {
         "enum": [
@@ -3912,6 +3992,17 @@
             ],
             "title": "Reason"
           },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
           "sku": {
             "anyOf": [
               {
@@ -3970,6 +4061,7 @@
           "version",
           "status",
           "reason",
+          "reason_code",
           "submitted_at",
           "decided_at"
         ],
@@ -3984,6 +4076,7 @@
                 "decided_at": "2026-11-11T12:00:00Z",
                 "id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
                 "reason": "The photos are too dark to see the print.",
+                "reason_code": "photos",
                 "sku": "KRT-001",
                 "status": "rejected",
                 "subject": "product",

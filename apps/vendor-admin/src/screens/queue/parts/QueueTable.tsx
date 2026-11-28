@@ -36,9 +36,10 @@ const decorative = (id: string) => id === 'open'
 const waitedMs = (iso: string) => Date.now() - Date.parse(iso)
 
 // Where each kind of item is decided.
-export function reviewPath(item: Pick<QueueItem, 'kind' | 'subject_id'>): string {
-  if (item.kind === 'product') return modulePaths.product(item.subject_id)
-  if (item.kind === 'brand_page') return modulePaths.brand(item.subject_id)
+export function reviewPath(item: Pick<QueueItem, 'kind' | 'id' | 'subject_id'>): string {
+  // A product or brand page is reviewed by its review's id; an application is decided on its vendor.
+  if (item.kind === 'product') return modulePaths.product(item.id)
+  if (item.kind === 'brand_page') return modulePaths.brand(item.id)
   return modulePaths.vendor(item.subject_id)
 }
 
