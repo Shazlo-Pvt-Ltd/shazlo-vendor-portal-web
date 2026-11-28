@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -p tsconfig.json && vite build",
     "preview": "vite preview --strictPort",
-    "api:types": "openapi-typescript openapi/identity.yaml -o src/api/identity.d.ts && openapi-typescript ../vendor-admin/openapi/vendor-admin.yaml -o src/api/vendor-admin.d.ts",
+    "api:types": "openapi-typescript ../../services/identity-api/openapi.json -o src/api/identity.d.ts && openapi-typescript ../vendor-admin/openapi/vendor-admin.yaml -o src/api/vendor-admin.d.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
