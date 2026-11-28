@@ -73,6 +73,8 @@ export function bridge(iframe: HTMLIFrameElement, moduleOrigin: string) {
 export interface FakeModule {
   client: ModuleClient
   auths: AuthPayload[]
+  /** The paths the shell asked the module to show (`navigate`), in order. */
+  navigations: string[]
   errors: Array<{ code: string; message: string }>
   posts: RecordedPost[]
   frameWindow: Window
@@ -86,6 +88,7 @@ export function attachModule(
   const iframe = options.iframe ?? currentFrame()
   const { frameWindow, shellWindow, posts } = bridge(iframe, options.moduleOrigin)
   const auths: AuthPayload[] = []
+  const navigations: string[] = []
   const errors: Array<{ code: string; message: string }> = []
   const client = createModuleClient({
     shellOrigin: SHELL_ORIGIN,
@@ -95,10 +98,11 @@ export function attachModule(
     supportedVersions: options.supportedVersions,
     development: true,
     onAuth: (auth) => auths.push(auth),
+    onNavigate: (path) => navigations.push(path),
     onShellError: (error) => errors.push(error),
   })
   cleanups.push(() => client.dispose())
-  return { client, auths, errors, posts, frameWindow, shellWindow }
+  return { client, auths, navigations, errors, posts, frameWindow, shellWindow }
 }
 
 let counter = 0

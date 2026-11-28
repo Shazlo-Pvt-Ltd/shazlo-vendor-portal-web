@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -43,8 +43,9 @@ async function openReferenceInShell() {
     audience,
   }))
   const body = sessionBody({ roles: ['vendor_reviewer'] })
-  const store = makeStore({ refresh: async () => body, fetchMe: async () => body.admin, exchange }).store
-  renderRoute('/m/reference', { store, modules: MODULES.development })
+  const logout = vi.fn(async () => {})
+  const store = makeStore({ refresh: async () => body, fetchMe: async () => body.admin, exchange, logout }).store
+  const router = renderRoute('/m/reference', { store, modules: MODULES.development })
   await screen.findByRole('heading', { level: 1, name: 'Reference module' })
 
   const frame = currentFrame()
@@ -57,7 +58,7 @@ async function openReferenceInShell() {
   }
   const container = frameDocument.body.appendChild(frameDocument.createElement('div'))
   render(<ReferenceModule config={config} frameWindow={frameWindow} />, { container })
-  return { frame, frameWindow, posts, exchange, apiCalls, page: within(frameDocument.body) }
+  return { frame, frameWindow, posts, exchange, apiCalls, router, logout, store, page: within(frameDocument.body) }
 }
 
 describe('the reference module inside the shell', () => {
@@ -97,5 +98,52 @@ describe('the reference module inside the shell', () => {
     expect(withToken).toHaveLength(1)
     expect(withToken[0]).toMatchObject({ from: 'shell', targetOrigin: reference.origin })
     expect(t.posts.every((post) => post.targetOrigin !== '*')).toBe(true)
+  })
+})
+
+describe('the reference module’s messages, in the shell', () => {
+  it('the address bar and the tab title follow the module, and a copied address reopens the same page', async () => {
+    const t = await openReferenceInShell()
+    await waitFor(() => expect(t.frameWindow.document.body.textContent).toMatch(/vendor-api answered 200/))
+    fireEvent.click(t.page.getByRole('button', { name: /Orders \(example\)/ }))
+    await waitFor(() => expect(t.router.state.location.pathname).toBe('/m/reference/pages/orders'))
+    // The tab title is set by an effect after the address changes: wait for it rather than race it on a loaded machine.
+    await waitFor(() => expect(document.title).toBe('Orders (example) · Reference module · Shazlo-One'))
+    expect(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByText('Orders (example)')).toBeTruthy()
+    // It replaced the entry rather than adding one.
+    expect(t.router.state.historyAction).toBe('REPLACE')
+  })
+
+  it('a toast from the module is shown by the shell, as text, labelled with the module', async () => {
+    const t = await openReferenceInShell()
+    await waitFor(() => expect(t.frameWindow.document.body.textContent).toMatch(/vendor-api answered 200/))
+    fireEvent.click(t.page.getByRole('button', { name: 'Send a success toast' }))
+    const region = await screen.findByRole('region', { name: 'Notifications' })
+    await waitFor(() => expect(region.textContent).toContain('A success message from the reference module.'))
+    expect(region.textContent).toContain('Reference module')
+    expect(region.querySelector('[data-level="success"]')).not.toBeNull()
+  })
+
+  it('a non-fatal error shows a notice; a fatal one replaces the module with the shell’s panel', async () => {
+    const t = await openReferenceInShell()
+    await waitFor(() => expect(t.frameWindow.document.body.textContent).toMatch(/vendor-api answered 200/))
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    fireEvent.click(t.page.getByRole('button', { name: 'Send a non-fatal error' }))
+    const region = await screen.findByRole('region', { name: 'Notifications' })
+    await waitFor(() => expect(region.textContent).toContain('A non-fatal error from the reference module.'))
+    expect(log.mock.calls.some((call) => String(call[0]).startsWith('[shell] reference reported a non-fatal error'))).toBe(true)
+    fireEvent.click(t.page.getByRole('button', { name: 'Send a fatal error' }))
+    expect((await screen.findByRole('alert')).textContent).toMatch(/Reference module stopped working/)
+    expect(document.querySelector('iframe')).toBeNull()
+  })
+
+  it('asking to sign out ends the session and sends the admin to sign in', async () => {
+    const t = await openReferenceInShell()
+    await waitFor(() => expect(t.frameWindow.document.body.textContent).toMatch(/vendor-api answered 200/))
+    fireEvent.click(t.page.getByRole('button', { name: 'Sign out of Shazlo-One' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Sign in' })).toBeTruthy()
+    expect(t.logout).toHaveBeenCalledOnce()
+    expect(document.querySelector('iframe')).toBeNull()
+    expect(t.store.getAccessToken()).toBeNull()
   })
 })

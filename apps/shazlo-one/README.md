@@ -69,7 +69,7 @@ src/
   session/            the admin session: store, AuthProvider, guards, return-to check
   modules/            registry.ts (the module list and its checks), loadRegistry, ModuleRegistryProvider
   security/           headers.ts (every header, defined once), sensitiveState.ts, PasswordField.tsx, and the tests
-  components/         ShellLayout, NavList, AccountMenu, NoAccess (403), NotFound, ErrorBoundary, ErrorScreen, RouteError, Misconfigured, CountdownNotice
+  components/         ShellLayout, NavList, AccountMenu, ModuleHost, ToastProvider, NoAccess (403), NotFound, ErrorBoundary, ErrorScreen, RouteError, Misconfigured, CountdownNotice
   hooks/              usePageTitle
   pages/              one file per route
   test/               test setup
@@ -248,8 +248,27 @@ A module's token lasts **5 minutes** (identity-api's `EXCHANGED_TOKEN_TTL_SECOND
   removes the frame and drops every token at once: the guards unmount the page, which clears its timers, closes the
   channel and drops the module's tokens.
 
-Not here yet: title and deep-link sync, toasts, and a module's `logout` and `error` messages (#257). Until then the
-reference module's buttons for those send messages the host does not act on.
+### What a module can ask the shell to do
+
+- **`title`**: the breadcrumb, the tab title and the shell address (`/m/<id>/<path>`) follow the module. The address
+  is **replaced**, not pushed, so a module's own navigation does not fill the history. The shell checks the path
+  beyond the protocol (`src/modules/shellPath.ts`): after dot segments and encoded dots it must stay inside
+  `/m/<id>`, so `/../admins` or another site is ignored. At most 20 titles per 10 seconds. The page heading takes
+  focus only when the admin goes to another screen or module, never for a module's own page change.
+- **Deep links**: opening `/m/<id>/<path>` sends `navigate { path }` once the module has its token, again when it
+  reloads (`ready`), and when the address changes under it (the browser's back and forward). A path the module
+  reported itself is never sent back. A copied shell address reopens the same module page.
+- **`toast`**: shown by the shell's own component (`ToastProvider`), as text, labelled with the module's name.
+  Markup is refused by the protocol, at most 280 characters, each level is the alert severity of that name, the
+  region announces politely, at most 3 are visible, each keeps at most 3 lines, at most 5 are taken per 10 seconds
+  per module, and the duration is held to 3 to 15 seconds.
+- **`logout`**: ends the session like the account menu does (the refresh token is revoked), removes the frame at
+  once (not when the server answers) and goes to sign in. Only the first counts, and nothing the module sends
+  after it, or after a fatal `error`, is acted on.
+- **`error`**: a non-fatal one is logged in development and shows a notice; `fatal: true` replaces the module with
+  the shell's error panel, whose Retry reloads it.
+
+ADR 0001 records the decisions, including that there is **no** "confirm before leaving" message in protocol version 1.
 
 ## The reference module
 
@@ -269,7 +288,8 @@ npm run dev:with-module -w @shazlo/shazlo-one   # shell on 5173, module on 5175
   makes it send `token:request` (at most once every 30 seconds) and repeat the call when the shell answers.
   An expired token is never sent: the module sends `token:request` with `expired` instead, then calls.
 - Buttons send every module-to-shell message: `title` (in-module pages), a `toast` of each level, `logout`,
-  and a non-fatal and a fatal `error`. The shell's `navigate` and `error` are shown.
+  and a non-fatal and a fatal `error`, and the shell acts on each (see "The module host"). The shell's
+  `navigate` and `error` are shown.
 - Its responses carry `Content-Security-Policy: frame-ancestors <shell origin>` (plus `http://localhost:5173`
   in development) and `Referrer-Policy: no-referrer`, so any other origin that tries to frame it is refused.
 - Opened directly, outside the shell, it says so and does nothing else: no listener, no message, no request.

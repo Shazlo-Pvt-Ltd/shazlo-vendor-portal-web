@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { Outlet, useLocation } from 'react-router'
 import { AccountMenu } from './AccountMenu'
 import { NavList } from './NavList'
+import { ToastProvider } from './ToastProvider'
 
 export const DRAWER_WIDTH = 240
 export const MAIN_ID = 'main-content'
@@ -47,7 +48,7 @@ export function ShellLayout() {
   }, [location.pathname])
 
   return (
-    <>
+    <ToastProvider>
       <Box
         component="a"
         href={`#${MAIN_ID}`}
@@ -125,6 +126,6 @@ export function ShellLayout() {
           <Outlet />
         </Box>
       </Box>
-    </>
+    </ToastProvider>
   )
 }
