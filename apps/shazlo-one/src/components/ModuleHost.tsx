@@ -95,6 +95,9 @@ function HostedFrame({ entry, visible, onStatus }: FrameProps) {
         replyTo === undefined ? {} : { replyTo },
       )
       if (!sent) return false
+      // The token it already holds (a `ready` replayed): its timers and the backoff carry on as they were,
+      // so `ready` cannot be used to cut a backoff short or force an exchange.
+      if (token === held) return true
       held = token
       failures = 0
       // Replace it at 80% of its own life, or 30 seconds before it ends, whichever is first...
@@ -140,12 +143,13 @@ function HostedFrame({ entry, visible, onStatus }: FrameProps) {
 
     async function answer(info: ReadyInfo): Promise<void> {
       // The module is alive: stop waiting for it. A second `ready` (the module reloaded) comes here
-      // too and gets the current token, from the cache while it is still good.
+      // too and gets the token it was last sent, while that is good: no exchange.
       clearTimeout(timer)
       const mine = (newest += 1)
       try {
         // A token for this module's own audience, kept for this module only (its id is the scope).
-        const token = await sessionRef.current.getModuleToken(entry.audience, entry.id)
+        const token =
+          held !== undefined && held.expiresAt > Date.now() ? held : await sessionRef.current.getModuleToken(entry.audience, entry.id)
         if (disposed || mine !== newest) return
         if (sessionRef.current.admin === null) throw new NotSignedInError()
         const sent = deliver(token, info.id)
