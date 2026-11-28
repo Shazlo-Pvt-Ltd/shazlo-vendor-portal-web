@@ -63,7 +63,7 @@ predates that, see "The reference module" below. A `vendor_reviewer` admin is cr
 
 | Variable | Meaning |
 | --- | --- |
-| `VITE_IDENTITY_API_URL` | Required. The identity-api origin, for example `http://localhost:8001`: no path, no credentials, `https` outside development. It is compiled into the build, so it is public: never put a secret in it. |
+| `VITE_IDENTITY_API_URL` | Required. The identity-api origin, for example `http://localhost:8001`: a plain host name (letters, digits, dots and hyphens) or an IPv6 address, no path, query or credentials, `https` outside development. It is compiled into the build, so it is public: never put a secret in it. |
 
 A missing or invalid value shows a "The shell is misconfigured" screen that says what is wrong (and
 never prints the value), instead of a blank page. `src/config/env.ts` has the rules.
@@ -309,6 +309,9 @@ npm run dev:with-module -w @shazlo/shazlo-one   # shell on 5173, module on 5175
 
 ## Admin management
 
+This section arrives with #258 (PR #313), which is not merged yet: until it is, it describes code that is not on
+this branch.
+
 `/admins` (the "Admins" section, `src/pages/AdminsPage.tsx` and `src/features/admins/`) is for `super_admin` only:
 the route guard, the navigation and identity-api (on every call) each check it, and everyone else gets the 403 page
 without the admins being asked for at all.
@@ -316,7 +319,8 @@ without the admins being asked for at all.
 - **List:** name, email, roles, active or deactivated, and whether they must still change their password. The
   search (name or email), the role and status filters and the page are in the address (`?q=&role=&status=&page=`):
   shareable, they survive a reload and the back button steps through them. Typing replaces the address entry
-  rather than adding one; choosing a filter or a page adds one; a filter goes back to page 1.
+  rather than adding one; choosing a filter or a page adds one; a filter goes back to page 1. A page past the end
+  (an old link, or the last page emptied) moves to the last page that has admins.
 - **Create:** email, name, roles (from `GET /v1/roles`, each with its description) and a temporary password. The
   dialog says they must change it at their first sign-in and that it must be handed over in person or through a
   secure channel: it is never emailed. "Generate a password" makes a random 20-character one (no look-alike
@@ -327,8 +331,8 @@ without the admins being asked for at all.
 - **Refusals** are plain words next to the control they are about: `email_taken` by the email, `weak_password` by
   the password, `unknown_role` by the roles, `cannot_deactivate_self` and `last_super_admin` by the control that
   asked for it (the last super admin cannot be deactivated or lose the role, and the screen says why),
-  `admin_not_found` above the form (the list reloads), and a `403` means your own super admin role was removed
-  (your session is read again and the page becomes the 403 page).
+  `admin_not_found` above the form (the list reloads), and a `403` on any of these calls (the list too) means your
+  own super admin role was removed (your session is read again and the page becomes the 403 page).
 - **Roles take effect** at the admin's next token, within 15 minutes, and the dialog says so. A super admin who
   edits their **own** roles has their session refreshed at once, so they see them.
 - **Temporary passwords:** the field is emptied the moment the call is sent (success or not), the mutation keeps
