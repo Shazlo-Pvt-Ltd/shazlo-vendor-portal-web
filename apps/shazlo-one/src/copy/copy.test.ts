@@ -25,6 +25,10 @@ const SENTENCES = new Set([
   'unavailableBody',
   'versionBody',
   'forbiddenBody',
+  // Why a module could not be opened.
+  'noToken',
+  'unknownAudience',
+  'sameOriginBody',
   // A module's manifest or summary could not be read.
   'unreachable',
   'invalid',

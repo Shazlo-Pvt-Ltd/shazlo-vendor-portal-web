@@ -1,7 +1,7 @@
 import { Avatar, Box, Breadcrumbs, Divider, Drawer, IconButton, Link, List, ListItemButton, ListItemIcon, ListItemText, Stack, Typography, useMediaQuery, useTheme } from '@mui/material'
 import { brand, emphasis, fontFamily, Logo, radius } from '@shazlo/ui'
 import { House, LogOut, Menu, Users, X, type LucideIcon } from 'lucide-react'
-import { Suspense, useId, useState, type ReactNode } from 'react'
+import { Suspense, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { Link as RouterLink, Outlet, useLocation, useMatches, useNavigate } from 'react-router'
 import type { RegistryEntry } from '@shazlo/shell-protocol'
 import { useModuleBadge, useModuleManifest } from '../api/modules'
@@ -281,9 +281,37 @@ function PhoneBar({ module }: { module?: ResolvedModule }) {
   )
 }
 
+/**
+ * Which page an address is, for moving focus: every path of one module is that module's one page, so
+ * navigation inside a module (its own links, or the URL following its title) never pulls focus out of
+ * its frame.
+ */
+export function pageOf(pathname: string): string {
+  return moduleFor(pathname)?.basePath ?? pathname
+}
+
+// After a move to another page (another module counts, a path inside one module does not) the page
+// heading takes focus, so a screen reader says where the admin went. Not on the first page, which
+// would hide the skip link behind a focused heading.
+function useFocusOnNewPage(pathname: string, main: RefObject<HTMLElement | null>) {
+  const lastPage = useRef(pageOf(pathname))
+  useEffect(() => {
+    const page = pageOf(pathname)
+    if (lastPage.current === page) return
+    lastPage.current = page
+    const heading = main.current?.querySelector<HTMLElement>('h1')
+    if (heading) {
+      if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1')
+      heading.focus({ preventScroll: true })
+    } else main.current?.focus({ preventScroll: true })
+  }, [pathname, main])
+}
+
 // Signed-in layout. Module pages fill the content area edge to edge; shell pages get the usual gutter.
 export function ShellLayout() {
   const { pathname } = useLocation()
+  const main = useRef<HTMLElement>(null)
+  useFocusOnNewPage(pathname, main)
   const { can } = useSession()
   const theme = useTheme()
   // noSsr reads the query on the first render, so a phone never flashes the desktop sidebar.
@@ -302,7 +330,7 @@ export function ShellLayout() {
       {!phone && <Sidebar />}
       <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         {phone ? <PhoneBar module={navModule} /> : <TopBar module={navModule} />}
-        <Box component="main" id="content" tabIndex={-1} sx={{ flex: 1, minWidth: 0, outline: 'none', ...(inModule ? {} : { px: { xs: 2, sm: 3, md: 5 }, pt: { xs: 3, md: 4 }, pb: 8 }) }}>
+        <Box component="main" ref={main} id="content" tabIndex={-1} sx={{ flex: 1, minWidth: 0, outline: 'none', ...(inModule ? {} : { px: { xs: 2, sm: 3, md: 5 }, pt: { xs: 3, md: 4 }, pb: 8 }) }}>
           <Box sx={inModule ? { height: '100%' } : { maxWidth: 1200, mx: 'auto' }}>
             <Suspense fallback={<PageFallback />}>
               <Outlet />

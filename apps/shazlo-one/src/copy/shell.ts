@@ -25,6 +25,12 @@ export const shellCopy = {
     versionTitle: (title: string, version: string) => `${title} ${version} needs a newer Shazlo One`,
     versionBody: 'Reload the page to get the latest Shazlo One. If that does not help, the module was released ahead of the shell.',
     reload: 'Reload page',
+    moduleErrorBody: 'The module stopped and said why:',
+    noTokenTitle: (title: string) => `${title} could not be opened`,
+    noToken: 'Shazlo One could not get a session for this module. Try again in a moment.',
+    unknownAudience: 'This module is not set up on the server yet. Tell the platform team in #shazlo-one.',
+    sameOriginTitle: (title: string) => `${title} cannot be opened`,
+    sameOriginBody: 'It is set up to load from Shazlo One’s own address, which is not allowed. Tell the platform team in #shazlo-one.',
     forbiddenTitle: (title: string) => `You do not have access to ${title}`,
     forbiddenBody: 'Your role does not include this module. A super admin can add it in Admins & roles.',
     // A module's manifest or summary could not be read (api/modules.ts).
