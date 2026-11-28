@@ -62,7 +62,7 @@ These are used as reference only. None of the code is reused.
 ## Phases
 Each phase matches a milestone in this repo. The bullets are the proposed scope; the actual issues are filed when the phase starts.
 
-Status (2026-11-19): Phases 0 to 4 are delivered, and Phase 5 (the vendor portal) is in progress (its sign-in, dashboard, brand page editor, products list, product form, bulk import, team and account pages, and submission status are merged; the end-to-end test and accessibility checks remain). Phases 6 to 8 have not started. One decision is still open from Phase 4: the central-app team has not signed off [ADR 0003](adr/0003-central-app-publishing-contract.md), so it is still `proposed` (issue #179).
+Status (2026-11-19): Phases 0 to 4 are delivered, and Phase 5 (the vendor portal) is in progress (its sign-in, dashboard, brand page editor, products list, product form, bulk import, team and account pages, and submission status are merged; the end-to-end test and accessibility checks remain). Phase 6 (the Shazlo-One shell) is in progress (its scaffold is merged); Phases 7 and 8 have not started. One decision is still open from Phase 4: the central-app team has not signed off [ADR 0003](adr/0003-central-app-publishing-contract.md), so it is still `proposed` (issue #179).
 
 ### Phase 0: Foundation & security hygiene
 - Repo hygiene: untrack local env files and `node_modules`, fix `.gitignore`, and add `.env.example` files.

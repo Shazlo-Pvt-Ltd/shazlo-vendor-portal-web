@@ -1,4 +1,5 @@
 import { Alert, Box, Typography } from '@mui/material'
+import { usePageTitle } from '../hooks/usePageTitle'
 
 interface Props {
   problems: string[]
@@ -6,6 +7,7 @@ interface Props {
 
 /** Shown instead of a blank page when the build's environment is wrong. */
 export function Misconfigured({ problems }: Props) {
+  usePageTitle('Misconfigured')
   return (
     <Box component="main" sx={{ p: 3, maxWidth: 640, mx: 'auto', mt: 8 }}>
       <Typography component="h1" variant="h4" gutterBottom>

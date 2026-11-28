@@ -7,9 +7,7 @@ dependencies = [
     "uvicorn>=0.54.0",
     "pydantic-settings>=2.7",
     "asyncpg>=0.32.0",
-    # redis 8.2.0 breaks fakeredis 2.40 (FakeAsyncRedis() reads a redis-py decorator closure that changed).
-    # Lift the cap when fakeredis supports it; #290 pins every dependency exactly.
-    "redis>=5.2,<8.2",
+    "redis>=5.2",
     "sqlalchemy[asyncio]>=2.1.8",
     "alembic>=1.20.1",
     # 2.10.1+: 2.10.0 checks `iss` as a partial match (CVE-2024-53861).
@@ -23,7 +21,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["ruff", "mypy", "pytest", "pytest-asyncio>=1.4.1.post1", "pytest-cov>=7", "httpx>=0.28.1", "fakeredis[lua]>=2.26"]
+dev = ["ruff", "mypy", "pytest", "pytest-asyncio>=1.4.1.post1", "pytest-cov>=7", "httpx>=0.28.1", "fakeredis[lua]>=2.41"]
 
 [tool.setuptools.packages.find]
 include = ["identity_api*"]
