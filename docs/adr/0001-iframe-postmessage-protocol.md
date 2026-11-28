@@ -159,13 +159,17 @@ The iframe element:
 ## What changed from the proposal
 
 The shell, the protocol package and the reference module are built (Phase 6, #249 to #258). The decisions above
-stand; these are the differences from the text as first proposed, each recorded in detail under the follow-ups:
+stand; these are the differences from the text as first proposed (the follow-ups below record most of them in
+detail, and the [protocol package's README](../../packages/shell-protocol/README.md) the checks of #253):
 
 | Proposed | Built |
 | --- | --- |
 | One token lifetime (the identity token, refreshed) | Two: the identity token (15 minutes) and a module token exchanged from it (5 minutes, never past the identity token). The shell exchanges, it does not refresh the module's token |
 | Whether tokens are shared by audience was not said | Kept per module (its registry id), so two modules on one audience never share a token |
-| The registry's home left open | The shell's own typed configuration, one list per environment, checked at build and at start (#252) |
+| The registry's home left open | The shell's own typed configuration, one list per environment, checked at build and at start; a module host may hold only letters, digits, dots and hyphens, so an origin cannot break the CSP it is written into (#252) |
+| The production build fails if `SHELL_ORIGIN` is missing or contains `*` | `createModuleClient` throws a `ProtocolConfigError` when the module starts: a missing origin, a wildcard or pattern, a path, or `http` other than `localhost` in a development build (#253) |
+| `expiresAt` is epoch seconds | A value past 10,000,000,000 (milliseconds sent by mistake) is refused, so it cannot pin a module to one token (#253) |
+| Messages over 64 KB are dropped | Measured as the JSON they would be; anything that is not plain JSON (a `Map`, a buffer, a cycle) counts as too large (#253) |
 | A shell-to-module "may I leave?" message left open | None in version 1: it cannot be relied on from a hung or hostile module, and the sandbox has no `allow-modals` (#257) |
 | `title` sets the breadcrumb and the address | The address is **replaced**, not pushed, and the shell re-checks the path (dot segments, encoded dots) before writing it (#257) |
 | `toast`: plain text, at most 280 characters | Also labelled with the module's name, at most 3 visible and 5 taken per 10 seconds per module, durations held to 3 to 15 seconds, announced politely (#257) |
@@ -339,7 +343,7 @@ export function isTrustedMessage(
 
 **Follow-ups**
 - ~~Create `packages/shell-protocol` with these types, runtime validators and a test harness (Phase 6).~~ Done (#253): [`packages/shell-protocol`](../../packages/shell-protocol/README.md), with hand-written validators (no `zod`; the package has no runtime dependency), `createShellChannel` and `createModuleClient`, and contract tests that run both ends over two jsdom windows. Two details the ADR left open: a module reads the shell's `error` at any `v` (so it can learn `version_unsupported` even when it speaks no common version), and the shell reads `ready` at any `v` for the same reason.
-- ~~Decide where the module registry lives.~~ Decided (Phase 6, #252): the shell's own typed configuration, one list per environment (`development`, `preview`, `production`), in `apps/shazlo-one/src/modules/registry.ts`. An entry holds `id`, `title`, `description`, `url`, `origin`, `roles`, `audience` and `supportedVersions`. It is checked when the shell builds and when it starts, and refused if an origin is a wildcard or pattern, is not https outside development, is not the origin of its `url`, repeats an id or origin, or has an empty role list. The CSP `frame-src` is generated from it, so adding a module is one entry. `super_admin` opens every module.
+- ~~Decide where the module registry lives.~~ Decided (Phase 6, #252): the shell's own typed configuration, one list per environment (`development`, `preview`, `production`), in `apps/shazlo-one/src/modules/registry.ts`. An entry holds `id`, `title`, `description`, `url`, `origin`, `roles`, `audience` and `supportedVersions`. It is checked when the shell builds and when it starts, and refused if an origin is a wildcard or pattern, has a host with anything but letters, digits, dots and hyphens, is not https outside development, is not the origin of its `url`, repeats an id or origin, or has an empty role list. The CSP `frame-src` is generated from it, so adding a module is one entry. `super_admin` opens every module.
 
 **Decided in #255 (the shell's host)**
 - A module's tokens are kept per module (its registry id), not per audience, so two modules that share an audience never share a token, and they are dropped when the module's page is left, its frame is reloaded or the session ends.
