@@ -3,7 +3,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
 
-from vendor_api.api.auth import UserProfile, VendorSummary, no_store, user_profile, vendor_summary
+from vendor_api.api.auth import UserProfile, VendorSummary, user_profile, vendor_summary
+from vendor_api.api.common import no_store
 from vendor_api.api.deps import CurrentVendorUser, current_vendor_user
 
 router = APIRouter(prefix="/vendor", tags=["vendor"])

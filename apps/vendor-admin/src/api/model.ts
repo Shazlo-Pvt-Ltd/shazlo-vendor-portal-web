@@ -360,6 +360,13 @@ export type VendorDetail = VendorSummary & {
         status: string;
         price_paise: number;
         thumbnail_url: string | null;
+        /**
+         * Format: date-time
+         * @description When this version was submitted; sent back with a decision as the version the reviewer saw
+         */
+        submitted_at: string;
+        /** @description Required photos this version lacks, by the product review page's rule: each of front, back, detail and worn, and try-on photos short of 5 */
+        photos_missing: number;
     }[];
     brand_live: boolean;
     history: History;
@@ -394,4 +401,28 @@ export type OutboxPage = {
         failed: number;
         delivered: number;
     };
+};
+
+/** @description Several of one vendor's waiting products to approve at once (1 to 50, each once), each with the version the reviewer saw. */
+export type ApproveProductsBody = {
+    products: {
+        id: string;
+        /** Format: date-time */
+        submitted_at: string;
+    }[];
+};
+
+/** @description Which products were approved, and which were not and why. */
+export type ApproveProductsResult = {
+    approved: {
+        id: string;
+        /** Format: date-time */
+        at: string;
+    }[];
+    failed: {
+        id: string;
+        /** @description not_found: not one of this vendor's products; not_pending: already decided; changed: submitted again since the reviewer looked */
+        code: "not_found" | "not_pending" | "changed";
+        message: string;
+    }[];
 };

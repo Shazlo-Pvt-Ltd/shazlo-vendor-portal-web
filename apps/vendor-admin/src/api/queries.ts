@@ -17,6 +17,7 @@ export const keys = {
   allQueue: ['queue'] as const,
   queueOrder: ['queue', 'order'] as const,
   review: (reviewId: string) => ['review', reviewId] as const,
+  allReviews: ['review'] as const,
   storeDetails: (vendorId: string) => ['store-details', vendorId] as const,
   vendors: (f: VendorFilters) => ['vendors', f] as const,
   allVendors: ['vendors'] as const,
@@ -68,6 +69,13 @@ export async function fetchEveryQueueItem(api: Api<ApiPaths>, filters: QueueFilt
     offset = nextOffset(slice)
   }
   return joinSlices(slices).items
+}
+
+// Every item that matches the filters, as one query (the dashboard's brands with products waiting).
+// Its key starts with the queue's, so a decision refreshes it with the queue.
+export function useEveryQueueItem(filters: QueueFilters) {
+  const { api } = useRuntime()
+  return useQuery({ queryKey: [...keys.queue(filters), 'every'] as const, queryFn: () => fetchEveryQueueItem(api, filters) })
 }
 
 // The queue's own order (oldest first, one page of the most the server returns), kept for the review
@@ -216,6 +224,23 @@ export function useCommissionAction(id: string) {
     onSuccess: (vendor) => {
       qc.setQueryData(keys.vendor(id), vendor)
       invalidate()
+    },
+  })
+}
+
+// Approve several of one vendor's waiting products at once, each with the version the reviewer saw.
+// The answer lists what was approved and what was not; both change the vendor and the product pages.
+export function useApproveProducts(vendorId: string) {
+  const { api } = useRuntime()
+  const invalidate = useInvalidateAfterDecision()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: M.ApproveProductsBody) => api.call((c) => c.POST('/api/v1/admin/vendors/{id}/products/approve', { params: { path: { id: vendorId } }, body })),
+    onSuccess: () => {
+      invalidate()
+      void qc.invalidateQueries({ queryKey: keys.vendor(vendorId) })
+      // Any review page that is open shows the new state.
+      void qc.invalidateQueries({ queryKey: keys.allReviews })
     },
   })
 }

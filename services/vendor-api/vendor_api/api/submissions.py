@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from vendor_api.api.auth import no_store
+from vendor_api.api.common import no_store
 from vendor_api.api.deps import Scope
 from vendor_api.db.models import ReviewStatus, ReviewSubject
 from vendor_api.db.session import get_session

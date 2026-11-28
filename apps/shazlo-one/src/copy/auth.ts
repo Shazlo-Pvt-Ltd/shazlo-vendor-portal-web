@@ -13,7 +13,7 @@ export const authCopy = {
     expired: 'Your session ended, so we signed you out. Sign in again to carry on.',
     pitch: 'One place to run Shazlo',
     points: [
-      { title: 'Vendors', body: 'Review applications, brand pages and products before they reach the app.' },
+      { title: 'Every module in one place', body: 'Each module opens here under one sign-in, with the pages your role allows.' },
       { title: 'Every decision on record', body: 'Each decision is recorded under your name, and sellers see your reason word for word.' },
       { title: 'Roles, not shared logins', body: 'Everyone has their own account and sees only the modules their role allows.' },
     ],

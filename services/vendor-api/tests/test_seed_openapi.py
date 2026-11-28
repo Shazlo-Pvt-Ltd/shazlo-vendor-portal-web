@@ -12,7 +12,7 @@ from vendor_api import cli
 from vendor_api.core.security import password_config
 from vendor_api.core.settings import Settings, get_settings
 from vendor_api.db.models import Vendor, VendorStatusEvent, VendorUser
-from vendor_api.openapi import OPENAPI_PATH, build_openapi
+from vendor_api.openapi import OPENAPI_PATHS, SURFACES, Surface, build_openapi
 from vendor_api.services.seed import (
     DEV_SEED_PASSWORD,
     SEED_OWNER_EMAIL,
@@ -28,17 +28,20 @@ SEED_PASSWORD = "local-dev-password-1"  # noqa: S105
 # --- openapi.json ------------------------------------------------------------------------
 
 
-def test_openapi_json_is_up_to_date() -> None:
-    """The committed document is what the app generates. If this fails, a route or a schema
-    changed: run `python -m vendor_api.cli export-openapi` and commit the result."""
-    committed = OPENAPI_PATH.read_text(encoding="utf-8").replace("\r\n", "\n")
-    assert committed == build_openapi(), (
-        "openapi.json is stale: run python -m vendor_api.cli export-openapi"
+@pytest.mark.parametrize("surface", SURFACES)
+def test_the_committed_documents_are_up_to_date(surface: Surface) -> None:
+    """Each committed document is what its app generates (ADR 0011: openapi.json for the seller
+    app, openapi.admin.json for the admin app). If this fails, a route or a schema changed: run
+    `python -m vendor_api.cli export-openapi` and commit the result."""
+    path = OPENAPI_PATHS[surface]
+    committed = path.read_text(encoding="utf-8").replace("\r\n", "\n")
+    assert committed == build_openapi(surface), (
+        f"{path.name} is stale: run python -m vendor_api.cli export-openapi"
     )
 
 
-def test_the_generated_document_is_stable_and_complete() -> None:
-    first, second = build_openapi(), build_openapi()
+def test_the_generated_documents_are_stable_and_complete() -> None:
+    first, second = build_openapi("seller"), build_openapi("seller")
     assert first == second  # the throwaway signing key never reaches it
     document = json.loads(first)
     assert document["info"]["title"] == "vendor-api"
@@ -50,28 +53,43 @@ def test_the_generated_document_is_stable_and_complete() -> None:
         "/v1/auth/set-password",
         "/v1/vendor/me",
         "/v1/vendor/users",
-        "/v1/admin/me",
         "/.well-known/jwks.json",
     } <= paths
+    assert not any(path.startswith("/v1/admin") for path in paths)
     assert "PRIVATE" not in first
+
+    text = build_openapi("admin")
+    assert text == build_openapi("admin")
+    admin = json.loads(text)
+    assert admin["info"]["title"] == "vendor-api (admin)"
+    admin_paths = set(admin["paths"])
+    assert {"/v1/admin/me", "/v1/admin/reviews", "/v1/admin/vendors", "/health"} <= admin_paths
+    assert {p for p in admin_paths if not p.startswith("/v1/admin/")} == {"/health", "/ready"}
 
 
 def test_check_passes_when_current_and_fails_when_stale(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    target = tmp_path / "openapi.json"
-    assert cli.main(["export-openapi", "--out", str(target)]) == 0
-    assert cli.main(["export-openapi", "--check", "--out", str(target)]) == 0
-    assert "up to date" in capsys.readouterr().out
+    for surface in SURFACES:
+        target = tmp_path / f"{surface}.json"
+        given = ["--surface", surface, "--out", str(target)]
+        assert cli.main(["export-openapi", *given]) == 0
+        assert cli.main(["export-openapi", "--check", *given]) == 0
+        assert "up to date" in capsys.readouterr().out
 
-    target.write_text("{}\n", encoding="utf-8")
-    assert cli.main(["export-openapi", "--check", "--out", str(target)]) == 1
-    assert "stale" in capsys.readouterr().err
-    assert cli.main(["export-openapi", "--check", "--out", str(tmp_path / "missing.json")]) == 1
+        target.write_text("{}\n", encoding="utf-8")
+        assert cli.main(["export-openapi", "--check", *given]) == 1
+        assert "stale" in capsys.readouterr().err
+    missing = ["--surface", "admin", "--out", str(tmp_path / "missing.json")]
+    assert cli.main(["export-openapi", "--check", *missing]) == 1
+    # One --out cannot hold two documents.
+    assert cli.main(["export-openapi", "--out", str(tmp_path / "both.json")]) == 1
+    assert "--surface" in capsys.readouterr().err
 
 
-def test_the_committed_file_ends_with_one_newline_and_uses_unix_endings() -> None:
-    raw = OPENAPI_PATH.read_bytes()
+@pytest.mark.parametrize("surface", SURFACES)
+def test_the_committed_files_end_with_one_newline(surface: Surface) -> None:
+    raw = OPENAPI_PATHS[surface].read_bytes()
     assert raw.endswith(b"}\n") or raw.endswith(b"}\r\n")
     assert not raw.endswith(b"\n\n")
 

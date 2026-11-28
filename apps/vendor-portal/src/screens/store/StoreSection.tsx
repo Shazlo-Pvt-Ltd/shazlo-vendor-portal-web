@@ -11,9 +11,10 @@ import { paths } from '../../app/paths'
 import { storeCopy as copy } from '../../copy/store'
 import { FORM_MAX_WIDTH, useNavMode } from '../../shell/layout'
 import { StickyFooter } from '../../shell/StickyFooter'
+import { useSession } from '../../session/AuthProvider'
 import { ErrorSummary, touch } from './topics/controls'
 import { TopicFields } from './topics/forms'
-import { answersFrom, checkTopic, FIELD_ORDER, hasErrors, isTopic, placesOf, sectionBody, TOPIC_TITLES, unknownIfsc, type Topic, type TopicAnswers } from './topics/model'
+import { answersFrom, checkTopic, FIELD_ORDER, hasErrors, isTopic, OWNER_ONLY_TOPICS, placesOf, sectionBody, TOPIC_TITLES, unknownIfsc, type Topic, type TopicAnswers } from './topics/model'
 import { payoutLine } from './topics/summary'
 import { useFormErrors } from './topics/useFormErrors'
 
@@ -27,8 +28,10 @@ export function StoreSectionPage() {
   const topic = isTopic(section) ? section : null
   useCrumb(topic ? TOPIC_TITLES[topic] : null)
   const details = useStoreDetails()
+  const owner = useSession().role === 'owner'
 
   if (!topic) return <UnknownSection />
+  if (!owner && OWNER_ONLY_TOPICS.has(topic)) return <OwnerOnly topic={topic} />
   if (details.data) return <SectionForm key={topic} topic={topic} details={details.data} />
   if (details.isError) {
     return (
@@ -77,6 +80,18 @@ function Frame({ children, onSubmit }: { children: ReactNode; onSubmit?: (e: For
       )}
       {children}
     </Box>
+  )
+}
+
+// Staff who open payouts or business details by address: vendor-api would refuse their save (403).
+function OwnerOnly({ topic }: { topic: Topic }) {
+  return (
+    <Frame>
+      <PageHeader title={TOPIC_TITLES[topic]} />
+      <Banner tone="info" title={copy.section.ownerOnly}>
+        {copy.section.ownerOnlyBody}
+      </Banner>
+    </Frame>
   )
 }
 

@@ -308,13 +308,22 @@ describe('A-11 Admins: deactivate and reactivate', () => {
     expect(item).toHaveTextContent('You cannot deactivate yourself.')
   })
 
-  it('shows the API answer when a change is refused', async () => {
-    server.use(http.patch('*/v1/admins/:id', () => HttpResponse.json({ error: { code: 'cannot_deactivate_self', message: 'You cannot remove your own super admin access or deactivate yourself.', request_id: 'r' } }, { status: 409 })))
+  it('says why when identity-api refuses to deactivate yourself', async () => {
+    server.use(http.patch('*/v1/admins/:id', () => HttpResponse.json({ error: { code: 'cannot_deactivate_self', message: 'You cannot deactivate yourself', request_id: 'r' } }, { status: 409 })))
     const { user, identityDb } = await openAdmins()
     await menu(user, 'Priya Mehta', 'Deactivate')
     const dialog = await screen.findByRole('dialog', { name: 'Deactivate Priya Mehta?' })
     await user.click(within(dialog).getByRole('button', { name: 'Deactivate' }))
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent('You cannot remove your own super admin access or deactivate yourself.')
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('You cannot deactivate your own account. Ask another super admin to do it.')
     expect(identityDb.admins.find((a) => a.id === ADMIN_ID.priya)!.is_active).toBe(true)
+  })
+
+  it('shows any other refusal in the words identity-api sent', async () => {
+    server.use(http.patch('*/v1/admins/:id', () => HttpResponse.json({ error: { code: 'conflict', message: 'Someone else changed this admin.', request_id: 'r' } }, { status: 409 })))
+    const { user } = await openAdmins()
+    await menu(user, 'Priya Mehta', 'Deactivate')
+    const dialog = await screen.findByRole('dialog', { name: 'Deactivate Priya Mehta?' })
+    await user.click(within(dialog).getByRole('button', { name: 'Deactivate' }))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Someone else changed this admin.')
   })
 })

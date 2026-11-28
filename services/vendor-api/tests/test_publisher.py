@@ -34,6 +34,7 @@ from shazlo_security.signing import (
 from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
+from support import WORKER_ROLE, as_role
 
 from vendor_api import worker as worker_module
 from vendor_api.core.settings import Settings
@@ -335,12 +336,13 @@ def clock() -> Clock:
 
 
 def shared(session: AsyncSession) -> Callable[[], Any]:
-    """The test's session, one user at a time (production opens a session per step)."""
+    """The test's session, one user at a time (production opens a session per step), as the
+    worker's database role."""
     lock = asyncio.Lock()
 
     @asynccontextmanager
     async def open_session() -> AsyncIterator[AsyncSession]:
-        async with lock:
+        async with lock, as_role(session, WORKER_ROLE):
             yield session
 
     return open_session

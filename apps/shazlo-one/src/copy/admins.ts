@@ -108,4 +108,21 @@ export const adminsCopy = {
     done: (name: string) => `${name} is deactivated`,
   },
   reactivated: (name: string) => `${name} can sign in again`,
+  // The list's pages, when there are more admins than fit on one.
+  pages: {
+    label: 'Pages of admins',
+    position: (page: number, pages: number) => `Page ${page} of ${pages}`,
+    previous: 'Previous page',
+    next: 'Next page',
+  },
+  // What identity-api refused, in words (screens/admins/refusals.ts).
+  manage: {
+    errors: {
+      selfDeactivate: 'You cannot deactivate your own account. Ask another super admin to do it.',
+      lastSuperAdminStatus: 'This is the only active super admin. Deactivating them would lock everyone out of Admins & roles. Make another admin a super admin first.',
+      lastSuperAdminRole: 'This is the only active super admin. Taking the role away would lock everyone out of Admins & roles. Make another admin a super admin first.',
+      notFound: 'This admin no longer exists. Someone else may have removed them, so the list has been reloaded.',
+      forbidden: 'You can no longer manage admins: your super admin role was removed.',
+    },
+  },
 } as const

@@ -663,7 +663,7 @@ async def test_a_hook_runs_inside_the_decision_and_sees_what_it_did(
         assert events == 1
         seen.append((outcome.action, str(status), outcome.detail["after"].get("state")))
 
-    tenants.api.app.state.review_decisions.add_hook(hook)
+    tenants.api.admin.state.review_decisions.add_hook(hook)
     _, approve_id = await pending_profile(session, tenants.a)
     _, reject_id = await pending_profile(session, tenants.b)
     await decide(tenants, approve_id, "approve", {"version": 1})
@@ -677,7 +677,7 @@ async def test_a_hook_that_fails_undoes_the_whole_decision(
     async def broken(db: AsyncSession, outcome: Decision) -> None:
         raise RuntimeError("the outbox is down")
 
-    tenants.api.app.state.review_decisions.add_hook(broken)
+    tenants.api.admin.state.review_decisions.add_hook(broken)
     profile_id, review_id = await pending_profile(session, tenants.a)
     with pytest.raises(RuntimeError, match="outbox"):
         await decide(tenants, review_id, "approve", {"version": 1})
@@ -695,7 +695,7 @@ async def test_a_hook_is_told_what_was_published_and_what_it_replaced(
     async def hook(db: AsyncSession, outcome: Decision) -> None:
         told.append(outcome)
 
-    tenants.api.app.state.review_decisions.add_hook(hook)
+    tenants.api.admin.state.review_decisions.add_hook(hook)
     live = await profile(session, tenants.a, 1, "published")
     live_id = live.id
     new_id, review_id = await pending_profile(session, tenants.a, 2)

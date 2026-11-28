@@ -1,6 +1,6 @@
 import createClient, { type Client } from 'openapi-fetch'
 
-// Shared request runner for the shell's two backends: identity-api and (with an exchanged token) vendor-api.
+// Request runner for identity-api, the shell's own backend. Module backends are read in api/modules.ts.
 export class ApiError extends Error {
   readonly status: number
   readonly code: string
@@ -74,13 +74,15 @@ export function toApiError(response: Response, body: unknown): ApiError {
 
 export interface Api<Paths extends object> {
   client: Client<Paths>
-  call<T>(send: (client: Client<Paths>) => Promise<Result<T>>): Promise<T>
+  /** `renew: false` skips the 401 renewal (the refresh call itself must, or it would wait on itself). */
+  call<T>(send: (client: Client<Paths>) => Promise<Result<T>>, options?: { renew?: boolean }): Promise<T>
 }
 
 // `getToken` supplies the bearer; on a 401, `renew` gets a fresh one once, shared by parallel calls.
+// `onForbidden` hears every 403: the caller's roles may have changed under it.
 // Only identity-api needs cookies (its HttpOnly refresh cookie); other APIs use bearer tokens, and
 // sending credentials cross-origin would also require Access-Control-Allow-Credentials there.
-export function createApi<Paths extends object>({ baseUrl, getToken, renew, withCookies = false }: { baseUrl: string; getToken: () => string | null; renew?: () => Promise<boolean>; withCookies?: boolean }): Api<Paths> {
+export function createApi<Paths extends object>({ baseUrl, getToken, renew, onForbidden, withCookies = false }: { baseUrl: string; getToken: () => string | null; renew?: () => Promise<boolean>; onForbidden?: (error: ApiError) => void; withCookies?: boolean }): Api<Paths> {
   const client = createClient<Paths>({ baseUrl, credentials: withCookies ? 'include' : 'same-origin' })
   client.use({
     onRequest({ request }) {
@@ -98,15 +100,19 @@ export function createApi<Paths extends object>({ baseUrl, getToken, renew, with
       throw new ApiError(0, 'network_error', 'You seem to be offline. Check your connection and try again.')
     }
   }
-  async function call<T>(fn: (c: Client<Paths>) => Promise<Result<T>>): Promise<T> {
+  async function call<T>(fn: (c: Client<Paths>) => Promise<Result<T>>, options: { renew?: boolean } = {}): Promise<T> {
     let result = await send(fn)
-    if (result.response.status === 401 && renew && getToken()) {
+    if (result.response.status === 401 && renew && options.renew !== false && getToken()) {
       renewing ??= renew().finally(() => {
         renewing = null
       })
       if (await renewing) result = await send(fn)
     }
-    if (result.error !== undefined || !result.response.ok) throw toApiError(result.response, result.error)
+    if (result.error !== undefined || !result.response.ok) {
+      const error = toApiError(result.response, result.error)
+      if (error.status === 403) onForbidden?.(error)
+      throw error
+    }
     return result.data as T
   }
   return { client, call }

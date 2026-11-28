@@ -5,6 +5,7 @@ import { Link as RouterLink, Navigate, useRouteError, type RouteObject } from 'r
 import { useModuleTitle } from '../runtime/runtime'
 import { ModuleRoot } from './App'
 
+const Dashboard = lazy(() => import('../screens/dashboard/Dashboard'))
 const ReviewQueue = lazy(() => import('../screens/queue/ReviewQueue'))
 const ProductReview = lazy(() => import('../screens/review/ProductReview'))
 const BrandReview = lazy(() => import('../screens/review/BrandReview'))
@@ -13,6 +14,8 @@ const VendorDetail = lazy(() => import('../screens/vendors/VendorDetail'))
 const Publishing = lazy(() => import('../screens/publishing/Publishing'))
 
 export const modulePaths = {
+  // The module's landing page: Shazlo One opens it when an admin clicks Vendors.
+  dashboard: '/dashboard',
   queue: '/queue',
   product: (id: string) => `/review/product/${id}`,
   // Both take the review's id (a queue item's `id`), not the product's or the vendor's.
@@ -26,7 +29,7 @@ export const modulePaths = {
 
 function NotFound() {
   useModuleTitle('Not found')
-  return <EmptyState illustration="box" title="We could not find that page" body="The link may be old. Use the links under Vendors in the menu." action={<Button variant="contained" component={RouterLink} to={modulePaths.queue}>Open the review queue</Button>} />
+  return <EmptyState illustration="box" title="We could not find that page" body="The link may be old. Use the links under Vendors in the menu." action={<Button variant="contained" component={RouterLink} to={modulePaths.dashboard}>Open the vendor dashboard</Button>} />
 }
 
 function RouteError() {
@@ -40,7 +43,8 @@ export const routes: RouteObject[] = [
     element: <ModuleRoot />,
     errorElement: <RouteError />,
     children: [
-      { index: true, element: <Navigate to={modulePaths.queue} replace /> },
+      { index: true, element: <Navigate to={modulePaths.dashboard} replace /> },
+      { path: 'dashboard', element: <Dashboard /> },
       { path: 'queue', element: <ReviewQueue /> },
       { path: 'review/product/:id', element: <ProductReview /> },
       { path: 'review/brand/:id', element: <BrandReview /> },

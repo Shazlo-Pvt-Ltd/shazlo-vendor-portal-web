@@ -10,16 +10,19 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
+from psycopg import sql
 from shazlo_security.keys import KeyConfigError, new_kid, write_new_key
 from shazlo_security.passwords import PasswordService
+from sqlalchemy import create_engine as create_sync_engine
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vendor_api.core.security import password_config
 from vendor_api.core.settings import get_settings
 from vendor_api.db.models import Product, Vendor, VendorStatus
-from vendor_api.db.session import create_engine, create_sessionmaker
-from vendor_api.openapi import OPENAPI_PATH, build_openapi
+from vendor_api.db.roles import APPS, LOGIN_NAME, LOGINS, MIN_PASSWORD_LENGTH, App
+from vendor_api.db.session import create_engine, create_sessionmaker, sync_url
+from vendor_api.openapi import OPENAPI_PATHS, SURFACES, Surface, build_openapi
 from vendor_api.services.email import EmailTemplate, build_sender
 from vendor_api.services.outbox import OutboxWriter
 from vendor_api.services.payout_cipher import parse_keys
@@ -199,8 +202,16 @@ def _print_catalog(catalog: CatalogSeed) -> None:
     print("  reviewer check): this service cannot create admins.")
 
 
-def _export_openapi(check: bool, path: Path) -> None:
-    text = build_openapi()
+def _export_openapis(check: bool, surface: Surface | None, out: Path | None) -> None:
+    """Both documents by default; one with --surface (and --out to write it elsewhere)."""
+    if out is not None and surface is None:
+        raise CommandError("--out needs --surface (seller or admin)")
+    for name in (surface,) if surface else SURFACES:
+        _export_openapi(check, name, out or OPENAPI_PATHS[name])
+
+
+def _export_openapi(check: bool, surface: Surface, path: Path) -> None:
+    text = build_openapi(surface)
     if check:
         current = path.read_text(encoding="utf-8").replace("\r\n", "\n") if path.exists() else ""
         if current != text:
@@ -258,6 +269,99 @@ def _generate_payout_key(kid: str | None) -> None:
     print(f"PAYOUT_ENCRYPTION_KID={chosen}  (store the key in your secret manager, never in git)")
 
 
+def _owner_database_url() -> str:
+    # As in Alembic (migrations/env.py): DATABASE_URL alone is enough, no full settings needed.
+    url = os.environ.get("DATABASE_URL")
+    return url if url else get_settings().database_url
+
+
+def _db_logins(only: list[App]) -> list[str]:
+    """Creates (or updates the password of) each app's login, a member of its app's group role
+    only. Run as the owner of the tables, after `alembic upgrade head`. Passwords come from the
+    environment, never the command line (which other users of the machine can see)."""
+    wanted = [LOGINS[app] for app in only]
+    users: dict[str, str] = {}
+    problems: list[str] = []
+    for login in wanted:
+        user = os.environ.get(login.user_env) or login.default_user
+        password = os.environ.get(login.password_env, "")
+        if not LOGIN_NAME.match(user):
+            problems.append(f"{login.user_env} must be lowercase letters, digits and _ ({user!r})")
+        if len(password) < MIN_PASSWORD_LENGTH:
+            problems.append(
+                f"set {login.password_env} to at least {MIN_PASSWORD_LENGTH} characters"
+            )
+        users[login.app] = user
+    if len(set(users.values())) < len(users):
+        problems.append("each app needs its own login name")
+    if problems:
+        raise CommandError("; ".join(problems))
+
+    done: list[str] = []
+    engine = create_sync_engine(sync_url(_owner_database_url()))
+    try:
+        raw = engine.raw_connection()
+        try:
+            cursor = raw.cursor()
+            cursor.execute("SELECT current_user")
+            owner = cursor.fetchone()[0]  # type: ignore[index]
+            if owner in users.values():
+                raise CommandError(f"run db-logins as the owner of the tables, not as {owner}")
+            for login in wanted:
+                user = users[login.app]
+                password = os.environ[login.password_env]
+                cursor.execute(
+                    "SELECT rolsuper OR rolcreaterole OR rolcreatedb OR rolbypassrls "
+                    "OR rolreplication FROM pg_roles WHERE rolname = %s",
+                    (user,),
+                )
+                found = cursor.fetchone()
+                if found is None:
+                    cursor.execute(
+                        sql.SQL(
+                            "CREATE ROLE {} WITH LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE "
+                            "NOREPLICATION NOBYPASSRLS PASSWORD {}"
+                        ).format(sql.Identifier(user), sql.Literal(password))
+                    )
+                    verb = "Created"
+                elif found[0]:
+                    raise CommandError(
+                        f"{user} exists with powers an app's login must not have (superuser, "
+                        "create role or database, replication or bypass RLS); fix or drop it first"
+                    )
+                else:
+                    cursor.execute(
+                        sql.SQL("ALTER ROLE {} WITH LOGIN PASSWORD {}").format(
+                            sql.Identifier(user), sql.Literal(password)
+                        )
+                    )
+                    verb = "Updated the password of"
+                # One group, its own: never the owner's or another app's.
+                cursor.execute(
+                    "SELECT g.rolname FROM pg_auth_members m "
+                    "JOIN pg_roles g ON g.oid = m.roleid JOIN pg_roles u ON u.oid = m.member "
+                    "WHERE u.rolname = %s",
+                    (user,),
+                )
+                extra = sorted(group for (group,) in cursor.fetchall() if group != login.group)
+                if extra:
+                    raise CommandError(
+                        f"{user} is also a member of {', '.join(extra)}; revoke that first"
+                    )
+                cursor.execute(
+                    sql.SQL("GRANT {} TO {}").format(
+                        sql.Identifier(login.group), sql.Identifier(user)
+                    )
+                )
+                done.append(f"{verb} {user} (member of {login.group}).")
+            raw.commit()
+        finally:
+            raw.close()
+    finally:
+        engine.dispose()
+    return done
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="vendor_api.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -311,15 +415,26 @@ def main(argv: list[str] | None = None) -> int:
         "--product", help="a product's id, or its SKU together with --vendor (SKUs repeat)"
     )
     resync.add_argument("--all", action="store_true", help="every vendor, page and product")
+    logins = commands.add_parser(
+        "db-logins",
+        help="create the seller app's, the admin app's and the worker's database logins (run as "
+        "the owner of the tables, after migrating); passwords from VENDOR_<APP>_DB_PASSWORD",
+    )
+    logins.add_argument(
+        "--app", choices=APPS, action="append", help="only this app's login (repeatable)"
+    )
     export = commands.add_parser(
-        "export-openapi", help="write openapi.json (or, with --check, fail if it is stale)"
+        "export-openapi",
+        help="write openapi.json (seller app) and openapi.admin.json (admin app); with --check,"
+        " fail if either is stale",
     )
     export.add_argument("--check", action="store_true", help="do not write; fail if stale")
-    export.add_argument("--out", type=Path, default=OPENAPI_PATH)
+    export.add_argument("--surface", choices=SURFACES, help="only this app's document")
+    export.add_argument("--out", type=Path, help="with --surface: write or check this path")
     args = parser.parse_args(argv)
     try:
         if args.command == "export-openapi":
-            _export_openapi(args.check, args.out)
+            _export_openapis(args.check, args.surface, args.out)
         elif args.command == "seed-dev":
             settings = get_settings()
             if settings.env != "dev":
@@ -350,6 +465,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Invited the owner of {args.vendor} at {to}.")
         elif args.command == "resync":
             _print_resync(asyncio.run(_resync(args.vendor, args.product, args.all)))
+        elif args.command == "db-logins":
+            for line in _db_logins(args.app or list(APPS)):
+                print(line)
+            print("Give each app its own login in DATABASE_URL; keep the owner for migrations.")
         elif args.command == "send-test-email":
             _send_test_email(args.to, args.template)
         elif args.command == "generate-payout-key":

@@ -3,7 +3,9 @@ import { EmptyState } from '@shazlo/ui'
 import type { ReactNode } from 'react'
 import { Link as RouterLink, useRouteError } from 'react-router'
 import { paths } from '../app/paths'
-import type { ShellModule } from '../app/registry'
+import type { RegistryEntry } from '@shazlo/shell-protocol'
+import { useModuleManifest } from '../api/modules'
+import { resolveModule } from '../app/registry'
 import { shellCopy } from '../copy/shell'
 import { useSession } from '../session/useSession'
 import { ModuleHost } from '../shell/ModuleHost'
@@ -18,10 +20,13 @@ export function RouteError() {
   return <EmptyState illustration="sheet" title="This page did not load" body="Something went wrong on our side. Reload the page; nothing you saved is lost." action={<Button variant="contained" onClick={() => window.location.reload()}>Reload page</Button>} />
 }
 
-// Opens a module only for the roles its registry entry allows.
-export function ModuleRoute({ module }: { module: ShellModule }) {
+// Opens a module only for the roles its registry entry allows. The module is framed at once; its
+// manifest (title, pages) fills in when it arrives, and a missing one leaves the registry title.
+export function ModuleRoute({ entry }: { entry: RegistryEntry }) {
   const { can } = useSession()
-  if (!can(module.roles)) {
+  const allowed = can(entry.roles)
+  const module = resolveModule(entry, useModuleManifest(entry, allowed).data)
+  if (!allowed) {
     return <EmptyState illustration="sheet" title={shellCopy.module.forbiddenTitle(module.title)} body={shellCopy.module.forbiddenBody} action={<Button variant="outlined" component={RouterLink} to={paths.home}>Back to Home</Button>} />
   }
   return <ModuleHost module={module} />

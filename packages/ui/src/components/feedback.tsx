@@ -86,7 +86,9 @@ export function SnackbarProvider({ children }: { children: ReactNode }) {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
         message={message?.text}
         slotProps={{
-          content: { role: 'status', sx: { bgcolor: neutral.ink, color: brand.offWhite, borderRadius: `${radius.control}px`, typography: 'body2' } },
+          // Plain text that wraps, also inside one long word, and keeps its line breaks (a framed module's
+          // toast can be three short lines).
+          content: { role: 'status', sx: { bgcolor: neutral.ink, color: brand.offWhite, borderRadius: `${radius.control}px`, typography: 'body2', '& .MuiSnackbarContent-message': { minWidth: 0, overflowWrap: 'anywhere', whiteSpace: 'pre-line' } } },
         }}
         sx={{ bottom: { xs: 'calc(80px + env(safe-area-inset-bottom, 0px))', md: 24 } }}
       />

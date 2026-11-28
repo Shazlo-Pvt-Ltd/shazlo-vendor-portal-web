@@ -3,6 +3,7 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   plugins: [react()],
+  define: { __SHELL_ORIGIN__: JSON.stringify('http://localhost:5192'), __VENDOR_API_ORIGIN__: JSON.stringify('http://vendor-api.test') },
   test: {
     name: 'vendor-admin',
     include: ['src/**/*.test.{ts,tsx}'],

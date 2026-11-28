@@ -7,7 +7,7 @@ FastAPI service for vendors, brand profiles, products, assets, reviews and publi
 - **Vendor accounts:** signup with email verification, login, refresh (rotating tokens with reuse detection), logout, change-password, forgot and set password.
 - **A team per vendor:** the owner invites staff, lists, disables and enables them; invites and resets go by email.
 - **Vendor-scoped data isolation**, with helpers and tests that fail when a route or table skips the rule.
-- **Admin API** (`/v1/admin/*`): accepts only identity-api tokens, verified through its JWKS. It serves the review queue and decisions, vendor accounts and the outbox.
+- **Admin API** (`/v1/admin/*`, the admin app on port 8004): accepts only identity-api tokens, verified through its JWKS. It serves the review queue and decisions, vendor accounts, the outbox and the admins' home summary (`GET /v1/admin/summary`, and `GET /v1/admin/module-summary` for Shazlo One).
 - **Its own tokens and keys:** vendor-api signs vendor tokens with its own key and serves its own JWKS.
 - **The schema** for vendors, users, tokens, brand profiles, products (identity and revisions), assets, reviews and the outbox.
 - **A brand page per vendor:** edit a draft, submit it for review, read the published version.
@@ -19,6 +19,37 @@ FastAPI service for vendors, brand profiles, products, assets, reviews and publi
 - **Central-app publishing (Phase 4):** every approval writes its contract-checked event to the outbox in the same transaction, and so do archiving a live product and suspending, rejecting or reinstating a vendor (what shoppers stop or start seeing again). A worker (`python -m vendor_api.worker`, the `vendor-worker` compose service) sends the events with HMAC-signed requests, retries with backoff and marks an event `dead` after the 8th failed attempt; it also reconciles with the central app every night, and `python -m vendor_api.cli resync` re-sends the current state on demand. Admins can find, read and retry events through `/v1/admin/outbox`.
 
 Each part is described below. `tests/test_e2e_catalog.py` walks the whole flow against Postgres and Redis, and [Try the review flow](#try-the-review-flow-locally) does it by hand.
+
+## Two apps, one database (ADR 0011)
+
+vendor-api is one package that runs as **two apps**, so the Vendor Portal and Shazlo One's Vendors module are separate deployables that share data, not code paths:
+
+| App | Entry point | Port | Serves | Accepts | CORS |
+|---|---|---|---|---|---|
+| **Seller app** (the Vendor Portal's backend) | `vendor_api.main:app` (`create_seller_app`) | 8002 | `/v1/auth`, `/v1/vendor/*`, `/v1/public/*`, the vendor JWKS, `/health`, `/ready` | vendor-api tokens only | `CORS_ALLOWED_ORIGINS` (the portal), with credentials |
+| **Admin app** (the backend of Shazlo One's Vendors module) | `vendor_api.admin_main:app` (`create_admin_app`) | 8004 | `/v1/admin/*`, `/health`, `/ready` | identity-api tokens only | `ADMIN_CORS_ALLOWED_ORIGINS` (the module and the shell), no credentials, `GET`/`POST` only |
+
+- **One database, one migration chain, one worker.** Both apps write the same tables, so an approval still writes its central-app event in the same transaction (ADR 0003). Migrations run once (`alembic upgrade head` from either), and `vendor-worker` delivers what both write.
+- **Each app holds only what its routes need.** The admin app holds no vendor signing key, no payout key and no rate-limit key: it issues no tokens, reads payout details masked, and ends a suspended vendor's sessions through the refresh store alone. The seller app holds no identity-api verifier. `tests/test_surfaces.py` and `tests/test_route_auth_coverage.py` pin both.
+- **Settings both must share:** the database (each app logs in as its own user: see below), `REDIS_URL` (the admin app ends vendor sessions in the seller app's refresh store; a different Redis ends nothing, and nothing reports it), `OUTBOX_EVENTS_ENABLED`, `JWT_ISSUER` (the seller app's, so the check that it differs from `IDENTITY_ISSUER` runs in both), SMTP and `PORTAL_BASE_URL` (the admin app emails vendors).
+- **Failures stay apart.** Stopping the admin app leaves the portal working; stopping the seller app leaves the Vendors module working. The shared Postgres is the one common failure: if it goes down both apps do, while Shazlo One's shell stays up (identity-api has its own database).
+- **Neither group of routers imports the other** (`tests/test_surface_boundaries.py`). What both need lives in `api/common.py` and `api/views.py`.
+
+### One database, a login per app (migration 0012)
+
+The seller app, the admin app and the worker log in to the shared database as three users, each a member of one group role with only that app's table rights. The owner of the tables runs the migrations and the CLI and is none of them. So a bug or a break-in in one app cannot do what only another may: the admin app cannot read or change a seller's password or sign-in tokens, the seller app cannot mark an event sent or write the delivery log, the worker writes nothing but the outbox, and no app can truncate a table, disable a trigger or change the schema.
+
+| Login (default name) | Group role | Password from | Used by |
+|---|---|---|---|
+| `vendor_seller_app` | `vendor_seller` | `VENDOR_SELLER_DB_PASSWORD` | the seller app (`vendor-api`) |
+| `vendor_admin_app` | `vendor_admin` | `VENDOR_ADMIN_DB_PASSWORD` | the admin app (`vendor-admin-api`) |
+| `vendor_worker_app` | `vendor_worker` | `VENDOR_WORKER_DB_PASSWORD` | the worker (`vendor-worker`) |
+| the owner (`POSTGRES_USER` locally) | | | `alembic`, the CLI (`vendor-cli`) |
+
+- **Make them** after migrating, as the owner: `python -m vendor_api.cli db-logins` (`--app seller` for one). It creates each login (or sets a new password), makes it a member of its group only, and refuses a login that already has more (superuser, create role, another app's group). Passwords come from the environment, never the command line, are at least 16 characters and go into each app's `DATABASE_URL`. `VENDOR_<APP>_DB_USER` renames a login. In production the owner needs `CREATEROLE`.
+- **The rights** are a table in `migrations/versions/0012_app_roles.py`. A new table needs its line in its own migration, or no app can use it; `tests/test_db_roles.py` pins the whole matrix and fails on a table without a line.
+- **Every test runs as the app's role:** the seller app's requests as `vendor_seller`, the admin app's as `vendor_admin`, the worker's jobs as `vendor_worker` (`tests/support.py`, `as_role`). A right an app lacks fails in the tests, not first in a deployment.
+- **Production refuses an all-powerful login.** With `ENV=prod`, `/ready` has a `database_role` check that fails (503) while the app's login is a superuser, owns the tables (or is a member of their owner), may create tables, roles or databases, or bypasses row security; the worker refuses to start with such a login. Locally (`ENV=dev`) the owner still works, so `.venv` runs need no logins.
 
 ## Quick start: from nothing to a signed-in vendor
 
@@ -35,7 +66,8 @@ cp .env.example .env                       # put the same POSTGRES_PASSWORD into
 python -m vendor_api.cli generate-key      # writes ./.keys/<kid>.pem; JWT_KEYS_DIR in .env points there
 alembic upgrade head
 python -m vendor_api.cli seed-dev          # a demo vendor, its catalog, and two more vendors
-uvicorn vendor_api.main:app --reload --port 8002
+uvicorn vendor_api.main:app --reload --port 8002          # the seller app
+uvicorn vendor_api.admin_main:app --reload --port 8004    # the admin app (needs IDENTITY_* in .env)
 ```
 
 Then, in another terminal:
@@ -59,28 +91,28 @@ curl -s localhost:8002/v1/auth/login -H 'content-type: application/json' \
   - **Central-app events:** the seed's two approvals (the published brand profile and the live kurta) have their `*.published` events in `outbox_events`, as an approval through the API would, so approving the pending reviews continues their versions. With `OUTBOX_EVENTS_ENABLED=false` it writes none, like the app.
   - **A reviewer** is not created here: reviewers are identity-api admins. Seed identity-api (`python -m identity_api.cli seed`) and use the token of the `super_admin` it creates; a `super_admin` passes every reviewer check. A dedicated `vendor_reviewer` is made through identity-api's admin API.
 - If `generate-key` printed a `JWT_SIGNING_KID`, put it in `.env` (it is only needed with more than one key). The app refuses to start without a signing key.
-- To also run identity-api (admin tokens for `/v1/admin/*`) see the [root README](../../README.md), Local development. vendor-api starts without it.
+- To also run identity-api (admin tokens for `/v1/admin/*` on the admin app) see the [root README](../../README.md), Local development. Both apps start without it: the admin app fetches identity-api's keys on the first admin token.
 
 ## Try the review flow locally
 
-With vendor-api and identity-api running (see the root README, Local development) and `seed-dev` done. `$VENDOR` is a vendor token (the `access_token` of a login), `$ADMIN` an identity-api token for the seeded admin with `aud` `vendor-api` (`POST /v1/auth/token` on identity-api).
+With both vendor-api apps and identity-api running (see the root README, Local development) and `seed-dev` done. Admin calls go to the admin app on 8004, vendor calls to the seller app on 8002. `$VENDOR` is a vendor token (the `access_token` of a login), `$ADMIN` an identity-api token for the seeded admin with `aud` `vendor-api` (`POST /v1/auth/token` on identity-api).
 
 ```sh
 # What is waiting, oldest first (four reviews after seed-dev):
-curl -s localhost:8002/v1/admin/reviews -H "authorization: Bearer $ADMIN"
+curl -s localhost:8004/v1/admin/reviews -H "authorization: Bearer $ADMIN"
 # One of them with the exact fields that changed (and `content.version`, which you send back):
-curl -s localhost:8002/v1/admin/reviews/<id> -H "authorization: Bearer $ADMIN"
+curl -s localhost:8004/v1/admin/reviews/<id> -H "authorization: Bearer $ADMIN"
 # Approve it, or reject it with a reason:
-curl -s -X POST localhost:8002/v1/admin/reviews/<id>/approve -H "authorization: Bearer $ADMIN" \
+curl -s -X POST localhost:8004/v1/admin/reviews/<id>/approve -H "authorization: Bearer $ADMIN" \
   -H 'content-type: application/json' -d '{"version": 2}'
-curl -s -X POST localhost:8002/v1/admin/reviews/<id>/reject -H "authorization: Bearer $ADMIN" \
+curl -s -X POST localhost:8004/v1/admin/reviews/<id>/reject -H "authorization: Bearer $ADMIN" \
   -H 'content-type: application/json' -d '{"version": 2, "reason": "The logo is too small to read."}'
 # As the vendor: the page shoppers see now, and the catalog:
 curl -s localhost:8002/v1/vendor/brand-profile/published -H "authorization: Bearer $VENDOR"
 curl -s localhost:8002/v1/vendor/products -H "authorization: Bearer $VENDOR"
 # Vendor accounts: the pending application, then approve or suspend it:
-curl -s localhost:8002/v1/admin/vendors -H "authorization: Bearer $ADMIN"
-curl -s -X POST localhost:8002/v1/admin/vendors/<id>/approve -H "authorization: Bearer $ADMIN" \
+curl -s localhost:8004/v1/admin/vendors -H "authorization: Bearer $ADMIN"
+curl -s -X POST localhost:8004/v1/admin/vendors/<id>/approve -H "authorization: Bearer $ADMIN" \
   -H 'content-type: application/json' -d '{}'
 ```
 
@@ -88,16 +120,16 @@ Each approval also writes its central-app event to `outbox_events` in the same t
 
 ## Endpoints
 
-The live reference is the OpenAPI document at <http://localhost:8002/docs> (dev; off when `ENV=prod`). **`openapi.json` in this directory is the committed copy** the Phase 5 typed client is generated from. A test fails when it is stale: regenerate it with `python -m vendor_api.cli export-openapi` and commit it (`--check` only verifies).
+The live references are the OpenAPI documents at <http://localhost:8002/docs> (the seller app) and <http://localhost:8004/docs> (the admin app); dev only, off when `ENV=prod`. **The committed copies are `openapi.json` (seller app, read by `apps/vendor-portal`) and `openapi.admin.json` (admin app, read by `apps/vendor-admin` and the Shazlo One shell).** A test fails when either is stale: regenerate both with `python -m vendor_api.cli export-openapi` and commit them (`--check` only verifies; `--surface seller|admin` does one).
 
 | Group | Endpoints | Accepts |
 |---|---|---|
-| Health | `GET /health`, `GET /ready` | anyone |
-| Keys | `GET /.well-known/jwks.json` | anyone |
+| Health | `GET /health`, `GET /ready` (both apps) | anyone |
+| Keys | `GET /.well-known/jwks.json` (seller app) | anyone |
 | Vendor auth | `POST /v1/auth/signup`, `verify-email`, `resend-verification`, `login`, `refresh`, `logout`, `change-password`, `forgot-password`, `set-password` | anyone, or a vendor token for `change-password` |
 | Vendor | `GET /v1/vendor/me`; `GET`/`PUT /v1/vendor/brand-profile`, `POST /v1/vendor/brand-profile/submit`, `GET /v1/vendor/brand-profile/published`; `POST`/`GET /v1/vendor/users`, `PATCH /v1/vendor/users/{id}`, `POST /v1/vendor/users/{id}/resend-invite` (owner only); `GET`/`POST /v1/vendor/products`, `GET`/`PUT`/`DELETE /v1/vendor/products/{id}`, `POST /v1/vendor/products/{id}/submit`; `POST /v1/vendor/assets/sign`, `POST /v1/vendor/assets`; `POST /v1/vendor/products/import`, `GET /v1/vendor/products/import/template`; `GET /v1/vendor/submissions`; `GET /v1/vendor/store-details`, `PUT /v1/vendor/store-details/{brand,contact,delivery,returns,payment,payout,business}` (`payout` and `business` owner only); `GET /v1/vendor/commission`, `POST /v1/vendor/commission/proposal` (owner only); `GET`/`PUT /v1/vendor/size-charts/{group}` | vendor-api tokens only |
 | Public | `GET /v1/public/ifsc/{code}` | anyone (limited per IP) |
-| Admin | `GET /v1/admin/me`, `GET /v1/admin/reviews`, `GET /v1/admin/reviews/{id}`, `GET /v1/admin/vendors`, `GET /v1/admin/vendors/{id}`, `POST /v1/admin/vendors/{id}/approve`, `POST /v1/admin/vendors/{id}/reject`, `POST /v1/admin/vendors/{id}/suspend`, `POST /v1/admin/reviews/{id}/approve`, `POST /v1/admin/reviews/{id}/reject`; `GET /v1/admin/outbox`, `GET /v1/admin/outbox/stats`, `GET /v1/admin/outbox/{id}`, `POST /v1/admin/outbox/{id}/retry`; `GET /v1/admin/vendors/{id}/store-details`, `GET /v1/admin/vendors/{id}/commission`, `POST /v1/admin/vendors/{id}/commission/{approve,send-back,set}`, and `?commission=` on `GET /v1/admin/vendors` | identity-api tokens only (`vendor_reviewer` or `super_admin`) |
+| Admin | `GET /v1/admin/me`, `GET /v1/admin/queue`, `GET /v1/admin/reviews`, `GET /v1/admin/reviews/{id}`, `GET /v1/admin/vendors`, `GET /v1/admin/vendors/{id}`, `POST /v1/admin/vendors/{id}/approve`, `POST /v1/admin/vendors/{id}/reject`, `POST /v1/admin/vendors/{id}/suspend`, `POST /v1/admin/reviews/{id}/approve`, `POST /v1/admin/reviews/{id}/reject`; `GET /v1/admin/outbox`, `GET /v1/admin/outbox/stats`, `GET /v1/admin/outbox/{id}`, `POST /v1/admin/outbox/{id}/retry`; `GET /v1/admin/vendors/{id}/store-details`, `GET /v1/admin/vendors/{id}/commission`, `POST /v1/admin/vendors/{id}/commission/{approve,send-back,set}`, and `?commission=` on `GET /v1/admin/vendors`; `GET /v1/admin/summary` (the figures, #299) and `GET /v1/admin/module-summary` (the same figures in Shazlo One's shared `ModuleSummary` shape, for its Home and sidebar badge; ADR 0011) | identity-api tokens only (`vendor_reviewer` or `super_admin`) |
 
 The sections below describe each group.
 
@@ -111,14 +143,17 @@ The sections below describe each group.
 
 ```
 vendor_api/
-  app.py        create_app() factory (settings and readiness checks can be injected in tests)
-  main.py       `app = create_app()` for uvicorn
+  app.py        create_seller_app(): the seller app (settings and readiness checks can be injected in tests)
+  admin_app.py  create_admin_app(): the admin app, /v1/admin/* only (ADR 0011)
+  app_common.py what both apps build the same way: database, Redis, email, outbox writer, middleware
+  main.py       `app = create_seller_app()` for uvicorn (port 8002)
+  admin_main.py `app = create_admin_app()` for uvicorn (port 8004)
   worker.py     `python -m vendor_api.worker`: the publisher worker (delivery, upkeep, nightly reconciliation)
   cli.py        generate-key, generate-payout-key, seed-dev, send-test-email, invite-owner, resync, export-openapi
-  openapi.py    the OpenAPI document and its examples (committed as ../openapi.json)
+  openapi.py    the two OpenAPI documents (committed as ../openapi.json and ../openapi.admin.json)
   api/          routers: health, jwks, auth, vendor (me), team, brand_profile, products, product_import, assets,
                 submissions (vendor side); admin, admin_reviews, admin_vendors, admin_outbox (admin side);
-                dependencies in deps.py
+                vendor auth dependencies in deps.py; what both groups share in common.py and views.py
   core/         settings, JSON logging, request-ID middleware, error handlers, security wiring, validation helpers
   db/           models, declarative base (constraint naming convention), async engine and sessions,
                 vendor-scoped queries (scoped.py)
@@ -140,7 +175,8 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `REDIS_URL` | none (required) | `redis://` or `rediss://` |
 | `ENV` | `dev` | `dev`, `test` or `prod`; `prod` turns off `/docs` |
 | `LOG_LEVEL` | `INFO` | |
-| `CORS_ALLOWED_ORIGINS` | `http://localhost:5174` | comma separated; credentials allowed for these only; no wildcard. For the admin too, add its origins (`http://localhost:5193`, `http://localhost:4193`) and the Shazlo One shell's (`http://localhost:5192`, `http://localhost:4192`, which reads the home figures); `docker-compose.yml` already lists them |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:5174` | the seller app's: comma separated; credentials allowed for these only; no wildcard. The portal only |
+| `ADMIN_CORS_ALLOWED_ORIGINS` | `http://localhost:5193,http://localhost:5192` | the admin app's (ADR 0011): the Vendors module and the Shazlo One shell (which reads `/v1/admin/module-summary` for its Home and badge). Exact origins (no path, no wildcard); bearer tokens only, no credentials; the admin app refuses plain `http` ones in prod. `docker-compose.yml` adds the preview ports (4193, 4192) |
 | `COOKIE_SECURE` / `COOKIE_SAMESITE` | `true` / `strict` | refresh-token cookie (host-only); `none` requires `COOKIE_SECURE=true`; prod requires `COOKIE_SECURE=true` |
 | `JWT_ISSUER` | `http://localhost:8002` | `iss` of the tokens vendor-api issues; prod requires this service's public `https://` URL (not localhost), and it must always differ from `IDENTITY_ISSUER` |
 | `JWT_KEYS_DIR` / `JWT_KEYS` | none (one is required) | RS256 keys: a directory of `<kid>.pem` files and/or JSON `{"<kid>": "<PEM>"}` |
@@ -148,10 +184,10 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `ACCESS_TOKEN_TTL_SECONDS` | `900` | 1 to 3600 |
 | `ARGON2_MEMORY_COST_KIB` / `ARGON2_TIME_COST` / `ARGON2_PARALLELISM` | `19456` / `2` / `1` | password hashing cost (OWASP baseline); raising it rehashes on the next login |
 | `PASSWORD_MIN_LENGTH` | `12` | the longest accepted is 128 |
-| `IDENTITY_JWKS_URL` / `IDENTITY_ISSUER` | unset | where admin tokens come from (identity-api). Both or neither; **required in prod**; https outside dev. Without them there is no `/v1/admin` group |
+| `IDENTITY_JWKS_URL` / `IDENTITY_ISSUER` | unset | where admin tokens come from (identity-api). Both or neither; https outside dev. **The admin app refuses to start without them**; the seller app and the worker never read them |
 | `RATE_LIMIT_*` | see Rate limits | `"<limit>/<window seconds>"` per endpoint, e.g. `RATE_LIMIT_SIGNUP_IP=10/3600` |
 | `RATE_LIMIT_FAIL_CLOSED` | see Rate limits | endpoints that answer `503` when Redis is down |
-| `RATE_LIMIT_HMAC_KEY` | random per process | **required in prod**, at least 32 characters, shared by every instance, and not identity-api's |
+| `RATE_LIMIT_HMAC_KEY` | random per process | **the seller app requires it in prod** (the admin app and the worker do not read it), at least 32 characters, shared by every instance, and not identity-api's |
 | `RATE_LIMIT_IPV6_PREFIX` | `64` | IPv6 clients are counted per network of this length |
 | `TRUSTED_PROXIES` | empty | CIDRs of the reverse proxies whose `X-Forwarded-For` is believed (comma separated); empty means the TCP peer is the client |
 | `REFRESH_TOKEN_TTL_DAYS` / `REFRESH_FAMILY_MAX_DAYS` | `7` / `30` | a refresh token lives 7 days and never outlives its family |
@@ -354,6 +390,7 @@ What vendors have submitted, and exactly what changed. Part of the admin group: 
 
 | Endpoint | What it does |
 | --- | --- |
+| `GET /v1/admin/queue` | **Everything waiting, in one list**: pending product reviews, pending brand-page reviews and pending vendor applications (a `UNION ALL`, so filtering, sorting and paging run in the database). Paged (`limit` 1 to 100, default 50, `offset` 0 to 100000) with a `total` of what matches the filters. Filters: `kind` (`product`, `brand_page` or `application`), `vendor` (a vendor id), `q` (at most 200 characters; the title, the detail or the vendor name, ignoring case, `%` and `_` taken literally), `submitted` (`today` under 24 hours, `24h` 24 to 48 hours, `older` 48 hours or more), `resubmissions=true`. `sort`: `oldest` (the default) or `newest`; the same time is ordered by id, so paging never repeats or skips an item while nothing changes. Each item: `id` (the review's, or the vendor's for an application), `kind`, `subject_id`, `title`, `detail`, `vendor {id, name}`, `submitted_at`, `change` (`new`, `edit` or `application`), `resubmission` (earlier rejections of the same subject) and `thumbnail_url`. `counts` by kind and `vendors` (everyone with something waiting) describe the whole queue and ignore the filters. A bad filter is `422` |
 | `GET /v1/admin/reviews` | The queue, paged (`limit` 1 to 100, default 25, `offset`) with a `total`. Filters: `status` (`pending` by default, `approved`, `rejected`, `withdrawn` or `all`), `subject` (`brand_profile` or `product`), `vendor_id`. **Pending reviews come oldest first** (the one that has waited longest is on top); the others newest first. Each item: the review, the vendor (id, name, slug, status), who submitted it (id and email) and when, the version under review with its title (the brand name, or the product's title with its SKU and `product_id`), and, once decided, the reviewer, the time and the reason |
 | `GET /v1/admin/reviews/{id}` | The same summary plus `content` (the version under review, in full), `base` (the version it is compared with), **`changes`** and `events` (the audit trail, oldest first). `404 review_not_found` for an unknown id |
 
@@ -435,7 +472,7 @@ What the Build 2 seller portal (`naman/penpot-ui-2`, spec `docs/ui-plan/vendor-r
 - Values are normalised: a 10-digit phone, lower-case email, PIN without spaces, upper-case IFSC and GSTIN. "No returns" (window 0) stores no condition or refund time; delivering to all of India stores no places; places are kept once each.
 - Text people type refuses NUL, control and format characters (bidirectional overrides, zero-width spaces, BOM) and lone surrogates (`VisibleText` in `core/validation.py`): Postgres cannot store some, and the others make a name read differently to a reviewer. Zero-width (non-)joiners stay allowed for Indic scripts.
 - **Payouts** (owner only): a bank account (holder, 9 to 18 digits, IFSC) or a UPI ID. The number is sealed with AES-256-GCM (`services/payout_cipher.py`), bound to the vendor and the field, so a sealed value copied to another row does not open. The API only ever shows the bank's name, the last four digits and the IFSC, or a masked UPI ID (`ka•••@okhdfcbank`), to the vendor and to reviewers alike.
-- Payout keys: `PAYOUT_ENCRYPTION_KEYS` (JSON `{kid: base64 of 32 bytes}`) and `PAYOUT_ENCRYPTION_KID`, required in prod; `python -m vendor_api.cli generate-payout-key` prints a new entry. To rotate, add the new key, point the kid at it, and keep the old key while values sealed with it remain (`store_details.payout_key_id` says which key sealed each). Outside prod an unset key is a random one per process.
+- Payout keys: `PAYOUT_ENCRYPTION_KEYS` (JSON `{kid: base64 of 32 bytes}`) and `PAYOUT_ENCRYPTION_KID`, required by the seller app in prod (the admin app reads payout details masked and never holds them); `python -m vendor_api.cli generate-payout-key` prints a new entry. To rotate, add the new key, point the kid at it, and keep the old key while values sealed with it remain (`store_details.payout_key_id` says which key sealed each). Outside prod an unset key is a random one per process.
 - A well-formed IFSC of a bank the directory does not list is accepted, with `bank_name: null`.
 - Every save is audited in `vendor_change_events` (append-only by trigger): who changed which section. The payout's row holds only the masked parts; contact details are not copied.
 - Reviewers read a vendor's details, masked the same way, at `GET /v1/admin/vendors/{id}/store-details`.
@@ -677,7 +714,7 @@ alembic check                                    # fails if models and migration
 ## Behaviour worth knowing
 
 - `GET /health` is liveness only. `GET /ready` checks Postgres and Redis (2 second timeout each) and returns 503 if either fails; it also carries the outbox counts (`outbox`), which never change the verdict.
-- Every response has an `X-Request-ID` header. A sane incoming value is reused; it is also in every log line.
+- Every response has an `X-Request-ID` header. A sane incoming value is reused; it is also in every log line. CORS exposes it and `Retry-After` (on a 429) to the allowed origins.
 - Logs are one JSON object per line on stdout.
 - Errors always look like `{"error": {"code", "message", "request_id", "details"?}}`. Unhandled errors return a generic message; details go to the log only.
 

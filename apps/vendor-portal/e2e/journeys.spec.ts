@@ -97,8 +97,10 @@ test('a seller fixes a sent-back product and resubmits it', async ({ page }, tes
 
 test('a seller edits the brand page draft and sends it for review', async ({ page }) => {
   await signIn(page, '/brand')
-  const tagline = page.getByLabel('Tagline', { exact: false }).first()
-  await tagline.fill('Hand block-printed in Kutch, naturally dyed.')
+  const story = page.getByRole('textbox', { name: /^Story/ })
+  await story.fill('We work with Ajrakh printers in Kutch and dye every metre by hand.')
+  // The brand page has no tagline any more.
+  await expect(page.getByRole('textbox', { name: /^Tagline/ })).toHaveCount(0)
   await expect(page.getByText(/Saved · /).first()).toBeVisible({ timeout: 10_000 })
   await page.getByRole('button', { name: 'Submit for review' }).click()
   await expect(page.getByText('Sent for review. Your live page stays as it is until we approve the changes.')).toBeVisible()

@@ -12,7 +12,7 @@ from factories import saved_asset, saved_profile
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from vendor_api.app import create_app
+from vendor_api.app import create_seller_app
 from vendor_api.core.settings import Settings
 from vendor_api.db.models import (
     Asset,
@@ -494,7 +494,7 @@ async def test_allowed_origin_can_preflight_a_profile_update(
     settings: Settings, override: Callable[..., Settings]
 ) -> None:
     origin = "https://portal.example"
-    app = create_app(override(settings, cors_allowed_origins=[origin]), readiness_checks={})
+    app = create_seller_app(override(settings, cors_allowed_origins=[origin]), readiness_checks={})
     async with (
         app.router.lifespan_context(app),
         httpx.AsyncClient(

@@ -16,8 +16,9 @@ nothing the central app does can block one.
 cp .env.example .env     # set POSTGRES_PASSWORD, VENDOR_JWT_KEYS (see the README, "vendor-api") and
                          # uncomment CENTRAL_PUBLISHING_ENABLED=true
 docker compose --profile vendor --profile central build
-docker compose --profile vendor run --rm vendor-api alembic upgrade head
-docker compose --profile vendor run --rm vendor-api python -m vendor_api.cli seed-dev
+docker compose run --rm vendor-cli alembic upgrade head
+docker compose run --rm vendor-cli python -m vendor_api.cli db-logins
+docker compose run --rm vendor-cli python -m vendor_api.cli seed-dev
 docker compose --profile vendor --profile central up -d
 ```
 

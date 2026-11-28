@@ -3,7 +3,8 @@
 - Status: proposed
 - Date: 2026-10-23
 - Issue: #30
-- Related: [ROADMAP](../ROADMAP.md) Phase 6 (Shazlo-One shell) and Phase 7 (vendor admin module); [0009 auth model](0009-auth-model.md) (#31)
+- Amended: 2026-11-28 (#301): the shell that implements this is Build 2's, with the first Phase 6 shell's audited hardening ported into it, and the protocol package keeps that shell's channel API. See [Which shell implements this](#which-shell-implements-this-2026-11-28).
+- Related: [ROADMAP](../ROADMAP.md) Phase 6 (Shazlo-One shell) and Phase 7 (vendor admin module); [0009 auth model](0009-auth-model.md) (#31); [0011](0011-vendor-portal-and-vendors-module-as-microservices.md) (the module registry, manifest and summary)
 
 ## Context
 
@@ -47,7 +48,7 @@ Messages larger than **64 KB** are dropped.
 | Type | Payload | When |
 | --- | --- | --- |
 | `auth` | `{ accessToken, expiresAt, user: { id, email, roles }, locale? }` | After `ready` (with `replyTo`), and again on every token refresh. `expiresAt` is epoch seconds |
-| `navigate` | `{ path }` | The user picked a deep link in the shell. `path` must start with `/` and is relative to the module |
+| `navigate` | `{ path }` | The user picked a deep link in the shell. `path` is a module path: it starts with `/` (not `//`), is at most 512 characters, and has no backslash, whitespace, control character or `.`/`..` segment (plain or percent-encoded), so the shell can put it after the module's base path and it cannot climb out |
 | `error` | `{ code, message }` | The shell cannot continue (for example `version_unsupported`) |
 
 **Module to shell**
@@ -55,10 +56,10 @@ Messages larger than **64 KB** are dropped.
 | Type | Payload | When |
 | --- | --- | --- |
 | `ready` | `{ module, supportedVersions, moduleVersion }` | On every page load, before anything else |
-| `title` | `{ path, title }` | On each in-module navigation, so the shell can update its breadcrumb, tab title and URL |
+| `title` | `{ path, title }` | On each in-module navigation, so the shell can update its breadcrumb, tab title and URL. `path` is a module path as for `navigate`; `title` is one line of plain text, at most 200 characters, and text that looks like an HTML tag is refused |
 | `token:request` | `{ reason: "expired" \| "unauthorized" }` | The module's API call returned 401 or its token is about to expire |
 | `logout` | `{ reason? }` | The user chose to sign out inside the module |
-| `toast` | `{ level, message, durationMs? }` | The module wants the shell to show a notification. `level` is `info`, `success`, `warning` or `error`. `message` is plain text of at most 280 characters, never HTML |
+| `toast` | `{ level, message, durationMs? }` | The module wants the shell to show a notification. `level` is `info`, `success`, `warning` or `error`. `message` is plain text of at most 280 characters, never HTML: text that looks like a tag is refused |
 | `error` | `{ code, message, fatal }` | The module hit a problem the shell should know about. `fatal: true` makes the shell show its error panel |
 
 ### 3. Handshake and token handling
@@ -67,15 +68,22 @@ Messages larger than **64 KB** are dropped.
 2. The module sends `ready` to the shell origin (`window.parent.postMessage(msg, SHELL_ORIGIN)`).
 3. The shell checks the message (section 4), picks the highest version both sides support, and answers with `auth`.
 4. The module keeps the token **in memory only** and sends it as `Authorization: Bearer` to its own API. Its API validates the token with the identity service's JWKS, as decided in [ADR 0009](0009-auth-model.md).
-5. The shell refreshes the token itself and pushes a new `auth` when about **80% of the lifetime** has passed, or at least 30 seconds before expiry. The module replaces its token and keeps working.
-6. If an API call returns 401, the module sends `token:request` at most **once every 30 seconds**. The shell answers with a fresh `auth`, or signs the user out when it cannot get one.
+5. The shell keeps each open module supplied with a token. For each one it schedules a refresh from that token's own `expiresAt`: at **80% of the token's life**, or **30 seconds before it ends**, whichever comes first (the lead time never exceeds half the token's life, so a very short token is replaced at its half-life, not the moment it was issued). It then exchanges a new token (not the cached one) and pushes a new `auth`. The module replaces its token and keeps working. Before it exchanges, the shell renews its own identity token if that would end before a new module token should (see the lifetimes below).
+6. If an API call returns 401, the module sends `token:request` at most **once every 30 seconds**. The shell accepts at most one per 30 seconds per module whatever the module sends, and answers with a fresh `auth`, or ends the session when no token can be had.
 7. The module ignores any `auth` whose `expiresAt` is earlier than the token it already holds.
 
-The token's audience, lifetime and claims come from [ADR 0009](0009-auth-model.md): an access token that lasts 15 minutes, an `aud` that names the module's backend, and `roles` claims. The shell gets each module's token from identity-api's token exchange, not by refreshing the module token itself.
+The token's audience, lifetime and claims come from [ADR 0009](0009-auth-model.md). There are two lifetimes, and an earlier draft of this ADR assumed the first for both:
+
+| Token | Lifetime | Setting |
+| --- | --- | --- |
+| The shell's identity token | **15 minutes** | `ACCESS_TOKEN_TTL_SECONDS` (900) |
+| A module's token (an exchanged one, `aud` names the module's backend, carries the roles allowed for it) | **5 minutes**, never past the identity token that asked for it | `EXCHANGED_TOKEN_TTL_SECONDS` (300; 30 to 900) |
+
+The shell gets each module's token from identity-api's token exchange, not by refreshing the module token itself. A module token is cut short when the identity token behind it is about to end, so before a refresh the shell renews the identity token first if that would end before a new module token should (when it would help, that is, when the identity token lives longer than a module token). If that renewal cannot be done now, the exchange goes ahead with the identity token the shell has, the module token is shorter, and it is refreshed again sooner.
 
 ### 4. Origin allow-listing
 
-The shell keeps a **module registry**: for each module its id, URL, exact origin and required roles. Nothing is matched with wildcards or regular expressions.
+The shell keeps a **module registry** ([ADR 0011](0011-vendor-portal-and-vendors-module-as-microservices.md)): one JSON file per environment, built into the shell, with each module's id, URL (its origin, no path), the roles that may open it and the audience of its token. Nothing is matched with wildcards or regular expressions. The build refuses a wildcard or pattern, http outside development (and anything but localhost over http in development), and a host with anything but letters, digits, dots and hyphens, since the origin is written into the shell's CSP.
 
 | Side | Accept a message only if | Send with |
 | --- | --- | --- |
@@ -83,7 +91,7 @@ The shell keeps a **module registry**: for each module its id, URL, exact origin
 | Module | `event.origin === SHELL_ORIGIN` **and** `event.source === window.parent` | `postMessage(msg, SHELL_ORIGIN)` |
 
 - `*` is never used as a target origin, in any environment.
-- `SHELL_ORIGIN` is a build-time setting per environment. The production build fails if it is missing or contains `*`. Local development uses explicit origins such as `http://localhost:5173`, allowed only when the build is a development build.
+- `SHELL_ORIGIN` is a build-time setting per environment (`VITE_SHELL_ORIGIN` in `vendor-admin`). The production build fails if it is missing, is not one exact https origin, or has a host with anything but letters, digits, dots and hyphens. Local development uses explicit origins such as `http://localhost:5192`, allowed only when the build is a development build.
 - After the origin check, both sides drop unknown `type` values, wrong `protocol` or `v`, and payloads that fail validation. They never throw on bad input.
 
 ### 5. Headers and iframe attributes
@@ -97,14 +105,14 @@ Referrer-Policy: no-referrer
 
 `frame-ancestors` replaces `X-Frame-Options`, so we do not send the older header. Local development adds the local shell origin to `frame-ancestors`.
 
-On the shell, the page CSP lists the registered module origins in `frame-src`, and nothing else.
+On the shell, the page CSP lists the registered module origins in `frame-src`, and nothing else, and `frame-ancestors 'none'`: nothing may frame the shell. One definition (`apps/shazlo-one/src/security/headers.ts`) serves the dev server, `vite preview` and production's `vercel.json`, and `vendor-admin` has the same arrangement for its own policy.
 
 The iframe element:
 
 ```html
 <iframe
-  src="https://vendor-admin.shazlo.store/"
-  title="Vendor admin"
+  src="https://vendor-admin.shazlo.store/queue"
+  title="Vendors"
   sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"
   referrerpolicy="no-referrer"
   allow=""
@@ -121,6 +129,8 @@ The iframe element:
 
 `allow=""` grants no powerful browser features (camera, microphone, geolocation and so on).
 
+The frame loads the module page the shell URL names (`/vendors/queue` loads the module's `/queue`), so a deep link opens where it points. That address is checked like a path a module sends: one that could climb out of the module (`//host`, `/\host`, `/../`) loads the module's home page instead, and the result must be on the module's origin. It never carries a token. `allow-same-origin` is only safe because the module has an origin of its own, so the shell refuses to frame a module registered on the shell's own origin (no frame, no token).
+
 ### 6. Versioning
 
 - `v` is an integer. The module lists the versions it supports in `ready`.
@@ -131,15 +141,18 @@ The iframe element:
 
 | Situation | Behaviour |
 | --- | --- |
-| The module never sends `ready` | After 10 seconds the shell shows an error panel with **Retry**, which reloads the iframe. After 3 failed retries it shows "module unavailable" and reports the failure |
+| The module never sends `ready` | After 10 seconds the shell shows an error panel with **Retry**, which loads a new frame. After three loads in all it shows "module unavailable" |
 | The module is blocked by a CSP or framing error | The parent cannot see this. It looks the same as "no `ready`" and uses the same timeout |
-| The module reloads (or hot-reloads) and sends `ready` again | The shell answers with the current `auth`. The handshake is idempotent |
-| The shell cannot refresh the token | It keeps the current token until it expires and retries with backoff (5 s, 15 s, 30 s). At expiry it removes the iframe, shows "session expired" and goes to login |
-| The module gets a 401 | `token:request` once per 30 seconds. The shell answers with `auth`, or signs the user out |
-| The module's `logout` message | The shell ends the session, revokes the refresh token and removes the iframe |
+| The module reloads (or hot-reloads) and sends `ready` again | The shell answers with the token the module already holds while it is good: no exchange, and a backoff under way carries on. The handshake is idempotent |
+| The shell cannot refresh the token (the network, a 5xx) | It keeps the current token until it expires and retries with backoff (5 s, 15 s, then every 30 s). At expiry it removes the iframe, ends the session as expired (without calling the server, which may be what is down) and goes to login, with `return-to` set to the module's path. A retry that works resets the backoff |
+| The admin lost the role (`403 audience_not_allowed` on a refresh or a request) | The shell closes that module and shows the 403 page. It does not retry |
+| The session ends from anywhere (sign-out here or in another tab, a revoked refresh family, a deactivated admin) | Every module's frame is removed at once and its tokens are dropped, so no module keeps a usable token; the admin goes to login |
+| The module gets a 401 | `token:request` once per 30 seconds per module. The shell answers with `auth`, or ends the session when no token can be had |
+| The module's `logout` message | The shell removes the iframe at once, then ends the session (in every tab) and revokes the refresh token. It acts on the first `logout` only |
+| The module's `error` with `fatal: true` | The shell stops that load for good and shows its error panel with Retry, with the module's message as plain text, cut to three lines and 300 characters |
 | The shell navigates away or unmounts | The module notices no `auth` refresh for more than twice the refresh interval and shows "session ended" |
 | Unknown type, wrong origin, oversize or malformed message | Dropped silently. A development build logs a warning |
-| Clock difference between the shell and the module | `expiresAt` is set by the shell. The module allows 30 seconds of slack |
+| Clock difference between the shell and the module | `expiresAt` is set by the shell, and both frames read the same browser clock. The 30 seconds of slack is the module's early warning: `needsToken()` is true from 30 seconds before `expiresAt`, while `getAccessToken()` returns the token until `expiresAt` itself. The shell replaces a token at least 30 seconds before it ends (60 seconds before, for a 5-minute token), except a token that lives under a minute, which it replaces at half its life |
 
 ### 8. Security notes
 
@@ -194,15 +207,15 @@ When `ready` does not arrive:
 flowchart TD
   A["Iframe added, timer 10 s"] --> B{"ready received?"}
   B -->|Yes| C["Send auth"]
-  B -->|No| D{"Retries below 3?"}
-  D -->|Yes| E["Show error panel, Retry reloads the iframe"]
+  B -->|No| D{"Fewer than 3 loads?"}
+  D -->|Yes| E["Show error panel, Retry loads a new frame"]
   E --> A
-  D -->|No| F["Show module unavailable and report"]
+  D -->|No| F["Show module unavailable"]
 ```
 
 ## TypeScript types
 
-These types are the contract. A shared package (`packages/shell-protocol`, proposed in Phase 6) will export them so the shell and every module use the same source. Runtime validation of incoming payloads (for example with `zod`) is required in addition to the types, because `postMessage` data is untyped at runtime.
+These types are the contract, exported by [`packages/shell-protocol`](../../packages/shell-protocol/README.md) (`src/types.ts`) so the shell and every module use the same source. Runtime validation of incoming payloads is required in addition to the types, because `postMessage` data is untyped at runtime: the package's validators (`src/validate.ts`) are hand-written, never throw, and rebuild every payload from the fields they know. The shell and a module never call `postMessage` themselves: they use `createShellChannel` and `createModuleClient`, which do the checks below. The registry entry is ADR 0011's `RegistryEntry` (`src/registry.ts`).
 
 ```ts
 export const PROTOCOL = "shazlo-one" as const;
@@ -261,37 +274,21 @@ export type ModuleToShell =
   | ToastMessage
   | ModuleErrorMessage;
 
-/** The shell's registry entry for a module. Origins are exact, never patterns. */
-export interface ModuleRegistration {
-  id: string;
-  url: string;
-  origin: string;
-  requiredRoles: string[];
-  supportedVersions: number[];
-}
-
-/** Shape check only. Payloads must also be validated at runtime. */
-export function isEnvelope(data: unknown): data is Envelope<string, unknown> {
-  if (typeof data !== "object" || data === null) return false;
-  const d = data as Record<string, unknown>;
-  return (
-    d.protocol === PROTOCOL &&
-    typeof d.v === "number" &&
-    typeof d.type === "string" &&
-    typeof d.id === "string" &&
-    typeof d.sentAt === "number" &&
-    "payload" in d
-  );
-}
-
-/** Both sides call this first and drop the message if it returns false. */
-export function isTrustedMessage(
-  event: MessageEvent,
+/** Both ends call this first and drop the message if it returns false. A missing window never matches. */
+export declare function isTrustedMessage(
+  event: Pick<MessageEvent, "origin" | "source">,
   trusted: { origin: string; source: MessageEventSource | null },
-): boolean {
-  return event.origin === trusted.origin && event.source === trusted.source;
-}
+): boolean;
 ```
+
+The envelope check is stricter than the shape above: `v` is a positive integer, `id` and `replyTo` are UUIDs,
+`sentAt` is a finite number, and `expiresAt` is epoch seconds below 10 000 000 000 (a value in milliseconds is
+refused). A message that is not plain JSON (a cycle, a BigInt, a Map, a buffer) counts as over 64 KB. A set-up
+mistake (a missing, wildcard, pattern, path or non-https origin outside development, an empty version list)
+throws `ProtocolConfigError` at start rather than running unprotected, and dropped messages are logged only in a
+development build, by reason, type and origin, never their content. `test/contract.test.ts` runs both ends over
+two real windows and pins this section's values; `test/source-guard.test.ts` fails if app code posts or listens
+for cross-frame messages without the package.
 
 ## Consequences
 
@@ -306,8 +303,22 @@ export function isTrustedMessage(
 - A framing failure is invisible to the parent, so detection depends on a timeout.
 
 **Follow-ups**
-- Create `packages/shell-protocol` with these types, runtime validators and a test harness (Phase 6).
-- Decide where the module registry lives (shell config per environment is the proposal).
+- ~~Create `packages/shell-protocol` with these types, runtime validators and a test harness (Phase 6).~~ Done: [`packages/shell-protocol`](../../packages/shell-protocol/README.md), with hand-written validators (the postMessage half has no runtime dependency), `createShellChannel` and `createModuleClient`, and contract tests that run both ends over two jsdom windows; it also holds ADR 0011's registry, manifest and summary (with `zod`). Two details the ADR left open: a module reads the shell's `error` at any `v` (so it can learn `version_unsupported` even when it speaks no common version), and the shell reads `ready` at any `v` for the same reason.
+- ~~Decide where the module registry lives.~~ Decided in [ADR 0011](0011-vendor-portal-and-vendors-module-as-microservices.md): one JSON file per environment in the shell's build (`apps/shazlo-one/registry/*.json`, chosen with `VITE_SHELL_REGISTRY`), checked when the shell builds and again when it starts (section 4), with each module's title and pages in a manifest the module serves. The CSP `frame-src` is generated from it, so adding a module is one entry. `super_admin` opens every module.
+
+**Decided for the shell's host** (`apps/shazlo-one/src/shell/ModuleHost.tsx`)
+- A module's tokens are kept per module (its registry id), not per audience, so two modules that share an audience never share a token, and they are dropped when the module's page is left, Retry builds a new frame or the session ends. A module that reloads itself and sends `ready` again gets the token already kept for it. Home's summaries use tokens of their own.
+- The sandbox keeps `allow-scripts` with `allow-same-origin`, which is safe only for a module on an origin of its own; the host refuses to frame a module whose origin is the shell's.
+- The 10-second wait is cleared by the module's `ready` (it is alive). Retry builds a new frame and a new channel. The module gets three loads in all ("Attempt 1 of 3"), then "unavailable".
+- A version mismatch has its own panel; an exchange failure says why, with Retry. `403 audience_not_allowed` is the 403 page, with no frame.
+- What a module sends is text: the title is cut to one line of 120 characters, a toast to three lines and 280, a fatal error's message to three lines and 300.
+- Focus moves to the page heading only when the admin goes to another page or module, never when a module moves between its own pages.
+
+## Which shell implements this (2026-11-28)
+
+Two shells were built for Phase 6: the first, merged to `main` as #303 to #311 and #313 (with this package as #307), and Build 2's, in #301 (with the Vendors module, its manifest and summary, the sidebar and top bar from #314 and #328, and a demo mode). The owner chose Build 2's: it is the one in `apps/shazlo-one`, and the first one's files were removed. Its hardening was audited and is kept, ported into Build 2's shell: the session store, the module host's token handling and failure states, the security headers and fail-closed settings, the strict return-to check and the admin-management fixes.
+
+For the protocol package the first shell's API was kept (`createShellChannel`, `createModuleClient` and their validators), and Build 2's own (`createMessage`, `parseMessage`, `listenAsShell`, `listenAsModule`, `sendTo`) was removed. Almost every rule in this ADR is state, not a check on one message: listening before the frame has an address, refusing everything before `ready`, agreeing a version and answering `version_unsupported`, throttling `token:request`, ignoring an `auth` older than the one held, posting only through one function that refuses `*`. The first API holds that state in its two channel objects, with contract tests that pin this ADR's values; hardening Build 2's free functions would have rebuilt the same objects without the tests. Build 2's shell and module used six of its functions, so moving them was small. Build 2's stricter module-path rule (no whitespace, no dot segments, 512 characters) replaced the first package's, and its registry, manifest and summary (ADR 0011) stay in the package.
 
 ## Alternatives considered
 
@@ -323,4 +334,4 @@ export function isTrustedMessage(
 ## Open items
 
 - Whether `navigate` also needs a reverse "shell asks the module to confirm leaving" message for unsaved changes.
-- Telemetry: whether dropped messages are reported in production.
+- Telemetry: whether dropped messages, and a module that stays unavailable, are reported in production.

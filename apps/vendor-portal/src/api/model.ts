@@ -204,7 +204,6 @@ export interface Summary {
 export interface BrandProfile {
   brand_name: string
   based_in: string
-  tagline: string
   story: string
   logo_url: string | null
   cover_url: string | null

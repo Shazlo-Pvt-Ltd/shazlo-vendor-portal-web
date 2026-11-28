@@ -297,6 +297,10 @@ describe('Store details: when things go wrong', () => {
     await renderApp({ route: '/store/details', credentials: DEMO_STAFF })
     expect(await screen.findByRole('region', { name: 'Payouts' }, SLOW)).toBeInTheDocument()
     expect(await within(card('Commission')).findByText('12% of each sale.')).toBeInTheDocument()
+    // Payouts and business details are the owner's (vendor-api refuses staff): no Change link.
+    expect(within(card('Payouts')).queryByRole('link', { name: /^Change/ })).toBeNull()
+    expect(within(card('Payouts')).getByText('Only the account owner can change this')).toBeInTheDocument()
+    expect(within(card('Contact')).getByRole('link', { name: /^Change/ })).toBeInTheDocument()
   })
 
   it('keeps long and non-Latin answers inside their cards', async () => {

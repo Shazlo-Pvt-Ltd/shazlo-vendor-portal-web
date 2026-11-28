@@ -3,5 +3,4 @@ export const paths = {
   changePassword: '/change-password',
   home: '/',
   admins: '/admins',
-  vendors: '/vendors',
 } as const

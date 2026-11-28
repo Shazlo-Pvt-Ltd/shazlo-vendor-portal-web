@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 
 from vendor_api.core.settings import Settings
+from vendor_api.db.roles import POWER_SQL, power_problems
 from vendor_api.db.session import libpq_url
 from vendor_api.services.outbox_admin import outbox_stats
 
@@ -90,4 +91,21 @@ def default_readiness_checks(settings: Settings) -> dict[str, ReadinessCheck]:
         finally:
             await client.aclose()
 
-    return {"postgres": postgres, "redis": redis}
+    async def database_role() -> None:
+        # ADR 0011: in production each app logs in as its own user with only its table rights
+        # (migration 0012). One that can do more, such as the owner of the tables, is not ready.
+        dsn = libpq_url(settings.database_url)
+        connection = await asyncpg.connect(dsn, timeout=CHECK_TIMEOUT_SECONDS)
+        try:
+            row = await connection.fetchrow(POWER_SQL)
+        finally:
+            await connection.close()
+        problems = power_problems(row) if row is not None else ["is not a known role"]
+        if problems:
+            logger.error("the database login can do too much", extra={"problems": problems})
+            raise PermissionError("; ".join(problems))
+
+    checks: dict[str, ReadinessCheck] = {"postgres": postgres, "redis": redis}
+    if settings.env == "prod":
+        checks["database_role"] = database_role
+    return checks

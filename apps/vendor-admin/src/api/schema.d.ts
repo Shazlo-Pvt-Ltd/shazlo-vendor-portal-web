@@ -4,26 +4,6 @@
  */
 
 export interface paths {
-    "/.well-known/jwks.json": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Jwks
-         * @description The public keys that verify vendor-api tokens. Public keys only, never private ones.
-         */
-        get: operations["jwks__well_known_jwks_json_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/health": {
         parameters: {
             query?: never;
@@ -77,6 +57,28 @@ export interface paths {
          *     admins live in identity-api; this is the first admin endpoint and a check for Phase 3.
          */
         get: operations["me_v1_admin_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/module-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Module Summary
+         * @description What Shazlo One shows for the Vendors module: the badge (everything waiting), a Vendors
+         *     card and a Publishing card with figures that open the module's pages, and the latest
+         *     decisions. The same counts as `GET /v1/admin/summary`, in the shell's shared shape.
+         */
+        get: operations["get_module_summary_v1_admin_module_summary_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -272,6 +274,28 @@ export interface paths {
          *     down.
          */
         post: operations["reject_review_v1_admin_reviews__review_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Summary
+         * @description What waits for a reviewer, what was decided today (midnight IST), the outbox in four
+         *     numbers, and the latest decisions. Every figure is a count, so the cost does not grow with
+         *     the queue.
+         */
+        get: operations["get_summary_v1_admin_summary_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -489,795 +513,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/auth/change-password": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Change Password
-         * @description Sets a new password, ends every session of the user and starts a new one.
-         */
-        post: operations["change_password_v1_auth_change_password_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/forgot-password": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Forgot Password
-         * @description Sends a reset link only if the address belongs to an active user; the answer never says
-         *     which. Limited per IP and per address (as typed), so it cannot be used to flood an inbox.
-         */
-        post: operations["forgot_password_v1_auth_forgot_password_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/login": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Login
-         * @description `401 invalid_credentials` for an unknown email, a wrong password, a user who has no
-         *     password yet, a disabled user and an unverified email alike (a separate answer for unverified
-         *     would reveal, after a signup, whether an address was already registered). A rejected or
-         *     suspended vendor is `403 vendor_not_allowed`.
-         */
-        post: operations["login_v1_auth_login_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/logout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Logout */
-        post: operations["logout_v1_auth_logout_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Refresh */
-        post: operations["refresh_v1_auth_refresh_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/resend-verification": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Resend Verification
-         * @description Sends a new link only if the user exists and is unverified; the answer never says which.
-         */
-        post: operations["resend_verification_v1_auth_resend_verification_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/set-password": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Set Password
-         * @description Accepts an invite or a reset link with a new password.
-         *
-         *     It activates an invited user, marks the email verified (the link proved it), spends the
-         *     token and ends every session of the user. A token that is unknown, used or expired is one
-         *     generic `400 invalid_token`. It does not sign the user in: they log in with the new password.
-         */
-        post: operations["set_password_v1_auth_set_password_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/signup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Signup
-         * @description Creates a pending vendor and its owner, and emails a verification link.
-         *
-         *     A registered email gets the same answer, and an "you already have an account" email.
-         */
-        post: operations["signup_v1_auth_signup_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/verify-email": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Verify Email
-         * @description Spends a verification token. An unknown, used or expired one is one generic 400.
-         */
-        post: operations["verify_email_v1_auth_verify_email_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/public/ifsc/{code}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Ifsc Lookup
-         * @description The bank behind an IFSC (from its first four letters). `422 ifsc_format` for a code that
-         *     is not an IFSC; `404 ifsc_unknown` for a well-formed code of a bank we do not list, which a
-         *     payout may still use. Limited per IP; nothing is looked up anywhere else.
-         */
-        get: operations["ifsc_lookup_v1_public_ifsc__code__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/assets": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Register Asset
-         * @description Registers an uploaded image: Cloudinary is asked what it stored (never the browser), and
-         *     the asset becomes `ready` if its real size and format are allowed. Only a `public_id` that was
-         *     signed for this vendor can be registered (anything else is `404 asset_not_found`).
-         *     `409 upload_not_found` until the file has been uploaded; registering twice is harmless.
-         */
-        post: operations["register_asset_v1_vendor_assets_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/assets/sign": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Sign Upload
-         * @description A signed upload for one image. The server picks the file's name (in this vendor's own
-         *     folder) and records a `pending` asset; upload the file to `upload_url` with `fields`, then
-         *     call `POST /v1/vendor/assets` with the `public_id` to register it. The signature is good for
-         *     about an hour and for one upload (`overwrite=false`). Limited per user.
-         */
-        post: operations["sign_upload_v1_vendor_assets_sign_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/brand-profile": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Draft
-         * @description The draft to edit. The first time (and after a submission) it is created from the latest
-         *     version, or from the details given at signup, so the editor always has something to show.
-         */
-        get: operations["get_draft_v1_vendor_brand_profile_get"];
-        /**
-         * Save Draft
-         * @description Replaces the draft's content. It never changes the published version. Staff and owner can
-         *     both edit; images must be this vendor's ready logo and banner uploads.
-         */
-        put: operations["save_draft_v1_vendor_brand_profile_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/brand-profile/published": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Published
-         * @description The version shoppers see: the last one an admin approved (404 until there is one).
-         */
-        get: operations["get_published_v1_vendor_brand_profile_published_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/brand-profile/submit": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Submit
-         * @description Sends the draft for review. It needs at least one category, and only one version can be in
-         *     review at a time (409 `review_pending`). While it waits, the vendor can keep editing a new
-         *     draft. The submitted version can no longer be changed.
-         */
-        post: operations["submit_v1_vendor_brand_profile_submit_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/commission": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Commission
-         * @description The brand's commission: what is agreed, what it proposed, and Shazlo's note.
-         */
-        get: operations["get_commission_v1_vendor_commission_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/commission/proposal": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Propose Commission
-         * @description Owner only. Proposes a rate for Shazlo to approve; an agreed rate stays in force until
-         *     then. `422` for the rate already agreed. Limited per vendor.
-         */
-        post: operations["propose_commission_v1_vendor_commission_proposal_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/me": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Me
-         * @description The signed-in vendor user, their role and their vendor. No password hash, no tokens.
-         */
-        get: operations["me_v1_vendor_me_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/products": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Products
-         * @description The vendor's products, most recently changed first.
-         */
-        get: operations["list_products_v1_vendor_products_get"];
-        put?: never;
-        /**
-         * Create Product
-         * @description A new `draft` product. Images and variants can be added later, but are needed to submit.
-         *     `409 sku_taken` if the vendor already uses the SKU (case is ignored, archived products keep
-         *     theirs).
-         */
-        post: operations["create_product_v1_vendor_products_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/products/import": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Import Products
-         * @description Imports products from a `.xlsx` or `.csv` sent as the request body. Always `200` with a
-         *     report listing every rejected row (row, column, reason); file-level problems are `413`, `415`
-         *     or `422`. One row is one variant; rows with the same `sku` are one product. Download the
-         *     template for the columns. Imported products are drafts without images. Uploading the same
-         *     file again creates nothing new. Limited per vendor.
-         */
-        post: operations["import_products_v1_vendor_products_import_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/products/import/template": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Import Template
-         * @description The sample file: the columns, three example rows (two products, three variants) and, in
-         *     the Excel version, an instructions sheet. Uploading it untouched with `mode=validate` shows what
-         *     a clean report looks like.
-         */
-        get: operations["import_template_v1_vendor_products_import_template_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/products/{product_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Product */
-        get: operations["get_product_v1_vendor_products__product_id__get"];
-        /**
-         * Update Product
-         * @description Replaces the content of the revision being edited. Editing an approved product leaves
-         *     what is live untouched: it creates a new pending revision (`working`) that goes live only
-         *     when approved. `409 product_in_review` while a version is in review. The SKU cannot change.
-         */
-        put: operations["update_product_v1_vendor_products__product_id__put"];
-        post?: never;
-        /**
-         * Delete Product
-         * @description Deletes a product that was never submitted; archives one that was (it keeps its history
-         *     and SKU, and an approved one goes off sale). `409 product_in_review` while in review.
-         */
-        delete: operations["delete_product_v1_vendor_products__product_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/products/{product_id}/submit": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Submit Product
-         * @description Sends the revision being edited for review. It needs at least one active variant and one
-         *     image (`422 product_incomplete`). The submitted revision is frozen.
-         */
-        post: operations["submit_product_v1_vendor_products__product_id__submit_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/size-charts/{group}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Size Chart
-         * @description The brand's chart for a group (`bottoms`, `tops`, `dresses`, `jackets`); empty when none
-         *     is saved. `404` for any other group.
-         */
-        get: operations["get_size_chart_v1_vendor_size_charts__group__get"];
-        /**
-         * Save Size Chart
-         * @description Replaces the brand's chart for a group. Sizes and measurements must be the group's; values
-         *     are centimetres above 0 and up to 300 with one decimal at most. `photo_asset_id` is one of
-         *     the brand's own ready `size_chart` images (sign the upload with kind `size_chart`). An empty
-         *     chart without a photo deletes it.
-         */
-        put: operations["save_size_chart_v1_vendor_size_charts__group__put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/store-details": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Store Details Route
-         * @description Every topic, what is still missing, and whether they are complete. A vendor that has
-         *     saved nothing gets nulls and every required topic in `missing`.
-         */
-        get: operations["get_store_details_route_v1_vendor_store_details_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/store-details/brand": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Save Brand
-         * @description What the brand sells (women, men or both), where it ships from, and an optional
-         *     Instagram handle or website (empty or null clears it).
-         */
-        put: operations["save_brand_v1_vendor_store_details_brand_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/store-details/business": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Save Business
-         * @description Owner only. Optional legal name and GST number (checked, check character included);
-         *     empty values are stored as null.
-         */
-        put: operations["save_business_v1_vendor_store_details_business_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/store-details/contact": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Save Contact
-         * @description Who Shazlo talks to. The phone is stored as ten digits; the email in lower case.
-         */
-        put: operations["save_contact_v1_vendor_store_details_contact_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/store-details/delivery": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Save Delivery
-         * @description `shazlo` (Shazlo picks up from `pickup_address`) or `own` (the brand delivers to all of
-         *     India or to up to 50 cities or PIN codes, in `delivery_days`: 1_2, 2_3, 3_5 or 5_7).
-         */
-        put: operations["save_delivery_v1_vendor_store_details_delivery_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/store-details/payment": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Save Payment
-         * @description How shoppers can pay on delivery: cash and/or UPI, at least one.
-         */
-        put: operations["save_payment_v1_vendor_store_details_payment_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/store-details/payout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Save Payout
-         * @description Owner only. Where Shazlo pays the brand: a bank account (`holder_name`,
-         *     `account_number` of 9 to 18 digits, `ifsc`) or a UPI ID. The number is sealed and never
-         *     returned; the answer shows the bank (from the IFSC, null for an unlisted bank) and the last
-         *     four digits, or the masked UPI ID. Every change is audited.
-         */
-        put: operations["save_payout_v1_vendor_store_details_payout_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/store-details/returns": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Save Returns
-         * @description `window_days` 0 (no returns), 7, 14 or 30. With a window, `condition`
-         *     (unworn_with_tags, any_reason, damaged_or_wrong) and `refund_days` (2, 5 or 7) are required;
-         *     with 0 they are stored as null whatever is sent.
-         */
-        put: operations["save_returns_v1_vendor_store_details_returns_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/submissions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Submissions
-         * @description Everything the vendor submitted for review and what came of it, newest first. A rejected
-         *     version carries the admin's reason. Any active user of the vendor can read it.
-         */
-        get: operations["list_submissions_v1_vendor_submissions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/users": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Users */
-        get: operations["list_users_v1_vendor_users_get"];
-        put?: never;
-        /**
-         * Invite Staff
-         * @description Invites a staff member by email: an `invited` user with no password and an emailed link.
-         *
-         *     An address that is already used anywhere (any vendor) gets the same answer and no email, so
-         *     the endpoint cannot be used to find out who is registered.
-         */
-        post: operations["invite_staff_v1_vendor_users_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/vendor/users/{user_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Update User
-         * @description Disables or enables a staff user. Disabling ends their sessions at once. The owner cannot
-         *     be disabled (so nobody can disable themselves), and another vendor's user is a 404.
-         */
-        patch: operations["update_user_v1_vendor_users__user_id__patch"];
-        trace?: never;
-    };
-    "/v1/vendor/users/{user_id}/resend-invite": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Resend Invite
-         * @description A new invite for a user who has not set a password yet; it ends the older ones.
-         */
-        post: operations["resend_invite_v1_vendor_users__user_id__resend_invite_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActivityEmptyOut */
+        ActivityEmptyOut: {
+            /** Body */
+            body?: string | null;
+            /** Title */
+            title: string;
+        };
+        /** ActivityItemOut */
+        ActivityItemOut: {
+            /** Actor Id */
+            actor_id: string | null;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Id */
+            id: string;
+            /** Path */
+            path?: string | null;
+            status: components["schemas"]["ActivityStatusOut"];
+            /** Subtitle */
+            subtitle?: string | null;
+            /** Title */
+            title: string;
+        };
+        /** ActivityOut */
+        ActivityOut: {
+            empty: components["schemas"]["ActivityEmptyOut"];
+            /** Icon */
+            icon?: string | null;
+            /** Items */
+            items: components["schemas"]["ActivityItemOut"][];
+            /** Title */
+            title: string;
+        };
+        /** ActivityStatusOut */
+        ActivityStatusOut: {
+            /** Label */
+            label: string;
+            /**
+             * Tone
+             * @enum {string}
+             */
+            tone: "positive" | "attention";
+        };
         /** AdminMe */
         AdminMe: {
             /**
@@ -1330,6 +615,54 @@ export interface components {
             version: number;
         };
         /**
+         * AdminSummaryOut
+         * @example {
+         *       "commission_proposals": 1,
+         *       "decisions": {
+         *         "decided_today": 6,
+         *         "median_minutes": 95
+         *       },
+         *       "publishing": {
+         *         "delivered_24h": 38,
+         *         "failed": 0,
+         *         "retrying": 1,
+         *         "waiting": 2
+         *       },
+         *       "recent": [
+         *         {
+         *           "at": "2026-11-10T09:30:00Z",
+         *           "decision": "approved",
+         *           "id": "6f1d2c3b-4a59-4c7e-8b10-2d3e4f5a6b7c",
+         *           "kind": "product",
+         *           "review_id": "6f1d2c3b-4a59-4c7e-8b10-2d3e4f5a6b7c",
+         *           "reviewer_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+         *           "subject_id": "9b1c2d3e-4f50-4a61-8b72-c3d4e5f60718",
+         *           "title": "Block-print cotton kurta",
+         *           "vendor_id": "3f0c8a52-6b0e-4a8b-9c1d-2a7d5e9b1c10",
+         *           "vendor_name": "Jaipur Prints"
+         *         }
+         *       ],
+         *       "resubmissions": 2,
+         *       "waiting": {
+         *         "application": 2,
+         *         "brand_page": 1,
+         *         "over_24h": 3,
+         *         "product": 4
+         *       }
+         *     }
+         */
+        AdminSummaryOut: {
+            /** Commission Proposals */
+            commission_proposals: number;
+            decisions: components["schemas"]["DecisionsOut"];
+            publishing: components["schemas"]["PublishingOut"];
+            /** Recent */
+            recent: components["schemas"]["RecentDecisionOut"][];
+            /** Resubmissions */
+            resubmissions: number;
+            waiting: components["schemas"]["WaitingOut"];
+        };
+        /**
          * ApproveIn
          * @description The proposal the reviewer saw: approving a different one is a 409.
          * @example {
@@ -1362,187 +695,6 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
-        /** AreasIn */
-        AreasIn: {
-            /** All India */
-            all_india: boolean;
-            /** Places */
-            places?: string[];
-        };
-        /**
-         * AssetKind
-         * @enum {string}
-         */
-        AssetKind: "brand_logo" | "brand_banner" | "product_image" | "size_chart";
-        /**
-         * AssetOut
-         * @example {
-         *       "bytes": 482113,
-         *       "created_at": "2026-11-10T09:30:00Z",
-         *       "format": "jpg",
-         *       "height": 1500,
-         *       "id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
-         *       "kind": "product_image",
-         *       "public_id": "shazlo/vendors/7a9d4e2b-1c3f-4b5a-8d6e-9f0a1b2c3d4e/products/9c1e2d3f4a5b6c7d8e9f0a1b2c3d4e5f",
-         *       "status": "ready",
-         *       "url": "https://res.cloudinary.com/democloud/image/upload/v1/shazlo/products/9c1e.jpg",
-         *       "width": 1200
-         *     }
-         */
-        AssetOut: {
-            /** Bytes */
-            bytes: number | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Format */
-            format: string | null;
-            /** Height */
-            height: number | null;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Kind */
-            kind: string;
-            /** Public Id */
-            public_id: string;
-            /** Status */
-            status: string;
-            /** Url */
-            url: string;
-            /** Width */
-            width: number | null;
-        };
-        /** BrandIn */
-        BrandIn: {
-            /** City */
-            city: string;
-            /** Instagram Or Website */
-            instagram_or_website?: string | null;
-            /**
-             * Sells
-             * @enum {string}
-             */
-            sells: "women" | "men" | "both";
-        };
-        /**
-         * BrandProfileBody
-         * @description The whole editable content of the draft. A `PUT` replaces it, so a field left out is
-         *     cleared; send the page as the editor shows it. The limits are the ones of the published
-         *     contract (ADR 0003), so what is saved here can always be published.
-         * @example {
-         *       "about": "A small studio in Jaipur.",
-         *       "brand_name": "Atelier Rao",
-         *       "categories": [
-         *         "kurtas",
-         *         "dupattas"
-         *       ],
-         *       "instagram_handle": "atelier.rao",
-         *       "logo_asset_id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
-         *       "price_max_paise": 999900,
-         *       "price_min_paise": 99900,
-         *       "tagline": "Block prints, made slowly",
-         *       "website_url": "https://atelier.example"
-         *     }
-         */
-        BrandProfileBody: {
-            /** About */
-            about?: string | null;
-            /** Banner Asset Id */
-            banner_asset_id?: string | null;
-            /** Brand Name */
-            brand_name: string;
-            /** Categories */
-            categories?: string[];
-            /** Instagram Handle */
-            instagram_handle?: string | null;
-            /** Logo Asset Id */
-            logo_asset_id?: string | null;
-            /** Price Max Paise */
-            price_max_paise: number;
-            /** Price Min Paise */
-            price_min_paise: number;
-            /** Tagline */
-            tagline?: string | null;
-            /** Website Url */
-            website_url?: string | null;
-        };
-        /** BrandProfileOut */
-        BrandProfileOut: {
-            /** About */
-            about: string | null;
-            /** Banner Asset Id */
-            banner_asset_id: string | null;
-            /** Banner Url */
-            banner_url: string | null;
-            /** Brand Name */
-            brand_name: string;
-            /** Categories */
-            categories: string[];
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Instagram Handle */
-            instagram_handle: string | null;
-            /** Logo Asset Id */
-            logo_asset_id: string | null;
-            /** Logo Url */
-            logo_url: string | null;
-            /** Price Max Paise */
-            price_max_paise: number;
-            /** Price Min Paise */
-            price_min_paise: number;
-            /** Published At */
-            published_at: string | null;
-            review: components["schemas"]["BrandReviewOut"] | null;
-            /** State */
-            state: string;
-            /** Submitted At */
-            submitted_at: string | null;
-            /** Tagline */
-            tagline: string | null;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-            /** Version */
-            version: number;
-            /** Website Url */
-            website_url: string | null;
-        };
-        /**
-         * BrandReviewOut
-         * @description What happened to this version when an admin looked at it. Never says who decided.
-         */
-        BrandReviewOut: {
-            /** Decided At */
-            decided_at: string | null;
-            /** Reason */
-            reason: string | null;
-            /** Reason Code */
-            reason_code: string | null;
-            /** Status */
-            status: string;
-            /**
-             * Submitted At
-             * Format: date-time
-             */
-            submitted_at: string;
-        };
-        /** BusinessIn */
-        BusinessIn: {
-            /** Gstin */
-            gstin?: string | null;
-            /** Legal Name */
-            legal_name?: string | null;
-        };
         /** ChangeOut */
         ChangeOut: {
             /** After */
@@ -1551,13 +703,6 @@ export interface components {
             before: unknown;
             /** Field */
             field: string;
-        };
-        /** ChangePasswordRequest */
-        ChangePasswordRequest: {
-            /** Current Password */
-            current_password: string;
-            /** New Password */
-            new_password: string;
         };
         /** CommissionOut */
         CommissionOut: {
@@ -1577,133 +722,12 @@ export interface components {
          * @enum {string}
          */
         CommissionState: "not_set" | "proposed" | "sent_back" | "agreed";
-        /** ContactIn */
-        ContactIn: {
-            /** Email */
-            email: string;
-            /** Name */
-            name: string;
-            /** Phone */
-            phone: string;
-        };
-        /**
-         * CreateProductBody
-         * @description A new product. The `sku` is its identity and cannot be changed afterwards.
-         * @example {
-         *       "category": "kurtas",
-         *       "description": "Hand block printed on soft cotton.",
-         *       "fabric": "cotton",
-         *       "gender": "women",
-         *       "images": [
-         *         {
-         *           "alt_text": "Front view",
-         *           "asset_id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c"
-         *         }
-         *       ],
-         *       "return_window_days": 7,
-         *       "returnable": true,
-         *       "sku": "KURTA-001",
-         *       "title": "Block-print cotton kurta",
-         *       "variants": [
-         *         {
-         *           "color": "Indigo",
-         *           "is_active": true,
-         *           "mrp_paise": 199900,
-         *           "price_paise": 149900,
-         *           "size": "M",
-         *           "sku": "KURTA-001-M"
-         *         }
-         *       ],
-         *       "weight_grams": 350
-         *     }
-         */
-        CreateProductBody: {
-            /** Category */
-            category: string;
-            /** Description */
-            description?: string | null;
-            /** Fabric */
-            fabric?: string | null;
-            gender: components["schemas"]["Gender"];
-            /** Images */
-            images?: components["schemas"]["ImageBody"][];
-            /** Return Window Days */
-            return_window_days?: number | null;
-            /**
-             * Returnable
-             * @default false
-             */
-            returnable: boolean;
-            /** Sku */
-            sku: string;
-            /** Subcategory */
-            subcategory?: string | null;
-            /** Title */
-            title: string;
-            /** Variants */
-            variants?: components["schemas"]["VariantBody"][];
-            /** Weight Grams */
-            weight_grams?: number | null;
-        };
-        /** DeliveryIn */
-        DeliveryIn: {
-            areas?: components["schemas"]["AreasIn"] | null;
-            /** Delivery Days */
-            delivery_days?: string | null;
-            /**
-             * Mode
-             * @enum {string}
-             */
-            mode: "shazlo" | "own";
-            pickup_address?: components["schemas"]["PickupAddressIn"] | null;
-        };
-        /** DraftOut */
-        DraftOut: {
-            /** About */
-            about: string | null;
-            /** Banner Asset Id */
-            banner_asset_id: string | null;
-            /** Banner Url */
-            banner_url: string | null;
-            /** Brand Name */
-            brand_name: string;
-            /** Categories */
-            categories: string[];
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** In Review Version */
-            in_review_version: number | null;
-            /** Instagram Handle */
-            instagram_handle: string | null;
-            /** Logo Asset Id */
-            logo_asset_id: string | null;
-            /** Logo Url */
-            logo_url: string | null;
-            /** Price Max Paise */
-            price_max_paise: number;
-            /** Price Min Paise */
-            price_min_paise: number;
-            /** Published At */
-            published_at: string | null;
-            review: components["schemas"]["BrandReviewOut"] | null;
-            /** State */
-            state: string;
-            /** Submitted At */
-            submitted_at: string | null;
-            /** Tagline */
-            tagline: string | null;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-            /** Version */
-            version: number;
-            /** Website Url */
-            website_url: string | null;
+        /** DecisionsOut */
+        DecisionsOut: {
+            /** Decided Today */
+            decided_today: number;
+            /** Median Minutes */
+            median_minutes: number | null;
         };
         /** EventOut */
         EventOut: {
@@ -1725,125 +749,10 @@ export interface components {
             /** Reason */
             reason: string | null;
         };
-        /** ForgotPasswordRequest */
-        ForgotPasswordRequest: {
-            /** Email */
-            email: string;
-        };
-        /**
-         * Gender
-         * @enum {string}
-         */
-        Gender: "women" | "men" | "unisex";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
-        };
-        /** IfscBankOut */
-        IfscBankOut: {
-            /** Bank */
-            bank: string;
-            /** Branch */
-            branch: string | null;
-            /** Ifsc */
-            ifsc: string;
-        };
-        /** ImageBody */
-        ImageBody: {
-            /** Alt Text */
-            alt_text?: string | null;
-            /**
-             * Asset Id
-             * Format: uuid
-             */
-            asset_id: string;
-        };
-        /** ImageOut */
-        ImageOut: {
-            /** Alt Text */
-            alt_text: string | null;
-            /**
-             * Asset Id
-             * Format: uuid
-             */
-            asset_id: string;
-            /** Position */
-            position: number;
-            /** Url */
-            url: string;
-        };
-        /**
-         * ImportMode
-         * @enum {string}
-         */
-        ImportMode: "validate" | "import" | "all_or_nothing";
-        /**
-         * ImportReportOut
-         * @example {
-         *       "committed": true,
-         *       "errors": [
-         *         {
-         *           "code": "invalid_number",
-         *           "column": "price",
-         *           "message": "Use an amount in rupees such as 999 or 999.50 (no symbols or commas)",
-         *           "row": 4
-         *         }
-         *       ],
-         *       "errors_truncated": false,
-         *       "file_format": "csv",
-         *       "ignored_columns": [],
-         *       "mode": "import",
-         *       "products": [
-         *         {
-         *           "product_id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
-         *           "rows": [
-         *             2,
-         *             3
-         *           ],
-         *           "sku": "KURTA-001",
-         *           "status": "created"
-         *         },
-         *         {
-         *           "rows": [
-         *             4
-         *           ],
-         *           "sku": "BAD-002",
-         *           "status": "rejected"
-         *         }
-         *       ],
-         *       "summary": {
-         *         "created": 2,
-         *         "products": 3,
-         *         "rejected": 1,
-         *         "rows_read": 4,
-         *         "rows_with_errors": 1,
-         *         "unchanged": 0,
-         *         "valid": 0
-         *       }
-         *     }
-         */
-        ImportReportOut: {
-            /** Committed */
-            committed: boolean;
-            /** Errors */
-            errors: components["schemas"]["RowErrorOut"][];
-            /** Errors Truncated */
-            errors_truncated: boolean;
-            /** File Format */
-            file_format: string;
-            /** Ignored Columns */
-            ignored_columns: string[];
-            /** Mode */
-            mode: string;
-            /** Products */
-            products: components["schemas"]["ProductResultOut"][];
-            summary: components["schemas"]["SummaryOut"];
-        };
-        /** InviteRequest */
-        InviteRequest: {
-            /** Email */
-            email: string;
         };
         /** LogEntryOut */
         LogEntryOut: {
@@ -1862,30 +771,101 @@ export interface components {
             /** Outcome */
             outcome: string;
         };
-        /** LoginRequest */
-        LoginRequest: {
-            /** Email */
-            email: string;
-            /** Password */
-            password: string;
-        };
-        /** Me */
-        Me: {
-            user: components["schemas"]["UserProfile"];
-            vendor: components["schemas"]["VendorSummary"];
-        };
         /**
-         * Message
-         * @description The one answer for every outcome of signup and resend, so none reveals if an email exists.
+         * ModuleSummaryOut
+         * @description `ModuleSummary` v1 (packages/shell-protocol/src/summary.ts); the shell refuses anything
+         *     else, so a change here is a change to that schema first.
+         * @example {
+         *       "activity": {
+         *         "empty": {
+         *           "body": "Approvals and send-backs show here as reviewers make them.",
+         *           "title": "No decisions yet"
+         *         },
+         *         "icon": "clipboard-check",
+         *         "items": [
+         *           {
+         *             "actor_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+         *             "at": "2026-11-10T09:30:00Z",
+         *             "id": "6f1d2c3b-4a59-4c7e-8b10-2d3e4f5a6b7c",
+         *             "path": "/queue",
+         *             "status": {
+         *               "label": "Approved",
+         *               "tone": "positive"
+         *             },
+         *             "subtitle": "Jaipur Prints · Product",
+         *             "title": "Block-print cotton kurta"
+         *           }
+         *         ],
+         *         "title": "Recent decisions"
+         *       },
+         *       "badge": {
+         *         "count": 7,
+         *         "label": "7 waiting"
+         *       },
+         *       "sections": [
+         *         {
+         *           "action": {
+         *             "label": "Open review queue",
+         *             "path": "/queue"
+         *           },
+         *           "figures": [
+         *             {
+         *               "hint": "Products 4 · Brand pages 1 · Applications 2",
+         *               "label": "Waiting",
+         *               "path": "/queue",
+         *               "unit": "count",
+         *               "value": 7
+         *             },
+         *             {
+         *               "hint": "From submission to decision",
+         *               "label": "Median time to decision",
+         *               "unit": "minutes",
+         *               "value": 95
+         *             }
+         *           ],
+         *           "icon": "store",
+         *           "title": "Vendors"
+         *         },
+         *         {
+         *           "action": {
+         *             "label": "Open publishing",
+         *             "path": "/publishing"
+         *           },
+         *           "alert": {
+         *             "action": {
+         *               "label": "Open publishing",
+         *               "path": "/publishing"
+         *             },
+         *             "text": "1 event did not reach the app. It retries automatically, or you can retry it now.",
+         *             "tone": "warning"
+         *           },
+         *           "figures": [
+         *             {
+         *               "hint": "Needs a look",
+         *               "label": "Failed",
+         *               "path": "/publishing?status=failed",
+         *               "unit": "count",
+         *               "value": 1
+         *             }
+         *           ],
+         *           "icon": "send",
+         *           "title": "Publishing to the app"
+         *         }
+         *       ],
+         *       "v": 1
+         *     }
          */
-        Message: {
-            /** Message */
-            message: string;
+        ModuleSummaryOut: {
+            activity?: components["schemas"]["ActivityOut"] | null;
+            badge: components["schemas"]["SummaryBadgeOut"] | null;
+            /** Sections */
+            sections: components["schemas"]["SummarySectionOut"][];
             /**
-             * Status
-             * @default accepted
+             * V
+             * @default 1
+             * @constant
              */
-            status: string;
+            v: 1;
         };
         /**
          * OutboxEventDetailOut
@@ -2065,190 +1045,16 @@ export interface components {
             /** Sending */
             sending: number;
         };
-        /** PaymentIn */
-        PaymentIn: {
-            /** Cash */
-            cash: boolean;
-            /** Upi */
-            upi: boolean;
-        };
-        /** PayoutIn */
-        PayoutIn: {
-            /** Account Number */
-            account_number?: string | null;
-            /** Holder Name */
-            holder_name?: string | null;
-            /** Ifsc */
-            ifsc?: string | null;
-            /**
-             * Method
-             * @enum {string}
-             */
-            method: "bank" | "upi";
-            /** Upi Id */
-            upi_id?: string | null;
-        };
-        /** PickupAddressIn */
-        PickupAddressIn: {
-            /** Area */
-            area: string;
-            /** City */
-            city: string;
-            /** Line1 */
-            line1: string;
-            /** Pin */
-            pin: string;
-        };
-        /**
-         * ProductContentBody
-         * @description The whole content of one revision. A `PUT` replaces it, so a field or list left out is
-         *     cleared. Limits are the ones of the published contract (ADR 0003).
-         * @example {
-         *       "category": "kurtas",
-         *       "description": "Hand block printed on soft cotton.",
-         *       "fabric": "cotton",
-         *       "gender": "women",
-         *       "images": [
-         *         {
-         *           "alt_text": "Front view",
-         *           "asset_id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c"
-         *         }
-         *       ],
-         *       "return_window_days": 7,
-         *       "returnable": true,
-         *       "title": "Block-print cotton kurta",
-         *       "variants": [
-         *         {
-         *           "color": "Indigo",
-         *           "is_active": true,
-         *           "mrp_paise": 199900,
-         *           "price_paise": 149900,
-         *           "size": "M",
-         *           "sku": "KURTA-001-M"
-         *         }
-         *       ],
-         *       "weight_grams": 350
-         *     }
-         */
-        ProductContentBody: {
-            /** Category */
-            category: string;
-            /** Description */
-            description?: string | null;
-            /** Fabric */
-            fabric?: string | null;
-            gender: components["schemas"]["Gender"];
-            /** Images */
-            images?: components["schemas"]["ImageBody"][];
-            /** Return Window Days */
-            return_window_days?: number | null;
-            /**
-             * Returnable
-             * @default false
-             */
-            returnable: boolean;
-            /** Subcategory */
-            subcategory?: string | null;
-            /** Title */
-            title: string;
-            /** Variants */
-            variants?: components["schemas"]["VariantBody"][];
-            /** Weight Grams */
-            weight_grams?: number | null;
-        };
-        /** ProductOut */
-        ProductOut: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            live: components["schemas"]["RevisionOut"] | null;
-            /** Sku */
-            sku: string;
-            /** Status */
-            status: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-            /** Version */
-            version: number;
-            working: components["schemas"]["RevisionOut"] | null;
-        };
-        /** ProductPageOut */
-        ProductPageOut: {
-            /** Items */
-            items: components["schemas"]["ProductSummaryOut"][];
-            /** Limit */
-            limit: number;
-            /** Offset */
-            offset: number;
-            /** Total */
-            total: number;
-        };
-        /** ProductResultOut */
-        ProductResultOut: {
-            /** Product Id */
-            product_id: string | null;
-            /** Rows */
-            rows: number[];
-            /** Sku */
-            sku: string;
-            /** Status */
-            status: string;
-        };
-        /** ProductReviewOut */
-        ProductReviewOut: {
-            /** Decided At */
-            decided_at: string | null;
-            /** Reason */
-            reason: string | null;
-            /** Reason Code */
-            reason_code: string | null;
-            /** Status */
-            status: string;
-        };
-        /** ProductSummaryOut */
-        ProductSummaryOut: {
-            /** Category */
-            category: string;
-            /** Has Pending Changes */
-            has_pending_changes: boolean;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Sku */
-            sku: string;
-            /** Status */
-            status: string;
-            /** Title */
-            title: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-            /** Version */
-            version: number;
-        };
-        /**
-         * ProposalIn
-         * @example {
-         *       "rate_bps": 1000
-         *     }
-         */
-        ProposalIn: {
-            /** Rate Bps */
-            rate_bps: number;
+        /** PublishingOut */
+        PublishingOut: {
+            /** Delivered 24H */
+            delivered_24h: number;
+            /** Failed */
+            failed: number;
+            /** Retrying */
+            retrying: number;
+            /** Waiting */
+            waiting: number;
         };
         /** QueueCountsOut */
         QueueCountsOut: {
@@ -2334,15 +1140,43 @@ export interface components {
             /** Reason */
             reason: string;
         };
-        /**
-         * RegisterRequest
-         * @example {
-         *       "public_id": "shazlo/vendors/7a9d4e2b-1c3f-4b5a-8d6e-9f0a1b2c3d4e/products/9c1e2d3f4a5b6c7d8e9f0a1b2c3d4e5f"
-         *     }
-         */
-        RegisterRequest: {
-            /** Public Id */
-            public_id: string;
+        /** RecentDecisionOut */
+        RecentDecisionOut: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "rejected";
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "product" | "brand_page" | "application" | "commission";
+            /** Review Id */
+            review_id: string | null;
+            /** Reviewer Id */
+            reviewer_id: string | null;
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /** Title */
+            title: string;
+            /**
+             * Vendor Id
+             * Format: uuid
+             */
+            vendor_id: string;
+            /** Vendor Name */
+            vendor_name: string;
         };
         /**
          * RejectReviewRequest
@@ -2358,20 +1192,6 @@ export interface components {
             reason_code?: components["schemas"]["ReviewReasonCode"] | null;
             /** Version */
             version: number;
-        };
-        /** ResendRequest */
-        ResendRequest: {
-            /** Email */
-            email: string;
-        };
-        /** ReturnsIn */
-        ReturnsIn: {
-            /** Condition */
-            condition?: string | null;
-            /** Refund Days */
-            refund_days?: number | null;
-            /** Window Days */
-            window_days: number;
         };
         /** ReviewDetailOut */
         ReviewDetailOut: {
@@ -2458,59 +1278,6 @@ export interface components {
             /** Status */
             status: string;
         };
-        /** RevisionOut */
-        RevisionOut: {
-            /** Category */
-            category: string;
-            /** Description */
-            description: string | null;
-            /** Fabric */
-            fabric: string | null;
-            /** Gender */
-            gender: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Images */
-            images: components["schemas"]["ImageOut"][];
-            /** Return Window Days */
-            return_window_days: number | null;
-            /** Returnable */
-            returnable: boolean;
-            review: components["schemas"]["ProductReviewOut"] | null;
-            /** State */
-            state: string;
-            /** Subcategory */
-            subcategory: string | null;
-            /** Submitted At */
-            submitted_at: string | null;
-            /** Title */
-            title: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-            /** Variants */
-            variants: components["schemas"]["VariantOut"][];
-            /** Version */
-            version: number;
-            /** Weight Grams */
-            weight_grams: number | null;
-        };
-        /** RowErrorOut */
-        RowErrorOut: {
-            /** Code */
-            code: string;
-            /** Column */
-            column: string | null;
-            /** Message */
-            message: string;
-            /** Row */
-            row: number;
-        };
         /**
          * SendBackIn
          * @example {
@@ -2520,30 +1287,6 @@ export interface components {
         SendBackIn: {
             /** Note */
             note: string;
-        };
-        /**
-         * SessionResponse
-         * @description The refresh token is never in the body; it is only ever in the HttpOnly cookie.
-         */
-        SessionResponse: {
-            /** Access Token */
-            access_token: string;
-            /** Expires In */
-            expires_in: number;
-            /**
-             * Token Type
-             * @default Bearer
-             */
-            token_type: string;
-            user: components["schemas"]["UserProfile"];
-            vendor: components["schemas"]["VendorSummary"];
-        };
-        /** SetPasswordRequest */
-        SetPasswordRequest: {
-            /** Password */
-            password: string;
-            /** Token */
-            token: string;
         };
         /**
          * SetRateIn
@@ -2557,120 +1300,6 @@ export interface components {
             commission_bps: number;
             /** Note */
             note?: string | null;
-        };
-        /**
-         * SignRequest
-         * @example {
-         *       "content_type": "image/jpeg",
-         *       "kind": "product_image",
-         *       "size_bytes": 482113
-         *     }
-         */
-        SignRequest: {
-            /**
-             * Content Type
-             * @enum {string}
-             */
-            content_type: "image/jpeg" | "image/png" | "image/webp";
-            kind: components["schemas"]["AssetKind"];
-            /** Size Bytes */
-            size_bytes: number;
-        };
-        /**
-         * SignResponse
-         * @example {
-         *       "allowed_content_types": [
-         *         "image/jpeg",
-         *         "image/png",
-         *         "image/webp"
-         *       ],
-         *       "asset_id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
-         *       "expires_at": "2026-11-11T10:00:00Z",
-         *       "fields": {
-         *         "allowed_formats": "jpg,jpeg,png,webp",
-         *         "api_key": "123456789012345",
-         *         "overwrite": "false",
-         *         "public_id": "shazlo/vendors/7a9d4e2b-1c3f-4b5a-8d6e-9f0a1b2c3d4e/products/9c1e2d3f4a5b6c7d8e9f0a1b2c3d4e5f",
-         *         "signature": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-         *         "timestamp": "1762851600"
-         *       },
-         *       "max_bytes": 10485760,
-         *       "public_id": "shazlo/vendors/7a9d4e2b-1c3f-4b5a-8d6e-9f0a1b2c3d4e/products/9c1e2d3f4a5b6c7d8e9f0a1b2c3d4e5f",
-         *       "upload_url": "https://api.cloudinary.com/v1_1/democloud/image/upload"
-         *     }
-         */
-        SignResponse: {
-            /** Allowed Content Types */
-            allowed_content_types: string[];
-            /**
-             * Asset Id
-             * Format: uuid
-             */
-            asset_id: string;
-            /**
-             * Expires At
-             * Format: date-time
-             */
-            expires_at: string;
-            /** Fields */
-            fields: {
-                [key: string]: string;
-            };
-            /** Max Bytes */
-            max_bytes: number;
-            /** Public Id */
-            public_id: string;
-            /** Upload Url */
-            upload_url: string;
-        };
-        /** SignupRequest */
-        SignupRequest: {
-            /** Brand Name */
-            brand_name: string;
-            /** Contact Name */
-            contact_name: string;
-            /** Email */
-            email: string;
-            /** Password */
-            password: string;
-            /** Phone */
-            phone: string;
-            /** Price Max Paise */
-            price_max_paise: number;
-            /** Price Min Paise */
-            price_min_paise: number;
-            /** Product Type */
-            product_type: string;
-            /** Terms Accepted */
-            terms_accepted: boolean;
-            /** Website Or Instagram */
-            website_or_instagram?: string | null;
-        };
-        /** SizeChartIn */
-        SizeChartIn: {
-            /** Measurements */
-            measurements: {
-                [key: string]: unknown;
-            };
-            /** Photo Asset Id */
-            photo_asset_id?: string | null;
-        };
-        /** SizeChartOut */
-        SizeChartOut: {
-            /** Group */
-            group: string;
-            /** Measurements */
-            measurements: {
-                [key: string]: {
-                    [key: string]: unknown;
-                };
-            };
-            /** Photo Asset Id */
-            photo_asset_id: string | null;
-            /** Photo Url */
-            photo_url: string | null;
-            /** Updated At */
-            updated_at: string | null;
         };
         /** StatusEventOut */
         StatusEventOut: {
@@ -2731,143 +1360,58 @@ export interface components {
             /** Updated At */
             updated_at: string | null;
         };
-        /**
-         * SubmissionOut
-         * @description One review of something the vendor submitted. There is no reviewer in it: who decided
-         *     is private to the admins.
-         */
-        SubmissionOut: {
-            /** Decided At */
-            decided_at: string | null;
+        /** SummaryAlertOut */
+        SummaryAlertOut: {
+            action?: components["schemas"]["SummaryLinkOut"] | null;
+            /** Text */
+            text: string;
             /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Reason */
-            reason: string | null;
-            /** Reason Code */
-            reason_code: string | null;
-            /** Sku */
-            sku: string | null;
-            /**
-             * Status
+             * Tone
              * @enum {string}
              */
-            status: "pending" | "approved" | "rejected" | "withdrawn";
+            tone: "warning" | "error";
+        };
+        /** SummaryBadgeOut */
+        SummaryBadgeOut: {
+            /** Count */
+            count: number;
+            /** Label */
+            label: string;
+        };
+        /** SummaryFigureOut */
+        SummaryFigureOut: {
+            /** Hint */
+            hint?: string | null;
+            /** Label */
+            label: string;
+            /** Path */
+            path?: string | null;
             /**
-             * Subject
+             * Unit
+             * @default count
              * @enum {string}
              */
-            subject: "brand_profile" | "product";
-            /**
-             * Submitted At
-             * Format: date-time
-             */
-            submitted_at: string;
+            unit: "count" | "minutes";
+            /** Value */
+            value: number | null;
+        };
+        /** SummaryLinkOut */
+        SummaryLinkOut: {
+            /** Label */
+            label: string;
+            /** Path */
+            path: string;
+        };
+        /** SummarySectionOut */
+        SummarySectionOut: {
+            action?: components["schemas"]["SummaryLinkOut"] | null;
+            alert?: components["schemas"]["SummaryAlertOut"] | null;
+            /** Figures */
+            figures: components["schemas"]["SummaryFigureOut"][];
+            /** Icon */
+            icon?: string | null;
             /** Title */
-            title: string | null;
-            /** Version */
-            version: number;
-        };
-        /**
-         * SubmissionPageOut
-         * @example {
-         *       "items": [
-         *         {
-         *           "decided_at": "2026-11-11T12:00:00Z",
-         *           "id": "3f2b8c1e-5a4d-4e7b-9c3a-1d2e3f4a5b6c",
-         *           "reason": "The photos are too dark to see the print.",
-         *           "reason_code": "photos",
-         *           "sku": "KRT-001",
-         *           "status": "rejected",
-         *           "subject": "product",
-         *           "submitted_at": "2026-11-10T09:30:00Z",
-         *           "title": "Indigo block-print kurta",
-         *           "version": 2
-         *         },
-         *         {
-         *           "id": "7a1c2d3e-4b5f-4a6b-8c7d-9e0f1a2b3c4d",
-         *           "status": "pending",
-         *           "subject": "brand_profile",
-         *           "submitted_at": "2026-11-09T08:00:00Z",
-         *           "version": 3
-         *         }
-         *       ],
-         *       "limit": 25,
-         *       "offset": 0,
-         *       "total": 2
-         *     }
-         */
-        SubmissionPageOut: {
-            /** Items */
-            items: components["schemas"]["SubmissionOut"][];
-            /** Limit */
-            limit: number;
-            /** Offset */
-            offset: number;
-            /** Total */
-            total: number;
-        };
-        /** SummaryOut */
-        SummaryOut: {
-            /** Created */
-            created: number;
-            /** Products */
-            products: number;
-            /** Rejected */
-            rejected: number;
-            /** Rows Read */
-            rows_read: number;
-            /** Rows With Errors */
-            rows_with_errors: number;
-            /** Unchanged */
-            unchanged: number;
-            /** Valid */
-            valid: number;
-        };
-        /**
-         * UpdateUserRequest
-         * @description Only the fields that are sent change.
-         */
-        UpdateUserRequest: {
-            /** Disabled */
-            disabled: boolean;
-        };
-        /** UserOut */
-        UserOut: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Email */
-            email: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Last Login At */
-            last_login_at: string | null;
-            /** Role */
-            role: string;
-            /** Status */
-            status: string;
-        };
-        /** UserProfile */
-        UserProfile: {
-            /** Email */
-            email: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Last Login At */
-            last_login_at: string | null;
-            /** Role */
-            role: string;
+            title: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -2881,54 +1425,6 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
-        };
-        /**
-         * VariantBody
-         * @description A sellable variant. Its `sku` is its identity: the same SKU in a later edit is the same
-         *     variant, so its size and colour cannot change (use a new SKU instead).
-         */
-        VariantBody: {
-            /**
-             * Color
-             * @default
-             */
-            color: string;
-            /**
-             * Is Active
-             * @default true
-             */
-            is_active: boolean;
-            /** Mrp Paise */
-            mrp_paise: number;
-            /** Price Paise */
-            price_paise: number;
-            /**
-             * Size
-             * @default
-             */
-            size: string;
-            /** Sku */
-            sku: string;
-        };
-        /** VariantOut */
-        VariantOut: {
-            /** Color */
-            color: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Is Active */
-            is_active: boolean;
-            /** Mrp Paise */
-            mrp_paise: number;
-            /** Price Paise */
-            price_paise: number;
-            /** Size */
-            size: string;
-            /** Sku */
-            sku: string;
         };
         /** VendorDetailOut */
         VendorDetailOut: {
@@ -3023,25 +1519,6 @@ export interface components {
             /** Total */
             total: number;
         };
-        /** VendorSummary */
-        VendorSummary: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Name */
-            name: string;
-            /** Slug */
-            slug: string;
-            /** Status */
-            status: string;
-        };
-        /** VerifyEmailRequest */
-        VerifyEmailRequest: {
-            /** Token */
-            token: string;
-        };
         /** VersionOut */
         VersionOut: {
             /** Content */
@@ -3053,6 +1530,17 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** WaitingOut */
+        WaitingOut: {
+            /** Application */
+            application: number;
+            /** Brand Page */
+            brand_page: number;
+            /** Over 24H */
+            over_24h: number;
+            /** Product */
+            product: number;
+        };
     };
     responses: never;
     parameters: never;
@@ -3062,26 +1550,6 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    jwks__well_known_jwks_json_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
     health_health_get: {
         parameters: {
             query?: never;
@@ -3140,6 +1608,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminMe"];
+                };
+            };
+        };
+    };
+    get_module_summary_v1_admin_module_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModuleSummaryOut"];
                 };
             };
         };
@@ -3439,6 +1927,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_summary_v1_admin_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSummaryOut"];
                 };
             };
         };
@@ -3772,1291 +2280,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["VendorDetailOut"];
                 };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    change_password_v1_auth_change_password_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ChangePasswordRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SessionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    forgot_password_v1_auth_forgot_password_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ForgotPasswordRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Message"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    login_v1_auth_login_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LoginRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SessionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    logout_v1_auth_logout_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vendor_refresh?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    refresh_v1_auth_refresh_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vendor_refresh?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    resend_verification_v1_auth_resend_verification_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ResendRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Message"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_password_v1_auth_set_password_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetPasswordRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    signup_v1_auth_signup_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SignupRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Message"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    verify_email_v1_auth_verify_email_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["VerifyEmailRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    ifsc_lookup_v1_public_ifsc__code__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                code: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IfscBankOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    register_asset_v1_vendor_assets_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RegisterRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AssetOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    sign_upload_v1_vendor_assets_sign_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SignRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SignResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_draft_v1_vendor_brand_profile_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DraftOut"];
-                };
-            };
-        };
-    };
-    save_draft_v1_vendor_brand_profile_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BrandProfileBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DraftOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_published_v1_vendor_brand_profile_published_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BrandProfileOut"];
-                };
-            };
-        };
-    };
-    submit_v1_vendor_brand_profile_submit_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BrandProfileOut"];
-                };
-            };
-        };
-    };
-    get_commission_v1_vendor_commission_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CommissionOut"];
-                };
-            };
-        };
-    };
-    propose_commission_v1_vendor_commission_proposal_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProposalIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CommissionOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    me_v1_vendor_me_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Me"];
-                };
-            };
-        };
-    };
-    list_products_v1_vendor_products_get: {
-        parameters: {
-            query?: {
-                /** @description Only products in this status. Archived ones show only when asked. */
-                status?: ("draft" | "pending_review" | "approved" | "rejected" | "archived") | null;
-                category?: string | null;
-                /** @description Part of the SKU or title */
-                q?: string | null;
-                limit?: number;
-                offset?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProductPageOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_product_v1_vendor_products_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateProductBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProductOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    import_products_v1_vendor_products_import_post: {
-        parameters: {
-            query?: {
-                /** @description `validate` writes nothing; `import` creates every valid product and reports the rest; `all_or_nothing` creates nothing unless the whole file is valid. */
-                mode?: components["schemas"]["ImportMode"];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @description The file itself, as the request body (not a multipart form). */
-        requestBody: {
-            content: {
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
-                "text/csv": string;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ImportReportOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    import_template_v1_vendor_products_import_template_get: {
-        parameters: {
-            query?: {
-                format?: "xlsx" | "csv";
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_product_v1_vendor_products__product_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                product_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProductOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_product_v1_vendor_products__product_id__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                product_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProductContentBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProductOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_product_v1_vendor_products__product_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                product_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    submit_product_v1_vendor_products__product_id__submit_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                product_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProductOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_size_chart_v1_vendor_size_charts__group__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                group: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SizeChartOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    save_size_chart_v1_vendor_size_charts__group__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                group: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SizeChartIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SizeChartOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_store_details_route_v1_vendor_store_details_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StoreDetailsOut"];
-                };
-            };
-        };
-    };
-    save_brand_v1_vendor_store_details_brand_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BrandIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StoreDetailsOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    save_business_v1_vendor_store_details_business_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BusinessIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StoreDetailsOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    save_contact_v1_vendor_store_details_contact_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ContactIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StoreDetailsOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    save_delivery_v1_vendor_store_details_delivery_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DeliveryIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StoreDetailsOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    save_payment_v1_vendor_store_details_payment_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PaymentIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StoreDetailsOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    save_payout_v1_vendor_store_details_payout_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PayoutIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StoreDetailsOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    save_returns_v1_vendor_store_details_returns_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReturnsIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StoreDetailsOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_submissions_v1_vendor_submissions_get: {
-        parameters: {
-            query?: {
-                /** @description Only reviews in this status; `all` (the default) lists every one. */
-                status?: "pending" | "approved" | "rejected" | "withdrawn" | "all";
-                /** @description Only the brand page's reviews, or only the products'. */
-                subject?: ("brand_profile" | "product") | null;
-                limit?: number;
-                offset?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SubmissionPageOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_users_v1_vendor_users_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserOut"][];
-                };
-            };
-        };
-    };
-    invite_staff_v1_vendor_users_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["InviteRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Message"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_user_v1_vendor_users__user_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                user_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateUserRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    resend_invite_v1_vendor_users__user_id__resend_invite_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                user_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Validation Error */
             422: {

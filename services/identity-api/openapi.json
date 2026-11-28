@@ -32,6 +32,41 @@
         "title": "AdminList",
         "type": "object"
       },
+      "AdminName": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "AdminName",
+        "type": "object"
+      },
+      "AdminNames": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminName"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AdminNames",
+        "type": "object"
+      },
       "AdminOut": {
         "properties": {
           "created_at": {
@@ -698,6 +733,81 @@
           }
         ],
         "summary": "Create Admin",
+        "tags": [
+          "admins"
+        ]
+      }
+    },
+    "/v1/admins/names": {
+      "get": {
+        "description": "The display names of the admins with these ids, for any signed-in admin.",
+        "operationId": "admin_names_v1_admins_names_get",
+        "parameters": [
+          {
+            "description": "Admin ids; repeat the parameter, at most 100",
+            "in": "query",
+            "name": "ids",
+            "required": true,
+            "schema": {
+              "description": "Admin ids; repeat the parameter, at most 100",
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Ids",
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminNames"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "`unauthorized`: The access token is missing, invalid, expired, or its admin is deactivated."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "`password_change_required`: The admin must change the initial password first."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "`validation_error`: The request does not match the schema; `details` lists the problems."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Admin Names",
         "tags": [
           "admins"
         ]

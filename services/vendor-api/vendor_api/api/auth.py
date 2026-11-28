@@ -11,10 +11,10 @@ from shazlo_security.passwords import MAX_PASSWORD_LENGTH
 from shazlo_security.rate_limit import Check
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from vendor_api.api.common import Emails, no_store
 from vendor_api.api.deps import (
     ClientIp,
     CurrentVendorUser,
-    Emails,
     Limits,
     current_vendor_user,
     get_sessions,
@@ -88,10 +88,6 @@ def get_credential_service(request: Request) -> CredentialService:
 
 
 Credentials = Annotated[CredentialService, Depends(get_credential_service)]
-
-
-def no_store(response: Response) -> None:
-    response.headers["Cache-Control"] = "no-store"
 
 
 class Message(BaseModel):
