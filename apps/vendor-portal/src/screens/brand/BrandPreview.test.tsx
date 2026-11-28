@@ -17,7 +17,6 @@ import { COVER_SIZE, LOGO_MIN_PX, type Profile } from './schema'
 const PROFILE: Profile = {
   brand_name: 'Kalki Studio',
   based_in: 'Ahmedabad, Gujarat',
-  tagline: 'Hand block-printed, naturally dyed.',
   story: 'We work with Ajrakh printers in Kutch.',
   logo_url: 'https://img.test/logo.png',
   cover_url: 'https://img.test/cover.jpg',
@@ -94,10 +93,10 @@ describe('Brand page preview: the phone', () => {
     expect(part('top-bar')!.querySelector('[role="img"][aria-label="Shazlo"]')).not.toBeNull()
   })
 
-  it('lays the page out top to bottom: cover, logo, name, tagline, meta, about, links, products', () => {
+  it('lays the page out top to bottom: cover, logo, name, meta, about, links, products', () => {
     const { phone } = show()
     const order = [...phone.querySelectorAll('[data-part]')].map((el) => el.getAttribute('data-part'))
-    expect(order).toEqual(['status-bar', 'top-bar', 'cover', 'logo', 'name', 'tagline', 'meta', 'about', 'links', 'products', 'tab-bar'])
+    expect(order).toEqual(['status-bar', 'top-bar', 'cover', 'logo', 'name', 'meta', 'about', 'links', 'products', 'tab-bar'])
   })
 
   it('scrolls the page between the bars, and keyboard users can scroll it too', () => {
@@ -184,11 +183,11 @@ describe('Brand page preview: cover and logo', () => {
 })
 
 describe('Brand page preview: the words', () => {
-  it('wraps a long name and tagline cleanly instead of running off the screen', () => {
+  it('wraps a long name and story cleanly instead of running off the screen', () => {
     const name = 'Kalamkari'.repeat(12)
-    const tagline = 'Handwoven '.repeat(6).trim()
-    const { part } = show({ draft: { ...PROFILE, brand_name: name, tagline } })
-    for (const which of ['name', 'tagline']) {
+    const story = 'Handwoven'.repeat(40)
+    const { part } = show({ draft: { ...PROFILE, brand_name: name, story } })
+    for (const which of ['name', 'about']) {
       expect(css(part(which)).overflowWrap, which).toBe('anywhere')
       expect(css(part(which)).whiteSpace, which).not.toBe('nowrap')
     }
@@ -204,11 +203,19 @@ describe('Brand page preview: the words', () => {
   })
 
   it('leaves out what is not filled in yet', () => {
-    const { part } = show({ draft: { ...PROFILE, tagline: '', story: '', instagram: '', website: '' } })
-    expect(part('tagline')).toBeNull()
+    const { part } = show({ draft: { ...PROFILE, story: '', instagram: '', website: '' } })
     expect(part('about')).toBeNull()
     expect(part('links')).toBeNull()
     expect(part('name')).toBeInTheDocument()
+  })
+
+  it('shows no tagline, even one an old page still has', () => {
+    // The brand page has no tagline any more. The adapter drops vendor-api's; even if one got through, it stays unseen.
+    const old = { ...PROFILE, tagline: 'Hand block-printed, naturally dyed.' } as Profile
+    const { part } = show({ draft: old, live: old })
+    expect(part('tagline')).toBeNull()
+    expect(screen.queryByText('Hand block-printed, naturally dyed.')).toBeNull()
+    expect(part('name')).toHaveTextContent('Kalki Studio')
   })
 })
 
@@ -238,16 +245,16 @@ describe('Brand page preview: products', () => {
 describe('Brand page preview: draft and live', () => {
   it('switches between the draft and the live page', async () => {
     const user = userEvent.setup()
-    show({ draft: { ...PROFILE, tagline: 'The draft tagline' }, live: { ...PROFILE, tagline: 'The live tagline', cover_url: null } })
+    show({ draft: { ...PROFILE, story: 'The draft story' }, live: { ...PROFILE, story: 'The live story', cover_url: null } })
     const region = screen.getByRole('region', { name: 'Preview in the Shazlo app' })
     const version = within(region).getByRole('group', { name: 'Preview version' })
-    expect(within(region).getByText('The draft tagline')).toBeInTheDocument()
+    expect(within(region).getByText('The draft story')).toBeInTheDocument()
     await user.click(within(version).getByRole('button', { name: 'Live' }))
-    expect(within(region).getByText('The live tagline')).toBeInTheDocument()
-    expect(within(region).queryByText('The draft tagline')).toBeNull()
+    expect(within(region).getByText('The live story')).toBeInTheDocument()
+    expect(within(region).queryByText('The draft story')).toBeNull()
     expect(region.querySelector('[data-part="cover"]')).toHaveAttribute('data-empty', 'true')
     await user.click(within(version).getByRole('button', { name: 'Draft' }))
-    expect(within(region).getByText('The draft tagline')).toBeInTheDocument()
+    expect(within(region).getByText('The draft story')).toBeInTheDocument()
   })
 
   it('has no switch before the page has gone live', () => {

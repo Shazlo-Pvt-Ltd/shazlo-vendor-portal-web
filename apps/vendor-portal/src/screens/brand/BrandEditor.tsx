@@ -30,7 +30,7 @@ const columns = {
   gap: { xs: 3, lg: 5 },
   alignItems: 'start',
 } as const
-const SELLER_ADDED = ['logo_url', 'cover_url', 'tagline', 'story', 'instagram', 'website'] as const satisfies readonly (keyof BrandValues)[]
+const SELLER_ADDED = ['logo_url', 'cover_url', 'story', 'instagram', 'website'] as const satisfies readonly (keyof BrandValues)[]
 const pair = { display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 3 } as const
 
 // Stable props for the memoised inputs.
@@ -411,7 +411,6 @@ function BrandForm({
                 <BrandNameField value={initial.brand_name} />
                 <TextInput control={control} name="based_in" label={copy.identity.basedIn} changed={changed.has('based_in')} disabled={locked} htmlInput={PLACE_INPUT} />
               </Box>
-              <TextInput control={control} name="tagline" label={copy.identity.tagline} changed={changed.has('tagline')} disabled={locked} max={LIMITS.tagline} />
               <TextInput control={control} name="story" label={copy.identity.story} changed={changed.has('story')} disabled={locked} max={LIMITS.story} multiline />
             </Stack>
           </SectionCard>

@@ -10,7 +10,7 @@ import { ApiError } from '../api/http'
 import { paths } from '../app/paths'
 import { authCopy } from '../copy/auth'
 import { fieldProps } from '../lib/forms'
-import { safeNext } from '../session/guards'
+import { safeNext } from '../session/returnTo'
 import { useSession } from '../session/useSession'
 
 const copy = authCopy.signIn

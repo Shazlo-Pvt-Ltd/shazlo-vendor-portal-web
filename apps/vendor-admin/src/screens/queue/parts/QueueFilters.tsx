@@ -1,6 +1,7 @@
 import { Box, FormControlLabel, IconButton, InputAdornment, MenuItem, Select, Stack, Switch, TextField } from '@mui/material'
 import { Search, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { QUEUE_MAX_SEARCH } from '../../../api/adapters/queue'
 import type * as M from '../../../api/model'
 import { queueCopy } from '../../../copy/queue'
 import { filterBar, filterSpacer, fullRow } from '../../../lib/responsive'
@@ -40,7 +41,7 @@ function SearchField({ value, onCommit }: { value: string; onCommit: (q: string)
       }}
       sx={{ ...fullRow, width: { xs: '100%', sm: 280 }, flexShrink: 0 }}
       slotProps={{
-        htmlInput: { enterKeyHint: 'search', spellCheck: false },
+        htmlInput: { enterKeyHint: 'search', spellCheck: false, maxLength: QUEUE_MAX_SEARCH },
         input: {
           startAdornment: (
             <InputAdornment position="start">

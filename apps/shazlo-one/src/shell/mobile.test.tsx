@@ -1,7 +1,7 @@
-import { createMessage } from '@shazlo/shell-protocol'
-import { act, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { renderShell } from '../test/render'
+import { moduleMessage, postFromFrame } from '../test/frames'
 
 // A phone-sized viewport: matchMedia answers min/max-width queries for a 390 px screen, so
 // useMediaQuery(theme.breakpoints.down(...)) sees a phone.
@@ -34,6 +34,16 @@ afterEach(() => {
 // While the drawer is open the page behind it (menu button included) is aria-hidden.
 const menuButton = () => screen.getByRole('button', { name: 'Menu', hidden: true })
 const sections = () => screen.queryByRole('navigation', { name: 'Shazlo One sections' })
+const pagesRow = () => screen.queryByRole('navigation', { name: 'Catalogue pages' })
+// The module's pages come from its manifest, which arrives after the module is framed.
+const manifestIn = () => waitFor(() => expect(pagesRow()).not.toBeNull())
+
+// The --shell-top the layout sets on its root, which the module iframe's height is computed from.
+function shellTop() {
+  let el: HTMLElement | null = screen.getByRole('main')
+  while (el && !getComputedStyle(el).getPropertyValue('--shell-top')) el = el.parentElement
+  return el ? getComputedStyle(el).getPropertyValue('--shell-top').trim() : null
+}
 
 describe('phone shell: top bar and menu drawer', () => {
   it('hides the sidebar behind a menu button', async () => {
@@ -49,13 +59,14 @@ describe('phone shell: top bar and menu drawer', () => {
   })
 
   it('gives the drawer the same icons, nesting and amber logo as the sidebar', async () => {
-    const { user } = await renderShell({ route: '/vendors/queue' })
-    await screen.findByTitle('Vendors')
+    const { user } = await renderShell({ route: '/catalogue/queue' })
+    await screen.findByTitle('Catalogue')
     await user.click(menuButton())
     const nav = await screen.findByRole('navigation', { name: 'Shazlo One sections' })
-    for (const name of ['Home', /^Vendors/, 'Review queue', 'All vendors', 'Publishing', 'Admins & roles']) expect(within(nav).getByRole('link', { name }).querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+    await within(nav).findByRole('link', { name: 'Review queue' })
+    for (const name of ['Home', /^Catalogue/, 'Review queue', 'All sellers', 'Publishing', 'Admins & roles']) expect(within(nav).getByRole('link', { name }).querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
     const pages = within(nav).getByRole('link', { name: 'Review queue' }).closest('ul')!
-    expect(pages.closest('li')).toContainElement(within(nav).getByRole('link', { name: /^Vendors/ }))
+    expect(pages.closest('li')).toContainElement(within(nav).getByRole('link', { name: /^Catalogue/ }))
     expect(within(nav).getByRole('link', { name: 'Review queue' })).toHaveAttribute('aria-current', 'page')
     const drawer = screen.getByRole('dialog', { name: 'Menu' })
     expect(within(drawer).getByRole('img', { name: 'Shazlo' })).toHaveAttribute('data-tone', 'amber')
@@ -69,7 +80,7 @@ describe('phone shell: top bar and menu drawer', () => {
     const nav = await screen.findByRole('navigation', { name: 'Shazlo One sections' })
     expect(document.getElementById(menuButton().getAttribute('aria-controls')!)).toContainElement(nav)
     expect(within(nav).getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page')
-    await waitFor(() => expect(within(nav).getByRole('link', { name: /^Vendors\s*, 14 waiting$/ })).toBeInTheDocument())
+    await waitFor(() => expect(within(nav).getByRole('link', { name: /^Catalogue\s*, 14 waiting$/ })).toBeInTheDocument())
     expect(screen.getByText('Naman Sinha')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
 
@@ -101,14 +112,79 @@ describe('phone shell: top bar and menu drawer', () => {
   })
 
   it('shows only the last breadcrumb', async () => {
-    await renderShell({ route: '/vendors/queue' })
-    const iframe = (await screen.findByTitle('Vendors')) as HTMLIFrameElement
-    const send = (data: unknown) => act(() => void window.dispatchEvent(new MessageEvent('message', { data, origin: 'http://localhost:5193', source: iframe.contentWindow })))
-    send(createMessage('ready', { module: 'vendor-admin', supportedVersions: [1], moduleVersion: '0.1.0' }))
-    send(createMessage('title', { path: '/review/product/p_ajrakh', title: 'Ajrakh Block-Print Kurta' }))
+    await renderShell({ route: '/catalogue/queue' })
+    const iframe = (await screen.findByTitle('Catalogue')) as HTMLIFrameElement
+    const send = (data: unknown) => postFromFrame(iframe as HTMLIFrameElement, data, { origin: 'https://catalogue.test' })
+    send(moduleMessage('ready', { module: 'catalogue', supportedVersions: [1], moduleVersion: '0.1.0' }))
+    send(moduleMessage('title', { path: '/review/product/p_ajrakh', title: 'Ajrakh Block-Print Kurta' }))
     const crumbs = screen.getByRole('navigation', { name: 'Breadcrumb' })
     await waitFor(() => expect(crumbs).toHaveTextContent('Ajrakh Block-Print Kurta'))
-    expect(within(crumbs).queryByRole('link', { name: 'Vendors' })).toBeNull()
+    expect(within(crumbs).queryByRole('link', { name: 'Catalogue' })).toBeNull()
+  })
+})
+
+describe('phone shell: the module pages row', () => {
+  // jsdom does not scroll; record what the row asks to bring into view.
+  const scrolled: Element[] = []
+  const originalScroll = Element.prototype.scrollIntoView
+  beforeEach(() => {
+    scrolled.length = 0
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this)
+    }
+  })
+  afterEach(() => {
+    Element.prototype.scrollIntoView = originalScroll
+  })
+
+  it('shows the module pages under the crumb, with 44 px links in a row that scrolls inside itself', async () => {
+    await renderShell({ route: '/catalogue/queue' })
+    await screen.findByTitle('Catalogue')
+    await manifestIn()
+    const nav = pagesRow()!
+    expect(screen.getByRole('banner')).toContainElement(nav)
+    expect(screen.getByRole('banner')).toContainElement(screen.getByRole('navigation', { name: 'Breadcrumb' }))
+    expect(getComputedStyle(nav).overflowX).toBe('auto')
+    const links = within(nav).getAllByRole('link')
+    expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      ['Review queue', '/catalogue/queue'],
+      ['All sellers', '/catalogue/sellers'],
+      ['Publishing', '/catalogue/publishing'],
+    ])
+    for (const a of links) expect(getComputedStyle(a).minHeight).toBe('44px')
+    const queue = within(nav).getByRole('link', { name: 'Review queue' })
+    expect(queue).toHaveAttribute('aria-current', 'page')
+    expect(scrolled.length).toBeGreaterThan(0)
+    expect(scrolled.every((el) => el === queue)).toBe(true)
+    // The navy bar, the crumb bar and this row: the iframe gets the rest of the screen.
+    expect(shellTop()).toBe('148px')
+  })
+
+  it('scrolls the newly current page into view after a link is picked', async () => {
+    const { user, router } = await renderShell({ route: '/catalogue/queue' })
+    await screen.findByTitle('Catalogue')
+    await manifestIn()
+    await user.click(within(pagesRow()!).getByRole('link', { name: 'Publishing' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/catalogue/publishing'))
+    const publishing = within(pagesRow()!).getByRole('link', { name: 'Publishing' })
+    expect(publishing).toHaveAttribute('aria-current', 'page')
+    await waitFor(() => expect(scrolled.at(-1)).toBe(publishing))
+  })
+
+  it('marks no page on the module home page', async () => {
+    await renderShell({ route: '/catalogue/dashboard' })
+    await screen.findByTitle('Catalogue')
+    await manifestIn()
+    expect(within(pagesRow()!).getAllByRole('link')).toHaveLength(3)
+    for (const a of within(pagesRow()!).getAllByRole('link')) expect(a).not.toHaveAttribute('aria-current')
+    expect(scrolled).toEqual([])
+  })
+
+  it('keeps the plain phone header outside a module', async () => {
+    await renderShell({ route: '/' })
+    await screen.findByRole('heading', { level: 1 })
+    expect(pagesRow()).toBeNull()
+    expect(shellTop()).toBe('100px')
   })
 })
 

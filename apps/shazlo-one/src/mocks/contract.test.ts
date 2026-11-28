@@ -10,7 +10,7 @@ import { createIdentityDb, createIdentityHandlers, DEMO_ADMIN, INVITED_ADMIN } f
 // services/identity-api/openapi.json, and every error must be its {error: {code, message, request_id}}
 // envelope. The scenario calls every route the shell uses with success and the main error answers.
 
-type Doc = { paths: Record<string, Record<string, { responses?: Record<string, { content?: Record<string, unknown> }> }>> }
+type Doc = { paths: Record<string, Record<string, { responses?: Record<string, { description?: string; content?: Record<string, unknown> }> }>> }
 
 const read = (relative: string) => readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf8')
 const spec = JSON.parse(read('../../../../services/identity-api/openapi.json')) as Doc
@@ -32,14 +32,17 @@ interface Exchange {
 
 function problems(x: Exchange): string[] {
   const label = `${x.method.toUpperCase()} ${x.path} ${x.status}`
-  if (x.status >= 400) {
-    const validate = ajv.getSchema('identity.json#/components/schemas/ErrorResponse')!
-    return validate(x.body) ? [] : [`${label}: error envelope: ${ajv.errorsText(validate.errors)}`]
-  }
   const template = Object.keys(spec.paths).find((t) => templateRegex(t).test(x.path) && spec.paths[t]![x.method])
   if (!template) return [`${label}: no documented operation`]
   const documented = spec.paths[template]![x.method]!.responses?.[String(x.status)]
   if (!documented) return [`${label}: status is not documented for ${template}`]
+  if (x.status >= 400) {
+    const validate = ajv.getSchema('identity.json#/components/schemas/ErrorResponse')!
+    if (!validate(x.body)) return [`${label}: error envelope: ${ajv.errorsText(validate.errors)}`]
+    // identity-api lists each status's codes in its description as `code`: ...
+    const code = (x.body as { error: { code: string } }).error.code
+    return documented.description?.includes(`\`${code}\``) ? [] : [`${label}: code ${code} is not documented for this status`]
+  }
   if (x.status === 204) return x.body === null ? [] : [`${label}: a 204 must have no body`]
   const type = x.contentType.split(';')[0]!.trim()
   if (!documented.content?.[type]) return [`${label}: content type ${type} is not documented`]
@@ -90,6 +93,8 @@ describe('the identity mock against identity-api’s contract', () => {
     expect((await send('get', '/v1/me')).status).toBe(200)
     expect((await send('get', '/v1/roles')).status).toBe(200)
     expect((await send('post', '/v1/auth/token', { audience: 'vendor-api' })).status).toBe(200)
+    expect((await send('post', '/v1/auth/token', { audience: 'no-such-module' })).status).toBe(400)
+    expect((await send('post', '/v1/auth/token', { audience: 'identity-api' })).body.error.code).toBe('audience_not_exchangeable')
 
     // Admins.
     const list = await send('get', '/v1/admins?limit=10&offset=0')
@@ -102,6 +107,8 @@ describe('the identity mock against identity-api’s contract', () => {
     expect((await send('post', '/v1/admins', { email: 'not-an-email', display_name: '', roles: [], password: 'x' })).status).toBe(422)
     expect((await send('patch', `/v1/admins/${id}`, { is_active: false })).status).toBe(200)
     expect((await send('patch', `/v1/admins/${id}`, { roles: [] })).status).toBe(422)
+    expect((await send('patch', `/v1/admins/${id}`, { roles: ['no_such_role'] })).body.error.code).toBe('unknown_role')
+    expect((await send('post', '/v1/admins', { email: 'other.person@shazlo.store', display_name: 'Other', roles: ['no_such_role'], password: 'a-long-temporary-pass' })).body.error.code).toBe('unknown_role')
     expect((await send('post', `/v1/admins/${id}/reset-password`, { new_password: 'another-long-temporary' })).status).toBeLessThan(300)
     expect((await send('post', `/v1/admins/${id}/reset-password`, { new_password: 'short' })).status).toBe(422)
     expect((await send('get', '/v1/admins/00000000-0000-0000-0000-000000000000')).status).toBe(404)
@@ -122,6 +129,19 @@ describe('the identity mock against identity-api’s contract', () => {
     }
   })
 
+  it('lets an admin with a temporary password do nothing but change it, as identity-api does', async () => {
+    const { send, exchanges, setToken } = harness()
+    const login = await send('post', '/v1/auth/login', INVITED_ADMIN)
+    expect(login.body.must_change_password).toBe(true)
+    setToken(login.body.access_token)
+    for (const [method, path, body] of [['get', '/v1/me'], ['get', '/v1/roles'], ['get', '/v1/admins/names?ids=x'], ['post', '/v1/auth/token', { audience: 'vendor-api' }]] as const) {
+      const answer = await send(method, path, body)
+      expect([answer.status, answer.body.error.code], path).toEqual([403, 'password_change_required'])
+    }
+    expect((await send('post', '/v1/auth/change-password', { current_password: INVITED_ADMIN.password, new_password: 'my-own-long-password' })).status).toBe(200)
+    expect(exchanges.flatMap(problems)).toEqual([])
+  })
+
   it('rate-limits repeated wrong passwords with Retry-After and the rate_limited code', async () => {
     const { send, exchanges } = harness()
     let last = await send('post', '/v1/auth/login', { email: INVITED_ADMIN.email, password: 'wrong-password' })
@@ -130,14 +150,5 @@ describe('the identity mock against identity-api’s contract', () => {
     expect(last.body.error.code).toBe('rate_limited')
     expect(last.response.headers.get('Retry-After')).toMatch(/^\d+$/)
     expect(exchanges.flatMap(problems)).toEqual([])
-  })
-
-  it('documents every error code the mock can answer', () => {
-    const codes = new Set(Object.keys((spec as unknown as { 'x-error-codes'?: object })['x-error-codes'] ?? {}))
-    // The spec lists codes in each response description (`code`: ...); the mock must stay inside that set.
-    const text = JSON.stringify(spec)
-    for (const code of ['unauthorized', 'forbidden', 'invalid_credentials', 'invalid_refresh_token', 'invalid_current_password', 'weak_password', 'email_taken', 'admin_not_found', 'cannot_deactivate_self', 'rate_limited', 'validation_error']) {
-      expect(codes.has(code) || text.includes(`\`${code}\``)).toBe(true)
-    }
   })
 })

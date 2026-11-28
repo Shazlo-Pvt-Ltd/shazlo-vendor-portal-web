@@ -1,4 +1,4 @@
-import { createMessage, CURRENT_VERSION, listenAsModule, sendTo, type AuthPayload, type Message, type ShellMessage } from '@shazlo/shell-protocol'
+import { assertExactOrigin, createModuleClient, PROTOCOL_VERSION, type AuthPayload, type ModuleClient, type ToastLevel } from '@shazlo/shell-protocol'
 import { QueryClient } from '@tanstack/react-query'
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router'
@@ -8,40 +8,42 @@ import type { ApiPaths } from '../api/client'
 declare const __SHELL_ORIGIN__: string | undefined
 export const MODULE_ID = 'vendor-admin'
 export const MODULE_VERSION = '0.1.0'
-const TOKEN_REQUEST_GAP_MS = 30_000
+// How long a 401 waits for the shell's new token before the request fails.
+const TOKEN_WAIT_MS = 10_000
+// No new token this long after the last one ended means the shell went away (ADR 0001 §7).
 const CLOCK_SLACK_S = 30
 
-// How the module talks to its shell. In the browser that is window.parent at the exact shell origin;
-// tests pass a fake host.
+// Where the module talks to its shell (ADR 0001): the shell's exact origin and the window whose
+// `parent` is the shell. In the browser that is this page in the shell's iframe; tests pass a fake
+// window so the real protocol client runs against a stand-in shell.
 export interface Host {
   framed: boolean
-  send(message: Message): void
-  listen(onMessage: (message: ShellMessage) => void): () => void
+  shellOrigin: string
+  window?: Window
 }
 
 export function windowHost(shellOrigin: string): Host {
-  return {
-    framed: typeof window !== 'undefined' && window.parent !== window,
-    send: (message) => sendTo(window.parent, shellOrigin, message),
-    listen: (onMessage) => listenAsModule({ shellOrigin, onMessage }),
-  }
+  return { framed: typeof window !== 'undefined' && window.parent !== window, shellOrigin }
 }
 
+// The build sets it (vite.config.ts); a production build without it fails there. `npm run dev` uses
+// the shell's dev server.
 export function shellOrigin(): string {
   return (typeof __SHELL_ORIGIN__ !== 'undefined' && __SHELL_ORIGIN__) || 'http://localhost:5192'
 }
 
-
-// Token state lives outside React: in memory only (ADR 0001 §3.4), read by the API client per request.
+// Token state lives outside React, in the protocol client: in memory only (ADR 0001 §3.4), read by
+// the API client per request. The client refuses an `auth` older than the token it holds, and asks
+// for a new token at most once every 30 seconds.
 class ModuleSession {
+  private client: ModuleClient | null = null
   private auth: AuthPayload | null = null
   private waiters: ((ok: boolean) => void)[] = []
-  private lastRequest = 0
   readonly api: Api<ApiPaths>
   readonly queryClient: QueryClient
 
-  constructor(private host: Host, apiUrl: string) {
-    this.api = createApi<ApiPaths>({ baseUrl: apiUrl, getToken: () => this.auth?.accessToken ?? null, renew: () => this.requestToken('unauthorized') })
+  constructor(apiUrl: string) {
+    this.api = createApi<ApiPaths>({ baseUrl: apiUrl, getToken: () => this.client?.getAccessToken() ?? null, renew: () => this.requestToken('unauthorized') })
     this.queryClient = new QueryClient({
       defaultOptions: {
         queries: { staleTime: 15_000, refetchOnWindowFocus: false, retry: (n, e) => n < 2 && e instanceof ApiError && (e.status === 0 || e.status >= 500) },
@@ -50,45 +52,69 @@ class ModuleSession {
     })
   }
 
-  // Ignores an auth older than the token already held (ADR 0001 §3.7).
-  accept(auth: AuthPayload): boolean {
-    if (this.auth && auth.expiresAt < this.auth.expiresAt) return false
+  attach(client: ModuleClient | null) {
+    this.client = client
+    if (!client) {
+      this.auth = null
+      this.waiters.splice(0).forEach((w) => w(false))
+    }
+  }
+
+  accepted(auth: AuthPayload) {
     this.auth = auth
     this.waiters.splice(0).forEach((w) => w(true))
-    return true
   }
 
   expired(): boolean {
     return this.auth !== null && this.auth.expiresAt + CLOCK_SLACK_S < Date.now() / 1000
   }
 
-  // At most one token:request every 30 seconds; waits up to 10 seconds for the shell's answer.
+  // Waits up to 10 seconds for the shell's answer. A request inside the client's 30-second window is
+  // not sent, and fails at once.
   requestToken(reason: 'expired' | 'unauthorized'): Promise<boolean> {
     return new Promise((resolve) => {
-      const now = Date.now()
-      if (now - this.lastRequest < TOKEN_REQUEST_GAP_MS) return resolve(false)
-      this.lastRequest = now
+      if (!this.client?.requestToken(reason)) return resolve(false)
       this.waiters.push(resolve)
-      this.host.send(createMessage('token:request', { reason }))
       setTimeout(() => {
         const i = this.waiters.indexOf(resolve)
         if (i >= 0) {
           this.waiters.splice(i, 1)
           resolve(false)
         }
-      }, 10_000)
+      }, TOKEN_WAIT_MS)
     })
+  }
+
+  toast(level: ToastLevel, message: string) {
+    this.client?.sendToast({ level, message: message.slice(0, 280) })
+  }
+
+  title(path: string, title: string) {
+    this.client?.sendTitle(path, title)
+  }
+
+  logout() {
+    this.client?.sendLogout()
   }
 }
 
-type Status = 'standalone' | 'waiting' | 'ready' | 'ended'
+function isExactOrigin(origin: string): boolean {
+  try {
+    assertExactOrigin(origin, { development: import.meta.env.DEV, name: 'The shell origin' })
+    return true
+  } catch {
+    return false
+  }
+}
+
+type Status = 'standalone' | 'waiting' | 'ready' | 'ended' | 'misconfigured'
 
 interface Runtime {
   status: Status
   user: AuthPayload['user'] | null
   api: Api<ApiPaths>
   queryClient: QueryClient
-  toast: (level: 'info' | 'success' | 'warning' | 'error', message: string) => void
+  toast: (level: ToastLevel, message: string) => void
   setTitle: (path: string, title: string) => void
   logout: () => void
 }
@@ -101,44 +127,50 @@ export function useRuntime(): Runtime {
   return value
 }
 
-// Holds the token in memory only (ADR 0001 §3.4), asks the shell for a new one on 401, and follows
-// the shell's navigate messages.
+// Speaks ADR 0001 with the shell through @shazlo/shell-protocol: `ready` first, then the token from
+// each `auth` (in memory only), a `token:request` on 401, and the shell's navigate messages.
 export function ModuleRuntime({ host, apiUrl, children }: { host: Host; apiUrl: string; children: ReactNode }) {
   const navigate = useNavigate()
-  const [status, setStatus] = useState<Status>(host.framed ? 'waiting' : 'standalone')
+  // A missing, wildcard or (outside development) non-https shell origin: the module refuses to run
+  // rather than talk to the wrong page.
+  const [misconfigured] = useState(() => host.framed && !isExactOrigin(host.shellOrigin))
+  const [status, setStatus] = useState<Status>(!host.framed ? 'standalone' : misconfigured ? 'misconfigured' : 'waiting')
   const [user, setUser] = useState<AuthPayload['user'] | null>(null)
-  const [session] = useState(() => new ModuleSession(host, apiUrl))
+  const [session] = useState(() => new ModuleSession(apiUrl))
 
   useEffect(() => {
-    if (!host.framed) return
-    const stop = host.listen((message) => {
-      if (message.type === 'auth') {
-        if (!session.accept(message.payload)) return
-        setUser(message.payload.user)
+    if (!host.framed || misconfigured) return
+    const client = createModuleClient({
+      shellOrigin: host.shellOrigin,
+      window: host.window,
+      module: MODULE_ID,
+      moduleVersion: MODULE_VERSION,
+      supportedVersions: [PROTOCOL_VERSION],
+      development: import.meta.env.DEV,
+      onAuth: (auth) => {
+        session.accepted(auth)
+        setUser(auth.user)
         setStatus('ready')
-      } else if (message.type === 'navigate') {
-        navigate(message.payload.path)
-      } else if (message.type === 'error') {
-        setStatus('ended')
-      }
+      },
+      onNavigate: (path) => navigate(path),
+      onShellError: () => setStatus('ended'),
     })
-    host.send(createMessage('ready', { module: MODULE_ID, supportedVersions: [CURRENT_VERSION], moduleVersion: MODULE_VERSION }))
-    // No new token well past expiry means the shell went away (ADR 0001 §7).
+    session.attach(client)
+    client.sendReady()
     const watch = setInterval(() => {
       if (session.expired()) setStatus('ended')
     }, 15_000)
     return () => {
-      stop()
       clearInterval(watch)
+      client.dispose()
+      session.attach(null)
     }
-  }, [host, navigate, session])
+  }, [host, misconfigured, navigate, session])
 
   const { api, queryClient } = session
-  const toast = useCallback((level: 'info' | 'success' | 'warning' | 'error', message: string) => host.send(createMessage('toast', { level, message: message.slice(0, 280) })), [host])
-  const setTitle = useCallback((path: string, title: string) => {
-    if (host.framed) host.send(createMessage('title', { path, title }))
-  }, [host])
-  const logout = useCallback(() => host.send(createMessage('logout', {})), [host])
+  const toast = useCallback((level: ToastLevel, message: string) => session.toast(level, message), [session])
+  const setTitle = useCallback((path: string, title: string) => session.title(path, title), [session])
+  const logout = useCallback(() => session.logout(), [session])
 
   const value = useMemo(() => ({ status, user, api, queryClient, toast, setTitle, logout }), [status, user, api, queryClient, toast, setTitle, logout])
   return <Context.Provider value={value}>{children}</Context.Provider>

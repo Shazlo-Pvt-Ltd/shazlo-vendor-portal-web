@@ -1,8 +1,13 @@
-"""Shared by the API tests that sign in: the client, the app builder and account builders."""
+"""Shared by the API tests that sign in: the client, the app builder and account builders.
+
+vendor-api runs as two apps (ADR 0011). `make_api` builds both over one session and one Redis and
+puts them behind one test client: `/v1/admin*` goes to the admin app, everything else to the
+seller app, so a test can walk a whole flow (a vendor submits, an admin approves) in one place."""
 
 import json
 import uuid
-from collections.abc import AsyncGenerator, AsyncIterator, Mapping
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Mapping
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from http.cookies import SimpleCookie
@@ -16,12 +21,15 @@ from shazlo_security.keys import KeyRing, KeyRingConfig, generate_private_key, l
 from shazlo_security.keys import private_key_pem as pem_of
 from shazlo_security.passwords import PasswordService
 from shazlo_security.tokens import TokenIssuer
-from sqlalchemy import update
+from sqlalchemy import text, update
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.types import Receive, Scope, Send
 
+from vendor_api.admin_app import create_admin_app
 from vendor_api.api.auth import COOKIE_NAME
 from vendor_api.api.deps import CurrentVendorUser, require_vendor_role
-from vendor_api.app import create_app
+from vendor_api.app import create_seller_app
 from vendor_api.core.settings import Settings
 from vendor_api.db.models import Vendor, VendorStatus, VendorUser, VendorUserRole
 from vendor_api.db.session import get_session
@@ -36,8 +44,20 @@ EMAIL = "asha@atelier.test"
 @dataclass
 class Api:
     http: httpx.AsyncClient
+    # The seller app (`/v1/auth`, `/v1/vendor/*`, ...).
     app: FastAPI
     redis: Redis
+    # The admin app (`/v1/admin/*`), when the settings name an identity-api.
+    admin_app: FastAPI | None = None
+
+    @property
+    def admin(self) -> FastAPI:
+        assert self.admin_app is not None, "these settings have no identity-api: no admin app"
+        return self.admin_app
+
+    @property
+    def apps(self) -> list[FastAPI]:
+        return [self.app] if self.admin_app is None else [self.app, self.admin_app]
 
     async def login(self, email: str = EMAIL, password: str = PASSWORD) -> httpx.Response:
         self.http.cookies.clear()
@@ -97,18 +117,69 @@ def without_request_id(response: httpx.Response) -> Any:
     return body
 
 
+# The database role each app logs in as (migration 0012). Every request in the tests runs as its
+# app's role, and the worker's jobs as the worker's, so a right an app lacks fails here as it would
+# in a deployment, not only in production.
+SELLER_ROLE, ADMIN_ROLE, WORKER_ROLE = "vendor_seller", "vendor_admin", "vendor_worker"
+
+
+@asynccontextmanager
+async def as_role(session: AsyncSession, role: str) -> AsyncIterator[AsyncSession]:
+    """The test's session, as `role` until the block ends (then the test's owner again)."""
+    await session.execute(text(f"SET ROLE {role}"))
+    try:
+        yield session
+    finally:
+        try:
+            await session.execute(text("RESET ROLE"))
+        except DBAPIError:
+            # The block failed mid-statement: back to the last savepoint first.
+            await session.rollback()
+            await session.execute(text("RESET ROLE"))
+
+
+def sessions_as(session: AsyncSession, role: str) -> Callable[[], AsyncIterator[AsyncSession]]:
+    """A FastAPI `get_session` override: the test's session, as `role` for one request."""
+
+    async def dependency() -> AsyncIterator[AsyncSession]:
+        async with as_role(session, role):
+            yield session
+
+    return dependency
+
+
+class BothApps:
+    """One ASGI app for the tests: `/v1/admin*` to the admin app, the rest to the seller app, as
+    the two hostnames would route them in a deployment."""
+
+    def __init__(self, seller: FastAPI, admin: FastAPI | None) -> None:
+        self.seller, self.admin = seller, admin
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        path = scope.get("path", "")
+        if self.admin is not None and (path == "/v1/admin" or path.startswith("/v1/admin/")):
+            await self.admin(scope, receive, send)
+        else:
+            await self.seller(scope, receive, send)
+
+
 async def make_api(
     settings: Settings,
     session: AsyncSession,
     redis: Redis,
     identity_keys: KeySource | None = None,
 ) -> AsyncGenerator[Api, None]:
-    app = create_app(settings, readiness_checks={}, redis=redis, identity_keys=identity_keys)
+    app = create_seller_app(settings, readiness_checks={}, redis=redis)
+    admin_app = (
+        create_admin_app(settings, readiness_checks={}, redis=redis, identity_keys=identity_keys)
+        if settings.identity_jwks_url
+        else None
+    )
 
-    async def test_session() -> AsyncIterator[AsyncSession]:
-        yield session  # rolled back after the test, so tests share no rows
-
-    app.dependency_overrides[get_session] = test_session
+    # The test's session (rolled back after the test, so tests share no rows), as each app's role.
+    app.dependency_overrides[get_session] = sessions_as(session, SELLER_ROLE)
+    if admin_app is not None:
+        admin_app.dependency_overrides[get_session] = sessions_as(session, ADMIN_ROLE)
 
     @app.get("/v1/owner-only")
     async def owner_only(
@@ -116,13 +187,13 @@ async def make_api(
     ) -> dict[str, str]:
         return {"email": current.user.email}
 
-    transport = httpx.ASGITransport(app=app)
+    transport = httpx.ASGITransport(app=BothApps(app, admin_app))
     # https, so the client treats the Secure refresh cookie as sendable; the portal's Origin, as a
     # browser would send it (the cookie-authenticated endpoints refuse requests without it).
     async with httpx.AsyncClient(
         transport=transport, base_url="https://vendor-api.test", headers={"Origin": ORIGIN}
     ) as http:
-        yield Api(http, app, redis)
+        yield Api(http, app, redis, admin_app)
 
 
 @dataclass
@@ -210,7 +281,9 @@ def record_emails(api: Api) -> RecordingSender:
     from vendor_api.services.email import ConsoleEmailSender
 
     sender = RecordingSender(ConsoleEmailSender("https://vendors.test", show_links=False))
-    api.app.state.emails = EmailService(sender, retry_delay_seconds=0)
+    emails = EmailService(sender, retry_delay_seconds=0)
+    for app in api.apps:  # the admin app emails vendors too (approved, rejected, suspended)
+        app.state.emails = emails
     return sender
 
 

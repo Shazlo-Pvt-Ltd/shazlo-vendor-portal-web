@@ -1,10 +1,13 @@
-import { describe, expect, it } from 'vitest'
-import { toApiError } from './http'
+import { http, HttpResponse } from 'msw'
+import { describe, expect, it, vi } from 'vitest'
+import { server } from '../test/server'
+import { createApi, toApiError } from './http'
+import type { paths } from './identity'
 
 const res = (status: number, headers: Record<string, string> = {}) => new Response(null, { status, headers })
 const envelope = (code: string, message: string, details?: unknown) => ({ error: { code, message, request_id: 'req-1', ...(details === undefined ? {} : { details }) } })
 
-describe('toApiError (identity-api and vendor-api envelope)', () => {
+describe('toApiError (the shared error envelope of every service)', () => {
   it('reads code, message and request id from {error: {...}}', () => {
     const e = toApiError(res(409), envelope('email_taken', 'An admin with this email already exists'))
     expect(e.status).toBe(409)
@@ -64,5 +67,17 @@ describe('toApiError (identity-api and vendor-api envelope)', () => {
   it('falls back when the envelope has an empty message', () => {
     expect(toApiError(res(404), envelope('admin_not_found', '')).message).toMatch(/could not find/)
     expect(toApiError(res(404), envelope('admin_not_found', '')).code).toBe('admin_not_found')
+  })
+})
+
+describe('createApi', () => {
+  it('tells onForbidden about every 403, and about nothing else', async () => {
+    const onForbidden = vi.fn()
+    const api = createApi<paths>({ baseUrl: 'http://identity.test', getToken: () => 't', onForbidden })
+    for (const [status, code] of [[403, 'forbidden'], [401, 'unauthorized'], [404, 'admin_not_found'], [409, 'last_super_admin'], [403, 'password_change_required']] as const) {
+      server.use(http.get('*/v1/roles', () => HttpResponse.json(envelope(code, code), { status }), { once: true }))
+      await expect(api.call((c) => c.GET('/v1/roles'), { renew: false })).rejects.toMatchObject({ status, code })
+    }
+    expect(onForbidden.mock.calls.map(([e]) => e.code)).toEqual(['forbidden', 'password_change_required'])
   })
 })

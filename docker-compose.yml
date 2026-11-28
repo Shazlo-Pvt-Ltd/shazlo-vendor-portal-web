@@ -53,7 +53,7 @@ services:
       ENV: dev
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-shazlo}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/identity
       REDIS_URL: redis://redis:6379/0
-      CORS_ALLOWED_ORIGINS: ${IDENTITY_CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      CORS_ALLOWED_ORIGINS: ${IDENTITY_CORS_ALLOWED_ORIGINS:-http://localhost:5192,http://localhost:4192}
       JWT_ISSUER: http://localhost:${IDENTITY_API_PORT:-8001}
       # Keys come from the environment, not a bind mount: a mounted PEM fails the private-key
       # file-mode check (Docker Desktop shows it as world readable) or is unreadable for the
@@ -83,19 +83,18 @@ services:
         condition: service_healthy
     environment:
       ENV: dev
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-shazlo}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/vendor
+      # Its own login, with only the seller app's table rights (ADR 0011, migration 0012). The
+      # owner of the tables is vendor-cli's, below. Make the logins once: see vendor-cli.
+      DATABASE_URL: postgresql+asyncpg://${VENDOR_SELLER_DB_USER:-vendor_seller_app}:${VENDOR_SELLER_DB_PASSWORD:?set VENDOR_SELLER_DB_PASSWORD in .env (see .env.example)}@postgres:5432/vendor
       # Database 1: identity-api uses database 0 of the same Redis.
       REDIS_URL: redis://redis:6379/1
-      # The seller portal (5174), the admin module (5193 dev, 4193 preview) and the Shazlo One shell
-      # (5192 dev, 4192 preview), which reads the home figures from vendor-api itself.
-      CORS_ALLOWED_ORIGINS: ${VENDOR_CORS_ALLOWED_ORIGINS:-http://localhost:5174,http://localhost:5193,http://localhost:4193,http://localhost:5192,http://localhost:4192}
+      # The seller app (ADR 0011) answers the seller portal only. The Vendors module and the
+      # Shazlo One shell call vendor-admin-api (below).
+      CORS_ALLOWED_ORIGINS: ${VENDOR_CORS_ALLOWED_ORIGINS:-http://localhost:5174}
       JWT_ISSUER: http://localhost:${VENDOR_API_PORT:-8002}
       JWT_KEYS: ${VENDOR_JWT_KEYS:-}
       JWT_SIGNING_KID: ${VENDOR_JWT_SIGNING_KID:-}
-      # Admin tokens come from identity-api. The JWKS is fetched on the first admin token, so
-      # vendor-api starts without identity-api (plain http is allowed in dev only).
-      IDENTITY_JWKS_URL: http://identity-api:8001/.well-known/jwks.json
-      IDENTITY_ISSUER: http://localhost:${IDENTITY_API_PORT:-8001}
+      # No IDENTITY_* here: the seller app never verifies admin tokens (vendor-admin-api does).
       # Emails go to Mailpit (read them at http://localhost:8025); nothing leaves the machine.
       EMAIL_BACKEND: smtp
       SMTP_HOST: mailpit
@@ -110,6 +109,58 @@ services:
       CLOUDINARY_ROOT_FOLDER: ${CLOUDINARY_ROOT_FOLDER:-shazlo-dev}
     ports:
       - "${VENDOR_API_PORT:-8002}:8002"
+
+  # The backend of Shazlo One's Vendors module (ADR 0011): the same image as vendor-api, serving
+  # only /v1/admin/* on 8004. It shares vendor-api's database and Redis (suspending a vendor ends
+  # its sessions in vendor-api's refresh store, so REDIS_URL must match) and holds none of
+  # vendor-api's keys. Stopping it leaves the seller portal working, and the other way round.
+  vendor-admin-api:
+    profiles: ["vendor", "full"]
+    build:
+      context: .
+      dockerfile: services/vendor-api/Dockerfile
+    command: ["uvicorn", "vendor_api.admin_main:app", "--host", "0.0.0.0", "--port", "8004"]
+    restart: unless-stopped
+    # The image's healthcheck asks port 8002, which this app does not use.
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8004/health')"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    environment:
+      ENV: dev
+      # Its own login, with only the admin app's table rights (ADR 0011, migration 0012).
+      DATABASE_URL: postgresql+asyncpg://${VENDOR_ADMIN_DB_USER:-vendor_admin_app}:${VENDOR_ADMIN_DB_PASSWORD:?set VENDOR_ADMIN_DB_PASSWORD in .env (see .env.example)}@postgres:5432/vendor
+      # The same database 1 as vendor-api: the vendor sessions it ends live there.
+      REDIS_URL: redis://redis:6379/1
+      # The Vendors module (5193 dev, 4193 preview) and the Shazlo One shell (5192 dev, 4192
+      # preview), which reads the module's summary for its Home and badge. Bearer tokens only.
+      ADMIN_CORS_ALLOWED_ORIGINS: ${VENDOR_ADMIN_CORS_ALLOWED_ORIGINS:-http://localhost:5193,http://localhost:4193,http://localhost:5192,http://localhost:4192}
+      # vendor-api's issuer: kept so the check that it differs from IDENTITY_ISSUER still runs.
+      JWT_ISSUER: http://localhost:${VENDOR_API_PORT:-8002}
+      # Admin tokens come from identity-api. The JWKS is fetched on the first admin token, so
+      # this app starts without identity-api (plain http is allowed in dev only).
+      IDENTITY_JWKS_URL: http://identity-api:8001/.well-known/jwks.json
+      IDENTITY_ISSUER: http://localhost:${IDENTITY_API_PORT:-8001}
+      # Approving, rejecting and suspending email the vendor (Mailpit locally).
+      EMAIL_BACKEND: smtp
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_SECURITY: none
+      PORTAL_BASE_URL: ${VENDOR_PORTAL_BASE_URL:-http://localhost:5174}
+    ports:
+      - "${VENDOR_ADMIN_API_PORT:-8004}:8004"
 
   # Delivers vendor-api's outbox to the central app (ADR 0003, section 5): the same image, one more
   # process. Idle (and saying so in its log) until CENTRAL_PUBLISHING_ENABLED=true in .env; then
@@ -132,17 +183,56 @@ services:
         condition: service_healthy
     environment:
       ENV: dev
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-shazlo}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/vendor
+      # Its own login: reads the catalog, writes only the outbox (ADR 0011, migration 0012).
+      DATABASE_URL: postgresql+asyncpg://${VENDOR_WORKER_DB_USER:-vendor_worker_app}:${VENDOR_WORKER_DB_PASSWORD:?set VENDOR_WORKER_DB_PASSWORD in .env (see .env.example)}@postgres:5432/vendor
       REDIS_URL: redis://redis:6379/1
       JWT_ISSUER: http://localhost:${VENDOR_API_PORT:-8002}
-      IDENTITY_JWKS_URL: http://identity-api:8001/.well-known/jwks.json
-      IDENTITY_ISSUER: http://localhost:${IDENTITY_API_PORT:-8001}
       CENTRAL_PUBLISHING_ENABLED: ${CENTRAL_PUBLISHING_ENABLED:-false}
       CENTRAL_API_URL: ${CENTRAL_API_URL:-http://central-stub:8003}
       # The pair central-stub knows by default (a development secret, never deployed).
       CENTRAL_SIGNING_KEY_ID: ${CENTRAL_SIGNING_KEY_ID:-k1}
       CENTRAL_SIGNING_SECRET: ${CENTRAL_SIGNING_SECRET:-central-stub-dev-secret-change-me-0123456789}
       RECONCILE_AT: ${RECONCILE_AT:-03:00}
+
+  # Migrations and the CLI, as the owner of the tables (the apps above log in as their own users).
+  # Not started by `up`: run it, from the repository root:
+  #   docker compose run --rm vendor-cli                               # alembic upgrade head
+  #   docker compose run --rm vendor-cli python -m vendor_api.cli db-logins
+  #   docker compose run --rm vendor-cli python -m vendor_api.cli seed-dev
+  # db-logins makes (or re-passwords) the three logins from the VENDOR_*_DB_PASSWORD in .env.
+  vendor-cli:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: services/vendor-api/Dockerfile
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    environment:
+      ENV: dev
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-shazlo}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/vendor
+      REDIS_URL: redis://redis:6379/1
+      JWT_ISSUER: http://localhost:${VENDOR_API_PORT:-8002}
+      JWT_KEYS: ${VENDOR_JWT_KEYS:-}
+      JWT_SIGNING_KID: ${VENDOR_JWT_SIGNING_KID:-}
+      EMAIL_BACKEND: smtp
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_SECURITY: none
+      PORTAL_BASE_URL: ${VENDOR_PORTAL_BASE_URL:-http://localhost:5174}
+      SEED_VENDOR_PASSWORD: ${SEED_VENDOR_PASSWORD:-}
+      VENDOR_SELLER_DB_USER: ${VENDOR_SELLER_DB_USER:-vendor_seller_app}
+      VENDOR_SELLER_DB_PASSWORD: ${VENDOR_SELLER_DB_PASSWORD:-}
+      VENDOR_ADMIN_DB_USER: ${VENDOR_ADMIN_DB_USER:-vendor_admin_app}
+      VENDOR_ADMIN_DB_PASSWORD: ${VENDOR_ADMIN_DB_PASSWORD:-}
+      VENDOR_WORKER_DB_USER: ${VENDOR_WORKER_DB_USER:-vendor_worker_app}
+      VENDOR_WORKER_DB_PASSWORD: ${VENDOR_WORKER_DB_PASSWORD:-}
 
   # Stands in for the central app (ADR 0003): receives the signed events vendor-api publishes.
   # See http://localhost:8003 for what it holds. Localhost only: its /_stub endpoints have no auth.

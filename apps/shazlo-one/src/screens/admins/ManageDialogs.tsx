@@ -1,13 +1,24 @@
 import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, Typography, useMediaQuery, useTheme } from '@mui/material'
 import { Banner, useSnackbar } from '@shazlo/ui'
-import { useRef, useState } from 'react'
-import { ApiError } from '../../api/http'
-import { temporaryPassword, useResetPassword, useRoles, useUpdateAdmin } from '../../api/queries'
+import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
+import { keys, temporaryPassword, useResetPassword, useRoles, useUpdateAdmin } from '../../api/queries'
 import { adminsCopy } from '../../copy/admins'
+import { registerSensitiveReset } from '../../security/sensitiveState'
+import { refusalOf, type Refusal, type Sent } from './refusals'
 import { CopyRow, RoleChecklist, type Admin } from './shared'
 
 const touch = { minHeight: { xs: 44, md: 36 } }
-const message = (error: unknown) => (error instanceof ApiError ? error.message : adminsCopy.inviteDialog.errors.generic)
+
+// A refusal in words; an admin that is gone means the list is out of date, so it is read again.
+function useRefusal() {
+  const qc = useQueryClient()
+  return (error: unknown, sent?: Sent): Refusal => {
+    const refusal = refusalOf(error, sent)
+    if (refusal.staleList) void qc.invalidateQueries({ queryKey: keys.allAdmins })
+    return refusal
+  }
+}
 
 export type DialogKind = 'roles' | 'reset' | 'deactivate'
 
@@ -20,6 +31,7 @@ function EditRoles({ admin, self, onClose }: { admin: Admin; self: boolean; onCl
   const [error, setError] = useState<string | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
   const firstRef = useRef<HTMLInputElement>(null)
+  const refused = useRefusal()
 
   async function save() {
     setFailure(null)
@@ -33,8 +45,11 @@ function EditRoles({ admin, self, onClose }: { admin: Admin; self: boolean; onCl
       notify(copy.saved)
       onClose()
     } catch (e) {
-      if (e instanceof ApiError && e.fields.roles) setError(e.fields.roles)
-      else setFailure(message(e))
+      const refusal = refused(e, { roles: true })
+      if (refusal.control === 'roles') {
+        setError(refusal.message)
+        firstRef.current?.focus()
+      } else setFailure(refusal.message)
     }
   }
 
@@ -76,17 +91,22 @@ function EditRoles({ admin, self, onClose }: { admin: Admin; self: boolean; onCl
 function ResetPassword({ admin, onClose }: { admin: Admin; onClose: () => void }) {
   const copy = adminsCopy.reset
   const reset = useResetPassword()
+  const refused = useRefusal()
   const [password, setPassword] = useState<string | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
+  // The temporary password never outlives the session, here or in the mutation cache.
+  useEffect(() => registerSensitiveReset(() => setPassword(null)), [])
 
   async function confirm() {
     setFailure(null)
     const next = temporaryPassword()
     try {
       await reset.mutateAsync({ id: admin.id, password: next })
+      reset.reset()
       setPassword(next)
     } catch (e) {
-      setFailure(message(e))
+      reset.reset()
+      setFailure(refused(e).message)
     }
   }
 
@@ -136,6 +156,7 @@ function Deactivate({ admin, onClose }: { admin: Admin; onClose: () => void }) {
   const copy = adminsCopy.deactivate
   const update = useUpdateAdmin()
   const notify = useSnackbar()
+  const refused = useRefusal()
   const [failure, setFailure] = useState<string | null>(null)
 
   async function confirm() {
@@ -145,7 +166,7 @@ function Deactivate({ admin, onClose }: { admin: Admin; onClose: () => void }) {
       notify(copy.done(admin.display_name))
       onClose()
     } catch (e) {
-      setFailure(message(e))
+      setFailure(refused(e, { deactivate: true }).message)
     }
   }
 

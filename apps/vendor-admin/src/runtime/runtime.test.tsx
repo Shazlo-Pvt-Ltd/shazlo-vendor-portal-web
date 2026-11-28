@@ -1,8 +1,7 @@
-import { createMessage } from '@shazlo/shell-protocol'
 import { screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
-import { fakeShell, renderModule, VENDOR_API_URL } from '../test/render'
+import { fakeShell, renderModule, SHELL_ORIGIN, shellMessage, VENDOR_API_URL } from '../test/render'
 import { server } from '../test/server'
 
 // The panels on the module's light page carry the new wordmark in navy, tagged "One".
@@ -37,11 +36,11 @@ describe('module runtime (ADR 0001, module side)', () => {
   it('asks the shell for a new token on 401, then retries with it', async () => {
     let calls = 0
     server.use(
-      http.get(`${VENDOR_API_URL}/api/v1/admin/queue`, ({ request }) => {
+      http.get(`${VENDOR_API_URL}/v1/admin/queue`, ({ request }) => {
         calls += 1
         if (calls === 1) return HttpResponse.json({ error: { code: 'unauthorized', message: 'Expired', request_id: 'r' } }, { status: 401 })
         expect(request.headers.get('authorization')).toMatch(/^Bearer mock\.vendor-api\./)
-        return HttpResponse.json({ items: [], counts: { all: 0, product: 0, brand_page: 0, application: 0 }, vendors: [] })
+        return HttpResponse.json({ items: [], total: 0, limit: 50, offset: 0, counts: { all: 0, product: 0, brand_page: 0, application: 0 }, vendors: [] })
       }),
     )
     // The review queue loads on open, so its first call meets the 401.
@@ -62,7 +61,7 @@ describe('module runtime (ADR 0001, module side)', () => {
     const shell = fakeShell()
     renderModule({ shell })
     await screen.findByRole('heading', { level: 1, name: 'Review queue' })
-    shell.deliver(createMessage('error', { code: 'version_unsupported', message: 'No' }))
+    shell.deliver(shellMessage('error', { code: 'version_unsupported', message: 'No' }))
     expect(await screen.findByRole('heading', { name: 'Your session ended' })).toBeInTheDocument()
     expectNavyLogo()
   })
@@ -72,5 +71,59 @@ describe('module runtime (ADR 0001, module side)', () => {
     expect(screen.getByRole('heading', { name: 'Open this in Shazlo One' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open Shazlo One' })).toHaveAttribute('href', expect.stringContaining('http://localhost:5192/vendors'))
     expectNavyLogo()
+  })
+
+  // The protocol client (@shazlo/shell-protocol) checks every message before the module sees it.
+  it('ignores an auth from another origin or another window, and keeps waiting', async () => {
+    const shell = fakeShell({ autoAuth: false })
+    renderModule({ shell })
+    const ready = shell.sent[0]!
+    shell.deliver(shell.auth(ready.id), { origin: 'https://evil.example' })
+    shell.deliver(shell.auth(ready.id), { source: {} })
+    shell.deliver(shell.auth(ready.id), { origin: `${SHELL_ORIGIN}.evil.example` })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(screen.getByRole('status', { name: 'Connecting to Shazlo One' })).toBeInTheDocument()
+    shell.deliver(shell.auth(ready.id))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Review queue' })).toBeInTheDocument()
+  })
+
+  it('ignores a malformed auth: a token in milliseconds, no token, extra fields never reach it', async () => {
+    const shell = fakeShell({ autoAuth: false })
+    renderModule({ shell })
+    const ready = shell.sent[0]!
+    const good = shell.auth(ready.id)
+    shell.deliver({ ...good, payload: { ...good.payload, expiresAt: Date.now() + 300_000 } })
+    shell.deliver({ ...good, payload: { ...good.payload, accessToken: '' } })
+    shell.deliver({ ...good, id: 'not-a-uuid' })
+    shell.deliver({ ...good, protocol: 'other' })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(screen.getByRole('status', { name: 'Connecting to Shazlo One' })).toBeInTheDocument()
+  })
+
+  it('posts only to the exact shell origin', async () => {
+    const { shell } = renderModule({ route: '/publishing' })
+    await waitFor(() => expect(shell.titles()).toContainEqual({ path: '/publishing', title: 'Publishing to the app' }))
+    expect(shell.sent.every((m) => m.protocol === 'shazlo-one' && /^[0-9a-f-]{36}$/.test(m.id))).toBe(true)
+  })
+
+  it('asks for a new token at most once every 30 seconds, however many calls fail', async () => {
+    let calls = 0
+    server.use(
+      http.get(`${VENDOR_API_URL}/v1/admin/queue`, () => {
+        calls += 1
+        return HttpResponse.json({ error: { code: 'unauthorized', message: 'Expired', request_id: 'r' } }, { status: 401 })
+      }),
+    )
+    const { shell } = renderModule({ route: '/queue' })
+    await waitFor(() => expect(calls).toBeGreaterThanOrEqual(2))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(shell.sent.filter((m) => m.type === 'token:request')).toHaveLength(1)
+  })
+
+  it('refuses to start with a shell origin that is not one exact origin', () => {
+    const shell = fakeShell()
+    renderModule({ shell: { ...shell, host: { ...shell.host, shellOrigin: '*' } } })
+    expect(screen.getByRole('heading', { name: 'This module is not set up correctly' })).toBeInTheDocument()
+    expect(shell.sent).toEqual([])
   })
 })

@@ -11,7 +11,8 @@ export const shellCopy = {
   homeLink: 'Shazlo One home',
   skip: 'Skip to content',
   roles: { super_admin: 'Super admin', vendor_reviewer: 'Vendor reviewer' } as Record<string, string>,
-  waiting: (n: number) => `${n} waiting`,
+  // The top bar's row of a module's pages ("Catalogue pages").
+  moduleNav: (title: string) => `${title} pages`,
   module: {
     loading: (title: string) => `Loading ${title}`,
     failedTitle: (title: string) => `${title} did not load`,
@@ -24,8 +25,26 @@ export const shellCopy = {
     versionTitle: (title: string, version: string) => `${title} ${version} needs a newer Shazlo One`,
     versionBody: 'Reload the page to get the latest Shazlo One. If that does not help, the module was released ahead of the shell.',
     reload: 'Reload page',
+    moduleErrorBody: 'The module stopped and said why:',
+    noTokenTitle: (title: string) => `${title} could not be opened`,
+    noToken: 'Shazlo One could not get a session for this module. Try again in a moment.',
+    unknownAudience: 'This module is not set up on the server yet. Tell the platform team in #shazlo-one.',
+    sameOriginTitle: (title: string) => `${title} cannot be opened`,
+    sameOriginBody: 'It is set up to load from Shazlo One’s own address, which is not allowed. Tell the platform team in #shazlo-one.',
     forbiddenTitle: (title: string) => `You do not have access to ${title}`,
     forbiddenBody: 'Your role does not include this module. A super admin can add it in Admins & roles.',
+    // A module's manifest or summary could not be read (api/modules.ts).
+    unreachable: 'The module did not answer. It may be restarting; the rest of Shazlo One still works.',
+    invalid: 'The module answered in a form Shazlo One cannot read. Tell the platform team in #shazlo-one.',
+  },
+  misconfigured: {
+    title: 'Shazlo One is not set up correctly',
+    body: 'It will not start until its settings are fixed. If you look after this deployment, fix the settings below and build it again; otherwise tell the platform team in #shazlo-one.',
+  },
+  unavailable: {
+    title: 'Shazlo One cannot reach its sign-in service',
+    body: 'Your network may have dropped, or the service is restarting. You have not been signed out.',
+    retry: 'Try again',
   },
   expired: 'Your session ended, so we signed you out. Sign in again to carry on where you were.',
   signedOut: 'You are signed out.',

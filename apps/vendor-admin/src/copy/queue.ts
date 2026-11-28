@@ -10,6 +10,11 @@ export const queueCopy = {
   subtitle: (waiting: number, oldest: string | null) => (waiting === 0 ? 'Nothing is waiting for a decision.' : oldest ? `${waiting.toLocaleString('en-IN')} waiting · oldest has waited ${oldest}` : `${waiting.toLocaleString('en-IN')} waiting`),
   exportCsv: 'Export CSV',
   exported: (n: number) => `Exported ${plural(n, 'row', 'rows')}`,
+  exporting: 'Exporting…',
+  exportFailed: 'The export did not finish. Try again.',
+  showing: (shown: number, total: number) => `Showing ${shown.toLocaleString('en-IN')} of ${total.toLocaleString('en-IN')}`,
+  showMore: 'Show more',
+  showingMore: 'Loading more…',
   updating: 'Updating the queue',
 
   figures: {

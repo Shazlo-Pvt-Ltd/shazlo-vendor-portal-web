@@ -10,16 +10,17 @@ Plan, phases and decisions: [docs/ROADMAP.md](docs/ROADMAP.md). Architecture dec
 ## Architecture
 
 ```
- Vendor ──► vendor-portal ──► vendor-api ──► Postgres
-                                  ▲   │
- Admin ──► shazlo-one ──iframe──► vendor-admin
-              │                       │ (JWT via postMessage)
-              └──► identity-api ◄─────┘ (JWKS)
-                                  │
+ VENDOR PORTAL (sellers)
+ Vendor ──► vendor-portal ──► vendor-api seller app (:8002) ────────────────────┐
+ SHAZLO ONE (admins)                                                            ├──► vendor Postgres
+ Admin ──► shazlo-one ─iframe─► vendor-admin ──► vendor-api admin app (:8004) ──┘
+              │       (JWT via postMessage; the admin app checks it against identity-api's JWKS)
+              └──► identity-api
+
          outbox ──► vendor-worker ──► central app (HMAC-signed push)
 ```
 
-`vendor-api` writes an event to its outbox in the same transaction as each approval, and `vendor-worker` (the same image, `python -m vendor_api.worker`) sends it to the central app. `central-stub` stands in for the central app locally. The web apps shown here are built phase by phase: see the [roadmap](docs/ROADMAP.md) for what exists.
+The Vendor Portal and Shazlo One's Vendors module are two microservices over one vendor database: `vendor-api` runs as a seller app and an admin app from one package ([ADR 0011](docs/adr/0011-vendor-portal-and-vendors-module-as-microservices.md)). Either keeps working while the other is down. `vendor-api` writes an event to its outbox in the same transaction as each approval, and `vendor-worker` (the same image, `python -m vendor_api.worker`) sends it to the central app. `central-stub` stands in for the central app locally. The web apps shown here are built phase by phase: see the [roadmap](docs/ROADMAP.md) for what exists.
 
 ## Repo layout
 
@@ -32,6 +33,7 @@ Plan, phases and decisions: [docs/ROADMAP.md](docs/ROADMAP.md). Architecture dec
 | `apps/shazlo-one/` | React + TS: admin shell (login, nav, iframe host) |
 | `apps/vendor-admin/` | React + TS: vendor review module, loaded in a Shazlo-One iframe |
 | `packages/ui/` | Shared MUI theme and tokens |
+| `packages/shell-protocol/` | Shared by Shazlo One and its modules: the postMessage protocol (ADR 0001: validators and both ends of the channel) and the module registry, manifest and summary (ADR 0011) |
 | `packages/py-auth/` | Shared Python package: access-token verifier, JWKS client, FastAPI `require_role` |
 | `packages/py-security/` | Shared Python package: password hashing, rate limiter, client IP, refresh-token store, signing keys and token issuer, request signing (ADR 0010, ADR 0003) |
 | `docs/` | [Roadmap](docs/ROADMAP.md), design documents, [ADRs](docs/adr), [runbooks](docs/runbooks), [test strategy](docs/testing.md) |
@@ -39,7 +41,7 @@ Plan, phases and decisions: [docs/ROADMAP.md](docs/ROADMAP.md). Architecture dec
 | `test/contracts/` | JavaScript contract tests for the ADR 0003 schemas, the shared-package install files and the secret-file ignore rules |
 | `app/`, `backend/` | **Legacy** consumer landing/waitlist, Express + MongoDB. Untouched until Phase 8, apart from security fixes |
 
-The three Python services and the two Python packages are built. Of the web apps, `apps/shazlo-one/` and `apps/vendor-admin/` are placeholders until their phase starts, and `apps/vendor-portal/` is being built (Phase 5: sign-in, the dashboard, the brand page editor, the products list, the product form, the bulk import, the team and account pages and submission status are merged); see the roadmap and the app's README.
+The three Python services and the two Python packages are built. Of the web apps, `apps/shazlo-one/` is the admin shell (sign-in, Home, admins and roles, the module registry and the iframe host; Phase 6), `apps/vendor-admin/` is its Vendors module (Phase 7; some screens still run on proposed routes that only the mock serves), and `apps/vendor-portal/` is being built (Phase 5: sign-in, the dashboard, the brand page editor, the products list, the product form, the bulk import, the team and account pages and submission status are merged); see the roadmap and the app's README.
 
 ## Local development
 
@@ -56,7 +58,8 @@ docker compose ps           # postgres, redis and mailpit should report "healthy
 | Postgres | 5432 | `docker compose ps` shows "healthy" |
 | Redis | 6379 (127.0.0.1 only) | `docker compose exec redis redis-cli ping` prints `PONG` |
 | identity-api (profile `identity`) | 8001 | `curl localhost:8001/ready` |
-| vendor-api (profile `vendor`) | 8002 | `curl localhost:8002/ready` |
+| vendor-api, the seller app (profile `vendor`) | 8002 | `curl localhost:8002/ready` |
+| vendor-admin-api, the admin app (profile `vendor`) | 8004 | `curl localhost:8004/ready` |
 | vendor-worker (profile `vendor`) | none | `docker compose --profile vendor logs vendor-worker` |
 | central-stub (profile `central`) | 8003 (127.0.0.1 only) | `curl localhost:8003/health`, or open <http://localhost:8003> |
 | Mailpit SMTP / web UI | 1025 / 8025 (127.0.0.1 only) | open <http://localhost:8025> |
@@ -97,15 +100,17 @@ docker compose --profile vendor run --rm --no-deps -T vendor-api python -c "impo
 It uses the `vendor` database and Redis database 1 (identity-api uses 0):
 
 ```bash
-docker compose --profile vendor run --rm vendor-api alembic upgrade head
+docker compose run --rm vendor-cli                                         # alembic upgrade head, as the owner
+docker compose run --rm vendor-cli python -m vendor_api.cli db-logins     # each app's own database login
 docker compose --profile vendor up -d --wait
-curl localhost:8002/ready   # {"status":"ok", ...}
+curl localhost:8002/ready   # {"status":"ok", ...}  the seller app
+curl localhost:8004/ready   # the admin app (vendor-admin-api): /v1/admin/* for Shazlo One
 curl localhost:8002/.well-known/jwks.json   # the public key
 ```
 
 The `vendor` profile also starts `vendor-worker`, which sends vendor-api's outbox events to the central app. It stays idle (and says so in its log) until `CENTRAL_PUBLISHING_ENABLED=true` is set in `.env`. To see events arrive, uncomment that line and also start `central-stub` (profile `central`, a stand-in for the central app on port 8003, localhost only): `docker compose --profile vendor --profile central up -d`. The steps, and what to do when publishing goes wrong, are in [the publishing runbook](docs/runbooks/central-publishing.md).
 
-To run everything, add both keys as above and use `--profile full` (it includes the `identity`, `vendor` and `central` profiles): `docker compose --profile full up -d --build --wait`. Run each service's `alembic upgrade head` first, with `run --rm` as above.
+To run everything, add both keys as above and use `--profile full` (it includes the `identity`, `vendor` and `central` profiles): `docker compose --profile full up -d --build --wait`. Run each service's `alembic upgrade head` first, with `run --rm` as above (`vendor-cli` for vendor-api, then its `db-logins`).
 
 For the legacy apps, see `app/README.md` and `backend/README.md` and copy each `.env.example` to `.env`.
 

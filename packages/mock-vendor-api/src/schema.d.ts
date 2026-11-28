@@ -776,6 +776,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/vendors/{id}/products/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Approve several of this vendor's waiting products at once, each exactly as approving it on its own (its own decision, history entry and publishing event). Each product carries the submitted_at the reviewer saw: one submitted again since is not approved (changed), nor is one already decided (not_pending) or one that is not this vendor's (not_found, never approvable through another vendor's URL). The others are still approved, so the answer lists both. Only for an approved vendor (409 invalid_status_transition otherwise): approving here publishes, and a suspended or rejected brand's products are hidden from the app, so they are reviewed one at a time. Missing photos (VendorDetail.products[].photos_missing) do not stop an approval, as on the single-product route; the reviewer is shown them before confirming. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ApproveProductsBody"];
+                };
+            };
+            responses: {
+                /** @description Which products were approved, and which were not and why */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApproveProductsResult"];
+                    };
+                };
+                404: components["responses"]["Error"];
+                409: components["responses"]["Error"];
+                422: components["responses"]["Error"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/outbox": {
         parameters: {
             query?: never;
@@ -1175,6 +1222,33 @@ export interface components {
             /** @description The next item waiting in the queue */
             next_id: string | null;
         };
+        ApproveProductsBody: {
+            /** @description Each product once (a repeated id is a 422) */
+            products: {
+                id: string;
+                /**
+                 * Format: date-time
+                 * @description The version the reviewer saw (VendorDetail.products[].submitted_at)
+                 */
+                submitted_at: string;
+            }[];
+        };
+        ApproveProductsResult: {
+            approved: {
+                id: string;
+                /** Format: date-time */
+                at: string;
+            }[];
+            failed: {
+                id: string;
+                /**
+                 * @description not_found: not one of this vendor's products; not_pending: already decided; changed: submitted again since the reviewer looked
+                 * @enum {string}
+                 */
+                code: "not_found" | "not_pending" | "changed";
+                message: string;
+            }[];
+        };
         VendorSummary: {
             id: string;
             brand_name: string;
@@ -1221,6 +1295,13 @@ export interface components {
                 status: string;
                 price_paise: number;
                 thumbnail_url: string | null;
+                /**
+                 * Format: date-time
+                 * @description When this version was submitted; sent back with a decision as the version the reviewer saw
+                 */
+                submitted_at: string;
+                /** @description Required photos this version lacks, by the product review page's rule: each of front, back, detail and worn, and try-on photos short of 5 */
+                photos_missing: number;
             }[];
             brand_live: boolean;
             history: components["schemas"]["History"];

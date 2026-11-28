@@ -168,6 +168,8 @@ export const storeCopy = {
     failed: 'Your changes did not save. Try again.',
     unknownTitle: 'We could not find that part of your store details',
     unknownBody: 'Go back to Store details and choose what to change.',
+    ownerOnly: 'Only the account owner can change this',
+    ownerOnlyBody: 'Only the owner of this seller account can change where payouts go and the business details. Ask them if something here is wrong.',
     intro: {
       brand: 'Who you sell for and where you ship from.',
       contact: 'Who we talk to about orders, payouts and reviews.',

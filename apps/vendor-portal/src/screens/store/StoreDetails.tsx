@@ -9,10 +9,11 @@ import { paths } from '../../app/paths'
 import { storeCopy as copy } from '../../copy/store'
 import { SECTION_FOR_TOPIC, STORE_SECTIONS, type StoreTopic } from '../../lib/storeDetails'
 import { FORM_MAX_WIDTH, useNavMode } from '../../shell/layout'
+import { useSession } from '../../session/AuthProvider'
 import { CommissionCard } from './CommissionCard'
 import type { SavedState } from './StoreSection'
 import { touch } from './topics/controls'
-import { TOPIC_TITLES, type Topic } from './topics/model'
+import { OWNER_ONLY_TOPICS, TOPIC_TITLES, type Topic } from './topics/model'
 import { brandRows, businessRows, ChangeLink, contactRows, deliveryRows, paymentRows, payoutRows, returnsRows, SummaryList, type Row } from './topics/summary'
 
 // Store details (spec §5): one card per topic, each a plain label / value list with a Change link
@@ -41,6 +42,7 @@ function TopicCard({ topic, details }: { topic: Topic; details: Schemas['StoreDe
   const storeTopic = TOPIC_OF[topic]
   const todo = storeTopic !== undefined && details.missing.includes(storeTopic)
   const rows = rowsOf(topic, details)
+  const canChange = useSession().role === 'owner' || !OWNER_ONLY_TOPICS.has(topic)
   return (
     <SectionCard
       title={title}
@@ -51,7 +53,13 @@ function TopicCard({ topic, details }: { topic: Topic; details: Schemas['StoreDe
               {copy.page.todo}
             </Typography>
           )}
-          <ChangeLink target={{ to: paths.storeSection(topic) }} what={title} />
+          {canChange ? (
+            <ChangeLink target={{ to: paths.storeSection(topic) }} what={title} />
+          ) : (
+            <Typography variant="body2" color="textSecondary">
+              {copy.section.ownerOnly}
+            </Typography>
+          )}
         </Stack>
       }
     >

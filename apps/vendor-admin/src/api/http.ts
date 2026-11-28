@@ -56,7 +56,6 @@ const MESSAGE_BY_CODE: Record<string, string> = {
   review_already_decided: 'This was already decided by someone else. Reload to see the result.',
   invalid_status_transition: 'This vendor’s status changed. Reload and try again.',
   commission_changed: 'The brand changed its proposal. Reload to see the new rate.',
-  vendor_not_eligible: 'This application was rejected, so there is no rate to agree.',
   no_proposal: 'There is no proposed rate waiting.',
 }
 
@@ -67,7 +66,8 @@ function retryAfterSeconds(value: string | null): number | undefined {
 export function toApiError(response: Response, body: unknown): ApiError {
   const inner = (typeof body === 'object' && body !== null ? (body as Envelope).error : undefined) ?? {}
   const code = typeof inner.code === 'string' && inner.code !== '' ? inner.code : `http_${response.status}`
-  const message = MESSAGE_BY_CODE[code] ?? (typeof inner.message === 'string' && inner.message !== '' ? inner.message : FALLBACK[response.status] || 'Something went wrong on our side. Try again in a moment.')
+  // Own keys only: a code like `constructor` must not read Object.prototype.
+  const message = (Object.hasOwn(MESSAGE_BY_CODE, code) ? MESSAGE_BY_CODE[code] : undefined) ?? (typeof inner.message === 'string' && inner.message !== '' ? inner.message : FALLBACK[response.status] || 'Something went wrong on our side. Try again in a moment.')
   const requestId = response.headers.get('X-Request-Id') ?? (typeof inner.request_id === 'string' ? inner.request_id : undefined)
   const fields = response.status === 422 ? fieldsFromDetails(inner.details) : {}
   return new ApiError(response.status, code, message, fields, { requestId, retryAfter: retryAfterSeconds(response.headers.get('Retry-After')) })

@@ -1,14 +1,13 @@
-import { createMockVendorApi, createVendorApiHandlers, type MockVendorApi } from '@shazlo/mock-vendor-api'
 import { setupServer } from 'msw/node'
 import { createIdentityDb, createIdentityHandlers, type IdentityDb } from '../mocks/identity'
+import { fakeModules } from './modules'
 
-// identity-api and vendor-api mocks for every test; each render starts from fresh seed data.
+// identity-api and the two stand-in modules (their manifests and summaries) for every test; each
+// render starts from fresh seed data. A test changes a module's answers with server.use(...).
 export let identityDb: IdentityDb = createIdentityDb()
-export let vendorDb: MockVendorApi = createMockVendorApi()
-export const server = setupServer(...createIdentityHandlers(() => identityDb), ...createVendorApiHandlers(() => vendorDb))
+export const server = setupServer(...createIdentityHandlers(() => identityDb), ...fakeModules.flatMap((m) => m.handlers()))
 
 export function resetMocks() {
   identityDb = createIdentityDb()
-  vendorDb = createMockVendorApi()
-  return { identityDb, vendorDb }
+  return { identityDb }
 }

@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
-import type { MockDb, StoreRecord } from '../../mocks/db'
+import { DEMO_STAFF, type MockDb, type StoreRecord } from '../../mocks/db'
 import { renderApp, type Viewport } from '../../test/render'
 import { server, setupMockApi } from '../../test/server'
 
@@ -151,6 +151,25 @@ describe('Store details: changing one topic', () => {
   it('says so when the address names no topic', async () => {
     await renderApp({ route: '/store/details/bank' })
     expect(await screen.findByRole('heading', { level: 1, name: 'We could not find that part of your store details' }, SLOW)).toBeInTheDocument()
+  })
+})
+
+describe('Store details: topics only the owner may change', () => {
+  // vendor-api answers 403 to staff for payout and business (OWNER_ONLY_SECTIONS): staff must not
+  // be handed a bank-account form that can only be refused.
+  it.each(['payout', 'business'])('shows staff a plain notice instead of the %s form', async (section) => {
+    const before = structuredClone(store().payout)
+    await renderApp({ route: `/store/details/${section}`, credentials: DEMO_STAFF })
+    expect(await screen.findByText('Only the account owner can change this', {}, SLOW)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(screen.getByRole('link', { name: 'Back to Store details' })).toHaveAttribute('href', '/store/details')
+    expect(store().payout).toEqual(before)
+  })
+
+  it('still gives the owner the payout form', async () => {
+    await openSection('payout')
+    expect(screen.queryByText('Only the account owner can change this')).toBeNull()
   })
 })
 

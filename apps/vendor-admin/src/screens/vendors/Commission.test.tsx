@@ -77,6 +77,19 @@ describe('A-09 Commission card', { timeout: 30_000 }, () => {
     expect(within(c).queryByRole('button', { name: 'Send back' })).not.toBeInTheDocument()
   })
 
+  it('says so when the application was rejected before the rate was saved', async () => {
+    const { user, db } = await open('v_kesariya', 'Kesariya Prints')
+    await user.click(within(card()).getByRole('button', { name: 'Set rate' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Set the commission for Kesariya Prints' })
+    await user.type(within(dialog).getByRole('textbox', { name: 'Commission' }), '12')
+    vendorOf(db, 'v_kesariya').status = 'rejected'
+    await user.click(within(dialog).getByRole('button', { name: 'Save rate' }))
+
+    // vendor-api's `vendor_not_eligible` keeps its own message.
+    expect(await screen.findByText('This application was rejected: there is no rate to agree.')).toBeInTheDocument()
+    expect(vendorOf(db, 'v_kesariya').commission.agreed_bps).toBeNull()
+  })
+
   it('sets a rate for a brand with none, with an optional note', async () => {
     const { user, db } = await open('v_kesariya', 'Kesariya Prints')
     expect(within(card()).getByText('Not agreed yet. The brand has not proposed a rate.')).toBeInTheDocument()

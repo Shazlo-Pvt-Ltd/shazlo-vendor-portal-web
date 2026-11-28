@@ -27,6 +27,7 @@ from shazlo_security.signing import (
 )
 from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from support import WORKER_ROLE, as_role
 
 from vendor_api import cli
 from vendor_api.core.settings import Settings
@@ -306,9 +307,12 @@ class FakeCentral:
 
 
 def shared(session: AsyncSession) -> Callable[[], Any]:
+    """The test's session as the worker's database role (the reconciler runs in the worker)."""
+
     @asynccontextmanager
     async def open_session() -> AsyncIterator[AsyncSession]:
-        yield session
+        async with as_role(session, WORKER_ROLE):
+            yield session
 
     return open_session
 

@@ -27,7 +27,8 @@ def test_missing_required_settings_fail_fast(monkeypatch: pytest.MonkeyPatch) ->
 def test_defaults() -> None:
     s = make()
     assert s.env == "dev"
-    assert s.cors_allowed_origins == ["http://localhost:5173"]
+    # The Shazlo One shell's dev server and `vite preview`.
+    assert s.cors_allowed_origins == ["http://localhost:5192", "http://localhost:4192"]
     assert s.cookie_secure is True
     assert s.cookie_samesite == "strict"
     assert s.access_token_ttl_seconds == 900

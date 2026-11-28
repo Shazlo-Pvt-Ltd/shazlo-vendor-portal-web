@@ -1,4 +1,3 @@
-import { mockModuleToken } from '@shazlo/mock-vendor-api'
 import { http, HttpResponse, type HttpResponseResolver } from 'msw'
 import type { components } from '../api/identity'
 
@@ -20,6 +19,12 @@ export const ROLES: S['RoleOut'][] = [
 // ADR 0009: which roles may get a token for which service.
 const AUDIENCE_ROLES: Record<string, string[]> = { 'vendor-api': ['super_admin', 'vendor_reviewer'] }
 const ACCESS_SECONDS = 15 * 60
+
+// A module token from the token exchange: mock.<audience>.<adminId>.<name>.<expEpochSeconds>. A module's
+// mock backend reads the admin from it (the mock vendor-api does, for the browser demo).
+export function mockModuleToken(audience: string, admin: { id: string; name: string }, expiresAt: number) {
+  return `mock.${audience}.${admin.id}.${encodeURIComponent(admin.name)}.${expiresAt}`
+}
 const MAX_FAILURES = 5
 
 type AdminRecord = S['AdminOut'] & { password: string }
@@ -85,12 +90,16 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
     const a = db.admins.find((x) => x.id === entry.adminId)
     return a?.is_active ? a : null
   }
-  const authed = (fn: (info: Parameters<HttpResponseResolver>[0], me: AdminRecord) => ReturnType<HttpResponseResolver>, role?: string): HttpResponseResolver => (info) => {
+  // As identity-api: a token for an admin who must change the temporary password opens nothing but
+  // change-password (403 password_change_required), and a role check reads the database's roles.
+  const authed = (fn: (info: Parameters<HttpResponseResolver>[0], me: AdminRecord) => ReturnType<HttpResponseResolver>, role?: string, { mustChangeOk = false } = {}): HttpResponseResolver => (info) => {
     const me = caller(info.request)
     if (!me) return fail(401, 'unauthorized', 'Your session has ended. Sign in again.')
+    if (me.must_change_password && !mustChangeOk) return fail(403, 'password_change_required', 'Choose your own password first.')
     if (role && !me.roles.includes(role)) return fail(403, 'forbidden', 'Only super admins can manage admins.')
     return fn(info, me)
   }
+  const unknownRole = (roles: string[] | null | undefined) => (roles ?? []).some((r) => !ROLES.some((known) => known.name === r))
 
   return [
     http.post('*/v1/auth/login', async ({ request }) => {
@@ -132,14 +141,16 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
       me.password = new_password
       me.must_change_password = false
       return HttpResponse.json(issue(getDb(), me))
-    })),
+    }, undefined, { mustChangeOk: true })),
 
     http.post('*/v1/auth/token', authed(async ({ request }, me) => {
       const { audience } = (await request.json()) as { audience: string }
+      if (audience === 'identity-api') return fail(400, 'audience_not_exchangeable', 'identity-api tokens come from sign-in and refresh only.')
       const allowed = AUDIENCE_ROLES[audience]
-      if (!allowed || !me.roles.some((r) => allowed.includes(r))) return fail(403, 'forbidden', 'Your role does not give access to this module.')
+      if (!allowed) return fail(400, 'unknown_audience', 'No module backend is registered under this audience.')
+      if (!me.roles.some((r) => allowed.includes(r))) return fail(403, 'audience_not_allowed', 'Your role does not give access to this module.')
       const exp = Math.floor(getDb().now().getTime() / 1000) + 300
-      return HttpResponse.json({ access_token: mockModuleToken({ id: me.id, name: me.display_name }, exp), token_type: 'Bearer', expires_in: 300, audience } satisfies S['TokenResponse'])
+      return HttpResponse.json({ access_token: mockModuleToken(audience, { id: me.id, name: me.display_name }, exp), token_type: 'Bearer', expires_in: 300, audience } satisfies S['TokenResponse'])
     })),
 
     http.get('*/v1/me', authed((_, me) => HttpResponse.json(profile(me)))),
@@ -153,7 +164,11 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
       if (text) items = items.filter((a) => `${a.display_name} ${a.email}`.toLowerCase().includes(text))
       if (q.get('role')) items = items.filter((a) => a.roles.includes(q.get('role')!))
       if (q.get('is_active')) items = items.filter((a) => String(a.is_active) === q.get('is_active'))
-      return HttpResponse.json({ items: items.map(out), total: items.length, limit: 25, offset: 0 } satisfies S['AdminList'])
+      // identity-api's paging: limit 1 to 100 (25 by default), offset from 0.
+      const limit = Number(q.get('limit') ?? 25)
+      const offset = Number(q.get('offset') ?? 0)
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0) return fail(422, 'validation_error', 'Check the paging values.')
+      return HttpResponse.json({ items: items.slice(offset, offset + limit).map(out), total: items.length, limit, offset } satisfies S['AdminList'])
     }, 'super_admin')),
 
     http.post('*/v1/admins', authed(async ({ request }) => {
@@ -165,12 +180,20 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
       if (!body.roles?.length) fields.roles = 'Choose at least one role.'
       if ((body.password ?? '').length < 12) fields.password = 'Temporary passwords need at least 12 characters.'
       if (Object.keys(fields).length) return fail(422, 'validation_error', 'Check the highlighted fields.', fields)
+      if (unknownRole(body.roles)) return fail(422, 'unknown_role', 'A role in the request does not exist.')
       if (db.admins.some((a) => a.email === body.email.toLowerCase())) return fail(409, 'email_taken', 'This email already has an admin account.')
       db.seq += 1
       const a: AdminRecord = { id: uuid(1000 + db.seq), email: body.email.toLowerCase(), display_name: body.display_name.trim(), roles: body.roles, is_active: true, must_change_password: true, created_at: db.now().toISOString(), last_login_at: null, password: body.password }
       db.admins.push(a)
       return HttpResponse.json(out(a), { status: 201 })
     }, 'super_admin')),
+
+    // Any signed-in admin: the display name behind an id, and nothing else. Unknown ids are left out.
+    http.get('*/v1/admins/names', authed(({ request }) => {
+      const ids = new Set(new URL(request.url).searchParams.getAll('ids'))
+      if (ids.size > 100) return fail(422, 'validation_error', 'Ask for at most 100 admins at a time.')
+      return HttpResponse.json({ items: getDb().admins.filter((a) => ids.has(a.id)).map((a) => ({ id: a.id, display_name: a.display_name })) })
+    })),
 
     http.get('*/v1/admins/:id', authed(({ params }) => {
       const a = getDb().admins.find((x) => x.id === params.id)
@@ -182,10 +205,17 @@ export function createIdentityHandlers(getDb: () => IdentityDb) {
       const a = db.admins.find((x) => x.id === params.id)
       if (!a) return fail(404, 'admin_not_found', 'We could not find that admin.')
       const body = (await request.json()) as S['UpdateAdminRequest']
-      if (a.id === me.id && (body.is_active === false || (body.roles && !body.roles.includes('super_admin')))) {
-        return fail(409, 'cannot_deactivate_self', 'You cannot remove your own super admin access or deactivate yourself.')
+      // identity-api's rules (services/admins.py): nobody deactivates themself, and the last active
+      // super admin can be neither deactivated nor lose the role.
+      const deactivating = body.is_active === false && a.is_active
+      if (deactivating && a.id === me.id) return fail(409, 'cannot_deactivate_self', 'You cannot deactivate yourself.')
+      const losesSuper = body.roles !== undefined && body.roles !== null && a.roles.includes('super_admin') && !body.roles.includes('super_admin')
+      const activeSupers = db.admins.filter((x) => x.is_active && x.roles.includes('super_admin')).length
+      if (a.is_active && a.roles.includes('super_admin') && (deactivating || losesSuper) && activeSupers <= 1) {
+        return fail(409, 'last_super_admin', 'The last active super_admin cannot be deactivated or lose the role.')
       }
       if (body.roles && !body.roles.length) return fail(422, 'validation_error', 'Choose at least one role.', { roles: 'Choose at least one role.' })
+      if (unknownRole(body.roles)) return fail(422, 'unknown_role', 'A role in the request does not exist.')
       Object.assign(a, Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)))
       if (body.is_active === false) for (const [token, owner] of db.refresh) if (owner === a.id) db.refresh.delete(token)
       return HttpResponse.json(out(a))
