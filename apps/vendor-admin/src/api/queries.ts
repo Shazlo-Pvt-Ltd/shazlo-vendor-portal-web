@@ -68,6 +68,13 @@ export async function fetchEveryQueueItem(api: Api<ApiPaths>, filters: QueueFilt
   return joinSlices(slices).items
 }
 
+// Every item that matches the filters, as one query (the dashboard's brands with products waiting).
+// Its key starts with the queue's, so a decision refreshes it with the queue.
+export function useEveryQueueItem(filters: QueueFilters) {
+  const { api } = useRuntime()
+  return useQuery({ queryKey: [...keys.queue(filters), 'every'] as const, queryFn: () => fetchEveryQueueItem(api, filters) })
+}
+
 export function useProductReview(id: string) {
   const { api } = useRuntime()
   return useQuery({ queryKey: keys.product(id), queryFn: () => api.call((c) => c.GET('/api/v1/admin/products/{id}/review', { params: { path: { id } } })) })

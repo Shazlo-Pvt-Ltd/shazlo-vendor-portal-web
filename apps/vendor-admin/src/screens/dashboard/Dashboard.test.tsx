@@ -178,6 +178,22 @@ describe('Vendor dashboard', { timeout: 40_000 }, () => {
     expect(within(card).getByRole('link', { name: 'See all in the review queue' })).toHaveAttribute('href', '/queue?kind=product')
   })
 
+  // The queue answers a page (50) at a time; a brand's count must include every page, not the first.
+  it('counts every waiting product of a brand, past the queue’s first page', async () => {
+    const { db } = renderModule({ route: '/dashboard' })
+    const template = pendingProducts(db).find((p) => p.vendorId === 'v_kalki')!
+    for (let i = 0; i < 120; i += 1) db.products.push({ ...structuredClone(template), id: `p_many_${i}`, sku: `MANY-${i}` })
+    const kalki = expectedBrands(db).find((b) => b.name === 'Kalki Studio')!
+    expect(kalki.count).toBe(124)
+
+    await onDashboard()
+    const list = await screen.findByRole('list', { name: 'Brands with products waiting' }, { timeout: 10_000 })
+    const first = within(list).getAllByRole('listitem')[0]!
+    expect(within(first).getByText('Kalki Studio')).toBeInTheDocument()
+    expect(within(first).getByText('124 products waiting')).toBeInTheDocument()
+    expect(within(list).getAllByRole('listitem')).toHaveLength(expectedBrands(db).length)
+  })
+
   it('shows publishing figures by status and warns when an event failed', async () => {
     renderModule({ route: '/dashboard' })
     await onDashboard()

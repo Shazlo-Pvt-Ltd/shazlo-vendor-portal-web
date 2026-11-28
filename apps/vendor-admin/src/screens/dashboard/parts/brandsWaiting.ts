@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useQueue } from '../../../api/queries'
+import { useEveryQueueItem } from '../../../api/queries'
 import type * as S from '../../../api/model'
 
 export type BrandWaiting = { vendor: S.VendorRef; count: number; oldest: string }
@@ -20,9 +20,10 @@ export function groupByBrand(items: readonly S.QueueItem[]): BrandWaiting[] {
   return [...byVendor.values()].sort((a, b) => b.count - a.count || Date.parse(a.oldest) - Date.parse(b.oldest) || a.vendor.name.localeCompare(b.vendor.name))
 }
 
-// The products in the review queue, grouped by brand.
+// Every product in the review queue, not just its first page, grouped by brand: a brand's count and
+// oldest wait are only right when all of its products are counted.
 export function useBrandsWaiting() {
-  const query = useQueue({ kind: 'product' })
-  const brands = useMemo(() => (query.data ? groupByBrand(query.data.items) : undefined), [query.data])
+  const query = useEveryQueueItem({ kind: 'product' })
+  const brands = useMemo(() => (query.data ? groupByBrand(query.data) : undefined), [query.data])
   return { query, brands }
 }
