@@ -412,6 +412,25 @@ describe('logout', () => {
     expect(router.state.location.search).toBe('')
   })
 
+  it('removes the frame at once and revokes once, however many it sends, even while the server is slow', async () => {
+    const { logout } = await open()
+    let answer = () => {}
+    logout.mockImplementation(() => new Promise<void>((resolve) => (answer = resolve)))
+    const module = await moduleReady()
+    for (let n = 0; n < 10; n += 1) module.client.sendLogout('user_choice')
+    await settle()
+    // The server has not answered yet: the module is already gone and cannot send anything more.
+    expect(frames()).toBe(0)
+    expect(logout).toHaveBeenCalledOnce()
+    expect(module.client.sendToast({ level: 'info', message: 'Still here' })).toBe(true)
+    await settle()
+    expect(screen.queryByText('Still here')).toBeNull()
+    answer()
+    await settle()
+    expect(logout).toHaveBeenCalledOnce()
+    expect(screen.getByRole('heading', { level: 1, name: 'Sign in' })).toBeTruthy()
+  })
+
   it('is ignored from another origin or window', async () => {
     const { logout } = await open()
     const module = await moduleReady()
@@ -500,6 +519,18 @@ describe('error', () => {
     await settle(20 * 60_000)
     expect(exchange.mock.calls.length).toBe(calls)
     expect(module.auths).toHaveLength(1)
+  })
+
+  it('after a fatal one, nothing else the module sends in the same breath counts', async () => {
+    const { router } = await open()
+    const module = await moduleReady()
+    module.client.sendError('boom', 'It broke.', true)
+    module.client.sendToast({ level: 'info', message: 'Late toast' })
+    module.client.sendTitle('/late', 'Late page')
+    await settle()
+    expect(screen.queryByText('Late toast')).toBeNull()
+    expect(where(router)).toBe('/m/vendor-admin')
+    expect(screen.getByText(/It broke\./)).toBeTruthy()
   })
 
   it('keeps the shell’s chrome usable on the panel', async () => {

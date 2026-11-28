@@ -52,6 +52,8 @@ type Status =
   | { kind: 'error'; message: string }
   /** The module sent `error` with `fatal: true`: it is replaced by the shell's own panel. */
   | { kind: 'fatal'; code: string; message: string }
+  /** The module sent `logout`: its frame is gone at once, while the session ends. */
+  | { kind: 'signingOut' }
 
 /** What the admin is told when the token for the module could not be got. */
 function statusForExchangeError(error: unknown): Status {
@@ -214,18 +216,31 @@ function HostedFrame({ entry, visible, onStatus, deepLink, onTitle, onToast, onM
         clearTimeout(timer)
         report({ kind: 'version', moduleVersion: info.moduleVersion, supportedVersions: info.supportedVersions })
       },
+      // Nothing a module sends counts once it is on its way out (it signed out, or failed for good).
       onTitle: (payload) => {
+        if (disposed) return
         const synced = handlers.current.onTitle(payload)
         if (synced !== undefined) lastSynced.current = synced
       },
-      onToast: (payload) => handlers.current.onToast(payload),
-      // The admin chose to sign out inside the module: the session ends (the refresh token is revoked), the
-      // frame goes with the page and the guards send the admin to sign in.
-      onLogout: () => void sessionRef.current.logout(),
+      onToast: (payload) => {
+        if (!disposed) handlers.current.onToast(payload)
+      },
+      // The admin chose to sign out inside the module: the session ends (the refresh token is revoked) and the
+      // guards send the admin to sign in. The frame goes at once, not when the server answers, so the module
+      // can do nothing more meanwhile; and only the first `logout` counts.
+      onLogout: () => {
+        if (disposed) return
+        void sessionRef.current.logout()
+        clearTimeout(timer)
+        report({ kind: 'signingOut' })
+        disposed = true
+      },
       onModuleError: (payload) => {
+        if (disposed) return
         if (payload.fatal) {
           clearTimeout(timer)
           report({ kind: 'fatal', code: payload.code, message: payload.message })
+          disposed = true
         } else {
           handlers.current.onModuleError(payload)
         }
@@ -400,6 +415,13 @@ export function ModuleHost({ entry }: { entry: ModuleEntry }) {
         <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 2 }}>
           <CircularProgress size={24} />
           <Typography>Loading {entry.title}…</Typography>
+        </Box>
+      ) : null}
+
+      {status.kind === 'signingOut' ? (
+        <Box role="status" sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 2 }}>
+          <CircularProgress size={24} />
+          <Typography>Signing out…</Typography>
         </Box>
       ) : null}
 
