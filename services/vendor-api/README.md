@@ -140,7 +140,7 @@ Read from the environment (and `.env`). Names are the upper-case field names. Fu
 | `REDIS_URL` | none (required) | `redis://` or `rediss://` |
 | `ENV` | `dev` | `dev`, `test` or `prod`; `prod` turns off `/docs` |
 | `LOG_LEVEL` | `INFO` | |
-| `CORS_ALLOWED_ORIGINS` | `http://localhost:5174` | comma separated; credentials allowed for these only; no wildcard |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:5174` | comma separated; credentials allowed for these only; no wildcard. For the admin too, add its origins (`http://localhost:5193`, `http://localhost:4193`) and the Shazlo One shell's (`http://localhost:5192`, `http://localhost:4192`, which reads the home figures); `docker-compose.yml` already lists them |
 | `COOKIE_SECURE` / `COOKIE_SAMESITE` | `true` / `strict` | refresh-token cookie (host-only); `none` requires `COOKIE_SECURE=true`; prod requires `COOKIE_SECURE=true` |
 | `JWT_ISSUER` | `http://localhost:8002` | `iss` of the tokens vendor-api issues; prod requires this service's public `https://` URL (not localhost), and it must always differ from `IDENTITY_ISSUER` |
 | `JWT_KEYS_DIR` / `JWT_KEYS` | none (one is required) | RS256 keys: a directory of `<kid>.pem` files and/or JSON `{"<kid>": "<PEM>"}` |
@@ -677,7 +677,7 @@ alembic check                                    # fails if models and migration
 ## Behaviour worth knowing
 
 - `GET /health` is liveness only. `GET /ready` checks Postgres and Redis (2 second timeout each) and returns 503 if either fails; it also carries the outbox counts (`outbox`), which never change the verdict.
-- Every response has an `X-Request-ID` header. A sane incoming value is reused; it is also in every log line.
+- Every response has an `X-Request-ID` header. A sane incoming value is reused; it is also in every log line. CORS exposes it and `Retry-After` (on a 429) to the allowed origins.
 - Logs are one JSON object per line on stdout.
 - Errors always look like `{"error": {"code", "message", "request_id", "details"?}}`. Unhandled errors return a generic message; details go to the log only.
 

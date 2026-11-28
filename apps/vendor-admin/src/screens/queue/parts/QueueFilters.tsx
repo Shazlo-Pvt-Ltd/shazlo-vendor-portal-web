@@ -1,7 +1,7 @@
 import { Box, FormControlLabel, IconButton, InputAdornment, MenuItem, Select, Stack, Switch, TextField } from '@mui/material'
 import { Search, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { components } from '../../../api/schema'
+import type * as M from '../../../api/model'
 import { queueCopy } from '../../../copy/queue'
 import { filterBar, filterSpacer, fullRow } from '../../../lib/responsive'
 import type { Patch, QueueParams } from './useQueueParams'
@@ -119,7 +119,7 @@ function SortSelect({ value, onChange }: { value: string; onChange: (value: stri
   )
 }
 
-export function QueueFilters({ params, update, onSearch, vendors }: { params: QueueParams; update: Update; onSearch: (q: string) => void; vendors: components['schemas']['VendorRef'][] }) {
+export function QueueFilters({ params, update, onSearch, vendors }: { params: QueueParams; update: Update; onSearch: (q: string) => void; vendors: M.VendorRef[] }) {
   const vendorOptions = vendors.map((v) => ({ value: v.id, label: v.name })).sort((a, b) => a.label.localeCompare(b.label))
   return (
     <Stack role="search" aria-label={copy.label} direction="row" spacing={1.5} useFlexGap sx={{ alignItems: 'center', minHeight: 56, flexWrap: 'wrap', rowGap: 1.5, ...filterBar }}>

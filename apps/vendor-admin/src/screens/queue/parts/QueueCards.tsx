@@ -1,7 +1,7 @@
 import { Box, Link, Stack, Typography } from '@mui/material'
 import { emphasis, neutral, StatusPill } from '@shazlo/ui'
 import { Link as RouterLink } from 'react-router'
-import type { components } from '../../../api/schema'
+import type * as M from '../../../api/model'
 import { CardList, ListCard, stretchSx } from '../../../components/CardList'
 import { ProductThumb } from '../../../components/ProductThumb'
 import { RowChevron } from '../../../components/rows'
@@ -12,7 +12,7 @@ import { queuePill } from '../../../lib/status'
 import { Initials, reviewPath, Waiting } from './QueueTable'
 
 const copy = queueCopy.table
-type QueueItem = components['schemas']['QueueItem']
+type QueueItem = M.QueueItem
 
 function QueueCard({ item }: { item: QueueItem }) {
   const pill = queuePill(item)

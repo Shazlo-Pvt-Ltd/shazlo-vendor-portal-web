@@ -5,13 +5,13 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { ApiError } from '../../api/http'
 import { useVendorAction } from '../../api/queries'
-import type { components } from '../../api/schema'
+import type * as M from '../../api/model'
 import { REASON_MIN, vendorActionsCopy } from '../../copy/vendors'
 import { fieldProps, noAsterisk } from '../../lib/forms'
 import { usePhone } from '../../lib/responsive'
 
 const copy = vendorActionsCopy
-type VendorDetail = components['schemas']['VendorDetail']
+type VendorDetail = M.VendorDetail
 
 const reasonSchema = z.object({ text: z.string().trim().min(REASON_MIN, copy.reasonShort) })
 type ReasonValues = z.infer<typeof reasonSchema>

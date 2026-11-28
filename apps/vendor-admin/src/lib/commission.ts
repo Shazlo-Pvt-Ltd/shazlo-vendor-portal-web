@@ -1,8 +1,8 @@
 import { z } from 'zod'
-import type { components } from '../api/schema'
+import type * as M from '../api/model'
 import { commissionCopy, rateErrors } from '../copy/vendors'
 
-type Commission = components['schemas']['Commission']
+type Commission = M.Commission
 
 // The API counts commission in basis points; people read and type percentages ("12", "12.5").
 export const MAX_RATE = 40

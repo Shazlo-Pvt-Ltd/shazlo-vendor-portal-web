@@ -8,7 +8,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { ApiError } from '../../../api/http'
 import { useCommissionAction } from '../../../api/queries'
-import type { components } from '../../../api/schema'
+import type * as M from '../../../api/model'
 import { CardTitle } from '../../../components/CardTitle'
 import { vendorActionsCopy, vendorDetailCopy } from '../../../copy/vendors'
 import { formatRate, rateField, rateText, toBps } from '../../../lib/commission'
@@ -20,7 +20,7 @@ import { ReasonDialog } from '../dialogs'
 
 const copy = vendorDetailCopy.commission
 const NOTE_MAX = 600
-type Vendor = components['schemas']['VendorDetail']
+type Vendor = M.VendorDetail
 
 const tabular = { fontVariantNumeric: 'lining-nums tabular-nums' } as const
 

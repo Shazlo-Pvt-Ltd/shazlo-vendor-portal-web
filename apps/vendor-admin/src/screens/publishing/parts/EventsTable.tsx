@@ -3,7 +3,7 @@ import { alpha } from '@mui/material/styles'
 import { brand, emphasis, neutral, StatusPill } from '@shazlo/ui'
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table'
 import { useMemo, type KeyboardEvent } from 'react'
-import type { components } from '../../../api/schema'
+import type * as M from '../../../api/model'
 import { focusRing, RowChevron } from '../../../components/rows'
 import { publishingCopy } from '../../../copy/publishing'
 import { formatCount, formatRelative } from '../../../lib/format'
@@ -11,7 +11,7 @@ import { outboxPill } from '../../../lib/status'
 import { formatUntil } from './when'
 
 const copy = publishingCopy.table
-type OutboxEvent = components['schemas']['OutboxEvent']
+type OutboxEvent = M.OutboxEvent
 
 const DASH = '—'
 const SKELETON_ROWS = 8

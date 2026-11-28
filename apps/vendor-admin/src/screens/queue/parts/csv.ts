@@ -1,8 +1,8 @@
-import type { components } from '../../../api/schema'
+import type * as M from '../../../api/model'
 import { queueCopy } from '../../../copy/queue'
 import { formatWait, queuePill } from '../../../lib/status'
 
-type QueueItem = components['schemas']['QueueItem']
+type QueueItem = M.QueueItem
 
 const isoDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' })
 

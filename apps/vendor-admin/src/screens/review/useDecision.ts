@@ -1,11 +1,10 @@
 import type { UseMutationResult } from '@tanstack/react-query'
 import { useState } from 'react'
 import { ApiError } from '../../api/http'
-import type { components } from '../../api/schema'
+import type * as M from '../../api/model'
 import { useRuntime } from '../../runtime/runtime'
 
-type S = components['schemas']
-export type Outcome = { decision: S['Decision']['decision']; nextId: string | null }
+export type Outcome = { decision: M.Decision['decision']; nextId: string | null }
 
 const messageOf = (error: unknown) => (error instanceof ApiError ? error.message : 'Something went wrong on our side. Try again in a moment.')
 
@@ -17,8 +16,8 @@ export function useDecision({
   reload,
   toasts,
 }: {
-  approve: UseMutationResult<S['Decision'], Error, void>
-  reject: UseMutationResult<S['Decision'], Error, S['RejectBody']>
+  approve: UseMutationResult<M.Decision, Error, void>
+  reject: UseMutationResult<M.Decision, Error, M.RejectBody>
   reload: () => void
   toasts: { approved: string; sentBack: string }
 }) {
@@ -47,7 +46,7 @@ export function useDecision({
   }
 
   // Resolves when the dialog can close; throws field errors and other failures back to the dialog.
-  const sendBack = async (body: S['RejectBody']) => {
+  const sendBack = async (body: M.RejectBody) => {
     setFailure(null)
     try {
       const d = await reject.mutateAsync(body)

@@ -1,11 +1,10 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRuntime } from '../runtime/runtime'
-import type { components } from './schema'
+import type * as M from './model'
 
-type S = components['schemas']
 
-export type QueueFilters = { kind?: S['ItemKind']; vendor?: string; q?: string; submitted?: 'today' | '24h' | 'older'; resubmissions?: boolean; sort?: 'oldest' | 'newest' }
-export type VendorFilters = { status?: S['VendorStatus']; q?: string; city?: string; sort?: 'name' | 'newest' | 'products'; commission?: S['CommissionState'] }
+export type QueueFilters = { kind?: M.ItemKind; vendor?: string; q?: string; submitted?: 'today' | '24h' | 'older'; resubmissions?: boolean; sort?: 'oldest' | 'newest' }
+export type VendorFilters = { status?: M.VendorStatus; q?: string; city?: string; sort?: 'name' | 'newest' | 'products'; commission?: M.CommissionState }
 
 export const keys = {
   summary: ['summary'] as const,
@@ -16,7 +15,7 @@ export const keys = {
   vendors: (f: VendorFilters) => ['vendors', f] as const,
   allVendors: ['vendors'] as const,
   vendor: (id: string) => ['vendor', id] as const,
-  outbox: (status?: S['OutboxStatus']) => ['outbox', status ?? 'all'] as const,
+  outbox: (status?: M.OutboxStatus) => ['outbox', status ?? 'all'] as const,
   allOutbox: ['outbox'] as const,
 }
 
@@ -61,7 +60,7 @@ export function useRejectProduct(id: string) {
   const invalidate = useInvalidateAfterDecision()
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: S['RejectBody']) => api.call((c) => c.POST('/api/v1/admin/products/{id}/reject', { params: { path: { id } }, body })),
+    mutationFn: (body: M.RejectBody) => api.call((c) => c.POST('/api/v1/admin/products/{id}/reject', { params: { path: { id } }, body })),
     onSuccess: () => {
       invalidate()
       void qc.invalidateQueries({ queryKey: keys.product(id) })
@@ -92,7 +91,7 @@ export function useRejectBrand(vendorId: string) {
   const invalidate = useInvalidateAfterDecision()
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: S['RejectBody']) => api.call((c) => c.POST('/api/v1/admin/brand-pages/{vendor_id}/reject', { params: { path: { vendor_id: vendorId } }, body })),
+    mutationFn: (body: M.RejectBody) => api.call((c) => c.POST('/api/v1/admin/brand-pages/{vendor_id}/reject', { params: { path: { vendor_id: vendorId } }, body })),
     onSuccess: () => {
       invalidate()
       void qc.invalidateQueries({ queryKey: keys.brand(vendorId) })
@@ -170,7 +169,7 @@ export function useCommissionAction(id: string) {
   })
 }
 
-export function useOutbox(status?: S['OutboxStatus']) {
+export function useOutbox(status?: M.OutboxStatus) {
   const { api } = useRuntime()
   return useQuery({ queryKey: keys.outbox(status), queryFn: () => api.call((c) => c.GET('/api/v1/admin/outbox', { params: { query: { status } } })), placeholderData: keepPreviousData, refetchInterval: 30_000 })
 }

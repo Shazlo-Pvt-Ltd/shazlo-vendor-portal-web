@@ -294,7 +294,7 @@ describe('A-05 Product review: approving', () => {
   })
 
   it('shows an error and keeps the decision open when approving fails', async () => {
-    server.use(http.post(`${VENDOR_API_URL}/api/v1/admin/products/:id/approve`, () => HttpResponse.json({ message: 'Something went wrong on our side.' }, { status: 500 })))
+    server.use(http.post(`${VENDOR_API_URL}/api/v1/admin/products/:id/approve`, () => HttpResponse.json({ error: { code: 'internal_error', message: 'Something went wrong on our side.', request_id: 'r' } }, { status: 500 })))
     const { user } = await open('p_ajrakh', AJRAKH)
     await tickAll(user)
     await user.click(screen.getByRole('button', { name: 'Approve and publish' }))
@@ -353,7 +353,7 @@ describe('A-06 Send back', () => {
   })
 
   it('shows the server’s field errors on the fields', async () => {
-    server.use(http.post(`${VENDOR_API_URL}/api/v1/admin/products/:id/reject`, () => HttpResponse.json({ message: 'Tell the seller what to change.', extra: { code: 'validation_error', fields: { reason: 'Say which photo is missing.' } } }, { status: 422 })))
+    server.use(http.post(`${VENDOR_API_URL}/api/v1/admin/products/:id/reject`, () => HttpResponse.json({ error: { code: 'validation_error', message: 'Request validation failed', request_id: 'r', details: [{ loc: ['body', 'reason'], msg: 'Say which photo is missing.', type: 'value_error' }] } }, { status: 422 })))
     const { user } = await open('p_ajrakh', AJRAKH)
     await user.click(screen.getByRole('button', { name: 'Send back' }))
     const dialog = await screen.findByRole('dialog')
@@ -477,7 +477,7 @@ describe('A-05 Product review: moving through the queue', () => {
     server.use(
       http.get(`${VENDOR_API_URL}/api/v1/admin/products/:id/review`, () => {
         calls += 1
-        if (calls === 1) return HttpResponse.json({ message: 'Down' }, { status: 400 })
+        if (calls === 1) return HttpResponse.json({ error: { code: 'bad_request', message: 'Down', request_id: 'r' } }, { status: 400 })
         return undefined
       }),
     )

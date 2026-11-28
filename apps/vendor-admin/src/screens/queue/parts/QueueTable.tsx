@@ -4,7 +4,7 @@ import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from '@tan
 import { Clock } from 'lucide-react'
 import { useMemo } from 'react'
 import { Link as RouterLink } from 'react-router'
-import type { components } from '../../../api/schema'
+import type * as M from '../../../api/model'
 import { modulePaths } from '../../../app/routes'
 import { stretchSx } from '../../../components/CardList'
 import { ProductThumb } from '../../../components/ProductThumb'
@@ -14,7 +14,7 @@ import { formatStamp } from '../../../lib/format'
 import { formatWait, queuePill } from '../../../lib/status'
 
 const copy = queueCopy.table
-type QueueItem = components['schemas']['QueueItem']
+type QueueItem = M.QueueItem
 
 const DAY_MS = 24 * 3_600_000
 const SKELETON_ROWS = 8

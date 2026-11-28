@@ -1,10 +1,10 @@
-import type { components } from '../../../api/schema'
+import type * as M from '../../../api/model'
 import { sellsLabel, vendorsCopy } from '../../../copy/vendors'
 import { commissionText } from '../../../lib/commission'
 import { formatDate } from '../../../lib/format'
 import { vendorPill } from '../../../lib/status'
 
-type Vendor = components['schemas']['VendorSummary']
+type Vendor = M.VendorSummary
 
 const BOM = String.fromCharCode(0xfeff)
 

@@ -4,7 +4,7 @@ import { Download } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useVendors } from '../../api/queries'
-import type { components } from '../../api/schema'
+import type * as M from '../../api/model'
 import { modulePaths } from '../../app/routes'
 import { TabLabel, tabSx, tabsSx } from '../../components/tabs'
 import { vendorActionsCopy, vendorsCopy as copy, vendorTabs } from '../../copy/vendors'
@@ -17,9 +17,8 @@ import { tabOf, tabPatch, toFilters, useVendorParams, type VendorParams } from '
 import { VendorCards } from './list/VendorCards'
 import { VendorTable } from './list/VendorTable'
 
-type S = components['schemas']
-type Vendor = S['VendorSummary']
-type Counts = S['VendorPage']['counts']
+type Vendor = M.VendorSummary
+type Counts = M.VendorPage['counts']
 
 const icon = { size: 18, strokeWidth: 1.75, 'aria-hidden': true } as const
 

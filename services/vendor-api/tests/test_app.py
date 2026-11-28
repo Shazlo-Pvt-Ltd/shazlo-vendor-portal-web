@@ -167,6 +167,15 @@ def test_cors_allows_only_configured_origins(settings: Settings) -> None:
     assert "access-control-allow-origin" not in denied.headers
 
 
+def test_cors_exposes_request_id_and_retry_after(settings: Settings) -> None:
+    # Neither is CORS-safelisted, so a browser page on an allowed origin reads them only if exposed.
+    response = make_client(settings).get("/health", headers={"Origin": "http://localhost:5174"})
+    exposed = {
+        h.strip().lower() for h in response.headers["access-control-expose-headers"].split(",")
+    }
+    assert {"x-request-id", "retry-after"} <= exposed
+
+
 def test_logs_are_json_with_request_id(
     settings: Settings, capsys: pytest.CaptureFixture[str]
 ) -> None:

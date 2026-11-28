@@ -39,7 +39,7 @@ describe('module runtime (ADR 0001, module side)', () => {
     server.use(
       http.get(`${VENDOR_API_URL}/api/v1/admin/queue`, ({ request }) => {
         calls += 1
-        if (calls === 1) return HttpResponse.json({ message: 'Expired', extra: { code: 'unauthenticated' } }, { status: 401 })
+        if (calls === 1) return HttpResponse.json({ error: { code: 'unauthorized', message: 'Expired', request_id: 'r' } }, { status: 401 })
         expect(request.headers.get('authorization')).toMatch(/^Bearer mock\.vendor-api\./)
         return HttpResponse.json({ items: [], counts: { all: 0, product: 0, brand_page: 0, application: 0 }, vendors: [] })
       }),

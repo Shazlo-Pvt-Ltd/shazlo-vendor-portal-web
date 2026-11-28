@@ -4,7 +4,7 @@ import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from '@tan
 import { MoreHorizontal } from 'lucide-react'
 import { useMemo } from 'react'
 import { Link as RouterLink } from 'react-router'
-import type { components } from '../../../api/schema'
+import type * as M from '../../../api/model'
 import { modulePaths } from '../../../app/routes'
 import { aboveStretch, stretchSx } from '../../../components/CardList'
 import { linkRowSx, onRowClick, RowChevron } from '../../../components/rows'
@@ -15,7 +15,7 @@ import { vendorPill } from '../../../lib/status'
 import { CommissionValue } from './CommissionValue'
 
 const copy = vendorsCopy.table
-type Vendor = components['schemas']['VendorSummary']
+type Vendor = M.VendorSummary
 
 const tabular = { fontVariantNumeric: 'tabular-nums' } as const
 const SKELETON_ROWS = 8
