@@ -15,7 +15,7 @@ async function start() {
   }
   const context = createAppContext(apiUrls())
   // Restore the session from the refresh cookie before routing; tokens never touch storage.
-  await context.session.refresh()
+  await context.session.start()
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <App context={context} router={createBrowserRouter(routes)} />

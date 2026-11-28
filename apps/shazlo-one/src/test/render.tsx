@@ -19,12 +19,13 @@ const ACCOUNTS = {
 // sneha = invited with a temporary password); `as: null` starts signed out.
 export async function renderShell({ route = '/', as = 'naman' }: { route?: string; as?: keyof typeof ACCOUNTS | null } = {}) {
   const { identityDb } = resetMocks()
-  const context = createAppContext({ identityUrl: IDENTITY_URL })
+  // No other tabs: a test's sign-out must not reach the shells other tests left behind.
+  const context = createAppContext({ identityUrl: IDENTITY_URL, channel: null })
   if (as) {
     const res = await context.identity.call((c) => c.POST('/v1/auth/login', { body: ACCOUNTS[as] }))
-    context.session.adopt(res)
+    context.session.signIn(res)
   } else {
-    context.session.end()
+    await context.session.start()
   }
   const router = createMemoryRouter(routes, { initialEntries: [route] })
   const user = userEvent.setup()

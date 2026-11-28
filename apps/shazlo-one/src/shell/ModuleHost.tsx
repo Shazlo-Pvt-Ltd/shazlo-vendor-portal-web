@@ -50,15 +50,16 @@ export function ModuleHost({ module }: { module: ResolvedModule }) {
   const sendAuth = useCallback(async (replyTo?: string, force = false) => {
     if (!admin) return
     try {
-      const { token, expiresAt } = await session.moduleToken(module.audience, force)
+      const { accessToken: token, expiresAt: expiresAtMs } = await session.getModuleToken(module.audience, module.id, { fresh: force })
+      const expiresAt = Math.floor(expiresAtMs / 1000)
       channel.current?.sendAuth({ accessToken: token, expiresAt, user: { id: admin.id, email: admin.email, roles: admin.roles }, locale: 'en-IN' }, replyTo === undefined ? {} : { replyTo })
       if (refreshTimer.current) clearTimeout(refreshTimer.current)
       const lifeMs = (expiresAt - Date.now() / 1000) * 1000
       refreshTimer.current = setTimeout(() => void sendAuthRef.current(undefined, true), Math.max(5_000, lifeMs * 0.8))
     } catch {
-      session.end('expired')
+      session.expire()
     }
-  }, [admin, module.audience, session])
+  }, [admin, module.audience, module.id, session])
   useEffect(() => {
     sendAuthRef.current = sendAuth
   }, [sendAuth])

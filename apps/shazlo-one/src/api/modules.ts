@@ -1,7 +1,8 @@
 import { actorIds, badgeOf, manifestUrl, parseManifest, parseSummary, type ModuleManifest, type ModuleSummary, type RegistryEntry } from '@shazlo/shell-protocol'
 import { useQuery } from '@tanstack/react-query'
 import { shellCopy } from '../copy/shell'
-import { useAppContext, type AppContext, type SessionStore } from './context'
+import type { SessionStore } from '../session/store'
+import { useAppContext, type AppContext } from './context'
 import { ApiError, toApiError } from './http'
 
 // ADR 0011: what the shell reads from each module. Neither call may hold the shell up: each gives up
@@ -71,7 +72,8 @@ export type LoadedSummary = { summary: ModuleSummary; names: Record<string, stri
 
 export async function fetchSummary(entry: RegistryEntry & { summaryUrl: string }, session: SessionStore, names: (ids: string[]) => Promise<Record<string, string>>): Promise<LoadedSummary> {
   const send = async (force: boolean) => {
-    const { token } = await session.moduleToken(entry.audience, force)
+    // Kept apart from the token the module's frame holds, which is dropped when its page is left.
+    const { accessToken: token } = await session.getModuleToken(entry.audience, `summary:${entry.id}`, { fresh: force })
     return request(entry.summaryUrl, { credentials: 'omit', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } })
   }
   let response = await send(false)

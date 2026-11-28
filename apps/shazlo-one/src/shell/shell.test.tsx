@@ -467,7 +467,7 @@ describe('a module: its home page first, its pages in the top bar too', () => {
     await manifestIn()
     expect(topNav()).not.toBeNull()
     const admin = context.session.get().admin!
-    act(() => context.session.adopt({ access_token: context.session.accessToken()!, expires_in: 900, admin: { ...admin, roles: [] } }))
+    act(() => context.session.signIn({ access_token: context.session.accessToken()!, expires_in: 900, must_change_password: false, admin: { ...admin, roles: [] } }))
     expect(await screen.findByRole('heading', { name: 'You do not have access to Catalogue' })).toBeInTheDocument()
     expect(topNav()).toBeNull()
     expect(shellTop()).toBe('56px')

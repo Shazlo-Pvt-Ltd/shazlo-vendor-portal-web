@@ -413,7 +413,7 @@ describe('A-02 Home: roles', () => {
     const { context } = await renderShell({ as: 'priya' })
     await screen.findByRole('heading', { level: 1, name: 'Good afternoon, Priya' })
     const admin = context.session.get().admin!
-    act(() => context.session.adopt({ access_token: context.session.accessToken()!, expires_in: 900, admin: { ...admin, roles: [] } }))
+    act(() => context.session.signIn({ access_token: context.session.accessToken()!, expires_in: 900, must_change_password: false, admin: { ...admin, roles: [] } }))
     expect(await screen.findByRole('heading', { name: 'No modules for your role yet' })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Catalogue review' })).toBeNull()
   })

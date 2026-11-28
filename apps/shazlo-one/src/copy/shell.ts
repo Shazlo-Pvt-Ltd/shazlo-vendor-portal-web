@@ -31,6 +31,11 @@ export const shellCopy = {
     unreachable: 'The module did not answer. It may be restarting; the rest of Shazlo One still works.',
     invalid: 'The module answered in a form Shazlo One cannot read. Tell the platform team in #shazlo-one.',
   },
+  unavailable: {
+    title: 'Shazlo One cannot reach its sign-in service',
+    body: 'Your network may have dropped, or the service is restarting. You have not been signed out.',
+    retry: 'Try again',
+  },
   expired: 'Your session ended, so we signed you out. Sign in again to carry on where you were.',
   signedOut: 'You are signed out.',
 } as const

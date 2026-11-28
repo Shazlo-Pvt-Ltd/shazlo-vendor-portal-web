@@ -10,19 +10,19 @@ const envelope = (code: string, message = code) => ({ error: { code, message, re
 
 async function signedIn() {
   const { identityDb } = resetMocks()
-  const context = createAppContext({ identityUrl: IDENTITY_URL })
-  context.session.adopt(await context.identity.call((c) => c.POST('/v1/auth/login', { body: DEMO_ADMIN })))
+  const context = createAppContext({ identityUrl: IDENTITY_URL, channel: null })
+  context.session.signIn(await context.identity.call((c) => c.POST('/v1/auth/login', { body: DEMO_ADMIN })))
   return { context, identityDb }
 }
 
 describe('session restore and renewal', () => {
   it('restores the session from the refresh cookie on load', async () => {
     const { context } = await signedIn()
-    const fresh = createAppContext({ identityUrl: IDENTITY_URL })
-    expect(await fresh.session.refresh()).toBe(true)
+    const fresh = createAppContext({ identityUrl: IDENTITY_URL, channel: null })
+    expect(await fresh.session.renew()).toBe(true)
     expect(fresh.session.get()).toMatchObject({ status: 'signed_in', admin: { email: DEMO_ADMIN.email } })
-    context.session.end()
-    fresh.session.end()
+    context.session.close()
+    fresh.session.close()
   })
 
   it('renews a 401 once, shared by parallel calls', async () => {
@@ -36,14 +36,14 @@ describe('session restore and renewal', () => {
     expect([a, b, c].map((m) => m?.email)).toEqual([DEMO_ADMIN.email, DEMO_ADMIN.email, DEMO_ADMIN.email])
     expect(refreshes).toBe(1)
     server.events.removeAllListeners()
-    context.session.end()
+    context.session.close()
   })
 
   it('ends the session when the refresh cookie is rejected while signed in', async () => {
     const { context, identityDb } = await signedIn()
     identityDb.refresh.clear()
     identityDb.access.clear()
-    expect(await context.session.refresh()).toBe(false)
+    expect(await context.session.renew()).toBe(false)
     expect(context.session.get()).toMatchObject({ status: 'signed_out', reason: 'expired' })
   })
 
@@ -65,26 +65,30 @@ describe('session restore and renewal', () => {
         return HttpResponse.json(envelope('refresh_conflict'), { status: 409 })
       }),
     )
-    expect(await context.session.refresh()).toBe(true)
+    expect(await context.session.renew()).toBe(true)
     expect(context.session.get().status).toBe('signed_in')
-    context.session.end()
+    context.session.close()
   })
 
   it('keeps the session when identity-api is down behind the dev proxy (5xx) or rate-limits the refresh', async () => {
     const { context } = await signedIn()
     for (const status of [502, 429]) {
       server.use(http.post('*/v1/auth/refresh', () => HttpResponse.text('Bad gateway', { status }), { once: true }))
-      expect(await context.session.refresh()).toBe(false)
+      expect(await context.session.renew()).toBe(false)
       expect(context.session.get().status).toBe('signed_in')
     }
-    context.session.end()
+    context.session.close()
   })
 
-  it('leaves "checking" on load when identity-api cannot be reached, instead of spinning forever', async () => {
+  it('leaves "checking" on load when identity-api cannot be reached, as unavailable rather than signed out', async () => {
     resetMocks()
     server.use(http.post('*/v1/auth/refresh', () => HttpResponse.error()))
-    const fresh = createAppContext({ identityUrl: IDENTITY_URL })
-    expect(await fresh.session.refresh()).toBe(false)
+    const fresh = createAppContext({ identityUrl: IDENTITY_URL, channel: null })
+    await fresh.session.start()
+    expect(fresh.session.get().status).toBe('unavailable')
+    // Try again once it is back: this browser has no cookie, so it is the sign-in form.
+    server.resetHandlers()
+    await fresh.session.retry()
     expect(fresh.session.get().status).toBe('signed_out')
   })
 })
