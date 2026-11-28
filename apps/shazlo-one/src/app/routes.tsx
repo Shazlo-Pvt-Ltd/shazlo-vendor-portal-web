@@ -1,55 +1,44 @@
-import type { RouteObject } from 'react-router'
-import { NotFound } from '../components/NotFound'
-import { RouteError } from '../components/RouteError'
-import { ShellLayout } from '../components/ShellLayout'
-import { SUPER_ADMIN } from '../modules/registry'
-import { AdminsPage } from '../pages/AdminsPage'
-import { ChangePasswordPage } from '../pages/ChangePasswordPage'
-import { HomePage } from '../pages/HomePage'
-import { LoginPage } from '../pages/LoginPage'
-import { ModulePage } from '../pages/ModulePage'
-import { PublicOnly, RequireAuth, RequirePasswordChange, RequireRole } from '../session/guards'
-import { ADMINS_PATH, CHANGE_PASSWORD_PATH, LOGIN_PATH } from './shellPaths'
+import { lazy, Suspense, type ReactNode } from 'react'
+import { Outlet, type RouteObject } from 'react-router'
+import { ModuleRoute, NotFound, RouteError, SuperAdminOnly } from '../screens/Misc'
+import { GuestOnly, RequireAdmin } from '../session/guards'
+import { PageFallback } from '../shell/PageFallback'
+import { ShellLayout } from '../shell/ShellLayout'
+import { CrumbProvider, type RouteHandle } from './crumbs'
+import { registry } from './registry'
 
-/** Every path here must also be listed in `shellPaths`, which the `return-to` check reads. */
+const SignIn = lazy(() => import('../screens/SignIn'))
+const ChangePassword = lazy(() => import('../screens/ChangePassword'))
+const Home = lazy(() => import('../screens/Home'))
+const Admins = lazy(() => import('../screens/Admins'))
+
+const page = (node: ReactNode) => <Suspense fallback={<PageFallback />}>{node}</Suspense>
+const crumbs = (...list: NonNullable<RouteHandle['crumbs']>): RouteHandle => ({ crumbs: list })
+
 export const routes: RouteObject[] = [
   {
-    element: <RequireAuth />,
     errorElement: <RouteError />,
     children: [
+      { element: <GuestOnly><Outlet /></GuestOnly>, children: [{ path: '/sign-in', element: page(<SignIn />) }] },
+      { path: '/change-password', element: <RequireAdmin>{page(<ChangePassword />)}</RequireAdmin> },
       {
-        element: <ShellLayout />,
+        path: '/',
+        element: (
+          <RequireAdmin>
+            <CrumbProvider>
+              <ShellLayout />
+            </CrumbProvider>
+          </RequireAdmin>
+        ),
         children: [
-          { path: '/', element: <HomePage />, errorElement: <RouteError /> },
-          // The module id picks a registry entry; the rest of the path belongs to the module.
-          { path: '/m/:moduleId/*', element: <ModulePage />, errorElement: <RouteError /> },
-          {
-            path: ADMINS_PATH,
-            element: (
-              <RequireRole anyOf={[SUPER_ADMIN]}>
-                <AdminsPage />
-              </RequireRole>
-            ),
-            errorElement: <RouteError />,
-          },
+          { index: true, element: <Home />, handle: crumbs({ label: 'Home' }) },
+          { path: 'admins', element: <SuperAdminOnly><Admins /></SuperAdminOnly>, handle: crumbs({ label: 'Admins & roles' }) },
+          // One route per registered module (ADR 0011); the crumb uses the registry title, which a module's
+          // manifest title should match.
+          ...registry.map((m) => ({ path: `${m.basePath.slice(1)}/*`, element: <ModuleRoute entry={m} />, handle: crumbs({ label: m.fallbackTitle, to: m.basePath }) })),
+          { path: '*', element: <NotFound />, handle: crumbs({ label: 'Not found' }) },
         ],
       },
     ],
   },
-  {
-    element: <PublicOnly />,
-    errorElement: <RouteError />,
-    children: [{ path: LOGIN_PATH, element: <LoginPage />, errorElement: <RouteError /> }],
-  },
-  {
-    element: <RequirePasswordChange />,
-    errorElement: <RouteError />,
-    children: [
-      {
-        element: <ShellLayout />,
-        children: [{ path: CHANGE_PASSWORD_PATH, element: <ChangePasswordPage />, errorElement: <RouteError /> }],
-      },
-    ],
-  },
-  { path: '*', element: <NotFound />, errorElement: <RouteError /> },
 ]

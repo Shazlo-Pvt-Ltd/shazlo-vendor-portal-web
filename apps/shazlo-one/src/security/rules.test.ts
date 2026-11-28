@@ -3,6 +3,9 @@ import { ESLint } from 'eslint'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 
+// The shell holds an admin's identity-api token and every module token. These checks keep the ways
+// they leak (web storage, a log line, HTML built from a string) out of its source.
+
 const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url))
 // The first lint call loads the whole ESLint config, which is slow on some disks.
 vi.setConfig({ testTimeout: 90_000 })
@@ -13,7 +16,7 @@ async function messagesFor(code: string, name = 'x.tsx') {
   return result!.messages
 }
 
-describe('the lint rules that protect admins', () => {
+describe('the lint rules', () => {
   it.each([
     ['localStorage.setItem("token", t)', 'no-restricted-globals'],
     ['sessionStorage.getItem("token")', 'no-restricted-globals'],
@@ -21,67 +24,65 @@ describe('the lint rules that protect admins', () => {
     ['globalThis.indexedDB.open("x")', 'no-restricted-properties'],
     ['indexedDB.open("x")', 'no-restricted-globals'],
     ['console.log(token)', 'no-console'],
+    ['console.warn(token)', 'no-console'],
     ['document.body.innerHTML = html', 'no-restricted-syntax'],
+    ['el.outerHTML = html', 'no-restricted-syntax'],
     ['el.insertAdjacentHTML("beforeend", html)', 'no-restricted-syntax'],
     ['eval("1")', 'no-eval'],
     ['new Function("return 1")', 'no-new-func'],
-  ])('forbids %s', async (code, rule) => {
-    const messages = await messagesFor(`export const f = () => { ${code} }\n`)
+  ])('forbid %s', async (code, rule) => {
+    const messages = await messagesFor(`export const f = (t: string, b: string, html: string, el: HTMLElement, token: string) => { ${code} }\n`)
     expect(messages.map((m) => m.ruleId)).toContain(rule)
   })
 
-  it('forbids dangerouslySetInnerHTML', async () => {
-    const messages = await messagesFor(
-      'export const A = ({ html }: { html: string }) => <div dangerouslySetInnerHTML={{ __html: html }} />\n',
-    )
+  it('forbid dangerouslySetInnerHTML', async () => {
+    const messages = await messagesFor('export const A = ({ html }: { html: string }) => <div dangerouslySetInnerHTML={{ __html: html }} />\n')
     expect(messages.map((m) => m.ruleId)).toContain('no-restricted-syntax')
   })
 
-  it('still allows console.error, which the error screens use', async () => {
+  it('still allow console.error, which the route error page uses in development', async () => {
     expect(await messagesFor('export const f = (e: unknown) => { console.error(e) }\n')).toEqual([])
   })
 
-  it('cover the reference module too, which holds a real admin token', async () => {
-    const [result] = await eslint.lintText('export const f = (t: string) => { localStorage.setItem("token", t); console.log(t) }\n', {
-      filePath: `${repoRoot}apps/shazlo-one/dev-module/src/x.tsx`,
-    })
-    expect(result!.messages.map((m) => m.ruleId)).toEqual(expect.arrayContaining(['no-restricted-globals', 'no-console']))
-  })
-
-  it('does not apply to tests, which read storage to prove nothing is written', async () => {
+  it('do not apply to tests, which read storage to prove nothing is written', async () => {
     expect(await messagesFor('export const f = () => localStorage.length\n', 'thing.test.ts')).toEqual([])
   })
 })
 
 describe('the source files', () => {
-  const files = import.meta.glob<string>(['../**/*.{ts,tsx}', '!../**/*.test.{ts,tsx}', '!../test/**'], {
-    query: '?raw',
-    import: 'default',
-    eager: true,
-  })
+  const files = import.meta.glob<string>(['../**/*.{ts,tsx}', '!../**/*.test.{ts,tsx}', '!../test/**'], { query: '?raw', import: 'default', eager: true })
+  // The browser mock's own state on the dev server, the one exception (see its header).
+  const STORAGE_EXCEPTION = '../mocks/browser.ts'
 
-  it('finds the source files it is meant to check', () => {
-    expect(Object.keys(files).length).toBeGreaterThan(8)
+  it('finds the files it is meant to check', () => {
+    expect(Object.keys(files).length).toBeGreaterThan(40)
+    expect(files[STORAGE_EXCEPTION]).toBeDefined()
   })
 
   it('touch no web storage', () => {
     const offenders = Object.entries(files)
-      .filter(([, text]) => /\b(localStorage|sessionStorage|indexedDB)\b/.test(text))
+      .filter(([path, text]) => path !== STORAGE_EXCEPTION && /\b(localStorage|sessionStorage|indexedDB)\b/.test(text))
       .map(([path]) => path)
     expect(offenders).toEqual([])
   })
 
-  it('render a password input only through PasswordField', () => {
+  it('build no HTML from strings', () => {
     const offenders = Object.entries(files)
-      .filter(([path]) => !/(^|\/)PasswordField\.tsx$/.test(path))
-      .filter(([, text]) => /type\s*[=:]\s*\{?\s*['"]password['"]/.test(text))
+      .filter(([, text]) => /dangerouslySetInnerHTML|\.(inner|outer)HTML\s*=|insertAdjacentHTML|document\.write/.test(text))
       .map(([path]) => path)
     expect(offenders).toEqual([])
   })
 
-  it('never put a token or password in a URL, a log call or an error message', () => {
+  it('log nothing but errors, and never a token or a password', () => {
     const offenders = Object.entries(files)
-      .filter(([, text]) => /console\.\w+\([^)]*(token|password)/i.test(text))
+      .filter(([, text]) => /console\.(log|info|warn|debug|trace)\(/.test(text) || /console\.\w+\([^)]*(token|password)/i.test(text))
+      .map(([path]) => path)
+    expect(offenders).toEqual([])
+  })
+
+  it('put no token or password in an address', () => {
+    const offenders = Object.entries(files)
+      .filter(([, text]) => /[?&](access_?token|token|password)=/i.test(text))
       .map(([path]) => path)
     expect(offenders).toEqual([])
   })

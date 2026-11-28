@@ -1,0 +1,200 @@
+import { Box, Button, Link, Skeleton, Stack, Tab, Tabs, Typography } from '@mui/material'
+import { Banner, EmptyState, PageHeader, StatFigure } from '@shazlo/ui'
+import { Download } from 'lucide-react'
+import { useCallback, useState, type ReactNode } from 'react'
+import { Link as RouterLink, useNavigate } from 'react-router'
+import { fetchEveryQueueItem, useQueue, useSummary } from '../../api/queries'
+import type * as M from '../../api/model'
+import { modulePaths } from '../../app/routes'
+import { TabLabel, tabSx, tabsSx } from '../../components/tabs'
+import { queueCopy as copy, type KindKey } from '../../copy/queue'
+import { formatCount } from '../../lib/format'
+import { phoneFullWidth, scrollingTabs, statGrid, useCompact } from '../../lib/responsive'
+import { formatWait } from '../../lib/status'
+import { useModuleTitle, useRuntime } from '../../runtime/runtime'
+import { csvFilename, downloadText, queueCsv } from './parts/csv'
+import { QueueCards } from './parts/QueueCards'
+import { QueueFilters } from './parts/QueueFilters'
+import { QueueTable, reviewPath } from './parts/QueueTable'
+import { clearedFilters, hasFilters, toFilters, useQueueParams } from './parts/useQueueParams'
+
+type QueueItem = M.QueueItem
+type Counts = M.QueuePage['counts']
+
+const icon = { size: 18, strokeWidth: 1.75, 'aria-hidden': true } as const
+
+// How long the oldest item has waited, from the whole queue (not the filtered view).
+function oldestWait(items: QueueItem[] | undefined): string | null {
+  if (!items?.length) return null
+  const oldest = Math.min(...items.map((i) => Date.parse(i.submitted_at)))
+  return formatWait(Date.now() - oldest)
+}
+
+function KindTabs({ value, counts, onChange }: { value: string; counts: Counts | undefined; onChange: (key: string) => void }) {
+  return (
+    <Tabs
+      value={value}
+      onChange={(_, key: string) => onChange(key)}
+      {...scrollingTabs}
+      aria-label={copy.tabsLabel}
+      textColor="inherit"
+      sx={tabsSx}
+    >
+      {copy.tabs.map((tab) => (
+        <Tab key={tab.key} value={tab.key} sx={tabSx} label={<TabLabel text={tab.label} count={counts?.[tab.key]} />} />
+      ))}
+    </Tabs>
+  )
+}
+
+function Figures() {
+  const summary = useSummary()
+  const s = summary.data
+  const value = (v: ReactNode) => (s ? v : summary.isPending ? <Skeleton variant="text" width={56} component="span" sx={{ display: 'inline-block' }} /> : '—')
+  return (
+    <Box component="section" aria-label={copy.figures.label} sx={statGrid}>
+      <StatFigure label={copy.figures.waiting} value={value(formatCount(s?.queue.all))} baseline={s ? copy.figures.waitingBaseline(s.queue.product, s.queue.brand_page, s.queue.application) : undefined} />
+      <StatFigure label={copy.figures.decidedToday} value={value(formatCount(s?.decided_today))} baseline={copy.figures.decidedBaseline} />
+      <StatFigure label={copy.figures.median} value={value(s?.median_minutes == null ? '—' : formatWait(s.median_minutes * 60_000))} baseline={copy.figures.medianBaseline} />
+      <StatFigure label={copy.figures.resubmissions} value={value(formatCount(s?.resubmissions))} baseline={copy.figures.resubmissionsBaseline} />
+    </Box>
+  )
+}
+
+// Commission proposals are decided on the vendor; one quiet line points there while any wait.
+function RatesLine() {
+  const n = useSummary().data?.commission_proposals ?? 0
+  if (n === 0) return null
+  return (
+    <Typography variant="body2" color="textSecondary">
+      <span>{copy.rates.text(n)}</span>{' '}
+      <Link component={RouterLink} to={modulePaths.rates}>
+        {copy.rates.link}
+      </Link>
+    </Typography>
+  )
+}
+
+export default function ReviewQueue() {
+  useModuleTitle(copy.title)
+  const navigate = useNavigate()
+  const compact = useCompact()
+  const { toast, api } = useRuntime()
+  const [exporting, setExporting] = useState(false)
+  const [params, update] = useQueueParams()
+  const query = useQueue(toFilters(params))
+  // The whole queue gives the header its count and oldest wait. With no filters it is the same request.
+  const whole = useQueue({})
+  const { data } = query
+  const items = data?.items
+
+  const onSearch = useCallback((q: string) => update({ q }, { replace: true }), [update])
+  const onOpen = useCallback((item: QueueItem) => navigate(reviewPath(item)), [navigate])
+  const clearFilters = () => update(clearedFilters)
+
+  // Every item that matches the filters, not only the pages shown.
+  async function exportCsv() {
+    if (!items?.length || exporting) return
+    setExporting(true)
+    try {
+      const everything = await fetchEveryQueueItem(api, toFilters(params))
+      downloadText(csvFilename(), queueCsv(everything))
+      toast('success', copy.exported(everything.length))
+    } catch {
+      toast('error', copy.exportFailed)
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const queueEmpty = data !== undefined && data.counts.all === 0
+  const subtitle = whole.data ? copy.subtitle(whole.data.counts.all, oldestWait(whole.data.items)) : whole.isPending ? <Skeleton variant="text" width={260} component="span" sx={{ display: 'inline-block' }} /> : undefined
+
+  const errorBanner = query.isError ? (
+    <Banner
+      tone="error"
+      title={copy.error.title}
+      action={
+        <Button variant="outlined" size="small" onClick={() => void query.refetch()} disabled={query.isFetching}>
+          {copy.error.retry}
+        </Button>
+      }
+    >
+      {query.error.message}
+    </Banner>
+  ) : null
+
+  let body: ReactNode
+  if (query.isError && !data) {
+    body = null
+  } else if (queueEmpty) {
+    body = <EmptyState illustration="box" tip={copy.empty.tip} title={copy.empty.title} body={copy.empty.body} />
+  } else if (items && items.length === 0 && hasFilters(params)) {
+    body = (
+      <EmptyState
+        illustration="box"
+        title={copy.noResults.title}
+        body={copy.noResults.body}
+        action={
+          <Button variant="outlined" onClick={clearFilters}>
+            {copy.noResults.clear}
+          </Button>
+        }
+      />
+    )
+  } else if (items && items.length === 0) {
+    const tab = copy.tabs.find((t) => t.key === params.kind)?.label ?? ''
+    body = (
+      <EmptyState
+        illustration="box"
+        title={copy.emptyTab.title(tab)}
+        body={copy.emptyTab.body}
+        action={
+          <Button variant="outlined" onClick={() => update({ kind: undefined })}>
+            {copy.emptyTab.showAll}
+          </Button>
+        }
+      />
+    )
+  } else {
+    body = compact ? <QueueCards items={items} fetching={query.isFetching} /> : <QueueTable items={items} fetching={query.isFetching} onOpen={onOpen} />
+  }
+
+  return (
+    <>
+      <PageHeader
+        title={copy.title}
+        subtitle={subtitle}
+        actions={
+          <Button variant="outlined" startIcon={<Download {...icon} />} onClick={() => void exportCsv()} disabled={!items?.length || exporting} sx={phoneFullWidth}>
+            {exporting ? copy.exporting : copy.exportCsv}
+          </Button>
+        }
+      />
+      <Stack spacing={3}>
+        <Stack spacing={1.5}>
+          <Figures />
+          <RatesLine />
+        </Stack>
+        <Stack spacing={2}>
+          {errorBanner}
+          <KindTabs value={params.kind ?? 'all'} counts={data?.counts} onChange={(key) => update({ kind: key === 'all' ? undefined : (key as KindKey) })} />
+          {!queueEmpty && <QueueFilters params={params} update={update} onSearch={onSearch} vendors={data?.vendors ?? []} />}
+          {body}
+          {data && data.items.length > 0 && data.total > data.items.length && (
+            <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'center' }}>
+              <Typography variant="body2" color="textSecondary">
+                {copy.showing(data.items.length, data.total)}
+              </Typography>
+              {query.hasNextPage && (
+                <Button variant="outlined" onClick={() => void query.fetchNextPage()} disabled={query.isFetchingNextPage}>
+                  {query.isFetchingNextPage ? copy.showingMore : copy.showMore}
+                </Button>
+              )}
+            </Stack>
+          )}
+        </Stack>
+      </Stack>
+    </>
+  )
+}

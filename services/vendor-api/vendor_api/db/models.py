@@ -108,6 +108,20 @@ class ReviewStatus(StrEnum):
     WITHDRAWN = "withdrawn"
 
 
+class ReviewReasonCode(StrEnum):
+    """Why a reviewer sent something back, picked from a list beside the free-text reason."""
+
+    PHOTOS = "photos"
+    TRY_ON_PHOTOS = "try_on_photos"
+    PRICE = "price"
+    CATEGORY = "category"
+    PROHIBITED = "prohibited"
+    DESCRIPTION = "description"
+    BRAND_IMAGES = "brand_images"
+    CONTACT_DETAILS = "contact_details"
+    OTHER = "other"
+
+
 class ReviewAction(StrEnum):
     SUBMITTED = "submitted"
     APPROVED = "approved"
@@ -726,6 +740,11 @@ class Review(Base):
             "status <> 'rejected' OR coalesce(reason, '') ~ '\\S'",
             name="rejected_needs_reason",
         ),
+        # The reason's category is one of the list, and only a rejection has one.
+        CheckConstraint(_one_of("reason_code", ReviewReasonCode), name="reason_code_values"),
+        CheckConstraint(
+            "reason_code IS NULL OR status = 'rejected'", name="reason_code_only_rejected"
+        ),
         # An admin's decision names the admin and the time.
         CheckConstraint(
             "status NOT IN ('approved', 'rejected') "
@@ -803,6 +822,7 @@ class Review(Base):
     reviewer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reason: Mapped[str | None] = mapped_column(Text)
+    reason_code: Mapped[str | None] = mapped_column(String(24))
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
 

@@ -1,14 +1,17 @@
 import js from '@eslint/js'
+import reactHooks from 'eslint-plugin-react-hooks'
 import tseslint from 'typescript-eslint'
 
 // Shared by every app and package. Legacy app/ and backend/ are not linted here.
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/coverage/**', '**/reports/**', '**/.venv/**', '**/node_modules/**', 'app/**', 'backend/**', 'services/**'] },
+  { ignores: ['**/dist/**', '**/coverage/**', '**/reports/**', '**/.venv/**', '**/node_modules/**', 'app/**', 'backend/**', 'services/**', '.claude/**', '**/public/mockServiceWorker.js', '**/test-results/**', '**/playwright-report/**', '**/src/api/schema.d.ts'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    // The security rules of the browser apps (see "Security rules" in their READMEs).
-    files: ['apps/vendor-portal/src/**/*.{ts,tsx}', 'apps/shazlo-one/src/**/*.{ts,tsx}', 'apps/shazlo-one/dev-module/**/*.{ts,tsx}'],
+    // The browser apps' security rules ("Security rules" in each app's README). The vendor portal holds
+    // a vendor's token, the Vendors module an admin's vendor-api token, and Shazlo One an admin's
+    // identity-api token and every module token, so the same rules apply to all three.
+    files: ['apps/vendor-portal/src/**/*.{ts,tsx}', 'apps/vendor-admin/src/**/*.{ts,tsx}', 'apps/shazlo-one/src/**/*.{ts,tsx}'],
     ignores: ['**/*.test.{ts,tsx}', '**/test/**'],
     rules: {
       // A token, password or e-mail in web storage can be read by any script on the page. The
@@ -17,7 +20,7 @@ export default tseslint.config(
         'error',
         ...['localStorage', 'sessionStorage', 'indexedDB'].map((name) => ({
           name,
-          message: 'The app must not use web storage: keep tokens in memory (see "Security rules" in the portal README).',
+          message: 'The app must not use web storage: keep tokens in memory (see "Security rules" in its README).',
         })),
       ],
       'no-restricted-properties': [
@@ -26,28 +29,28 @@ export default tseslint.config(
           ['window', 'globalThis', 'self'].map((object) => ({
             object,
             property: name,
-            message: 'The portal must not use web storage: keep tokens in memory (see "Security rules" in the portal README).',
+            message: 'The app must not use web storage: keep tokens in memory (see "Security rules" in its README).',
           })),
         ),
       ],
-      // Never render a string as HTML: a vendor typed it.
+      // Never render a string as HTML: a vendor typed it, or a framed module sent it.
       'no-restricted-syntax': [
         'error',
         {
           selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
-          message: 'dangerouslySetInnerHTML is forbidden: what a vendor typed must never be rendered as HTML.',
+          message: 'dangerouslySetInnerHTML is forbidden: what a vendor, an admin or a module sent must never be rendered as HTML.',
         },
         {
           selector: "Property[key.name='dangerouslySetInnerHTML']",
-          message: 'dangerouslySetInnerHTML is forbidden: what a vendor typed must never be rendered as HTML.',
+          message: 'dangerouslySetInnerHTML is forbidden: what a vendor, an admin or a module sent must never be rendered as HTML.',
         },
         {
           selector: "AssignmentExpression[left.property.name=/^(innerHTML|outerHTML)$/]",
-          message: 'Do not assign HTML: what a vendor typed must never be rendered as HTML.',
+          message: 'Do not assign HTML: what a vendor, an admin or a module sent must never be rendered as HTML.',
         },
         {
           selector: "MemberExpression[property.name='insertAdjacentHTML']",
-          message: 'Do not insert HTML: what a vendor typed must never be rendered as HTML.',
+          message: 'Do not insert HTML: what a vendor, an admin or a module sent must never be rendered as HTML.',
         },
       ],
       // A log line is where tokens and passwords leak. Errors may be reported; nothing else.
@@ -61,5 +64,7 @@ export default tseslint.config(
     files: ['apps/*/scripts/*.mjs'],
     languageOptions: { globals: { process: 'readonly', console: 'readonly', URL: 'readonly' } },
   },
+  { files: ['apps/**/*.tsx', 'packages/**/*.tsx'], ...reactHooks.configs.flat['recommended-latest'] },
+  { rules: { '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', destructuredArrayIgnorePattern: '^_' }] } },
   { files: ['test/**/*.js'], languageOptions: { globals: { structuredClone: 'readonly' } } },
 )

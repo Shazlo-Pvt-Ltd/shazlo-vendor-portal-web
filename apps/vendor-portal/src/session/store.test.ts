@@ -355,6 +355,45 @@ describe('sensitive form state', () => {
   })
 })
 
+describe('signing in on a store that was never started', () => {
+  it('still renews the token before it expires', async () => {
+    vi.useFakeTimers()
+    const refresh = vi.fn(async () => sessionBody({ token: 'renewed', expires_in: 900 }))
+    const { store } = makeStore({ refresh })
+    store.signIn(sessionBody({ token: 'first', expires_in: 900 }))
+    expect(store.getSnapshot().status).toBe('signedIn')
+    await vi.advanceTimersByTimeAsync(721_000)
+    expect(refresh).toHaveBeenCalledOnce()
+    expect(store.getAccessToken()).toBe('renewed')
+    store.close()
+  })
+
+  it('still tells the other tabs, and signs out properly', async () => {
+    const channel = fakeChannels()
+    const other = makeStore({ channel: channel() })
+    await other.store.start()
+    const logout = vi.fn(async () => {})
+    const { store } = makeStore({ channel: channel(), logout })
+    store.signIn(sessionBody())
+    await store.logout()
+    expect(logout).toHaveBeenCalledOnce()
+    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', signedOutByUser: true })
+    expect(other.store.getSnapshot().status).toBe('signedOut')
+    other.store.close()
+    store.close()
+  })
+
+  it('does not refresh again when it is started afterwards', async () => {
+    const refresh = vi.fn(async () => sessionBody())
+    const { store } = makeStore({ refresh })
+    store.signIn(sessionBody({ token: 'from-login' }))
+    await store.start()
+    expect(refresh).not.toHaveBeenCalled()
+    expect(store.getAccessToken()).toBe('from-login')
+    store.close()
+  })
+})
+
 describe('logout and other tabs', () => {
   it('logout calls the server, clears token, caches and drafts, and still ends if the call fails', async () => {
     const logout = vi.fn(async () => { throw new NetworkError('network') })

@@ -14,7 +14,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vendor_api.api.auth import COOKIE_NAME
-from vendor_api.app import create_app
+from vendor_api.app import create_seller_app
 from vendor_api.core.settings import Settings
 from vendor_api.services.auth import INVALID_REFRESH_TOKEN, REFRESH_CONFLICT, AuthSession
 
@@ -60,7 +60,7 @@ async def client(
     api_settings: Settings, sessions: RecordingSessions
 ) -> AsyncIterator[httpx.AsyncClient]:
     redis = FakeAsyncRedis()
-    app = create_app(api_settings, readiness_checks={}, redis=redis)
+    app = create_seller_app(api_settings, readiness_checks={}, redis=redis)
     app.state.sessions = sessions
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="https://vendor-api.test") as http:

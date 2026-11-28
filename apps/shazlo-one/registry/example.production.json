@@ -1,0 +1,11 @@
+[
+  {
+    "id": "vendor-admin",
+    "fallbackTitle": "Vendors",
+    "basePath": "/vendors",
+    "url": "https://vendor-admin.example.com/",
+    "roles": ["vendor_reviewer", "super_admin"],
+    "audience": "vendor-api",
+    "summaryUrl": "https://vendor-admin-api.example.com/v1/admin/module-summary"
+  }
+]

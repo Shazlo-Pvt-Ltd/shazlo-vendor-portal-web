@@ -1,34 +1,40 @@
-import { CssBaseline, GlobalStyles, ThemeProvider } from '@mui/material'
-import { QueryClientProvider } from '@tanstack/react-query'
+import { CssBaseline, ThemeProvider } from '@mui/material'
 import { theme } from '@shazlo/ui'
+import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { AuthProvider } from '../session/AuthProvider'
-import { ConfirmProvider } from '../ui/ConfirmDialog'
-import { ToastProvider } from '../ui/Toast'
+import type { SessionStore } from '../session/store'
+import { SellerGlobalStyles } from '../shell/SellerGlobalStyles'
 import { createQueryClient } from './queryClient'
 
-/** Theme, error boundary and data cache around the whole app. */
-export function Providers({ children }: { children: ReactNode }) {
-  const [queryClient] = useState(createQueryClient)
+/** The theme, the seller page rules and the last-resort error boundary. */
+export function ThemeProviders({ children }: { children: ReactNode }) {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      {/* A focus ring on everything that takes focus, for keyboard users. */}
-      <GlobalStyles
-        styles={(t) => ({
-          ':focus-visible': { outline: `3px solid ${t.palette.primary.dark}`, outlineOffset: '2px' },
-        })}
-      />
-      <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <ToastProvider>
-              <ConfirmProvider>{children}</ConfirmProvider>
-            </ToastProvider>
-          </AuthProvider>
-        </QueryClientProvider>
-      </ErrorBoundary>
+      <SellerGlobalStyles />
+      <ErrorBoundary>{children}</ErrorBoundary>
     </ThemeProvider>
+  )
+}
+
+interface ProvidersProps {
+  children: ReactNode
+  /** For tests: a session store instead of the one talking to vendor-api. */
+  session?: SessionStore
+  /** For tests: a query client without retries. */
+  queryClient?: QueryClient
+}
+
+/** Everything around the routes: theme, error boundary, data cache and the session. */
+export function Providers({ children, session, queryClient: provided }: ProvidersProps) {
+  const [queryClient] = useState(() => provided ?? createQueryClient())
+  return (
+    <ThemeProviders>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider store={session}>{children}</AuthProvider>
+      </QueryClientProvider>
+    </ThemeProviders>
   )
 }

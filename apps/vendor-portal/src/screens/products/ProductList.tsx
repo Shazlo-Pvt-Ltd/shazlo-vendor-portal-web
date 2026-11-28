@@ -1,0 +1,388 @@
+import { Box, Button, Skeleton, Stack, Tab, Tabs, Typography, useMediaQuery } from '@mui/material'
+import { type Theme } from '@mui/material/styles'
+import { Banner, brand, EmptyState, neutral, PageHeader } from '@shazlo/ui'
+import type { RowSelectionState } from '@tanstack/react-table'
+import { Plus, Upload } from 'lucide-react'
+import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState } from 'react'
+import { Link as RouterLink, useLocation, useNavigate } from 'react-router'
+import type { Schemas } from '../../api/model'
+import { useBulkProducts, useProducts } from '../../api/queries'
+import { paths } from '../../app/paths'
+import { productsCopy as copy } from '../../copy/products'
+import { formatCount } from '../../lib/format'
+import { useIsPhone } from '../../shell/layout'
+import type { DeleteOutcome } from './deleteOutcome'
+import { BulkBar, DeleteDialog, OutcomeBanner, RowMenu, type BulkAction, type BulkOutcome, type DeleteTarget } from './list/BulkBar'
+import { DesktopFilters, MobileFilters } from './list/Filters'
+import { ProductCards } from './list/ProductCards'
+import { ProductTable } from './list/ProductTable'
+import { activeFilterCount, PAGE_SIZE, toFilters, useListParams, type ListParams } from './list/useListParams'
+
+// The wizard is its own chunk: most visits to Products never open it.
+const BulkImportDialog = lazy(() => import('../import/BulkImportDialog'))
+
+type Product = Schemas['ProductSummary']
+type Counts = Schemas['StatusCounts']
+
+const icon = { size: 18, strokeWidth: 1.5, 'aria-hidden': true } as const
+
+type ImportTo = { pathname: string; search: string }
+
+// One main button, Add product. Bulk import is secondary; on phones it says it is easier on a laptop.
+function BulkImportButton({ importTo, phone }: { importTo: ImportTo; phone: boolean }) {
+  const button = (
+    <Button variant="outlined" component={RouterLink} to={importTo} startIcon={<Upload {...icon} />} sx={{ minHeight: 44 }}>
+      {copy.bulkImport}
+    </Button>
+  )
+  if (!phone) return button
+  return (
+    <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+      {button}
+      <Typography variant="body2" color="textSecondary">
+        {copy.laptopNote}
+      </Typography>
+    </Stack>
+  )
+}
+
+function HeaderActions({ importTo, phone }: { importTo: ImportTo; phone: boolean }) {
+  const add = (
+    <Button variant="contained" component={RouterLink} to={paths.newProduct} startIcon={<Plus {...icon} />} sx={{ minHeight: 44, ...(phone && { flex: '1 1 100%' }) }}>
+      {copy.addProduct}
+    </Button>
+  )
+  return phone ? (
+    <>
+      {add}
+      <BulkImportButton importTo={importTo} phone />
+    </>
+  ) : (
+    <>
+      <BulkImportButton importTo={importTo} phone={false} />
+      {add}
+    </>
+  )
+}
+
+function StatusTabs({ value, counts, onChange }: { value: string; counts: Counts | undefined; onChange: (key: string) => void }) {
+  return (
+    <Tabs
+      value={value}
+      onChange={(_, key: string) => onChange(key)}
+      variant="scrollable"
+      scrollButtons="auto"
+      aria-label={copy.tabsLabel}
+      textColor="inherit"
+      sx={{ borderBottom: `1px solid ${neutral.line}`, minHeight: 44, '& .MuiTabs-indicator': { bgcolor: brand.brown } }}
+    >
+      {copy.tabs.map((tab) => (
+        <Tab
+          key={tab.key}
+          value={tab.key}
+          sx={{ minHeight: 44, px: 2, color: 'text.secondary', '&.Mui-selected': { color: neutral.ink } }}
+          label={
+            <span>
+              {tab.label}
+              {counts && (
+                <>
+                  {' '}
+                  <Box component="span" sx={{ color: 'text.secondary', fontVariantNumeric: 'tabular-nums', ml: 0.25 }}>
+                    {formatCount(counts[tab.key])}
+                  </Box>
+                </>
+              )}
+            </span>
+          }
+        />
+      ))}
+    </Tabs>
+  )
+}
+
+function Pagination({ page, shown, total, onPage }: { page: number; shown: number; total: number; onPage: (page: number) => void }) {
+  const from = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
+  const to = (page - 1) * PAGE_SIZE + shown
+  return (
+    <Stack
+      component="nav"
+      aria-label={copy.pagination.label}
+      direction="row"
+      spacing={1.5}
+      sx={{ alignItems: 'center', justifyContent: 'space-between', px: { xs: 0, md: 2 }, py: 1.5, borderTop: { md: `1px solid ${neutral.line}` } }}
+    >
+      <Typography variant="body2" color="textSecondary" role="status" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+        {copy.pagination.showing(from, to, total)}
+      </Typography>
+      <Stack direction="row" spacing={1}>
+        <Button variant="outlined" size="small" disabled={page <= 1} onClick={() => onPage(page - 1)} sx={{ minHeight: { xs: 44, md: 32 } }}>
+          {copy.pagination.previous}
+        </Button>
+        <Button variant="outlined" size="small" disabled={to >= total} onClick={() => onPage(page + 1)} sx={{ minHeight: { xs: 44, md: 32 } }}>
+          {copy.pagination.next}
+        </Button>
+      </Stack>
+    </Stack>
+  )
+}
+
+// Which empty state fits: a brand-new catalogue, a quiet tab, or filters that match nothing.
+function ListEmpty({ params, onClearFilters, onShowAll, importTo, phone }: { params: ListParams; onClearFilters: () => void; onShowAll: () => void; importTo: ImportTo; phone: boolean }) {
+  if (params.q || activeFilterCount(params) > 0) {
+    return (
+      <EmptyState
+        illustration="box"
+        title={copy.noResults.title}
+        body={copy.noResults.body}
+        action={
+          <Button variant="outlined" onClick={onClearFilters}>
+            {copy.noResults.clear}
+          </Button>
+        }
+      />
+    )
+  }
+  if (params.status) {
+    const tab = copy.emptyTab[params.status]
+    return (
+      <EmptyState
+        illustration="box"
+        title={tab.title}
+        body={tab.body}
+        action={
+          <Button variant="outlined" onClick={onShowAll}>
+            {copy.emptyTab.showAll}
+          </Button>
+        }
+      />
+    )
+  }
+  return <NoProducts importTo={importTo} phone={phone} />
+}
+
+function NoProducts({ importTo, phone }: { importTo: ImportTo; phone: boolean }) {
+  return (
+    <EmptyState
+      illustration="kurta"
+      tip={copy.empty.tip}
+      title={copy.empty.title}
+      body={copy.empty.body}
+      action={
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ alignItems: 'center' }}>
+          <Button variant="contained" component={RouterLink} to={paths.newProduct} startIcon={<Plus {...icon} />} sx={{ minHeight: 44 }}>
+            {copy.addProduct}
+          </Button>
+          <BulkImportButton importTo={importTo} phone={phone} />
+        </Stack>
+      }
+    />
+  )
+}
+
+export default function ProductList({ importOpen }: { importOpen?: boolean }) {
+  const desktop = useMediaQuery((t: Theme) => t.breakpoints.up('md'))
+  const phone = useIsPhone()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { search } = location
+  const selectAllId = useId()
+  const [params, update] = useListParams()
+  const filters = toFilters(params)
+  const query = useProducts(filters)
+  const { data } = query
+  const bulk = useBulkProducts()
+
+  // Selection belongs to one page of one query: a new tab, filter or page starts with none.
+  const selectionKey = JSON.stringify(filters)
+  const [selection, setSelection] = useState<{ key: string; rows: RowSelectionState }>({ key: selectionKey, rows: {} })
+  const rowSelection = selection.key === selectionKey ? selection.rows : {}
+  const selectedIds = Object.keys(rowSelection).filter((id) => rowSelection[id])
+  const [menu, setMenu] = useState<{ anchor: HTMLElement; product: Product } | null>(null)
+  // Kept after closing (open: false) so the dialog keeps its words while it fades out.
+  const [confirm, setConfirm] = useState<DeleteTarget | null>(null)
+  const closeConfirm = () => setConfirm((c) => c && { ...c, open: false })
+  const [outcomes, setOutcomes] = useState<BulkOutcome[]>([])
+  // A notice handed over by another page (the editor after archiving), shown here until dismissed.
+  const handed = (location.state as { notice?: string } | null)?.notice
+  const [dismissed, setDismissed] = useState<string | null>(null)
+  const notice = handed && dismissed !== location.key ? handed : null
+  const [pending, setPending] = useState<BulkAction | null>(null)
+  // A second press before the first is done must not send everything twice.
+  const running = useRef(false)
+
+  const importTo = { pathname: paths.bulkImport, search }
+  const onSearch = useCallback((q: string) => update({ q }, { replace: true }), [update])
+  const onMenu = useCallback((anchor: HTMLElement, product: Product) => setMenu({ anchor, product }), [])
+  const clearFilters = () => update({ q: undefined, category: undefined, gender: undefined, stock: undefined })
+  const clearSelection = () => setSelection({ key: selectionKey, rows: {} })
+  const focusSelectAll = () => requestAnimationFrame(() => document.getElementById(selectAllId)?.focus())
+
+  // Sends or archives products one call each (vendor-api has no bulk route) and says what happened
+  // in the page: all of them, some ("2 of 3 archived", then each one that did not, with why), or none.
+  async function run(action: BulkAction, products: Product[], outcome?: DeleteOutcome) {
+    if (running.current || products.length === 0) return
+    running.current = true
+    setOutcomes([])
+    setDismissed(location.key)
+    setPending(action)
+    const nameOf = (id: string) => products.find((p) => p.id === id)?.title ?? id
+    try {
+      const { results } = await bulk.mutateAsync({ action, ids: products.map((p) => p.id) })
+      const done = results.filter((r) => r.ok).length
+      const failed = results.filter((r) => !r.ok)
+      const total = results.length
+      const r = copy.results
+      const single = total === 1 ? products[0]! : null
+      // "Name: what to do". vendor-api's refusals get plain words; a missing requirement keeps the
+      // editor's sentence (the hook names the product when it has read it).
+      const why = (f: (typeof failed)[number]) => {
+        const name = nameOf(f.id)
+        const text = (f.code ? r.reasons[f.code] : undefined) ?? f.message ?? r.failed
+        return text.startsWith(`${name}: `) ? text : r.reason(name, text)
+      }
+      if (failed.length === 0) {
+        let title: string
+        if (action === 'submit') title = r.submitted(done)
+        else if (single && outcome === 'removed') title = r.deleted(single.title)
+        else if (single && outcome === 'archived') title = r.archivedOne(single.title)
+        else title = r.archived(done, products.some((p) => p.status === 'draft'))
+        setOutcomes([{ tone: 'success', title, messages: [] }])
+      } else {
+        const title =
+          done > 0
+            ? action === 'submit' ? r.someSubmitted(done, total) : r.someArchived(done, total)
+            : action === 'submit' ? r.notSubmitted(failed.length, single?.title) : r.notArchived(failed.length, single?.title)
+        setOutcomes([{ tone: 'warning', title, messages: failed.map(why), body: action === 'submit' ? r.failedBody : undefined }])
+      }
+      clearSelection()
+    } catch (error) {
+      setOutcomes([{ tone: 'error', title: copy.results.failed, messages: [error instanceof Error ? error.message : ''].filter(Boolean) }])
+    } finally {
+      running.current = false
+      setPending(null)
+      closeConfirm()
+    }
+  }
+
+  const selected = (ids: string[]) => (data?.items ?? []).filter((p) => ids.includes(p.id))
+  const askDelete = (products: Product[]) => setConfirm({ products, open: true })
+  const onBulk = (action: BulkAction) => (action === 'archive' ? askDelete(selected(selectedIds)) : void run('submit', selected(selectedIds)).then(focusSelectAll))
+  const onRowAction = (action: BulkAction, product: Product) => {
+    setMenu(null)
+    if (action === 'archive') askDelete([product])
+    else void run('submit', [product])
+  }
+  const openProduct = (product: Product) => navigate(paths.product(product.id))
+  const closeImport = () => navigate({ pathname: paths.products, search })
+
+  // A page that no longer exists (a link past the end, or the last products on it archived): go
+  // to the last page there is, without adding a step to the history (main's rule).
+  const lastPage = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1
+  const stranded = data !== undefined && !query.isPlaceholderData && data.items.length === 0 && data.total > 0 && params.page > lastPage
+  useEffect(() => {
+    if (stranded) update({ page: lastPage }, { replace: true })
+  }, [stranded, lastPage, update])
+
+  const noProducts = data !== undefined && data.counts.all === 0 && data.counts.archived === 0
+  const items = data?.items
+  const showSelection = desktop && selectedIds.length > 0
+
+  const errorBanner = query.isError ? (
+    <Banner
+      tone="error"
+      title={copy.error.title}
+      action={
+        <Button variant="outlined" size="small" onClick={() => void query.refetch()} disabled={query.isFetching}>
+          {copy.error.retry}
+        </Button>
+      }
+    >
+      {query.error.message}
+    </Banner>
+  ) : null
+
+  let body
+  if (query.isError && !data) {
+    body = null
+  } else if (data && data.items.length === 0 && data.total > 0) {
+    body = (
+      <EmptyState
+        illustration="box"
+        title={copy.pagination.pastEnd}
+        action={
+          <Button variant="outlined" onClick={() => update({ page: undefined })}>
+            {copy.pagination.firstPage}
+          </Button>
+        }
+      />
+    )
+  } else if (items && items.length === 0) {
+    body = <ListEmpty params={params} onClearFilters={clearFilters} onShowAll={() => update({ status: undefined })} importTo={importTo} phone={phone} />
+  } else {
+    const footer = data ? <Pagination page={params.page} shown={data.items.length} total={data.total} onPage={(page) => update({ page })} /> : null
+    body = desktop ? (
+      <ProductTable
+        items={items}
+        fetching={query.isFetching}
+        selection={rowSelection}
+        onSelectionChange={(rows) => setSelection({ key: selectionKey, rows })}
+        onOpen={openProduct}
+        onMenu={onMenu}
+        selectAllId={selectAllId}
+        footer={footer}
+      />
+    ) : (
+      <>
+        <ProductCards items={items} fetching={query.isFetching && data !== undefined} />
+        {footer}
+      </>
+    )
+  }
+
+  return (
+    <>
+      <PageHeader
+        title={copy.title}
+        subtitle={data ? copy.subtitle(data.counts.all, data.counts.approved) : query.isPending ? <Skeleton variant="text" width={240} component="span" sx={{ display: 'inline-block' }} /> : undefined}
+        actions={noProducts ? undefined : <HeaderActions importTo={importTo} phone={phone} />}
+      />
+
+      {noProducts ? (
+        <NoProducts importTo={importTo} phone={phone} />
+      ) : (
+        <Stack spacing={2}>
+          {notice && <Banner tone="success" title={notice} onClose={() => setDismissed(location.key)} />}
+          {outcomes.map((outcome) => (
+            <OutcomeBanner key={outcome.tone} outcome={outcome} onClose={() => setOutcomes((list) => list.filter((o) => o !== outcome))} />
+          ))}
+          {errorBanner}
+          <StatusTabs value={params.status ?? 'all'} counts={data?.counts} onChange={(key) => update({ status: key === 'all' ? undefined : key })} />
+          {showSelection ? (
+            <BulkBar
+              count={selectedIds.length}
+              pending={pending}
+              onAction={onBulk}
+              onClear={() => {
+                clearSelection()
+                focusSelectAll()
+              }}
+            />
+          ) : desktop ? (
+            <DesktopFilters params={params} update={update} onSearch={onSearch} />
+          ) : (
+            <MobileFilters params={params} update={update} onSearch={onSearch} onClear={clearFilters} />
+          )}
+          {body}
+        </Stack>
+      )}
+
+      <RowMenu target={menu} onClose={() => setMenu(null)} onEdit={(product) => navigate(paths.product(product.id))} onAction={onRowAction} />
+      <DeleteDialog target={confirm} pending={pending === 'archive'} onCancel={closeConfirm} onConfirm={(outcome) => confirm && void run('archive', confirm.products, outcome).then(focusSelectAll)} />
+      {importOpen && (
+        <Suspense fallback={null}>
+          <BulkImportDialog onClose={closeImport} />
+        </Suspense>
+      )}
+    </>
+  )
+}

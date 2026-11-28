@@ -41,10 +41,11 @@ jobs:
           files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename')
           printf '%s\n' "$files"
           # Unlisted paths run the web jobs. The contract tests read docs/adr/0003-contract, and the
-          # apps' generated API types are checked against services/vendor-api/openapi.json (portal) and
-          # services/identity-api/openapi.json (Shazlo-One).
+          # apps' generated API types are checked against the services' OpenAPI files: the portal's
+          # against services/vendor-api/openapi.json (the seller app), the admin module's against
+          # openapi.admin.json (the admin app) and Shazlo One's against identity-api's openapi.json.
           web=$( {
-            printf '%s\n' "$files" | grep -E '^docs/adr/0003-contract/|^services/(vendor|identity)-api/openapi\.json$'
+            printf '%s\n' "$files" | grep -E '^docs/adr/0003-contract/|^services/vendor-api/openapi(\.admin)?\.json$|^services/identity-api/openapi\.json$'
             printf '%s\n' "$files" | grep -Ev '^(services/|packages/py-|docker/|docs/)|^docker-compose\.yml$|^\.env\.example$|^\.gitleaks\.toml$|^\.github/scripts/check-gitleaks-allowlist\.sh$|^\.github/workflows/(services-ci|codeql|footer_removal|dependency-review|osv-scanner|pip-audit|scorecard|secret-scan|workflow-lint)\.yml$'
           } || true)
           deps=$(printf '%s\n' "$files" | grep -E '(^|/)package(-lock)?\.json$' || true)
@@ -93,7 +94,12 @@ jobs:
       - run: npm run lint
       # Fails when services/vendor-api/openapi.json changed and the portal's types were not regenerated.
       - run: npm run api:check --workspace @shazlo/vendor-portal
-      # Fails when services/identity-api/openapi.json changed and the shell's types were not regenerated.
+      # The portal's proposed routes (openapi/proposed.yaml) against their generated types.
+      - run: npm run api:proposed:check --workspace @shazlo/vendor-portal
+      # The same for the admin module, and for its proposed routes.
+      - run: npm run api:check --workspace @shazlo/vendor-admin
+      - run: npm run api:proposed:check --workspace @shazlo/vendor-admin
+      # And for Shazlo One, against identity-api's openapi.json (it has no vendor-api types; ADR 0011).
       - run: npm run api:check --workspace @shazlo/shazlo-one
       - run: npm run typecheck
       - name: Record tested source and environment
@@ -108,10 +114,24 @@ jobs:
       - run: npm run build --workspace @shazlo/vendor-portal
         env:
           VITE_VENDOR_API_URL: https://api.example.com
-      # VITE_IDENTITY_API_URL is read at build time; this one only has to be a valid https origin.
+      # Shazlo One fails closed: a production build needs identity-api's https origin and a registry of
+      # exact https URLs (the example one here), and ships no mock unless VITE_MOCK_API=on.
       - run: npm run build --workspace @shazlo/shazlo-one
         env:
           VITE_IDENTITY_API_URL: https://identity.example.com
+          VITE_SHELL_REGISTRY: registry/example.production.json
+      - name: Shazlo One's production build carries no mock and no demo password
+        run: |
+          if grep -rlE 'shazlo-one-2026|welcome-sneha-01|setupWorker|mockServiceWorker' apps/shazlo-one/dist; then
+            echo 'The production build of Shazlo One contains the browser mock.' >&2
+            exit 1
+          fi
+          test ! -e apps/shazlo-one/dist/mockServiceWorker.js
+      # The Vendors module: framed only by the shell's origin, calling only vendor-api's admin app.
+      - run: npm run build --workspace @shazlo/vendor-admin
+        env:
+          VITE_SHELL_ORIGIN: https://one.example.com
+          VITE_VENDOR_API_URL: https://vendor-admin-api.example.com
       - run: npm run build --prefix app
       - name: Retain test results and coverage
         if: always()
@@ -121,5 +141,40 @@ jobs:
           path: |
             reports/
             coverage/
+          retention-days: 14
+          if-no-files-found: warn
+
+  e2e:
+    # Seller portal in a real browser: journeys, axe accessibility and screenshots at 1440 px and 390 px.
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --prefer-offline --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/vendor-portal
+      # Missing Linux baselines are written (and uploaded below) instead of failing, so a new
+      # screen's first run produces the images to review and commit.
+      - run: npx playwright test --update-snapshots=missing
+        working-directory: apps/vendor-portal
+      - name: Keep the report and screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: seller-portal-e2e-${{ github.sha }}
+          path: |
+            apps/vendor-portal/playwright-report/
+            apps/vendor-portal/test-results/
+            apps/vendor-portal/e2e/__screenshots__/
           retention-days: 14
           if-no-files-found: warn

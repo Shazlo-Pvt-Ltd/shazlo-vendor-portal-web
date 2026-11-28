@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { NetworkError } from '../api/errors'
+import { ApiError } from '../api/http'
 import { registerSensitiveReset } from '../security/sensitiveState'
 import {
   AudienceNotAllowedError,
@@ -11,34 +11,27 @@ import {
 } from './store'
 import { adminProfile, apiError, fakeChannels, makeStore, sessionBody } from './testing'
 
+const networkError = () => new ApiError(0, 'network_error', 'offline')
+
 afterEach(() => {
   vi.useRealTimers()
 })
 
 describe('restoring the session on load', () => {
-  it('signs in from the refresh cookie with the profile from /v1/me, and writes nothing to storage', async () => {
+  it('signs in from the refresh cookie with the profile it answers, and writes nothing to storage', async () => {
     const setItem = vi.spyOn(Storage.prototype, 'setItem')
     const { store } = makeStore({
-      fetchMe: async () => adminProfile({ display_name: 'From Me', roles: ['reviewer'] }),
+      refresh: async () => sessionBody({ admin: { display_name: 'From Refresh' }, roles: ['reviewer'] }),
     })
-    expect(store.getSnapshot().status).toBe('loading')
+    expect(store.get().status).toBe('checking')
     await store.start()
-    expect(store.getSnapshot()).toMatchObject({
-      status: 'signedIn',
-      roles: ['reviewer'],
-      admin: { display_name: 'From Me' },
+    expect(store.get()).toMatchObject({
+      status: 'signed_in',
+      admin: { display_name: 'From Refresh', roles: ['reviewer'] },
     })
-    expect(store.getAccessToken()).toBe('token-1')
+    expect(store.accessToken()).toBe('token-1')
     expect(setItem).not.toHaveBeenCalled()
     expect(JSON.stringify({ ...localStorage, ...sessionStorage })).not.toContain('token-1')
-    store.close()
-  })
-
-  it('asks /v1/me with the new token, which the store has not adopted yet', async () => {
-    const fetchMe = vi.fn(async () => adminProfile())
-    const { store } = makeStore({ fetchMe, refresh: async () => sessionBody({ token: 'fresh' }) })
-    await store.start()
-    expect(fetchMe).toHaveBeenCalledWith('fresh')
     store.close()
   })
 
@@ -46,7 +39,7 @@ describe('restoring the session on load', () => {
     const onCleared = vi.fn()
     const { store } = makeStore({ refresh: async () => { throw apiError(401, 'unauthorized') }, onCleared })
     await store.start()
-    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', expired: false, admin: null, roles: [] })
+    expect(store.get()).toMatchObject({ status: 'signed_out', reason: undefined, admin: null })
     expect(onCleared).toHaveBeenCalledOnce()
     store.close()
   })
@@ -55,23 +48,30 @@ describe('restoring the session on load', () => {
     let down = true
     const { store } = makeStore({
       refresh: async () => {
-        if (down) throw new NetworkError('network')
+        if (down) throw networkError()
         return sessionBody()
       },
     })
     await store.start()
-    expect(store.getSnapshot().status).toBe('unavailable')
+    expect(store.get().status).toBe('unavailable')
     down = false
     await store.retry()
-    expect(store.getSnapshot().status).toBe('signedIn')
+    expect(store.get().status).toBe('signed_in')
     store.close()
   })
 
-  it('is unavailable when /v1/me cannot be reached, and holds no half session', async () => {
-    const { store } = makeStore({ fetchMe: async () => { throw new NetworkError('timeout') } })
+  it.each([429, 500, 502, 503, 408])('is unavailable on a %i while loading, and holds no half session', async (status) => {
+    const { store } = makeStore({ refresh: async () => { throw apiError(status, 'busy') } })
     await store.start()
-    expect(store.getSnapshot().status).toBe('unavailable')
-    expect(store.getAccessToken()).toBeNull()
+    expect(store.get().status).toBe('unavailable')
+    expect(store.accessToken()).toBeNull()
+    store.close()
+  })
+
+  it.each([400, 403, 422])('is signed out on a %i: the cookie is not accepted', async (status) => {
+    const { store } = makeStore({ refresh: async () => { throw apiError(status, 'refused') } })
+    await store.start()
+    expect(store.get().status).toBe('signed_out')
     store.close()
   })
 
@@ -86,23 +86,20 @@ describe('restoring the session on load', () => {
   it('does not trust an answer that is not a session', async () => {
     const { store } = makeStore({ refresh: async () => ({ access_token: 'x' }) as never })
     await store.start()
-    expect(store.getAccessToken()).toBeNull()
-    expect(store.getSnapshot().status).toBe('unavailable')
+    expect(store.accessToken()).toBeNull()
+    expect(store.get().status).toBe('unavailable')
     store.close()
   })
 })
 
 describe('an admin who must change their password', () => {
-  it('is held at that step with no roles, and /v1/me is never asked (it refuses that token)', async () => {
-    const fetchMe = vi.fn(async () => adminProfile())
+  it('is held at that step: the session says so, whatever the profile says', async () => {
     const { store } = makeStore({
-      refresh: async () => sessionBody({ must_change_password: true, roles: ['super_admin'] }),
-      fetchMe,
+      refresh: async () => ({ ...sessionBody({ roles: ['super_admin'] }), must_change_password: true }),
     })
     await store.start()
-    expect(store.getSnapshot()).toMatchObject({ status: 'passwordChangeRequired', roles: [] })
-    expect(store.getSnapshot().admin?.email).toBe('admin@shazlo.test')
-    expect(fetchMe).not.toHaveBeenCalled()
+    expect(store.get()).toMatchObject({ status: 'signed_in', admin: { must_change_password: true } })
+    expect(store.get().admin?.email).toBe('admin@shazlo.test')
     store.close()
   })
 
@@ -124,8 +121,8 @@ describe('an admin who must change their password', () => {
     // Tab B's next refresh finds the new cookie.
     ;(b as unknown as { deps: { refresh: typeof refresh } }).deps.refresh = refresh
     a.signIn(sessionBody({ token: 'normal' }))
-    expect(a.getSnapshot()).toMatchObject({ status: 'signedIn', roles: ['super_admin'] })
-    await vi.waitFor(() => expect(b.getSnapshot().status).toBe('signedIn'))
+    expect(a.get()).toMatchObject({ status: 'signed_in', admin: { roles: ['super_admin'], must_change_password: false } })
+    await vi.waitFor(() => expect(b.get().status).toBe('signed_in'))
     a.close()
     b.close()
   })
@@ -160,14 +157,14 @@ describe('renewal', () => {
     })
     await store.start()
     expect(calls).toBe(2)
-    expect(store.getAccessToken()).toBe('after-conflict')
+    expect(store.accessToken()).toBe('after-conflict')
     store.close()
   })
 
   it('gives up after a second 409, without signing out', async () => {
     const { store } = makeStore({ refresh: async () => { throw apiError(409, 'refresh_conflict') } })
     await store.start()
-    expect(store.getSnapshot().status).toBe('unavailable')
+    expect(store.get().status).toBe('unavailable')
     store.close()
   })
 
@@ -186,7 +183,7 @@ describe('renewal', () => {
     expect(calls).toBe(1)
     await vi.advanceTimersByTimeAsync(2_000)
     expect(calls).toBe(2)
-    expect(store.getAccessToken()).toBe('t2')
+    expect(store.accessToken()).toBe('t2')
     store.close()
   })
 
@@ -205,8 +202,8 @@ describe('renewal', () => {
     await store.start()
     answer = 'denied'
     expect(await store.renew()).toBe(false)
-    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', expired: true, admin: null, roles: [] })
-    expect(store.getAccessToken()).toBeNull()
+    expect(store.get()).toMatchObject({ status: 'signed_out', reason: 'expired', admin: null })
+    expect(store.accessToken()).toBeNull()
     expect(reset).toHaveBeenCalledOnce()
     expect(onCleared).toHaveBeenCalledOnce()
     undo()
@@ -220,21 +217,21 @@ describe('renewal', () => {
     const { store } = makeStore({
       refresh: async () => {
         calls += 1
-        if (down) throw new NetworkError('network')
+        if (down) throw networkError()
         return sessionBody({ token: `t${calls}` })
       },
     })
     await store.start()
     down = true
     expect(await store.renew()).toBe(false)
-    expect(store.getSnapshot().status).toBe('signedIn')
+    expect(store.get().status).toBe('signed_in')
     expect(calls).toBe(2)
     down = false
     await vi.advanceTimersByTimeAsync(14_000)
     expect(calls).toBe(2)
     await vi.advanceTimersByTimeAsync(2_000)
     expect(calls).toBe(3)
-    expect(store.getAccessToken()).toBe('t3')
+    expect(store.accessToken()).toBe('t3')
     store.close()
   })
 
@@ -251,8 +248,8 @@ describe('renewal', () => {
     await store.start()
     failing = true
     expect(await store.renew()).toBe(false)
-    expect(store.getSnapshot().status).toBe('signedIn')
-    expect(store.getAccessToken()).toBe('kept')
+    expect(store.get().status).toBe('signed_in')
+    expect(store.accessToken()).toBe('kept')
     expect(onCleared).not.toHaveBeenCalled()
     store.close()
   })
@@ -268,7 +265,7 @@ describe('renewal', () => {
     await store.start()
     broken = true
     expect(await store.renew()).toBe(false)
-    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', expired: true })
+    expect(store.get()).toMatchObject({ status: 'signed_out', reason: 'expired' })
     store.close()
   })
 
@@ -279,8 +276,8 @@ describe('renewal', () => {
     store.close()
     answer(sessionBody({ token: 'too-late' }))
     await started
-    expect(store.getAccessToken()).toBeNull()
-    expect(store.getSnapshot().status).toBe('loading')
+    expect(store.accessToken()).toBeNull()
+    expect(store.get().status).toBe('checking')
   })
 
   it('stops renewing after logout', async () => {
@@ -317,8 +314,8 @@ describe('signing out', () => {
     await store.start()
     await store.logout()
     expect(logout).toHaveBeenCalledOnce()
-    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', signedOutByUser: true, expired: false })
-    expect(store.getAccessToken()).toBeNull()
+    expect(store.get()).toMatchObject({ status: 'signed_out', reason: 'signed_out' })
+    expect(store.accessToken()).toBeNull()
     expect(reset).toHaveBeenCalledOnce()
     expect(onCleared).toHaveBeenCalledOnce()
     undo()
@@ -326,10 +323,10 @@ describe('signing out', () => {
   })
 
   it('ends the session even when the server cannot be told', async () => {
-    const { store } = makeStore({ logout: async () => { throw new NetworkError('network') } })
+    const { store } = makeStore({ logout: async () => { throw networkError() } })
     await store.start()
     await store.logout()
-    expect(store.getSnapshot().status).toBe('signedOut')
+    expect(store.get().status).toBe('signed_out')
     store.close()
   })
 })
@@ -353,30 +350,31 @@ describe('a sign-out while a renewal is under way', () => {
     await store.logout()
     answer(sessionBody({ token: 'too-late' }))
     expect(await renewing).toBe(false)
-    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', signedOutByUser: true })
-    expect(store.getAccessToken()).toBeNull()
+    expect(store.get()).toMatchObject({ status: 'signed_out', reason: 'signed_out' })
+    expect(store.accessToken()).toBeNull()
     store.close()
   })
 
-  it('is not undone when /v1/me answers afterwards', async () => {
-    let answer: (value: ReturnType<typeof adminProfile>) => void = () => {}
+  it('is not undone when the retry after a 409 answers afterwards', async () => {
+    let answer: (value: Body) => void = () => {}
     let calls = 0
-    const fetchMe = () => {
+    const refresh = () => {
       calls += 1
-      if (calls === 1) return Promise.resolve(adminProfile())
-      return new Promise<ReturnType<typeof adminProfile>>((resolve) => {
+      if (calls === 1) return Promise.resolve(sessionBody())
+      if (calls === 2) return Promise.reject(apiError(409, 'refresh_conflict'))
+      return new Promise<Body>((resolve) => {
         answer = resolve
       })
     }
-    const { store } = makeStore({ fetchMe })
+    const { store } = makeStore({ refresh })
     await store.start()
     const renewing = store.renew()
-    await vi.waitFor(() => expect(calls).toBe(2))
+    await vi.waitFor(() => expect(calls).toBe(3))
     await store.logout()
-    answer(adminProfile())
+    answer(sessionBody({ token: 'too-late' }))
     expect(await renewing).toBe(false)
-    expect(store.getSnapshot().status).toBe('signedOut')
-    expect(store.getAccessToken()).toBeNull()
+    expect(store.get().status).toBe('signed_out')
+    expect(store.accessToken()).toBeNull()
     store.close()
   })
 
@@ -398,8 +396,8 @@ describe('a sign-out while a renewal is under way', () => {
     await a.logout()
     answer(sessionBody({ token: 'too-late' }))
     await renewing
-    expect(b.getSnapshot().status).toBe('signedOut')
-    expect(b.getAccessToken()).toBeNull()
+    expect(b.get().status).toBe('signed_out')
+    expect(b.accessToken()).toBeNull()
     a.close()
     b.close()
   })
@@ -420,7 +418,7 @@ describe('a sign-out while a renewal is under way', () => {
     await store.logout()
     fail(apiError(401, 'invalid_refresh_token'))
     await renewing
-    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', signedOutByUser: true, expired: false })
+    expect(store.get()).toMatchObject({ status: 'signed_out', reason: 'signed_out' })
     store.close()
   })
 
@@ -447,8 +445,8 @@ describe('a sign-out while a renewal is under way', () => {
     expect(calls).toBe(2)
     answer(sessionBody({ token: 'stale' }))
     expect(await renewing).toBe(false)
-    await vi.waitFor(() => expect(b.getSnapshot().status).toBe('signedIn'))
-    expect(b.getAccessToken()).toBe('t3')
+    await vi.waitFor(() => expect(b.get().status).toBe('signed_in'))
+    expect(b.accessToken()).toBe('t3')
     a.close()
     b.close()
   })
@@ -465,7 +463,7 @@ describe('a sign-out while a renewal is under way', () => {
     await store.logout()
     signedOut = true
     expect(await store.renew()).toBe(false)
-    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', signedOutByUser: true, expired: false })
+    expect(store.get()).toMatchObject({ status: 'signed_out', reason: 'signed_out' })
     expect(onCleared).toHaveBeenCalledOnce()
     store.close()
   })
@@ -486,8 +484,8 @@ describe('tabs', () => {
     const b = makeStore({ channel: channels(), onCleared: onClearedB }).store
     await Promise.all([a.start(), b.start()])
     await a.logout()
-    expect(b.getSnapshot()).toMatchObject({ status: 'signedOut', signedOutByUser: true })
-    expect(b.getAccessToken()).toBeNull()
+    expect(b.get()).toMatchObject({ status: 'signed_out', reason: 'signed_out' })
+    expect(b.accessToken()).toBeNull()
     expect(onClearedB).toHaveBeenCalledOnce()
     expect(sent).toEqual([{ type: 'logout' }])
     expect(JSON.stringify(sent)).not.toContain('token')
@@ -517,8 +515,8 @@ describe('tabs', () => {
     cookie = true
     a.signIn(sessionBody())
     expect(sent).toEqual([{ type: 'login' }])
-    await vi.waitFor(() => expect(b.getSnapshot().status).toBe('signedIn'))
-    expect(b.getAccessToken()).toBe('b-token')
+    await vi.waitFor(() => expect(b.get().status).toBe('signed_in'))
+    expect(b.accessToken()).toBe('b-token')
     a.close()
     b.close()
   })
@@ -533,7 +531,7 @@ describe('tabs', () => {
       channel.onmessage?.({ data } as MessageEvent)
     }
     await Promise.resolve()
-    expect(store.getSnapshot().status).toBe('signedIn')
+    expect(store.get().status).toBe('signed_in')
     expect(refresh).toHaveBeenCalledOnce()
     expect(onCleared).not.toHaveBeenCalled()
     store.close()
@@ -654,9 +652,9 @@ describe('module tokens', () => {
   })
 
   it('passes other failures through untouched', async () => {
-    const { store } = makeStore({ exchange: async () => { throw new NetworkError('network') } })
+    const { store } = makeStore({ exchange: async () => { throw networkError() } })
     await store.start()
-    await expect(store.getModuleToken('m')).rejects.toBeInstanceOf(NetworkError)
+    await expect(store.getModuleToken('m')).rejects.toMatchObject({ status: 0 })
     store.close()
   })
 
@@ -692,13 +690,12 @@ describe('module tokens', () => {
     const { store } = makeStore({
       onCleared,
       exchange,
-      refresh: async () => sessionBody({ token: `t${(n += 1)}` }),
-      fetchMe: async () => (n === 1 ? adminProfile({ id: 'a1' }) : adminProfile({ id: 'b2', email: 'b@shazlo.test' })),
+      refresh: async () => sessionBody({ token: `t${(n += 1)}`, admin: n === 1 ? { id: 'a1' } : { id: 'b2', email: 'b@shazlo.test' } }),
     })
     await store.start()
     expect((await store.getModuleToken('m')).accessToken).toBe('m-for-t1')
     await store.renew()
-    expect(store.getSnapshot().admin?.id).toBe('b2')
+    expect(store.get().admin?.id).toBe('b2')
     expect(onCleared).toHaveBeenCalledOnce()
     expect(reset).toHaveBeenCalledOnce()
     expect((await store.getModuleToken('m')).accessToken).toBe('m-for-t2')
@@ -719,16 +716,20 @@ describe('module tokens', () => {
     store.close()
   })
 
-  it('exchanges again when a renewal changes the admin’s roles', async () => {
+  it('exchanges again, and drops the caches, when a renewal changes the admin’s roles', async () => {
     let n = 0
+    const onCleared = vi.fn()
     const exchange = vi.fn(async (audience: string) => ({ access_token: 'm', token_type: 'Bearer', expires_in: 300, audience }))
     const { store } = makeStore({
       exchange,
-      fetchMe: async () => adminProfile({ roles: (n += 1) === 1 ? ['super_admin'] : ['vendor_reviewer'] }),
+      onCleared,
+      refresh: async () => sessionBody({ roles: (n += 1) === 1 ? ['super_admin'] : ['vendor_reviewer'] }),
     })
     await store.start()
     await store.getModuleToken('m')
     await store.renew()
+    expect(store.get().admin?.roles).toEqual(['vendor_reviewer'])
+    expect(onCleared).toHaveBeenCalledOnce()
     await store.getModuleToken('m')
     expect(exchange).toHaveBeenCalledTimes(2)
     store.close()
@@ -740,7 +741,7 @@ describe('module tokens', () => {
     await store.start()
     await store.getModuleToken('m')
     await store.renew()
-    expect(store.getSnapshot().status).toBe('passwordChangeRequired')
+    expect(store.get()).toMatchObject({ status: 'signed_in', admin: { must_change_password: true } })
     await expect(store.getModuleToken('m')).rejects.toBeInstanceOf(NotSignedInError)
     store.close()
   })
@@ -1009,7 +1010,7 @@ describe('what the host needs to keep module tokens fresh', () => {
   it('goes ahead with the identity token it has when that renewal cannot be done now', async () => {
     vi.useFakeTimers()
     const { exchange, calls } = exchangeOf()
-    const refresh = refreshOf(400, (call) => (call >= 2 ? new NetworkError('network') : undefined))
+    const refresh = refreshOf(400, (call) => (call >= 2 ? networkError() : undefined))
     const { store } = makeStore({ exchange, refresh })
     await store.start()
     await vi.advanceTimersByTimeAsync(150_000)
@@ -1017,7 +1018,7 @@ describe('what the host needs to keep module tokens fresh', () => {
     expect(calls[0]!.identityToken).toBe('id-1')
     // Cut short at the identity token's end (250 s from now), not 300.
     expect(token.expiresAt - Date.now()).toBe(250_000)
-    expect(store.getSnapshot().status).toBe('signedIn')
+    expect(store.get().status).toBe('signed_in')
     store.close()
   })
 
@@ -1030,7 +1031,7 @@ describe('what the host needs to keep module tokens fresh', () => {
     await vi.advanceTimersByTimeAsync(150_000)
     await expect(store.getModuleToken('vendor-api', 'm')).rejects.toBeInstanceOf(NotSignedInError)
     expect(exchange).not.toHaveBeenCalled()
-    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', expired: true })
+    expect(store.get()).toMatchObject({ status: 'signed_out', reason: 'expired' })
     store.close()
   })
 })
@@ -1047,8 +1048,8 @@ describe('expiring the session', () => {
     await store.start()
     await store.getModuleToken('vendor-api', 'm')
     store.expire()
-    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', expired: true, signedOutByUser: false, admin: null, roles: [] })
-    expect(store.getAccessToken()).toBeNull()
+    expect(store.get()).toMatchObject({ status: 'signed_out', reason: 'expired', admin: null })
+    expect(store.accessToken()).toBeNull()
     expect(logout).not.toHaveBeenCalled()
     expect(post).not.toHaveBeenCalled()
     expect(onCleared).toHaveBeenCalledOnce()
@@ -1065,7 +1066,7 @@ describe('expiring the session', () => {
     expect(onCleared).toHaveBeenCalledOnce()
     store.expire()
     expect(onCleared).toHaveBeenCalledOnce()
-    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', expired: false })
+    expect(store.get()).toMatchObject({ status: 'signed_out', reason: undefined })
     store.close()
   })
 
@@ -1073,7 +1074,7 @@ describe('expiring the session', () => {
     const { store } = makeStore({ refresh: async () => sessionBody({ must_change_password: true }) })
     await store.start()
     store.expire()
-    expect(store.getSnapshot()).toMatchObject({ status: 'signedOut', expired: true })
+    expect(store.get()).toMatchObject({ status: 'signed_out', reason: 'expired' })
     store.close()
   })
 })

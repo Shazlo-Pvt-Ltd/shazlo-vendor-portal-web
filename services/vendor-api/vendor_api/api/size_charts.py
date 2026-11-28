@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from vendor_api.api.auth import no_store
+from vendor_api.api.common import no_store
 from vendor_api.api.deps import CurrentVendorUser, current_vendor_user
 from vendor_api.core.errors import ApiError
 from vendor_api.db.models import SizeChartGroup

@@ -1,0 +1,22 @@
+openapi: 3.1.0
+info:
+  title: vendor-api, proposed additions for the admin module
+  version: 0.1.0
+  description: |
+    What the admin module (`apps/vendor-admin`) and the Shazlo One home need from vendor-api that
+    `services/vendor-api/openapi.json` does not have yet. Sub-issues #294 to #299 of #291 add their
+    items here and list them in their pull requests.
+
+    How to read this file (same as `apps/vendor-portal/openapi/proposed.yaml`):
+    - A path and method here replaces the same path and method in `openapi.json`; the other methods
+      of that path stay as they are. `src/api/client.ts` merges the generated types the same way.
+    - It follows vendor-api's style: `/v1/admin` paths, snake_case, ids as UUIDs, a `version` on
+      what can be decided, and every error as `{error: {code, message, request_id, details?}}`.
+    - Mark every operation and every added field `x-proposal: true`. `x-extends: X` means the real
+      schema X plus new fields; `x-replaces: X` means a full copy of X with the changes described.
+    - When vendor-api ships a route, move it into `openapi.json` and delete it here; then run
+      `npm run api:generate` and `npm run api:proposed` in `apps/vendor-admin`.
+servers:
+  - url: http://localhost:8002
+
+paths: {}

@@ -91,7 +91,7 @@ check report $uri app/src/db.ts "export const url = '${mg}://admin:Real-Value-77
 
 # --- Values generic-api-key reports -----------------------------------------------------------------
 # Each committed value, in its own file: allowed.
-check allow apps/vendor-portal/src/features/uploads/testing.ts "export const API_KEY = '$(j key-1234567 89012345)'"
+check allow apps/vendor-portal/src/api/uploads/testing.ts "export const API_KEY = '$(j key-1234567 89012345)'"
 check allow services/vendor-api/tests/test_e2e_publishing.py "SECRET = \"$(j e2e-publishing-secret- 0123456789-abcdef)\""
 check allow services/vendor-api/tests/test_publisher.py "    password = \"$(j Sup3rSecret Passw0rd)\""
 check allow services/vendor-api/tests/test_settings.py "    secret = \"$(j Hunter2-central- secret-0123456789abcdef)\""
@@ -104,7 +104,7 @@ check allow apps/vendor-portal/src/mocks/db.ts "export const DEMO_LOGIN = { emai
 check allow apps/vendor-portal/src/screens/auth/SignIn.test.tsx "const password = '$(j ajrakh- indigo-26)'"
 
 # The same values in another file: reported.
-check report $generic apps/vendor-portal/src/features/uploads/upload.ts "export const API_KEY = '$(j key-1234567 89012345)'"
+check report $generic apps/vendor-portal/src/api/uploads/upload.ts "export const API_KEY = '$(j key-1234567 89012345)'"
 check report $generic services/vendor-api/vendor_api/publisher.py "SECRET = \"$(j e2e-publishing-secret- 0123456789-abcdef)\""
 check report $generic services/vendor-api/vendor_api/settings.py "    password = \"$(j Sup3rSecret Passw0rd)\""
 check report $generic services/vendor-api/vendor_api/settings.py "    secret = \"$(j Hunter2-central- secret-0123456789abcdef)\""
@@ -115,12 +115,12 @@ check report $generic apps/shazlo-one/src/api/client.ts "const password = '$(j s
 check report $generic apps/vendor-portal/src/api/client.ts "const password = '$(j ajrakh- indigo-26)'"
 
 # Another value in those files: reported.
-check report $generic apps/vendor-portal/src/features/uploads/testing.ts "export const API_KEY = '$(j key-8f3Kq9 2jX7m1p4Zr)'"
+check report $generic apps/vendor-portal/src/api/uploads/testing.ts "export const API_KEY = '$(j key-8f3Kq9 2jX7m1p4Zr)'"
 check report $generic services/vendor-api/tests/test_publisher.py "    password = \"$(j Wq7-Zr2p -Lx9Vb4Nc)\""
 
 # No allowlisted file hides a different kind of secret.
 for path in \
-  apps/vendor-portal/src/features/uploads/testing.ts \
+  apps/vendor-portal/src/api/uploads/testing.ts \
   services/vendor-api/tests/test_e2e_publishing.py \
   services/vendor-api/tests/test_publisher.py \
   services/vendor-api/tests/test_settings.py \

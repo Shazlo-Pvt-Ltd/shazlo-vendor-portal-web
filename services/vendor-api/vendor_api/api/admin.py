@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, ConfigDict
 from shazlo_auth.fastapi import AuthenticatedAdmin, require_role
 
-from vendor_api.api.auth import no_store
+from vendor_api.api.common import no_store
 
 # `super_admin` always passes (py-auth). One dependency object, so FastAPI runs the check once
 # per request even where an endpoint also asks for the admin.

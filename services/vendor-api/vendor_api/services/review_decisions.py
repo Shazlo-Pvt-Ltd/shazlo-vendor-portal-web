@@ -53,6 +53,7 @@ from vendor_api.db.models import (
     Review,
     ReviewAction,
     ReviewEvent,
+    ReviewReasonCode,
     ReviewStatus,
     ReviewSubject,
     Vendor,
@@ -114,11 +115,18 @@ class ReviewDecisionService:
         reviewer_id: uuid.UUID,
         version: int,
         reason: str,
+        reason_code: ReviewReasonCode | None = None,
     ) -> None:
         if not reason.strip():
             raise ApiError(422, "reason_required", "A rejection needs a reason")
         await self._decide(
-            db, review_id, reviewer_id, version, ReviewAction.REJECTED, reason.strip()
+            db,
+            review_id,
+            reviewer_id,
+            version,
+            ReviewAction.REJECTED,
+            reason.strip(),
+            reason_code,
         )
 
     async def _decide(
@@ -129,6 +137,7 @@ class ReviewDecisionService:
         version: int,
         action: ReviewAction,
         reason: str | None,
+        reason_code: ReviewReasonCode | None = None,
     ) -> None:
         try:
             review = await db.scalar(
@@ -160,6 +169,7 @@ class ReviewDecisionService:
             review.reviewer_id = reviewer_id
             review.decided_at = now
             review.reason = reason
+            review.reason_code = reason_code.value if reason_code is not None else None
             await db.flush()
             db.add(
                 ReviewEvent(

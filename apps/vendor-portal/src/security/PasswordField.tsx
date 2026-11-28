@@ -1,4 +1,5 @@
-import { Button, InputAdornment, TextField, type TextFieldProps } from '@mui/material'
+import { IconButton, InputAdornment, TextField, type TextFieldProps } from '@mui/material'
+import { Eye, EyeOff } from 'lucide-react'
 import { useState } from 'react'
 
 type Props = Omit<TextFieldProps, 'type' | 'autoComplete'> & {
@@ -11,8 +12,8 @@ type Props = Omit<TextFieldProps, 'type' | 'autoComplete'> & {
 
 /**
  * The only way to render a password input. It sets the right `autocomplete`, switches off
- * autocapitalisation and spell-checking, lets the user show what they typed (a toggle that is
- * announced as pressed) and never blocks pasting, which password managers rely on.
+ * autocapitalisation and spell-checking, lets the user show what they typed (Build 2's eye icon, a
+ * toggle that is announced as pressed) and never blocks pasting, which password managers rely on.
  */
 export function PasswordField({ purpose, slotProps, ...rest }: Props) {
   const [visible, setVisible] = useState(false)
@@ -27,15 +28,15 @@ export function PasswordField({ purpose, slotProps, ...rest }: Props) {
           ...(slotProps?.input as object),
           endAdornment: (
             <InputAdornment position="end">
-              <Button
+              <IconButton
                 type="button"
-                size="small"
+                edge="end"
                 aria-pressed={visible}
                 aria-label={visible ? 'Hide password' : 'Show password'}
                 onClick={() => setVisible((current) => !current)}
               >
-                {visible ? 'Hide' : 'Show'}
-              </Button>
+                {visible ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+              </IconButton>
             </InputAdornment>
           ),
         },
