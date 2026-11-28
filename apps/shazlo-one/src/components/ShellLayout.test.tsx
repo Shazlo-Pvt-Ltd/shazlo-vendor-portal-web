@@ -246,6 +246,7 @@ describe('accessibility', () => {
     ['/m/vendor-admin/deep/path', 'Vendor admin', 'Vendor admin · Shazlo-One'],
     ['/admins', 'Admins', 'Admins · Shazlo-One'],
     ['/change-password', 'Change your password', 'Change password · Shazlo-One'],
+    ['/m/nope', 'Page not found', 'Page not found · Shazlo-One'],
   ])('%s has exactly one h1 and sets the page title', async (path, heading, title) => {
     await openAs(['super_admin'], path)
     expect(screen.getByRole('heading', { level: 1, name: heading })).toBeTruthy()
