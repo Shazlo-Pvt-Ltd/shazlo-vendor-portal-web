@@ -14,7 +14,7 @@ const SENTENCES = [
   /\.(body|intro|hint|subtitle|text|message|banner)$/,
   /\.(errors|toast)\./,
   /^rateErrors\./,
-  /\.(empty|none|notFoundBody|nothingToExport|copyFailed|retriedAll|conflict|alreadyBody|noReason|notLive|noProposal|priceRuleText|proposedHint|noProposalHint|noteHint|noteLong|reasonHint|reasonShort|tryOnHint|shows|showsOnly|aboveMrp|forType|forTypePhoto|missingProduct|missingTryOn|blockedCommission|blockedAgreement|blockedFields)$/,
+  /\.(empty|none|notFoundBody|nothingToExport|copyFailed|exportFailed|retriedAll|conflict|alreadyBody|noReason|notLive|noProposal|priceRuleText|proposedHint|noProposalHint|noteHint|noteLong|reasonHint|reasonShort|tryOnHint|shows|showsOnly|aboveMrp|forType|forTypePhoto|missingProduct|missingTryOn|blockedCommission|blockedAgreement|blockedFields)$/,
   /^reviewCopy\.decided\.(approved|sentBack)$/,
   /^vendorDetailCopy\.commission\.(notSet|proposed|now|noneYet|sentBack|theyProposed|approveBanner)$/,
   /^vendorDetailCopy\.brand\.(live|notLive|waiting|nothingWaiting|error)$/,

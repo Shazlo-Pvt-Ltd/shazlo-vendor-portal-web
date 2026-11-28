@@ -2701,6 +2701,173 @@
         "title": "PublishingOut",
         "type": "object"
       },
+      "QueueCountsOut": {
+        "properties": {
+          "all": {
+            "title": "All",
+            "type": "integer"
+          },
+          "application": {
+            "title": "Application",
+            "type": "integer"
+          },
+          "brand_page": {
+            "title": "Brand Page",
+            "type": "integer"
+          },
+          "product": {
+            "title": "Product",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "all",
+          "product",
+          "brand_page",
+          "application"
+        ],
+        "title": "QueueCountsOut",
+        "type": "object"
+      },
+      "QueueItemOut": {
+        "properties": {
+          "change": {
+            "enum": [
+              "new",
+              "edit",
+              "application"
+            ],
+            "title": "Change",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "product",
+              "brand_page",
+              "application"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "resubmission": {
+            "title": "Resubmission",
+            "type": "integer"
+          },
+          "subject_id": {
+            "format": "uuid",
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          },
+          "thumbnail_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Url"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "vendor": {
+            "$ref": "#/components/schemas/QueueVendorOut"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "subject_id",
+          "title",
+          "detail",
+          "vendor",
+          "submitted_at",
+          "change",
+          "resubmission",
+          "thumbnail_url"
+        ],
+        "title": "QueueItemOut",
+        "type": "object"
+      },
+      "QueuePageOut": {
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/QueueCountsOut"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/QueueItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "vendors": {
+            "items": {
+              "$ref": "#/components/schemas/QueueVendorOut"
+            },
+            "title": "Vendors",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset",
+          "counts",
+          "vendors"
+        ],
+        "title": "QueuePageOut",
+        "type": "object"
+      },
+      "QueueVendorOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "QueueVendorOut",
+        "type": "object"
+      },
       "ReasonRequest": {
         "additionalProperties": false,
         "description": "Rejecting and suspending need a reason, which the vendor is told: a missing, empty or\nwhitespace-only one is a 422.",
@@ -5092,6 +5259,181 @@
         "summary": "Retry Event",
         "tags": [
           "admin-outbox"
+        ]
+      }
+    },
+    "/v1/admin/queue": {
+      "get": {
+        "description": "Everything waiting for a reviewer in one list: products and brand pages under review and\nvendor applications. Filtered, sorted and paged on the server.",
+        "operationId": "list_queue_v1_admin_queue_get",
+        "parameters": [
+          {
+            "description": "Only this kind of item",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "product",
+                    "brand_page",
+                    "application"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this kind of item",
+              "title": "Kind"
+            }
+          },
+          {
+            "description": "Only this vendor's items",
+            "in": "query",
+            "name": "vendor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this vendor's items",
+              "title": "Vendor"
+            }
+          },
+          {
+            "description": "Text in the title, the detail or the vendor name, ignoring case",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Text in the title, the detail or the vendor name, ignoring case",
+              "title": "Q"
+            }
+          },
+          {
+            "description": "How long ago: `today` is under 24 hours, `24h` is 24 to 48 hours, `older` is 48 hours or more",
+            "in": "query",
+            "name": "submitted",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "today",
+                    "24h",
+                    "older"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "How long ago: `today` is under 24 hours, `24h` is 24 to 48 hours, `older` is 48 hours or more",
+              "title": "Submitted"
+            }
+          },
+          {
+            "description": "`true`: only what was sent back before",
+            "in": "query",
+            "name": "resubmissions",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "`true`: only what was sent back before",
+              "title": "Resubmissions",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "`oldest` (default) or `newest` first",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "oldest",
+              "description": "`oldest` (default) or `newest` first",
+              "enum": [
+                "oldest",
+                "newest"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 100000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuePageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Queue",
+        "tags": [
+          "admin-queue"
         ]
       }
     },
