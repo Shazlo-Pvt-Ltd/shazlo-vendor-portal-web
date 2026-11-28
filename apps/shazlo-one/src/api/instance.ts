@@ -1,6 +1,7 @@
 import createQueryClient from 'openapi-react-query'
 import { loadEnv } from '../config/env'
 import { createApiClient, type ApiClient } from './client'
+import { currentAccessToken, handleApiError, handleUnauthorized } from './session'
 
 let client: ApiClient | undefined
 
@@ -12,8 +13,12 @@ export function getApiClient(): ApiClient {
       // The app shows the misconfiguration screen before any screen can call the API.
       throw new Error('The shell is misconfigured: VITE_IDENTITY_API_URL is not usable.')
     }
-    // The session issue adds the access token and the renewal on a 401 here.
-    client = createApiClient({ baseUrl: env.env.apiUrl })
+    client = createApiClient({
+      baseUrl: env.env.apiUrl,
+      getAccessToken: currentAccessToken,
+      onUnauthorized: handleUnauthorized,
+      onApiError: handleApiError,
+    })
   }
   return client
 }
