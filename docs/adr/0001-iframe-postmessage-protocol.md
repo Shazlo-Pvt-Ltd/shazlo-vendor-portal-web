@@ -306,7 +306,7 @@ export function isTrustedMessage(
 - A framing failure is invisible to the parent, so detection depends on a timeout.
 
 **Follow-ups**
-- Create `packages/shell-protocol` with these types, runtime validators and a test harness (Phase 6).
+- ~~Create `packages/shell-protocol` with these types, runtime validators and a test harness (Phase 6).~~ Done (#253): [`packages/shell-protocol`](../../packages/shell-protocol/README.md), with hand-written validators (no `zod`; the package has no runtime dependency), `createShellChannel` and `createModuleClient`, and contract tests that run both ends over two jsdom windows. Two details the ADR left open: a module reads the shell's `error` at any `v` (so it can learn `version_unsupported` even when it speaks no common version), and the shell reads `ready` at any `v` for the same reason.
 - Decide where the module registry lives (shell config per environment is the proposal).
 
 ## Alternatives considered

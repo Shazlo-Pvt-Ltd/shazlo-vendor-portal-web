@@ -122,6 +122,11 @@ on a `401` from anything but `/v1/auth/*`, renews the session once and repeats t
   go through `PasswordField` only (a test enforces it).
 - Ending the session clears the query cache, the sensitive forms (`registerSensitiveReset`) and every
   module token.
+  A renewal that comes back with another admin does the same; one that comes back with new roles
+  drops the cached module tokens. A sign-out (in any tab) while a renewal is under way wins: the
+  renewal's answer is thrown away.
+- Session and token-exchange answers are checked: a non-empty token and a lifetime between 0 and a
+  day, or the answer is refused.
 
 ## Security rules
 

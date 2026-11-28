@@ -7,6 +7,12 @@ export interface Env {
 
 export type EnvResult = { ok: true; env: Env } | { ok: false; problems: string[] }
 
+/**
+ * A host name or a bracketed IPv6 address, and nothing else. The URL parser lets `;` and `,` into a
+ * host name; the origin is written into the Content-Security-Policy, where `;` starts a directive.
+ */
+const PLAIN_HOST = /^([a-z0-9-]+\.)*[a-z0-9-]+$|^\[[0-9a-f:.]+\]$/
+
 interface RawEnv {
   VITE_IDENTITY_API_URL?: string
 }
@@ -32,6 +38,9 @@ export function readEnv(raw: RawEnv, options: { dev: boolean }): EnvResult {
     problems.push('VITE_IDENTITY_API_URL must start with http:// or https://.')
   } else if (url.protocol === 'http:' && !options.dev) {
     problems.push('VITE_IDENTITY_API_URL must use https outside development.')
+  }
+  if (!PLAIN_HOST.test(url.hostname)) {
+    problems.push('VITE_IDENTITY_API_URL has a host name with characters a host name cannot have.')
   }
   if (url.username !== '' || url.password !== '') {
     problems.push('VITE_IDENTITY_API_URL must not contain a user name or password.')

@@ -15,7 +15,8 @@ const raw = (process.env.VITE_IDENTITY_API_URL ?? '').trim()
 let origin
 try {
   const url = new URL(raw)
-  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || (url.pathname !== '/' && url.pathname !== '')) {
+  // A plain host name only: the URL parser accepts ';' in a host, which would start a new CSP directive.
+  if (url.protocol !== 'https:' || !/^([a-z0-9-]+\.)*[a-z0-9-]+$/.test(url.hostname) || url.username || url.password || url.search || url.hash || (url.pathname !== '/' && url.pathname !== '')) {
     throw new Error('not a plain https origin')
   }
   origin = url.origin
