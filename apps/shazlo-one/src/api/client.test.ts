@@ -82,6 +82,98 @@ describe('the client', () => {
   })
 })
 
+describe('renewing the session on a 401', () => {
+  it('renews once and resends the same request, body included, with the new token', async () => {
+    const seen: Array<{ auth: string | null; body: unknown }> = []
+    server.use(
+      http.patch(`${BASE}/v1/admins/a1`, async ({ request }) => {
+        seen.push({ auth: request.headers.get('Authorization'), body: await request.json() })
+        return seen.length === 1
+          ? HttpResponse.json(errorBody('unauthorized', 'expired'), { status: 401 })
+          : HttpResponse.json({ ok: true })
+      }),
+    )
+    let token = 'old'
+    const onUnauthorized = vi.fn(async () => {
+      token = 'new'
+      return true
+    })
+    const onApiError = vi.fn()
+    const client = createApiClient({ baseUrl: BASE, getAccessToken: () => token, onUnauthorized, onApiError })
+    const { data } = await client.PATCH('/v1/admins/{admin_id}', {
+      params: { path: { admin_id: 'a1' } },
+      body: { display_name: 'Ada' } as never,
+    })
+    expect(data).toEqual({ ok: true })
+    expect(onUnauthorized).toHaveBeenCalledOnce()
+    expect(seen).toEqual([
+      { auth: 'Bearer old', body: { display_name: 'Ada' } },
+      { auth: 'Bearer new', body: { display_name: 'Ada' } },
+    ])
+    expect(onApiError).not.toHaveBeenCalled()
+  })
+
+  it('never renews for /v1/auth/*: a wrong password is a plain 401, not a refresh loop', async () => {
+    server.use(
+      http.post(`${BASE}/v1/auth/login`, () =>
+        HttpResponse.json(errorBody('invalid_credentials', 'Wrong'), { status: 401 }),
+      ),
+    )
+    const onUnauthorized = vi.fn(async () => true)
+    const onApiError = vi.fn()
+    const client = createApiClient({ baseUrl: BASE, onUnauthorized, onApiError })
+    const error = await caught(client.POST('/v1/auth/login', { body: { email: 'a@b.co', password: 'x' } as never }))
+    expect((error as ApiError).code).toBe('invalid_credentials')
+    expect(onUnauthorized).not.toHaveBeenCalled()
+    expect(onApiError).toHaveBeenCalledOnce()
+  })
+
+  it('reports the 401 when the session could not be renewed, and sends nothing more', async () => {
+    let calls = 0
+    server.use(
+      http.get(`${BASE}/v1/me`, () => {
+        calls += 1
+        return HttpResponse.json(errorBody('unauthorized', 'expired'), { status: 401 })
+      }),
+    )
+    const onApiError = vi.fn()
+    const client = createApiClient({ baseUrl: BASE, onUnauthorized: async () => false, onApiError })
+    const error = await caught(client.GET('/v1/me'))
+    expect((error as ApiError).status).toBe(401)
+    expect(calls).toBe(1)
+    expect(onApiError).toHaveBeenCalledWith(error)
+  })
+
+  it('reports the error of the resent request, once, when that one fails too', async () => {
+    let calls = 0
+    server.use(
+      http.get(`${BASE}/v1/me`, () => {
+        calls += 1
+        return calls === 1
+          ? HttpResponse.json(errorBody('unauthorized', 'expired'), { status: 401 })
+          : HttpResponse.json(errorBody('account_disabled', 'Suspended'), { status: 403 })
+      }),
+    )
+    const onUnauthorized = vi.fn(async () => true)
+    const onApiError = vi.fn()
+    const client = createApiClient({ baseUrl: BASE, onUnauthorized, onApiError })
+    const error = await caught(client.GET('/v1/me'))
+    expect((error as ApiError).code).toBe('account_disabled')
+    expect(calls).toBe(2)
+    expect(onUnauthorized).toHaveBeenCalledOnce()
+    expect(onApiError).toHaveBeenCalledOnce()
+    expect(onApiError).toHaveBeenCalledWith(error)
+  })
+
+  it('does not renew on a 403', async () => {
+    server.use(http.get(`${BASE}/v1/me`, () => HttpResponse.json(errorBody('forbidden', 'No'), { status: 403 })))
+    const onUnauthorized = vi.fn(async () => true)
+    const client = createApiClient({ baseUrl: BASE, onUnauthorized })
+    expect(((await caught(client.GET('/v1/me'))) as ApiError).status).toBe(403)
+    expect(onUnauthorized).not.toHaveBeenCalled()
+  })
+})
+
 describe('error mapping', () => {
   it.each([
     [401, 'unauthorized', 'Not signed in'],

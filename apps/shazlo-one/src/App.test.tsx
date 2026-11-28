@@ -3,6 +3,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { Providers } from './app/Providers'
+import { RouteError } from './components/RouteError'
 import { routes } from './app/routes'
 import { ModuleRegistryProvider } from './modules/ModuleRegistryProvider'
 import { AuthProvider } from './session/AuthProvider'
@@ -28,6 +29,7 @@ describe('the empty shell', () => {
     render(<App />)
     expect(screen.getByRole('heading', { level: 1, name: 'The shell is misconfigured' })).toBeTruthy()
     expect(screen.getByText('VITE_IDENTITY_API_URL is not set.')).toBeTruthy()
+    expect(document.title).toBe('Misconfigured · Shazlo-One')
   })
 
   it('names a URL that is not allowed without repeating it', () => {
@@ -48,5 +50,13 @@ describe('the empty shell', () => {
     renderAt('/nowhere')
     expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeTruthy()
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(document.title).toBe('Page not found · Shazlo-One')
+  })
+
+  it('puts the route error element on every route, so a throwing page never shows a stack trace', () => {
+    expect(routes.length).toBeGreaterThan(0)
+    for (const route of routes) {
+      expect((route.errorElement as { type?: unknown } | undefined)?.type).toBe(RouteError)
+    }
   })
 })
