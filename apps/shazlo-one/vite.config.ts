@@ -6,11 +6,13 @@ import { defineConfig, loadEnv, type Plugin } from 'vite'
 // Relative to the source: the config is bundled for Node, which would not load the package's TypeScript.
 import { parseRegistry, registryCsp, type RegistryMode } from '../../packages/shell-protocol/src/registry'
 import { readEnv } from './src/config/env'
+import { demoOnlyWorker } from './src/security/demoOnlyWorker'
 import { securityHeaders } from './src/security/headers'
 
 const DEV_ORIGIN = 'http://localhost:5192'
 
-// Without the browser mock, its service worker has no business in the build output.
+// Without the browser mock, its service worker has no business in the build output. demoOnlyWorker
+// only adds it with the mock on; this makes sure nothing else (a file in public/) ships it either.
 function dropMockWorker(outDir: () => string): Plugin {
   return {
     name: 'shazlo-one:drop-mock-worker',
@@ -58,7 +60,7 @@ export default defineConfig(({ mode, command, isPreview }) => {
   const proxy = { '/v1': { target: identityTarget, changeOrigin: false } }
   let outDir = 'dist'
   return {
-    plugins: [react(), ...(mock ? [] : [dropMockWorker(() => outDir)]), { name: 'shazlo-one:out-dir', configResolved: (config) => void (outDir = resolve(config.root, config.build.outDir)) }],
+    plugins: [react(), demoOnlyWorker(mock), ...(mock ? [] : [dropMockWorker(() => outDir)]), { name: 'shazlo-one:out-dir', configResolved: (config) => void (outDir = resolve(config.root, config.build.outDir)) }],
     // __MOCK_API__ is a constant, so a build without the mock drops its import, its handlers and the
     // demo passwords entirely (src/main.tsx).
     define: { __SHELL_REGISTRY__: JSON.stringify(registry), __SHELL_REGISTRY_MODE__: JSON.stringify(registryMode), __MOCK_API__: JSON.stringify(mock) },

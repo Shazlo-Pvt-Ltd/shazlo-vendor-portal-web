@@ -27,7 +27,7 @@ describe('A-09 Vendor detail', { timeout: 40_000 }, () => {
     await heading('Rann Weaves')
     expect(within(header()).getByText('Applied')).toBeInTheDocument()
     const subtitle = screen.getByText(/Applied 2 days ago · Bhuj, Gujarat ·/)
-    const site = within(subtitle).getByRole('link', { name: /instagram\.com\/rannweaves/ })
+    const site = within(subtitle).getByRole('link', { name: 'instagram.com/rannweaves (opens in a new tab)' })
     expect(site).toHaveAttribute('href', 'https://instagram.com/rannweaves')
     expect(site).toHaveAttribute('target', '_blank')
     expect(screen.getByRole('link', { name: 'Vendors' })).toHaveAttribute('href', '/vendors')
@@ -61,7 +61,7 @@ describe('A-09 Vendor detail', { timeout: 40_000 }, () => {
     }
     expect(value('Sells')).toHaveTextContent('Women')
     expect(value('Ships from')).toHaveTextContent('Ahmedabad, Gujarat')
-    expect(within(value('Instagram or website')).getByRole('link', { name: /instagram\.com\/kalkistudio/ })).toHaveAttribute('href', 'https://instagram.com/kalkistudio')
+    expect(within(value('Instagram or website')).getByRole('link', { name: 'instagram.com/kalkistudio (opens in a new tab)' })).toHaveAttribute('href', 'https://instagram.com/kalkistudio')
     expect(value('Name')).toHaveTextContent('Kiran Shah')
     expect(value('Mobile')).toHaveTextContent(/^\+91 /)
     expect(value('Email')).toHaveTextContent('kiran@kalkistudio.in')
